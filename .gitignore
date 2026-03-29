@@ -1,0 +1,36 @@
+# Cache ISBN
+isbn_cache.json
+
+# Rapports et logs générés
+rapport_*.csv
+log_renommage_*.csv
+corrections_log_*.csv
+rapport_corrections_*.csv
+rapport_restants_*.csv
+rapport_ids_restants_*.csv
+ids_restants_log_*.csv
+corrections_restants_log_*.csv
+*.progress
+
+# Anciens scripts (remplacés par biblio_renamer.py)
+rename_biblio.py
+corriger_douteux.py
+corriger_restants.py
+corriger_ids_restants.py
+lancer_renommage.sh
+lancer_corrections.sh
+fichiers_id_restants.txt
+pdf_list.json
+
+# Aperçu HTML
+apercu_renommage.html
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# macOS
+.DS_Store
