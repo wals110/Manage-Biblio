@@ -1,110 +1,112 @@
-# Biblio Renamer
+# Manage-Biblio
 
-Renommage intelligent de bibliothèques PDF vers la nomenclature **"Titre - Auteur.pdf"**.
+Outils de gestion pour une bibliothèque PDF (~18 500 fichiers sur SSD externe).
 
-Concu pour nettoyer des bibliothèques PDF dont les fichiers ont des noms cryptiques (ISBN, DOI, identifiants numeriques, artefacts de telechargement Z-Library/Bookos, etc.).
+## Structure du projet
 
-## Fonctionnement
-
-Le script applique un pipeline en cascade pour chaque fichier PDF. Si une etape produit un nom de qualite suffisante, les etapes suivantes sont ignorees.
-
-```mermaid
-flowchart TD
-    A["📄 Fichier PDF"] --> B{"Le nom est-il\ndeja propre ?"}
-    B -- Oui --> C["✅ Ignorer"]
-    B -- Non --> D["Phase 1\nNettoyage du nom"]
-    D --> D1["Suppression IDs, underscores,\nartefacts web, parentheses,\ncrochets, URL-encoding"]
-    D1 --> D2{"Nom de\nqualite ?"}
-    D2 -- Oui --> R["✏️ Renommer"]
-    D2 -- Non --> E["Phase 2\nRecherche ISBN en ligne"]
-    E --> E1["Extraction ISBN du nom\n→ Google Books API\n→ Open Library API"]
-    E1 --> E2{"Titre\ntrouve ?"}
-    E2 -- Oui --> R
-    E2 -- Non --> F["Phase 3\nExtraction PDF"]
-    F --> F1["Sous-processus isole\n+ timeout 15s"]
-    F1 --> F2["Metadonnees pypdf\n→ Texte pdfplumber\npages 1 a 5"]
-    F2 --> F3{"Titre\nvalide ?"}
-    F3 -- Oui --> R
-    F3 -- Non --> G["Phase 4\nNom du dossier parent"]
-    G --> G1{"Dossier type\nTitre ISBN ?"}
-    G1 -- Oui --> R
-    G1 -- Non --> H["❌ Echec\nnom inchange"]
-    R --> V{"Meilleur que\nl'ancien nom ?"}
-    V -- Oui --> W["📝 Appliquer\nTitre - Auteur.pdf"]
-    V -- Non --> H
-
-    style A fill:#4a90d9,color:#fff
-    style C fill:#27ae60,color:#fff
-    style W fill:#27ae60,color:#fff
-    style H fill:#e74c3c,color:#fff
-    style D fill:#f39c12,color:#fff
-    style E fill:#f39c12,color:#fff
-    style F fill:#f39c12,color:#fff
-    style G fill:#f39c12,color:#fff
+```
+Manage-Biblio/
+├── renommage/              # Phase 1 : Renommage des fichiers
+│   ├── biblio_renamer.py       # Script de renommage intelligent
+│   ├── renommer.sh             # Lanceur bash
+│   └── isbn_cache.json         # Cache des recherches ISBN
+│
+├── organiser/              # Phase 2 : Classement thématique
+│   ├── biblio_organizer.py     # Méthode A — mots-clés + apprentissage TF-IDF
+│   ├── biblio_organizer_api.py # Méthode B — API web (Google Books / Open Library)
+│   ├── categories.yaml         # Configuration des catégories et mots-clés
+│   └── categories_cache.json   # Cache des catégories trouvées par API (auto-généré)
+│
+├── logs/                   # Rapports et logs de toutes les opérations
+│   ├── rapport_*.csv           # Rapports d'analyse (dry-run)
+│   └── log_*.csv               # Logs d'exécution (pour undo)
+│
+├── docs/                   # Documentation
+│   ├── arborescence_finale.md  # Arborescence validée
+│   └── proposition_arborescence.md
+│
+├── organiser.sh            # Lanceur méthode A (mots-clés + apprentissage)
+├── organiser_api.sh        # Lanceur méthode B (API web)
+├── requirements.txt        # Dépendances Python
+└── README.md
 ```
 
-Le script ne modifie **que les fichiers dont le nom est "pas propre"**. Il peut etre relance autant de fois que necessaire.
+## Phase 1 — Renommage
+
+Renomme les PDFs vers le format `Titre - Auteur.pdf` en utilisant un pipeline en cascade :
+
+1. Nettoyage du nom de fichier (artefacts web, ISBN collés, etc.)
+2. Recherche ISBN en ligne (Google Books / Open Library)
+3. Extraction titre/auteur depuis les métadonnées et le texte du PDF
+4. Extraction titre depuis le nom du dossier parent
+
+```bash
+./renommage/renommer.sh /Volumes/ExtSSD/BIBLIO              # Rapport
+./renommage/renommer.sh /Volumes/ExtSSD/BIBLIO --execute     # Appliquer
+./renommage/renommer.sh --undo logs/log_renommage_*.csv      # Annuler
+```
+
+## Phase 2 — Classement thématique
+
+Classe les PDFs dans une arborescence par discipline en combinant :
+
+1. **Mots-clés** configurables (`organiser/categories.yaml`)
+2. **Apprentissage** par l'existant (profils TF-IDF des dossiers déjà classés)
+3. **Extraction PDF** pour les fichiers aux noms vagues
+
+```bash
+./organiser.sh                                    # Rapport (dry-run)
+./organiser.sh --execute                          # Appliquer
+./organiser.sh --verbose                          # Détails
+./organiser.sh --undo logs/log_classement_*.csv   # Annuler
+```
+
+### Ajouter un nouveau thème
+
+Éditer `organiser/categories.yaml` et ajouter une entrée :
+
+```yaml
+  - chemin: "01-SCIENCES/INFORMATIQUE/XX-Nouveau-Theme"
+    priorite: 5
+    mots_cles:
+      - "mot clé 1"
+      - "mot clé 2"
+```
+
+Le système d'apprentissage enrichira automatiquement le vocabulaire
+au fil des classements successifs.
+
+## Phase 2B — Classement par API web
+
+Alternative à la méthode A : interroge Google Books et Open Library pour
+récupérer les catégories officielles de chaque livre. Exploite le cache
+ISBN existant (3200+ entrées) pour minimiser les requêtes.
+
+```bash
+./organiser_api.sh                                        # Rapport
+./organiser_api.sh --execute                              # Appliquer
+./organiser_api.sh --max-api 100                          # Limiter à 100 requêtes
+./organiser_api.sh --verbose                              # Détails
+./organiser_api.sh --undo logs/log_classement_api_*.csv   # Annuler
+```
+
+Les résultats sont mis en cache (`organiser/categories_cache.json`),
+donc les exécutions suivantes sont quasi instantanées pour les livres déjà identifiés.
+
+### Comparer les deux méthodes
+
+Lancer les deux en mode rapport (dry-run), puis comparer les CSV :
+
+```bash
+./organiser.sh           # → logs/rapport_classement_*.csv
+./organiser_api.sh       # → logs/rapport_classement_api_*.csv
+```
 
 ## Installation
 
 ```bash
-git clone https://github.com/VOTRE_USER/biblio-renamer.git
-cd biblio-renamer
 pip install -r requirements.txt
 ```
-
-## Usage
-
-### Rapport seul (rien n'est modifie)
-
-```bash
-./renommer.sh /chemin/vers/biblio
-```
-
-Genere un fichier CSV avec tous les renommages proposes.
-
-### Appliquer les renommages
-
-```bash
-./renommer.sh /chemin/vers/biblio --execute
-```
-
-### Annuler
-
-```bash
-./renommer.sh --undo log_renommage_XXXXXXXX.csv
-```
-
-### Options
-
-```
---no-online    Desactiver la recherche ISBN en ligne
---no-pdf       Desactiver l'extraction depuis les PDFs (plus rapide)
---report X.csv Utiliser un rapport specifique pour --execute
-```
-
-## Nomenclature
-
-- Format : `Titre - Premier Auteur.pdf` ou `Titre.pdf` (si auteur inconnu)
-- Accents preserves
-- Caracteres supprimes : `()[]{},:;`
-- Caracteres conserves : lettres, chiffres, espaces, apostrophes, tirets, points
-
-## Exemples
-
-| Avant | Apres |
-|-------|-------|
-| `2738119042.pdf` | `Les origines animales de la culture - Dominique Lestel.pdf` |
-| `[Ghaleb_Bencheikh]_Le_Coran.pdf` | `Le Coran - Ghaleb Bencheikh.pdf` |
-| `0471137707 Computingverybest.pdf` | `Computing concepts with C++ essentials - Horstmann.pdf` |
-| `Islam et politique (Mohamed Arkoun) (Z-Library).pdf` | `Islam et politique - Mohamed Arkoun.pdf` |
-| `9780195153729 1.pdf` | `Adaptive Thinking - Rationality in the Real World - Gerd Gigerenzer.pdf` |
-
-## Fichiers generes
-
-- `rapport_XXXXXXXX.csv` : rapport des renommages proposes
-- `log_renommage_XXXXXXXX.csv` : log des renommages effectues (pour annulation)
-- `isbn_cache.json` : cache des recherches ISBN (evite les requetes repetees)
 
 ## Licence
 

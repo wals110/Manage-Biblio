@@ -1,18 +1,10 @@
 # Cache ISBN
-isbn_cache.json
+renommage/isbn_cache.json
 
 # Rapports et logs générés
-rapport_*.csv
-log_renommage_*.csv
-corrections_log_*.csv
-rapport_corrections_*.csv
-rapport_restants_*.csv
-rapport_ids_restants_*.csv
-ids_restants_log_*.csv
-corrections_restants_log_*.csv
-*.progress
+logs/
 
-# Anciens scripts (remplacés par biblio_renamer.py)
+# Anciens scripts (remplacés par renommage/ et organiser/)
 rename_biblio.py
 corriger_douteux.py
 corriger_restants.py
@@ -34,3 +26,13 @@ venv/
 
 # macOS
 .DS_Store
+
+# Fichiers temporaires / hors projet
+=
+*.png
+CLASSIFICATION_ANALYSIS_REPORT.txt
+MISCLASSIFICATIONS_DETAILED.txt
+recherche_yt_*.md
+
+# Claude
+.claude/

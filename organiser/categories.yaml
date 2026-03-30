@@ -1,0 +1,1053 @@
+# ============================================================================
+# Configuration des catégories — Bibliothèque BIBLIO
+# ============================================================================
+# Ce fichier définit l'arborescence et les mots-clés de classement.
+# Pour ajouter un nouveau thème : ajouter une entrée sous la bonne catégorie.
+# Pour enrichir un thème existant : ajouter des mots-clés à la liste.
+#
+# Format :
+#   chemin: le chemin relatif du dossier dans BIBLIO/
+#   mots_cles: liste de mots/expressions (insensible à la casse)
+#   priorite: plus le chiffre est bas, plus la catégorie est prioritaire
+#             (utile quand un livre matche plusieurs catégories)
+# ============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# INFORMATIQUE
+# ──────────────────────────────────────────────────────────────────────────────
+
+informatique:
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/17-Conferences-Proceedings"
+    priorite: 1
+    mots_cles:
+      - "proceedings"
+      - "conference"
+      - "symposium"
+      - "workshop"
+      - "LNCS"
+      - "1st ed. 2017"
+      - "1st ed. 2018"
+      - "1st ed. 2016"
+      - "revised selected papers"
+      - "international conference"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/05-Intelligence-Artificielle/Deep-Learning"
+    priorite: 2
+    mots_cles:
+      - "deep learning"
+      - "neural network"
+      - "convolutional"
+      - "CNN"
+      - "RNN"
+      - "LSTM"
+      - "GAN"
+      - "transformer"
+      - "backpropagation"
+      - "tensorflow"
+      - "pytorch"
+      - "keras"
+      - "perceptron"
+      - "autoencoder"
+      - "dropout"
+      - "batch normalization"
+      - "activation function"
+      - "hidden layer"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/05-Intelligence-Artificielle/Machine-Learning"
+    priorite: 3
+    mots_cles:
+      - "machine learning"
+      - "apprentissage automatique"
+      - "apprentissage artificiel"
+      - "random forest"
+      - "support vector"
+      - "SVM"
+      - "regression"
+      - "classification"
+      - "clustering"
+      - "k-means"
+      - "decision tree"
+      - "ensemble"
+      - "boosting"
+      - "bagging"
+      - "gradient boosting"
+      - "XGBoost"
+      - "feature selection"
+      - "cross-validation"
+      - "overfitting"
+      - "supervised learning"
+      - "unsupervised learning"
+      - "reinforcement learning"
+      - "recommender system"
+      - "AdaBoost"
+      - "naive bayes"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/05-Intelligence-Artificielle/NLP"
+    priorite: 3
+    mots_cles:
+      - "natural language"
+      - "NLP"
+      - "text mining"
+      - "sentiment analysis"
+      - "opinion mining"
+      - "chatbot"
+      - "language model"
+      - "word embedding"
+      - "word2vec"
+      - "bert model"
+      - "bert nlp"
+      - "BERT transformer"
+      - "tokenization"
+      - "part-of-speech"
+      - "named entity"
+      - "information extraction"
+      - "text classification"
+      - "traitement du langage"
+      - "corpus"
+      - "bag of words"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/05-Intelligence-Artificielle/Vision-par-Ordinateur"
+    priorite: 3
+    mots_cles:
+      - "computer vision"
+      - "image processing"
+      - "object detection"
+      - "image segmentation"
+      - "OpenCV"
+      - "face recognition"
+      - "face detection"
+      - "image classification"
+      - "optical character"
+      - "OCR"
+      - "image analysis"
+      - "pattern recognition"
+      - "edge detection"
+      - "feature extraction"
+      - "SIFT"
+      - "image retrieval"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/06-Data-Science/Big-Data"
+    priorite: 4
+    mots_cles:
+      - "big data"
+      - "hadoop"
+      - "spark"
+      - "MapReduce"
+      - "data mining"
+      - "ETL"
+      - "data warehouse"
+      - "data lake"
+      - "Hive"
+      - "Pig"
+      - "Kafka"
+      - "data pipeline"
+      - "data engineering"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/06-Data-Science/Visualisation"
+    priorite: 4
+    mots_cles:
+      - "data visualization"
+      - "visualisation"
+      - "tableau"
+      - "D3.js"
+      - "matplotlib"
+      - "dashboard"
+      - "infographic"
+      - "ggplot"
+      - "plotly"
+      - "interactive data"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/10-Securite-Crypto"
+    priorite: 5
+    mots_cles:
+      - "security"
+      - "sécurité"
+      - "cryptography"
+      - "cryptographie"
+      - "CISSP"
+      - "hacking"
+      - "penetration test"
+      - "forensic"
+      - "malware"
+      - "firewall"
+      - "encryption"
+      - "vulnerability"
+      - "exploit"
+      - "intrusion"
+      - "CompTIA"
+      - "cyber"
+      - "phishing"
+      - "ransomware"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/08-Reseaux-Telecom"
+    priorite: 5
+    mots_cles:
+      - "network"
+      - "réseau"
+      - "TCP/IP"
+      - "routing"
+      - "BGP"
+      - "OSPF"
+      - "CCNP"
+      - "CCNA"
+      - "Cisco"
+      - "wireless"
+      - "telecom"
+      - "protocol"
+      - "Ethernet"
+      - "VLAN"
+      - "switch"
+      - "router"
+      - "DNS"
+      - "DHCP"
+      - "VPN"
+      - "bandwidth"
+      - "latency"
+      - "IPv6"
+      - "socket"
+      - "broadband"
+      - "802.11"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/07-Bases-de-Donnees"
+    priorite: 5
+    mots_cles:
+      - "database"
+      - "base de données"
+      - "SQL"
+      - "NoSQL"
+      - "MongoDB"
+      - "MySQL"
+      - "PostgreSQL"
+      - "Redis"
+      - "Couchbase"
+      - "ElasticSearch"
+      - "Oracle"
+      - "DB2"
+      - "relational"
+      - "query"
+      - "schema"
+      - "data model"
+      - "index"
+      - "transaction"
+      - "ACID"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/03-Langages-Programmation/C-Cpp-CSharp"
+    priorite: 6
+    mots_cles:
+      - "C++"
+      - "C#"
+      - ".NET"
+      - "LLVM"
+      - "boost"
+      - "compiler"
+      - "CLR"
+      - "Visual C"
+      - "STL"
+      - "pointer"
+      - "ASP.NET"
+      - "WPF"
+      - "LINQ"
+      - "Mono"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/03-Langages-Programmation/Java"
+    priorite: 6
+    mots_cles:
+      - "java"
+      - "JVM"
+      - "J2EE"
+      - "Spring"
+      - "servlet"
+      - "Maven"
+      - "Gradle"
+      - "JUnit"
+      - "Hibernate"
+      - "JavaFX"
+      - "Android"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/03-Langages-Programmation/Python"
+    priorite: 6
+    mots_cles:
+      - "python"
+      - "django"
+      - "flask"
+      - "pandas"
+      - "numpy"
+      - "scipy"
+      - "jupyter"
+      - "pip"
+      - "virtualenv"
+      - "CPython"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/03-Langages-Programmation/JavaScript"
+    priorite: 6
+    mots_cles:
+      - "javascript"
+      - "node.js"
+      - "react"
+      - "angular"
+      - "vue.js"
+      - "typescript"
+      - "jQuery"
+      - "Express"
+      - "npm"
+      - "webpack"
+      - "backbone"
+      - "knockout"
+      - "ember"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/03-Langages-Programmation/Autres"
+    priorite: 7
+    mots_cles:
+      - "delphi"
+      - "erlang"
+      - "haskell"
+      - "ruby"
+      - "swift"
+      - "objective-c"
+      - "fortran"
+      - "assembly"
+      - "lisp"
+      - "prolog"
+      - "scala"
+      - "rust"
+      - "Go lang"
+      - "perl"
+      - "lua"
+      - "R language"
+      - "MATLAB"
+      - "Kotlin"
+      - "Turbo Pascal"
+      - "Pascal programming"
+      - "Object Pascal"
+      - "Visual Basic"
+      - "BASIC programming"
+      - "QuickBASIC"
+      - "COBOL"
+      - "Forth"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/02-Algorithmes-Structures-Donnees"
+    priorite: 5
+    mots_cles:
+      - "algorithm"
+      - "algorithme"
+      - "algorithmique"
+      - "data structure"
+      - "structure de données"
+      - "sorting"
+      - "graph theory"
+      - "complexity"
+      - "NP-hard"
+      - "NP-complete"
+      - "combinatorial"
+      - "dynamic programming"
+      - "greedy"
+      - "divide and conquer"
+      - "binary tree"
+      - "hash table"
+      - "heap"
+      - "Big O"
+      - "recursion"
+      - "optimization"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/09-Systemes-OS/Linux-Unix"
+    priorite: 6
+    mots_cles:
+      - "linux"
+      - "unix"
+      - "debian"
+      - "ubuntu"
+      - "bash"
+      - "shell"
+      - "kernel"
+      - "systemd"
+      - "GNU"
+      - "RedHat"
+      - "CentOS"
+      - "Fedora"
+      - "POSIX"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/09-Systemes-OS/Windows"
+    priorite: 6
+    mots_cles:
+      - "windows"
+      - "powershell"
+      - "active directory"
+      - "group policy"
+      - "registry"
+      - "Windows Server"
+      - "IIS"
+      - "WMI"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/09-Systemes-OS/MacOS-iOS"
+    priorite: 6
+    mots_cles:
+      - "macOS"
+      - "mac OS X"
+      - "iOS"
+      - "Cocoa"
+      - "Xcode"
+      - "iPhone"
+      - "iPad"
+      - "Apple"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/12-IoT-Embarque"
+    priorite: 5
+    mots_cles:
+      - "Arduino"
+      - "Raspberry Pi"
+      - "IoT"
+      - "embedded"
+      - "microcontroller"
+      - "sensor"
+      - "FPGA"
+      - "ARM"
+      - "AVR"
+      - "Internet of Things"
+      - "PIC"
+      - "GPIO"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/13-Infographie-3D"
+    priorite: 5
+    mots_cles:
+      - "3D"
+      - "OpenGL"
+      - "GPU"
+      - "Blender"
+      - "rendering"
+      - "shader"
+      - "computer graphics"
+      - "animation"
+      - "game engine"
+      - "3ds Max"
+      - "ray tracing"
+      - "texture"
+      - "mesh"
+      - "DirectX"
+      - "Vulkan"
+      - "rasterization"
+      - "SketchUp"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/14-Developpement-Web"
+    priorite: 5
+    mots_cles:
+      - "web development"
+      - "HTML"
+      - "CSS"
+      - "REST API"
+      - "RESTful"
+      - "web API"
+      - "frontend"
+      - "backend"
+      - "fullstack"
+      - "Rails"
+      - "Django"
+      - "PHP"
+      - "Laravel"
+      - "WordPress"
+      - "CMS"
+      - "responsive"
+      - "Bootstrap"
+      - "web page"
+      - "web application"
+      - "HTTP"
+      - "SEO"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/15-Developpement-Mobile"
+    priorite: 5
+    mots_cles:
+      - "mobile development"
+      - "React Native"
+      - "Flutter"
+      - "Cordova"
+      - "Xamarin"
+      - "mobile app"
+      - "app store"
+      - "Google Play"
+      - "PhoneGap"
+      - "Ionic"
+      - "Corona SDK"
+      - "Symbian"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/11-Cloud-DevOps"
+    priorite: 5
+    mots_cles:
+      - "cloud"
+      - "AWS"
+      - "Azure"
+      - "Docker"
+      - "Kubernetes"
+      - "serverless"
+      - "microservice"
+      - "terraform"
+      - "CI/CD"
+      - "Jenkins"
+      - "DevOps"
+      - "container"
+      - "deployment"
+      - "Google Cloud"
+      - "S3"
+      - "Lambda"
+      - "VMware"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/04-Genie-Logiciel"
+    priorite: 8
+    mots_cles:
+      - "software engineering"
+      - "génie logiciel"
+      - "design pattern"
+      - "agile"
+      - "scrum"
+      - "testing"
+      - "UML"
+      - "refactoring"
+      - "software architecture"
+      - "clean code"
+      - "SOLID"
+      - "version control"
+      - "project management"
+      - "LaTeX"
+
+  - chemin: "01-SCIENCES/INFORMATIQUE/01-Fondamentaux-CS"
+    priorite: 9
+    mots_cles:
+      - "introduction to computing"
+      - "computer fundamentals"
+      - "digital design"
+      - "computer architecture"
+      - "theory of computation"
+      - "automata"
+      - "calculabilité"
+      - "computability"
+      - "Turing"
+      - "Boolean"
+      - "logic gate"
+      - "information theory"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MATHEMATIQUE
+# ──────────────────────────────────────────────────────────────────────────────
+
+mathematique:
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/01-Algebre"
+    priorite: 5
+    mots_cles:
+      - "algebra"
+      - "algèbre"
+      - "group theory"
+      - "théorie des groupes"
+      - "ring"
+      - "field"
+      - "linear algebra"
+      - "algèbre linéaire"
+      - "matrice"
+      - "matrix"
+      - "vector space"
+      - "eigenvalue"
+      - "determinant"
+      - "monoid"
+      - "representation theory"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/02-Analyse"
+    priorite: 5
+    mots_cles:
+      - "analysis"
+      - "analyse"
+      - "calculus"
+      - "differential"
+      - "integral"
+      - "mesure"
+      - "Lebesgue"
+      - "holomorphe"
+      - "holomorphic"
+      - "Fourier"
+      - "functional analysis"
+      - "Banach"
+      - "Hilbert"
+      - "Sobolev"
+      - "convergence"
+      - "series"
+      - "limite"
+      - "continuity"
+      - "partial differential"
+      - "ODE"
+      - "PDE"
+      - "équation différentielle"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/03-Geometrie-Topologie"
+    priorite: 5
+    mots_cles:
+      - "geometry"
+      - "géométrie"
+      - "topology"
+      - "topologie"
+      - "manifold"
+      - "variété"
+      - "surface"
+      - "homologie"
+      - "homotopie"
+      - "homotopy"
+      - "cohomology"
+      - "Riemannian"
+      - "convexity"
+      - "affine"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/04-Probabilites-Statistiques"
+    priorite: 5
+    mots_cles:
+      - "probability"
+      - "probabilité"
+      - "statistics"
+      - "statistique"
+      - "stochastic"
+      - "Bayesian"
+      - "Monte Carlo"
+      - "Markov"
+      - "espérance"
+      - "variance"
+      - "distribution"
+      - "regression"
+      - "hypothesis test"
+      - "confidence interval"
+      - "SPSS"
+      - "econophysics"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/05-Logique"
+    priorite: 5
+    mots_cles:
+      - "logic"
+      - "logique"
+      - "proof theory"
+      - "model theory"
+      - "computability"
+      - "Gödel"
+      - "Wittgenstein"
+      - "propositional"
+      - "predicate"
+      - "satisfiability"
+      - "set theory"
+      - "axiom"
+      - "Boolean algebra"
+      - "paraconsistent"
+      - "argumentation"
+      - "deontic"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/06-Theorie-des-Nombres"
+    priorite: 5
+    mots_cles:
+      - "number theory"
+      - "nombres premiers"
+      - "prime"
+      - "diophantine"
+      - "arithmetic"
+      - "modular"
+      - "cryptography"
+      - "Pell"
+      - "Fermat"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/07-Calcul-Numerique"
+    priorite: 5
+    mots_cles:
+      - "numerical"
+      - "numérique"
+      - "finite element"
+      - "éléments finis"
+      - "approximation"
+      - "interpolation"
+      - "méthode numérique"
+      - "maillage"
+      - "simulation"
+      - "computational fluid"
+      - "discretization"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/09-Histoire-Philosophie-Maths"
+    priorite: 4
+    mots_cles:
+      - "history of mathematics"
+      - "histoire des mathématiques"
+      - "philosophy of mathematics"
+      - "philosophie des mathématiques"
+      - "Bourbaki"
+      - "Poincaré"
+      - "biographie"
+      - "medieval"
+      - "épistémologie"
+
+  - chemin: "01-SCIENCES/MATHEMATIQUE/08-Mathematiques-Generales"
+    priorite: 10
+    mots_cles:
+      - "mathématiques"
+      - "mathematics"
+      - "cours"
+      - "exercices"
+      - "agrégation"
+      - "CAPES"
+      - "licence"
+      - "prépa"
+      - "concours"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PHYSIQUE
+# ──────────────────────────────────────────────────────────────────────────────
+
+physique:
+
+  - chemin: "01-SCIENCES/PHYSIQUE/01-Mecanique"
+    priorite: 5
+    mots_cles:
+      - "mechanics"
+      - "mécanique"
+      - "dynamics"
+      - "cinématique"
+      - "Newton"
+      - "Lagrange"
+      - "Hamilton"
+      - "fluid mechanics"
+      - "solid mechanics"
+
+  - chemin: "01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique"
+    priorite: 5
+    mots_cles:
+      - "electromagnetic"
+      - "électronique"
+      - "Maxwell"
+      - "circuit"
+      - "signal"
+      - "mécatronique"
+      - "antenna"
+      - "semiconductor"
+      - "diode"
+      - "transistor"
+
+  - chemin: "01-SCIENCES/PHYSIQUE/03-Thermodynamique"
+    priorite: 5
+    mots_cles:
+      - "thermodynamics"
+      - "thermodynamique"
+      - "entropy"
+      - "chaleur"
+      - "statistical mechanics"
+      - "température"
+      - "Boltzmann"
+
+  - chemin: "01-SCIENCES/PHYSIQUE/04-Optique"
+    priorite: 5
+    mots_cles:
+      - "optics"
+      - "optique"
+      - "laser"
+      - "optique ondulatoire"
+      - "fibre optique"
+      - "photon"
+      - "spectroscopy"
+      - "luminescence"
+      - "infrared"
+
+  - chemin: "01-SCIENCES/PHYSIQUE/05-Relativite-Quantique"
+    priorite: 5
+    mots_cles:
+      - "relativity"
+      - "relativité"
+      - "quantum"
+      - "quantique"
+      - "Schrödinger"
+      - "gravitation"
+      - "Einstein"
+      - "Planck"
+      - "supersymmetry"
+      - "dark matter"
+
+  - chemin: "01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie"
+    priorite: 4
+    mots_cles:
+      - "astrophysics"
+      - "cosmology"
+      - "astronomy"
+      - "astronomie"
+      - "planète"
+      - "étoile"
+      - "galaxie"
+      - "Hubble"
+      - "solar"
+      - "soleil"
+      - "comète"
+      - "telescope"
+      - "nebula"
+      - "satellite"
+
+  - chemin: "01-SCIENCES/PHYSIQUE/07-Physique-Nucleaire"
+    priorite: 5
+    mots_cles:
+      - "nuclear"
+      - "nucléaire"
+      - "neutron"
+      - "fission"
+      - "fusion"
+      - "particle physics"
+      - "hadron"
+      - "quark"
+      - "LHC"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CHIMIE
+# ──────────────────────────────────────────────────────────────────────────────
+
+chimie:
+
+  - chemin: "01-SCIENCES/CHIMIE/01-Chimie-Organique"
+    priorite: 5
+    mots_cles:
+      - "organic chemistry"
+      - "chimie organique"
+      - "synthesis"
+      - "pericyclic"
+      - "carbon"
+
+  - chemin: "01-SCIENCES/CHIMIE/02-Chimie-Physique"
+    priorite: 5
+    mots_cles:
+      - "physical chemistry"
+      - "chimie physique"
+      - "molecular"
+      - "computational chemistry"
+      - "petrophysics"
+      - "van der Waals"
+      - "electrocatalyst"
+
+  - chemin: "01-SCIENCES/CHIMIE/03-Nanotechnologie"
+    priorite: 5
+    mots_cles:
+      - "nanotechnology"
+      - "nanotechnologie"
+      - "nanostructure"
+      - "nanomaterial"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RELIGIONS & SPIRITUALITÉ
+# ──────────────────────────────────────────────────────────────────────────────
+
+religions:
+
+  - chemin: "05-RELIGIONS/ISLAM"
+    priorite: 2
+    mots_cles:
+      - "islam"
+      - "coran"
+      - "quran"
+      - "sourate"
+      - "hadith"
+      - "sunnah"
+      - "sunna"
+      - "fiqh"
+      - "charia"
+      - "sharia"
+      - "prophète muhammad"
+      - "tafsir"
+      - "tajwid"
+      - "salat"
+      - "ramadan"
+      - "hajj"
+      - "zakat"
+      - "soufi"
+      - "soufisme"
+      - "imam"
+      - "fatwa"
+      - "ijtihad"
+      - "aqida"
+      - "ummah"
+      - "mosquée"
+      - "islamic"
+      - "musulman"
+      - "muslim"
+      - "halal"
+      - "jihad"
+      - "minaret"
+      - "muezzin"
+      - "madrasa"
+
+  - chemin: "05-RELIGIONS/CHRISTIANISME"
+    priorite: 2
+    mots_cles:
+      - "sainte bible"
+      - "bible study"
+      - "biblical"
+      - "bible hébraïque"
+      - "évangile"
+      - "gospel"
+      - "jésus"
+      - "christ"
+      - "chrétien"
+      - "christian"
+      - "église"
+      - "théologie"
+      - "theology"
+      - "catholique"
+      - "protestant"
+      - "orthodoxe"
+      - "psaume"
+      - "psalm"
+      - "apôtre"
+      - "saint paul"
+      - "vatican"
+      - "encyclique"
+      - "liturgie"
+      - "catéchisme"
+      - "nouveau testament"
+      - "ancien testament"
+
+  - chemin: "05-RELIGIONS/JUDAISME"
+    priorite: 2
+    mots_cles:
+      - "judaïsme"
+      - "judaism"
+      - "torah"
+      - "talmud"
+      - "kabbale"
+      - "kabbalah"
+      - "synagogue"
+      - "rabbin"
+      - "rabbi"
+      - "midrash"
+      - "mishnah"
+      - "hébreu"
+      - "hebrew bible"
+
+  - chemin: "05-RELIGIONS/AUTRES-RELIGIONS"
+    priorite: 3
+    mots_cles:
+      - "bouddhisme"
+      - "buddhism"
+      - "hindouisme"
+      - "hinduism"
+      - "dharma"
+      - "karma"
+      - "méditation"
+      - "yoga spirituel"
+      - "taoïsme"
+      - "confucianisme"
+      - "zoroastrisme"
+      - "spiritualité"
+      - "mystique"
+      - "mysticisme"
+      - "ésotérisme"
+      - "religion comparée"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LOISIRS
+# ──────────────────────────────────────────────────────────────────────────────
+
+loisirs:
+
+  - chemin: "08-LOISIRS/JEUX-VIDEO"
+    priorite: 2
+    mots_cles:
+      - "strategy guide"
+      - "official guide"
+      - "Final Fantasy"
+      - "Dark Souls"
+      - "Bloodborne"
+      - "Dishonored"
+      - "Prima Official"
+      - "Bradygames"
+      - "walkthrough"
+      - "game guide"
+      - "Xbox"
+      - "PlayStation"
+      - "Nintendo"
+
+  - chemin: "08-LOISIRS/DESSIN/Fondamentaux"
+    priorite: 5
+    mots_cles:
+      - "drawing fundamentals"
+      - "pencil drawing"
+      - "sketch"
+      - "dessin"
+
+  - chemin: "08-LOISIRS/DESSIN/Portrait-Figure"
+    priorite: 5
+    mots_cles:
+      - "portrait"
+      - "figure drawing"
+      - "anatomy"
+      - "human figure"
+
+  - chemin: "08-LOISIRS/DESSIN/Paysage"
+    priorite: 5
+    mots_cles:
+      - "landscape"
+      - "paysage"
+      - "scenery"
+
+  - chemin: "08-LOISIRS/DESSIN/Techniques-Materiaux"
+    priorite: 5
+    mots_cles:
+      - "graphite"
+      - "oil painting"
+      - "watercolor"
+      - "comic art"
+      - "texture"
+      - "materials"
+
+  - chemin: "08-LOISIRS/MUSIQUE"
+    priorite: 5
+    mots_cles:
+      - "music theory"
+      - "théorie musicale"
+      - "guitare"
+      - "guitar"
+      - "piano"
+      - "solfège"
+      - "harmonie"
+      - "composition musicale"
+      - "partition"
+      - "instrument"
+
+  - chemin: "08-LOISIRS/CUISINE"
+    priorite: 5
+    mots_cles:
+      - "recette"
+      - "recipe"
+      - "cookbook"
+      - "cuisine"
+      - "pâtisserie"
+      - "gastronomie"
+      - "cooking"
+
+  - chemin: "08-LOISIRS/SPORT-FITNESS"
+    priorite: 5
+    mots_cles:
+      - "fitness"
+      - "musculation"
+      - "bodybuilding"
+      - "exercice physique"
+      - "marathon"
+      - "entraînement"
+      - "workout"
+      - "sport"
+
+  - chemin: "08-LOISIRS/PHOTOGRAPHIE"
+    priorite: 5
+    mots_cles:
+      - "photography"
+      - "photographie"
+      - "Lightroom"
+      - "Photoshop"
+      - "DSLR"
+      - "composition photo"
+      - "retouche photo"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PARAMETRES DU SYSTEME D'APPRENTISSAGE (Option 2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+apprentissage:
+  actif: true
+  # Nombre minimum de fichiers dans un dossier pour construire un profil
+  seuil_minimum_fichiers: 3
+  # Poids de l'apprentissage vs les mots-clés manuels (0.0 à 1.0)
+  poids_apprentissage: 0.4
+  # Nombre de mots-clés à extraire par dossier
+  top_n_mots: 30
+  # Score minimum de similarité pour accepter un classement (0.0 à 1.0)
+  seuil_confiance: 0.15
