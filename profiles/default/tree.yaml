@@ -1,0 +1,116 @@
+# ===========================================================================
+# Arborescence cible
+# 90 dossiers
+# ===========================================================================
+
+folders:
+  # ── 01-SCIENCES ──
+  - 01-SCIENCES/ASTRONOMIE
+  - 01-SCIENCES/BIOLOGIE/Biotechnologie
+  - 01-SCIENCES/BIOLOGIE/Ecologie
+  - 01-SCIENCES/BIOLOGIE/Genetique
+  - 01-SCIENCES/BIOLOGIE/Neurosciences
+  - 01-SCIENCES/CHIMIE
+  - 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  - 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  - 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  - 01-SCIENCES/EPISTEMOLOGIE
+  - 01-SCIENCES/MATHEMATIQUES/01-Algebre
+  - 01-SCIENCES/MATHEMATIQUES/02-Analyse
+  - 01-SCIENCES/MATHEMATIQUES/03-Geometrie-Topologie
+  - 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  - 01-SCIENCES/MATHEMATIQUES/05-Logique
+  - 01-SCIENCES/MATHEMATIQUES/06-Theorie-des-Nombres
+  - 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  - 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  - 01-SCIENCES/MATHEMATIQUES/09-Histoire-Philosophie-Maths
+  - 01-SCIENCES/PHYSIQUE/01-Mecanique
+  - 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  - 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  - 01-SCIENCES/PHYSIQUE/04-Optique
+  - 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  - 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  - 01-SCIENCES/PHYSIQUE/07-Physique-Nucleaire
+
+  # ── 02-INFORMATIQUE ──
+  - 02-INFORMATIQUE/01-Fondamentaux-CS
+  - 02-INFORMATIQUE/02-Algorithmes-Structures
+  - 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  - 02-INFORMATIQUE/03-Langages-Programmation/C-Cpp-CSharp
+  - 02-INFORMATIQUE/03-Langages-Programmation/Java
+  - 02-INFORMATIQUE/03-Langages-Programmation/JavaScript
+  - 02-INFORMATIQUE/03-Langages-Programmation/Python
+  - 02-INFORMATIQUE/04-Genie-Logiciel
+  - 02-INFORMATIQUE/05-IA-ML/Deep-Learning
+  - 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  - 02-INFORMATIQUE/05-IA-ML/NLP
+  - 02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur
+  - 02-INFORMATIQUE/06-Data-Science/Big-Data
+  - 02-INFORMATIQUE/06-Data-Science/Visualisation
+  - 02-INFORMATIQUE/07-Bases-de-Donnees
+  - 02-INFORMATIQUE/08-Reseaux-Telecom
+  - 02-INFORMATIQUE/09-Systemes-OS/Linux-Unix
+  - 02-INFORMATIQUE/09-Systemes-OS/MacOS-iOS
+  - 02-INFORMATIQUE/09-Systemes-OS/Windows
+  - 02-INFORMATIQUE/10-Securite-Crypto
+  - 02-INFORMATIQUE/11-Cloud-DevOps
+  - 02-INFORMATIQUE/12-IoT-Embarque
+  - 02-INFORMATIQUE/13-Infographie-3D
+  - 02-INFORMATIQUE/14-Web
+  - 02-INFORMATIQUE/15-Mobile
+  - 02-INFORMATIQUE/16-Conferences
+
+  # ── 03-INGENIERIE ──
+  - 03-INGENIERIE
+  - 03-INGENIERIE/ELECTRONIQUE
+  - 03-INGENIERIE/ROBOTIQUE
+  - 03-INGENIERIE/TELECOMMUNICATIONS
+  - 03-INGENIERIE/TRAITEMENT-SIGNAL
+
+  # ── 04-SHS ──
+  - 04-SHS/DROIT
+  - 04-SHS/ECONOMIE
+  - 04-SHS/EDUCATION
+  - 04-SHS/HISTOIRE
+  - 04-SHS/LINGUISTIQUE
+  - 04-SHS/PHILOSOPHIE
+  - 04-SHS/PSYCHOLOGIE
+  - 04-SHS/SCIENCES-POLITIQUES
+  - 04-SHS/SOCIOLOGIE
+
+  # ── 05-RELIGIONS ──
+  - 05-RELIGIONS/AUTRES-RELIGIONS
+  - 05-RELIGIONS/CHRISTIANISME
+  - 05-RELIGIONS/ISLAM
+  - 05-RELIGIONS/JUDAISME
+
+  # ── 06-MEDECINE ──
+  - 06-MEDECINE/Anatomie
+  - 06-MEDECINE/Chirurgie
+  - 06-MEDECINE/Pharmacologie
+
+  # ── 07-LANGUES ──
+  - 07-LANGUES/ANGLAIS
+  - 07-LANGUES/ARABE
+  - 07-LANGUES/AUTRES
+  - 07-LANGUES/FRANCAIS
+
+  # ── 08-LOISIRS ──
+  - 08-LOISIRS
+  - 08-LOISIRS/ART
+  - 08-LOISIRS/CUISINE
+  - 08-LOISIRS/DESSIN
+  - 08-LOISIRS/ECHECS
+  - 08-LOISIRS/JEUX-VIDEO
+  - 08-LOISIRS/LITTERATURE
+  - 08-LOISIRS/MUSIQUE
+  - 08-LOISIRS/PHOTOGRAPHIE
+  - 08-LOISIRS/SPORT-FITNESS
+
+  # ── 09-BUSINESS ──
+  - 09-BUSINESS/FINANCE
+  - 09-BUSINESS/MANAGEMENT
+  - 09-BUSINESS/MARKETING
+
+  # ── _A-TRIER ──
+  - _A-TRIER

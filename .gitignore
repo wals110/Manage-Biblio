@@ -4,19 +4,6 @@ renommage/isbn_cache.json
 # Rapports et logs générés
 logs/
 
-# Anciens scripts (remplacés par renommage/ et organiser/)
-rename_biblio.py
-corriger_douteux.py
-corriger_restants.py
-corriger_ids_restants.py
-lancer_renommage.sh
-lancer_corrections.sh
-fichiers_id_restants.txt
-pdf_list.json
-
-# Aperçu HTML
-apercu_renommage.html
-
 # Python
 __pycache__/
 *.pyc
@@ -27,12 +14,9 @@ venv/
 # macOS
 .DS_Store
 
-# Fichiers temporaires / hors projet
-=
+# Fichiers temporaires
+*.tmp
 *.png
-CLASSIFICATION_ANALYSIS_REPORT.txt
-MISCLASSIFICATIONS_DETAILED.txt
-recherche_yt_*.md
 
 # Claude
 .claude/

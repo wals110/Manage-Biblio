@@ -1,0 +1,597 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Règles de raffinement — profil default
+# Déplace les fichiers des dossiers parents vers la bonne sous-catégorie
+# en analysant le nom du fichier. Le premier match gagne.
+# ═══════════════════════════════════════════════════════════════════════════
+
+rules:
+  # ── 01-SCIENCES/MATHEMATIQUES ──
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 01-Algebre
+    keywords:
+      - algebra
+      - algèbre
+      - group theory
+      - ring theory
+      - field theory
+      - linear algebra
+      - algèbre linéaire
+      - matrice
+      - matrix
+      - vector space
+      - eigenvalue
+      - determinant
+      - monoid
+      - representation theory
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 02-Analyse
+    keywords:
+      - analysis
+      - analyse
+      - calculus
+      - differential
+      - integral
+      - Lebesgue
+      - Fourier
+      - functional analysis
+      - Banach
+      - Hilbert
+      - Sobolev
+      - convergence
+      - partial differential
+      - ODE
+      - PDE
+      - équation différentielle
+      - holomorphic
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 03-Geometrie-Topologie
+    keywords:
+      - geometry
+      - géométrie
+      - topology
+      - topologie
+      - manifold
+      - variété
+      - homologie
+      - homotopy
+      - cohomology
+      - Riemannian
+      - convexity
+      - affine
+      - surface
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 04-Probabilites-Statistiques
+    keywords:
+      - probability
+      - probabilité
+      - statistics
+      - statistique
+      - stochastic
+      - Bayesian
+      - Monte Carlo
+      - Markov
+      - distribution
+      - regression
+      - hypothesis
+      - SPSS
+      - random variable
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 05-Logique
+    keywords:
+      - logic
+      - logique
+      - proof theory
+      - model theory
+      - computability
+      - Gödel
+      - propositional
+      - predicate
+      - satisfiability
+      - set theory
+      - axiom
+      - Boolean
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 06-Theorie-des-Nombres
+    keywords:
+      - number theory
+      - nombres premiers
+      - prime
+      - diophantine
+      - arithmetic
+      - modular
+      - Fermat
+      - Pell
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 07-Calcul-Numerique
+    keywords:
+      - numerical
+      - numérique
+      - finite element
+      - éléments finis
+      - approximation
+      - interpolation
+      - simulation
+      - discretization
+      - computational fluid
+
+  - parent: 01-SCIENCES/MATHEMATIQUES
+    target: 09-Histoire-Philosophie-Maths
+    keywords:
+      - history of mathematics
+      - histoire des mathématiques
+      - philosophy of mathematics
+      - Bourbaki
+      - Poincaré
+      - biographie
+
+  # ── 01-SCIENCES/PHYSIQUE ──
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 01-Mecanique
+    keywords:
+      - mechanics
+      - mécanique
+      - dynamics
+      - cinématique
+      - Newton
+      - Lagrange
+      - Hamilton
+      - fluid mechanics
+      - solid mechanics
+      - statics
+      - kinematics
+
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 02-Electromagnetisme-Electronique
+    keywords:
+      - electromagnetic
+      - Maxwell
+      - circuit
+      - antenna
+      - semiconductor
+      - diode
+      - transistor
+      - signal processing
+
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 03-Thermodynamique
+    keywords:
+      - thermodynamics
+      - thermodynamique
+      - entropy
+      - chaleur
+      - statistical mechanics
+      - température
+      - Boltzmann
+      - heat transfer
+
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 04-Optique
+    keywords:
+      - optics
+      - optique
+      - laser
+      - photon
+      - spectroscopy
+      - luminescence
+      - infrared
+      - fibre optique
+
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 05-Relativite-Quantique
+    keywords:
+      - quantum
+      - quantique
+      - relativity
+      - relativité
+      - Schrödinger
+      - gravitation
+      - Einstein
+      - Planck
+      - supersymmetry
+      - dark matter
+      - wave function
+      - Heisenberg
+
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 06-Astrophysique-Cosmologie
+    keywords:
+      - astrophysics
+      - cosmology
+      - astronomy
+      - astronomie
+      - planète
+      - étoile
+      - galaxie
+      - Hubble
+      - solar
+      - telescope
+      - nebula
+      - satellite
+      - stellar
+      - exoplanet
+
+  - parent: 01-SCIENCES/PHYSIQUE
+    target: 07-Physique-Nucleaire
+    keywords:
+      - nuclear
+      - nucléaire
+      - neutron
+      - fission
+      - fusion
+      - particle physics
+      - hadron
+      - quark
+      - LHC
+
+  # ── 01-SCIENCES/CHIMIE ──
+  - parent: 01-SCIENCES/CHIMIE
+    target: 01-Chimie-Organique
+    keywords:
+      - organic chemistry
+      - chimie organique
+      - synthesis
+      - pericyclic
+      - carbon
+      - polymer
+      - aromatic
+
+  - parent: 01-SCIENCES/CHIMIE
+    target: 02-Chimie-Physique
+    keywords:
+      - physical chemistry
+      - chimie physique
+      - molecular
+      - computational chemistry
+      - van der Waals
+      - electrocatalyst
+      - spectroscopy
+
+  - parent: 01-SCIENCES/CHIMIE
+    target: 03-Nanotechnologie
+    keywords:
+      - nanotechnology
+      - nanotechnologie
+      - nanostructure
+      - nanomaterial
+      - nanoparticle
+
+  # ── 01-SCIENCES/BIOLOGIE ──
+  - parent: 01-SCIENCES/BIOLOGIE
+    target: Genetique
+    keywords:
+      - genetics
+      - génétique
+      - gene
+      - DNA
+      - RNA
+      - genome
+      - chromosome
+      - heredity
+      - mutation
+
+  - parent: 01-SCIENCES/BIOLOGIE
+    target: Neurosciences
+    keywords:
+      - neuroscience
+      - brain
+      - cerveau
+      - neuron
+      - cognitive
+      - neurologie
+      - synapse
+      - cortex
+
+  - parent: 01-SCIENCES/BIOLOGIE
+    target: Ecologie
+    keywords:
+      - ecology
+      - écologie
+      - ecosystem
+      - biodiversity
+      - environment
+      - climate
+      - conservation
+
+  - parent: 01-SCIENCES/BIOLOGIE
+    target: Biotechnologie
+    keywords:
+      - biotechnology
+      - biotechnologie
+      - bioinformatics
+      - bioengineering
+      - fermentation
+      - bioprocess
+
+  # ── 02-INFORMATIQUE ──
+  - parent: 02-INFORMATIQUE
+    target: 01-Fondamentaux-CS
+    keywords:
+      - introduction to computing
+      - computer fundamentals
+      - digital design
+      - computer architecture
+      - theory of computation
+      - automata
+      - computability
+      - Turing
+      - Boolean
+      - logic gate
+      - information theory
+
+  - parent: 02-INFORMATIQUE
+    target: 02-Algorithmes-Structures
+    keywords:
+      - algorithm
+      - algorithme
+      - data structure
+      - sorting
+      - graph theory
+      - complexity
+      - NP-hard
+      - dynamic programming
+      - greedy
+      - binary tree
+      - hash table
+      - heap
+      - Big O
+      - recursion
+
+  - parent: 02-INFORMATIQUE
+    target: 03-Langages-Programmation/Autres
+    keywords:
+      - programming
+      - programmation
+      - compiler
+      - interpreter
+      - functional programming
+      - object-oriented
+
+  - parent: 02-INFORMATIQUE
+    target: 04-Genie-Logiciel
+    keywords:
+      - software engineering
+      - génie logiciel
+      - design pattern
+      - agile
+      - scrum
+      - testing
+      - UML
+      - refactoring
+      - clean code
+      - SOLID
+
+  - parent: 02-INFORMATIQUE
+    target: 05-IA-ML
+    keywords:
+      - artificial intelligence
+      - machine learning
+      - deep learning
+      - neural network
+      - NLP
+      - computer vision
+      - reinforcement learning
+      - classification
+      - clustering
+
+  - parent: 02-INFORMATIQUE
+    target: 06-Data-Science
+    keywords:
+      - data science
+      - data mining
+      - big data
+      - hadoop
+      - spark
+      - data analysis
+      - analytics
+      - visualization
+      - dashboard
+
+  - parent: 02-INFORMATIQUE
+    target: 07-Bases-de-Donnees
+    keywords:
+      - database
+      - SQL
+      - NoSQL
+      - MongoDB
+      - PostgreSQL
+      - MySQL
+      - Redis
+      - schema
+      - query
+
+  - parent: 02-INFORMATIQUE
+    target: 08-Reseaux-Telecom
+    keywords:
+      - network
+      - TCP
+      - routing
+      - Cisco
+      - wireless
+      - protocol
+      - Ethernet
+      - VLAN
+      - DNS
+      - VPN
+      - firewall
+
+  - parent: 02-INFORMATIQUE
+    target: 09-Systemes-OS
+    keywords:
+      - operating system
+      - linux
+      - unix
+      - windows
+      - kernel
+      - shell
+      - bash
+      - powershell
+
+  - parent: 02-INFORMATIQUE
+    target: 10-Securite-Crypto
+    keywords:
+      - security
+      - sécurité
+      - cryptography
+      - hacking
+      - penetration
+      - forensic
+      - malware
+      - encryption
+      - cyber
+
+  - parent: 02-INFORMATIQUE
+    target: 11-Cloud-DevOps
+    keywords:
+      - cloud
+      - AWS
+      - Azure
+      - Docker
+      - Kubernetes
+      - serverless
+      - microservice
+      - terraform
+      - DevOps
+      - CI/CD
+
+  - parent: 02-INFORMATIQUE
+    target: 12-IoT-Embarque
+    keywords:
+      - Arduino
+      - Raspberry Pi
+      - IoT
+      - embedded
+      - microcontroller
+      - sensor
+      - FPGA
+
+  - parent: 02-INFORMATIQUE
+    target: 13-Infographie-3D
+    keywords:
+      - 3D
+      - OpenGL
+      - GPU
+      - Blender
+      - rendering
+      - shader
+      - computer graphics
+      - animation
+      - game engine
+      - DirectX
+
+  - parent: 02-INFORMATIQUE
+    target: 14-Web
+    keywords:
+      - web
+      - HTML
+      - CSS
+      - REST
+      - frontend
+      - backend
+      - fullstack
+      - PHP
+      - Laravel
+      - WordPress
+
+  - parent: 02-INFORMATIQUE
+    target: 15-Mobile
+    keywords:
+      - mobile
+      - Android
+      - React Native
+      - Flutter
+      - app development
+
+  - parent: 02-INFORMATIQUE
+    target: 16-Conferences
+    keywords:
+      - proceedings
+      - conference
+      - symposium
+      - workshop
+      - LNCS
+
+  # ── 03-INGENIERIE ──
+  - parent: 03-INGENIERIE
+    target: ELECTRONIQUE
+    keywords:
+      - electronics
+      - électronique
+      - circuit
+      - semiconductor
+      - diode
+      - transistor
+      - amplifier
+      - PCB
+      - VLSI
+      - ASIC
+
+  - parent: 03-INGENIERIE
+    target: ROBOTIQUE
+    keywords:
+      - robotics
+      - robot
+      - autonomous
+      - drone
+      - actuator
+      - servo
+
+  - parent: 03-INGENIERIE
+    target: TRAITEMENT-SIGNAL
+    keywords:
+      - signal processing
+      - traitement du signal
+      - DSP
+      - filter
+      - Fourier transform
+      - wavelet
+      - image processing
+
+  - parent: 03-INGENIERIE
+    target: TELECOMMUNICATIONS
+    keywords:
+      - telecommunications
+      - télécommunication
+      - 5G
+      - LTE
+      - antenna
+      - modulation
+      - bandwidth
+      - radio
+
+  # ── 06-MEDECINE ──
+  - parent: 06-MEDECINE
+    target: Anatomie
+    keywords:
+      - anatomy
+      - anatomie
+      - body
+      - organ
+      - muscle
+      - skeleton
+      - histology
+      - physiology
+
+  - parent: 06-MEDECINE
+    target: Pharmacologie
+    keywords:
+      - pharmacology
+      - pharmacologie
+      - drug
+      - medication
+      - pharmaceutical
+      - toxicology
+
+  - parent: 06-MEDECINE
+    target: Chirurgie
+    keywords:
+      - surgery
+      - chirurgie
+      - surgical
+      - operation
+      - transplant

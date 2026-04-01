@@ -1,113 +1,117 @@
-# Manage-Biblio
+# Biblio v4.0 — Gestionnaire de bibliothèque PDF
 
-Outils de gestion pour une bibliothèque PDF (~18 500 fichiers sur SSD externe).
+Outil en ligne de commande pour organiser automatiquement une bibliothèque de fichiers PDF :
+renommage intelligent, identification par LLM Vision, classement thématique et raffinement.
+
+## Installation
+
+```bash
+# macOS
+brew install poppler          # Extraction de couvertures PDF
+pip3 install -r requirements.txt
+
+# Clé API (SiliconFlow, pour le LLM Vision)
+export SILICONFLOW_API_KEY=sk-xxx
+```
+
+## Démarrage rapide
+
+```bash
+# Pipeline complet : identifier + classer des nouveaux PDFs
+./biblio.sh process /chemin/vers/nouveaux_pdfs              # Dry-run
+./biblio.sh process /chemin/vers/nouveaux_pdfs --execute     # Appliquer
+
+# Étapes individuelles
+./biblio.sh rename /chemin/vers/dossier                      # Renommage seul
+./biblio.sh classify /chemin --workers 10                    # LLM Vision + classement
+./biblio.sh refine                                           # Raffinement sous-catégories
+
+# Gestion d'erreurs
+./biblio.sh classify /chemin --retry-errors --execute        # Retraiter les erreurs
+./biblio.sh classify /chemin --reclassify --execute          # Re-mapper sans appel LLM
+```
+
+## Sous-commandes
+
+| Commande | Description |
+|---|---|
+| `process` | Pipeline complet (LLM + classement + raffinement) |
+| `classify` | LLM Vision + classement thématique |
+| `rename` | Renommage "Titre - Auteur.pdf" (ISBN / métadonnées) |
+| `refine` | Déplace les fichiers des catégories parentes vers les bonnes sous-catégories |
+| `profiles` | Liste les profils disponibles |
+| `init` | Crée un nouveau profil |
+
+## Options principales
+
+| Option | Description |
+|---|---|
+| `--profile NAME` | Profil à utiliser (défaut: `default`) |
+| `--execute` | Appliquer (sinon dry-run) |
+| `--report` | Générer un rapport CSV |
+| `--workers N` | Threads parallèles (pour classify/process) |
+| `--max N` | Limiter à N fichiers |
+| `--retry-errors` | Retraiter les fichiers en erreur |
+| `--reclassify` | Re-mapper les thèmes sans rappeler le LLM |
+| `--reset` | Supprimer le checkpoint et recommencer |
+| `--verbose` | Mode détaillé |
+
+## Profils
+
+Un profil définit l'arborescence cible, les mappings de thèmes, les mots-clés de classification
+et les règles de raffinement. Chaque utilisateur peut avoir ses propres profils.
+
+```bash
+# Créer un nouveau profil
+./biblio.sh init mon-profil --target /Volumes/MonDisque/MA_BIBLIO
+
+# Utiliser un profil spécifique
+./biblio.sh process /chemin --profile mon-profil --execute
+
+# Lister les profils
+./biblio.sh profiles
+```
+
+Fichiers d'un profil (`profiles/<nom>/`) :
+
+| Fichier | Contenu |
+|---|---|
+| `profile.yaml` | Config générale (nom, chemin cible, LLM, defaults) |
+| `tree.yaml` | Arborescence des dossiers |
+| `theme_mapping.yaml` | Mapping thème LLM → chemin cible |
+| `categories.yaml` | Mots-clés de classification (fallback) |
+| `refinement.yaml` | Règles de raffinement sous-catégories |
 
 ## Structure du projet
 
 ```
 Manage-Biblio/
-├── renommage/              # Phase 1 : Renommage des fichiers
-│   ├── biblio_renamer.py       # Script de renommage intelligent
-│   ├── renommer.sh             # Lanceur bash
-│   └── isbn_cache.json         # Cache des recherches ISBN
-│
-├── organiser/              # Phase 2 : Classement thématique
-│   ├── biblio_organizer.py     # Méthode A — mots-clés + apprentissage TF-IDF
-│   ├── biblio_organizer_api.py # Méthode B — API web (Google Books / Open Library)
-│   ├── categories.yaml         # Configuration des catégories et mots-clés
-│   └── categories_cache.json   # Cache des catégories trouvées par API (auto-généré)
-│
-├── logs/                   # Rapports et logs de toutes les opérations
-│   ├── rapport_*.csv           # Rapports d'analyse (dry-run)
-│   └── log_*.csv               # Logs d'exécution (pour undo)
-│
-├── docs/                   # Documentation
-│   ├── arborescence_finale.md  # Arborescence validée
-│   └── proposition_arborescence.md
-│
-├── organiser.sh            # Lanceur méthode A (mots-clés + apprentissage)
-├── organiser_api.sh        # Lanceur méthode B (API web)
-├── requirements.txt        # Dépendances Python
-└── README.md
+├── biblio.py              Point d'entrée unique (CLI)
+├── biblio.sh              Lanceur (vérifie deps, SSD, API key)
+├── lib/
+│   ├── profile.py         Gestion des profils
+│   ├── vision.py          Appel LLM Vision (SiliconFlow / Ollama)
+│   ├── classifier.py      Classification thème + mots-clés
+│   ├── refiner.py         Raffinement sous-catégories
+│   ├── checkpoint.py      Reprise / checkpoint thread-safe
+│   └── utils.py           Utilitaires (renommage, rapports)
+├── profiles/
+│   └── default/           Profil par défaut (355 thèmes, 87 dossiers)
+├── organiser/
+│   ├── ocr_cover.py       Moteur LLM Vision v3 (legacy)
+│   ├── biblio_organizer.py  Classifieur mots-clés YAML + TF-IDF
+│   └── categories.yaml    Config mots-clés (legacy, copié dans le profil)
+├── renommage/
+│   ├── biblio_renamer.py  Moteur de renommage
+│   └── isbn_cache.json    Cache ISBN (~3400 entrées)
+├── requirements.txt
+└── logs/                  Rapports CSV + checkpoints
 ```
 
-## Phase 1 — Renommage
+## Fonctionnalités clés
 
-Renomme les PDFs vers le format `Titre - Auteur.pdf` en utilisant un pipeline en cascade :
-
-1. Nettoyage du nom de fichier (artefacts web, ISBN collés, etc.)
-2. Recherche ISBN en ligne (Google Books / Open Library)
-3. Extraction titre/auteur depuis les métadonnées et le texte du PDF
-4. Extraction titre depuis le nom du dossier parent
-
-```bash
-./renommage/renommer.sh /Volumes/ExtSSD/BIBLIO              # Rapport
-./renommage/renommer.sh /Volumes/ExtSSD/BIBLIO --execute     # Appliquer
-./renommage/renommer.sh --undo logs/log_renommage_*.csv      # Annuler
-```
-
-## Phase 2 — Classement thématique
-
-Classe les PDFs dans une arborescence par discipline en combinant :
-
-1. **Mots-clés** configurables (`organiser/categories.yaml`)
-2. **Apprentissage** par l'existant (profils TF-IDF des dossiers déjà classés)
-3. **Extraction PDF** pour les fichiers aux noms vagues
-
-```bash
-./organiser.sh                                    # Rapport (dry-run)
-./organiser.sh --execute                          # Appliquer
-./organiser.sh --verbose                          # Détails
-./organiser.sh --undo logs/log_classement_*.csv   # Annuler
-```
-
-### Ajouter un nouveau thème
-
-Éditer `organiser/categories.yaml` et ajouter une entrée :
-
-```yaml
-  - chemin: "01-SCIENCES/INFORMATIQUE/XX-Nouveau-Theme"
-    priorite: 5
-    mots_cles:
-      - "mot clé 1"
-      - "mot clé 2"
-```
-
-Le système d'apprentissage enrichira automatiquement le vocabulaire
-au fil des classements successifs.
-
-## Phase 2B — Classement par API web
-
-Alternative à la méthode A : interroge Google Books et Open Library pour
-récupérer les catégories officielles de chaque livre. Exploite le cache
-ISBN existant (3200+ entrées) pour minimiser les requêtes.
-
-```bash
-./organiser_api.sh                                        # Rapport
-./organiser_api.sh --execute                              # Appliquer
-./organiser_api.sh --max-api 100                          # Limiter à 100 requêtes
-./organiser_api.sh --verbose                              # Détails
-./organiser_api.sh --undo logs/log_classement_api_*.csv   # Annuler
-```
-
-Les résultats sont mis en cache (`organiser/categories_cache.json`),
-donc les exécutions suivantes sont quasi instantanées pour les livres déjà identifiés.
-
-### Comparer les deux méthodes
-
-Lancer les deux en mode rapport (dry-run), puis comparer les CSV :
-
-```bash
-./organiser.sh           # → logs/rapport_classement_*.csv
-./organiser_api.sh       # → logs/rapport_classement_api_*.csv
-```
-
-## Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-## Licence
-
-MIT
+- **Checkpoint / reprise** : interruption Ctrl+C avec sauvegarde, reprise automatique au relancement
+- **Skip doublons** : les fichiers déjà présents dans la cible sont ignorés
+- **Classification hybride** : LLM Vision (prioritaire) + mots-clés YAML (fallback)
+- **Multithreading** : `--workers N` pour paralléliser les appels API
+- **LLM flexible** : SiliconFlow (cloud) ou Ollama (local) via le profil
