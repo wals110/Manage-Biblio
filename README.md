@@ -30,10 +30,9 @@
 
 Déposez vos PDF, lancez une commande, récupérez une bibliothèque classée.
 
-```
-Nouveaux PDFs  ──►  LLM Vision  ──►  Classification  ──►  Bibliothèque organisée
-                   (couverture)      (thème + mots-clés)    (87 dossiers)
-```
+<p align="center">
+  <img src="docs/pipeline-classification.svg" alt="Pipeline de classification" width="600">
+</p>
 
 ## Fonctionnalités
 
@@ -190,51 +189,13 @@ Review et application des propositions de nouveaux dossiers générées automati
 
 ## Comment ça marche
 
-```
-                        ┌──────────────────────┐
-                        │    PDF en entrée      │
-                        └──────────┬───────────┘
-                                   │
-                        ┌──────────▼───────────┐
-                        │   LLM Vision         │
-                        │   (analyse couverture)│
-                        └──────────┬───────────┘
-                                   │
-                      titre, auteur, thème, confiance
-                                   │
-              ┌────────────────────┼────────────────────┐
-              │                    │                     │
-    ┌─────────▼────────┐ ┌────────▼────────┐  ┌────────▼────────┐
-    │  Theme Mapping    │ │ Keyword Matcher │  │   LLM Mapper    │
-    │  (355 entrées)    │ │ (YAML + TF-IDF) │  │  (texte, léger) │
-    │  Priorité 1       │ │  Priorité 2     │  │  Priorité 3     │
-    └─────────┬────────┘ └────────┬────────┘  └────────┬────────┘
-              │                    │                     │
-              │              si non trouvé          si non trouvé
-              │                    │                     │
-              │                    │            ┌────────▼────────┐
-              │                    │            │   Suggestion    │
-              │                    │            │  nouveau dossier│
-              │                    │            └─────────────────┘
-              │                    │
-              └────────┬───────────┘
-                       │
-             ┌─────────▼──────────┐
-             │  Copie + renommage │
-             │  vers bibliothèque │
-             └─────────┬──────────┘
-                       │
-             ┌─────────▼──────────┐
-             │  Raffinement       │
-             │  sous-catégories   │
-             └────────────────────┘
-```
+Le **Theme Mapping** est la voie rapide : recherche directe dans un dictionnaire de 355+ thèmes connus. Gratuit et instantané. Le **Keyword Matcher** intervient en fallback avec des mots-clés pondérés et un classifieur TF-IDF. Le **LLM Mapper** est le dernier recours intelligent : un appel LLM texte pour demander "dans quel dossier ce thème irait-il ?". Le résultat est **auto-appris** dans le mapping pour la prochaine fois.
 
-Le **Theme Mapping** est la voie rapide : recherche directe dans un dictionnaire de 355+ thèmes connus. Gratuit et instantané.
+Le pipeline de renommage fonctionne en cascade : chaque étape n'est essayée que si les précédentes n'ont pas trouvé de bon titre. Avec `--force`, le LLM Vision est appelé en priorité. Avec `--pages N`, il analyse plusieurs pages pour trouver le vrai titre (utile pour les collections type Springer LNCS).
 
-Le **Keyword Matcher** intervient en fallback : il analyse le nom du fichier avec des mots-clés pondérés et un classifieur TF-IDF.
-
-Le **LLM Mapper** est le dernier recours intelligent : il fait un appel LLM texte (pas d'image, très économique) pour demander "dans quel dossier ce thème irait-il ?". Le résultat est **auto-appris** dans le mapping pour la prochaine fois.
+<p align="center">
+  <img src="docs/pipeline-renommage.svg" alt="Pipeline de renommage" width="550">
+</p>
 
 Si même le LLM Mapper ne trouve pas de dossier adapté, il génère une **suggestion** que vous pouvez reviewer et appliquer.
 

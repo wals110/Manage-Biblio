@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 620" font-family="Segoe UI, system-ui, -apple-system, sans-serif">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="115%" height="115%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/>
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#aaa"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="375" y="32" text-anchor="middle" font-size="22" font-weight="600" fill="#1e1e1e">Pipeline Biblio v4.0</text>
+
+  <!-- PDF Input -->
+  <rect x="270" y="52" width="200" height="48" rx="10" fill="#a5d8ff" stroke="#4a9eed" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="370" y="82" text-anchor="middle" font-size="16" font-weight="500" fill="#1e3a5f">Nouveaux PDFs</text>
+
+  <!-- Arrow 1 -->
+  <line x1="370" y1="100" x2="370" y2="130" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- LLM Vision -->
+  <rect x="240" y="132" width="260" height="48" rx="10" fill="#d0bfff" stroke="#8b5cf6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="370" y="160" text-anchor="middle" font-size="16" font-weight="500" fill="#3b0764">LLM Vision (couverture)</text>
+
+  <!-- Arrow 2 -->
+  <line x1="370" y1="180" x2="370" y2="208" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Info text -->
+  <text x="370" y="224" text-anchor="middle" font-size="13" fill="#888" font-style="italic">titre, auteur, theme, confiance</text>
+
+  <!-- Arrow 3 -->
+  <line x1="370" y1="232" x2="370" y2="262" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Classification zone -->
+  <rect x="30" y="260" width="625" height="145" rx="14" fill="#e5dbff" fill-opacity="0.35" stroke="#8b5cf6" stroke-width="1" stroke-dasharray="6 3"/>
+  <text x="50" y="282" font-size="13" fill="#6b21a8" font-weight="500">Classification hybride</text>
+
+  <!-- Theme Mapping -->
+  <rect x="50" y="295" width="170" height="52" rx="9" fill="#b2f2bb" stroke="#22c55e" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="135" y="318" text-anchor="middle" font-size="15" font-weight="500" fill="#14532d">Theme Mapping</text>
+  <text x="135" y="335" text-anchor="middle" font-size="11" fill="#15803d">355+ entrees | gratuit</text>
+
+  <!-- Keyword Matcher -->
+  <rect x="268" y="295" width="185" height="52" rx="9" fill="#fff3bf" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="360" y="318" text-anchor="middle" font-size="15" font-weight="500" fill="#78350f">Keyword Matcher</text>
+  <text x="360" y="335" text-anchor="middle" font-size="11" fill="#92400e">YAML + TF-IDF</text>
+
+  <!-- LLM Mapper -->
+  <rect x="500" y="295" width="140" height="52" rx="9" fill="#ffd8a8" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="570" y="318" text-anchor="middle" font-size="15" font-weight="500" fill="#78350f">LLM Mapper</text>
+  <text x="570" y="335" text-anchor="middle" font-size="11" fill="#92400e">auto-apprentissage</text>
+
+  <!-- Sinon arrows -->
+  <line x1="220" y1="321" x2="268" y2="321" stroke="#aaa" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow-gray)"/>
+  <text x="240" y="314" font-size="10" fill="#aaa">sinon</text>
+
+  <line x1="453" y1="321" x2="500" y2="321" stroke="#aaa" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow-gray)"/>
+  <text x="472" y="314" font-size="10" fill="#aaa">sinon</text>
+
+  <!-- Suggestion diamond -->
+  <polygon points="700,320 740,350 700,380 660,350" fill="#ffc9c9" stroke="#ef4444" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="700" y="347" text-anchor="middle" font-size="11" font-weight="500" fill="#7f1d1d">Suggestion</text>
+  <text x="700" y="359" text-anchor="middle" font-size="10" fill="#991b1b">review</text>
+
+  <line x1="640" y1="321" x2="660" y2="350" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow-red)"/>
+  <text x="645" y="328" font-size="10" fill="#ef4444">sinon</text>
+
+  <!-- Arrow 4 -->
+  <line x1="370" y1="405" x2="370" y2="435" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Copie + Renommage -->
+  <rect x="240" y="437" width="260" height="48" rx="10" fill="#c3fae8" stroke="#22c55e" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="370" y="467" text-anchor="middle" font-size="16" font-weight="500" fill="#14532d">Copie + Renommage</text>
+
+  <!-- Arrow 5 -->
+  <line x1="370" y1="485" x2="370" y2="510" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Raffinement -->
+  <rect x="220" y="512" width="300" height="48" rx="10" fill="#b2f2bb" stroke="#22c55e" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="370" y="542" text-anchor="middle" font-size="16" font-weight="500" fill="#14532d">Raffinement sous-categories</text>
+
+  <!-- Arrow 6 -->
+  <line x1="370" y1="560" x2="370" y2="585" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Bibliotheque -->
+  <rect x="250" y="587" width="240" height="28" rx="6" fill="#d1fae5" stroke="#22c55e" stroke-width="1"/>
+  <text x="370" y="606" text-anchor="middle" font-size="13" font-weight="500" fill="#065f46">Bibliotheque organisee (88 dossiers)</text>
+</svg>
