@@ -18,5 +18,9 @@ venv/
 *.tmp
 *.png
 
+# Review interne
+review/
+
 # Claude
 .claude/
+renommage/rapport_*.csv

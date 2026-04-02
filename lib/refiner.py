@@ -18,6 +18,10 @@ import shutil
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from lib.logger import get_logger
+
+log = get_logger()
+
 
 def load_refinement_rules(rules_data: List[Dict]) -> List[Tuple[str, str, List[str]]]:
     """
@@ -250,7 +254,7 @@ def print_refine_summary(results: List[Dict]) -> None:
         results: List of result dicts from scan_and_refine()
     """
     if not results:
-        print('No refinement results.')
+        log.info('No refinement results.')
         return
 
     # Count by status
@@ -259,10 +263,10 @@ def print_refine_summary(results: List[Dict]) -> None:
         status = result.get('status', 'unknown')
         status_counts[status] = status_counts.get(status, 0) + 1
 
-    print('\n=== RÉSUMÉ RAFFINEMENT ===\n')
-    print('Par statut :')
+    log.info('\n=== RÉSUMÉ RAFFINEMENT ===\n')
+    log.info('Par statut :')
     for status, count in sorted(status_counts.items()):
-        print(f'  {status:15s} : {count:6d}')
+        log.info(f'  {status:15s} : {count:6d}')
 
     # Count by destination (top 20)
     dest_counts = {}
@@ -270,12 +274,12 @@ def print_refine_summary(results: List[Dict]) -> None:
         dest = result.get('destination', 'unknown')
         dest_counts[dest] = dest_counts.get(dest, 0) + 1
 
-    print(f'\nTop 20 destinations ({len(dest_counts)} uniques) :')
+    log.info(f'\nTop 20 destinations ({len(dest_counts)} uniques) :')
     top_dests = sorted(dest_counts.items(), key=lambda x: x[1], reverse=True)[:20]
     for dest, count in top_dests:
-        print(f'  {count:6d}  {dest}')
+        log.info(f'  {count:6d}  {dest}')
 
     # First 15 examples
-    print(f'\nExemples (premiers 15 / {len(results)}) :')
+    log.info(f'\nExemples (premiers 15 / {len(results)}) :')
     for i, result in enumerate(results[:15], 1):
-        print(f'  {i:2d}. {result["fichier"]:50s} ({result["mot_cle"]:15s}) -> {result["status"]}')
+        log.info(f'  {i:2d}. {result["fichier"]:50s} ({result["mot_cle"]:15s}) -> {result["status"]}')

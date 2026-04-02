@@ -36,6 +36,10 @@ import sys
 import os
 from typing import Optional, List, Tuple, Dict, Any, Callable
 
+from lib.logger import get_logger
+
+log = get_logger()
+
 
 def classify_by_theme(
     theme: str,
@@ -121,10 +125,10 @@ def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
         >>> classifier = load_keyword_classifier('organiser/categories.yaml')
         >>> if classifier:
         ...     result = classifier.classify('machine learning text', 'example.pdf')
-        ...     print(result)
+        ...     log.info(result)
     """
     if not os.path.exists(categories_yaml_path):
-        print(f"[WARNING] categories.yaml not found: {categories_yaml_path}")
+        log.warning(f"[WARNING] categories.yaml not found: {categories_yaml_path}")
         return None
 
     # Determine the organiser/ directory (contains biblio_organizer.py)
@@ -148,10 +152,10 @@ def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
         classifier = KeywordClassifier(config)
         return classifier
     except ImportError as e:
-        print(f"[ERROR] Failed to import KeywordClassifier from {organiser_dir}: {e}")
+        log.error(f"[ERROR] Failed to import KeywordClassifier from {organiser_dir}: {e}")
         return None
     except Exception as e:
-        print(f"[ERROR] Failed to instantiate KeywordClassifier: {e}")
+        log.error(f"[ERROR] Failed to instantiate KeywordClassifier: {e}")
         return None
 
 
@@ -212,7 +216,7 @@ def classify_combined(
                         "Keyword ({})".format(best[2] if len(best) > 2 else ''),
                     )
         except Exception as e:
-            print("[WARNING] Keyword classifier error for {}: {}".format(filename, e))
+            log.error("[WARNING] Keyword classifier error for {}: {}".format(filename, e))
 
     # Priorité 3 : LLM Mapper — résolution intelligente du thème inconnu
     if llm_mapper and theme and confidence >= 0.5:
@@ -249,7 +253,7 @@ def make_classify_fn(
     Example:
         >>> classify_fn = make_classify_fn(theme_mapping)
         >>> path = classify_fn('Machine Learning', 0.92)
-        >>> print(path)
+        >>> log.info(path)
         '02-INFORMATIQUE/05-IA-ML/Machine-Learning'
     """
 

@@ -21,6 +21,10 @@ from datetime import datetime
 from typing import Optional, List, Tuple, Dict
 from collections import Counter
 
+from lib.logger import get_logger
+
+log = get_logger()
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # FILENAME SANITIZATION
@@ -270,7 +274,7 @@ def save_report(results: List[Dict], output_dir: str, prefix: str = 'rapport') -
     return report_path
 
 
-def print_summary(results: List[Dict]):
+def print_summary(results: List[Dict], cost_per_call: float = 0.00034):
     """
     Affiche un résumé formaté des résultats de traitement.
 
@@ -289,7 +293,7 @@ def print_summary(results: List[Dict]):
     """
     total = len(results)
     if total == 0:
-        print("\n  Aucun fichier traité.")
+        log.info("\n  Aucun fichier traité.")
         return
 
     classified = sum(1 for r in results if r['status'] == 'classifié')
@@ -303,51 +307,51 @@ def print_summary(results: List[Dict]):
 
     # Coût estimé (basé sur Qwen3-VL-8B : ~$0.34 / 1000 images)
     api_calls = total - errors_extract
-    cost_estimate = api_calls * 0.00034  # ~1420 input + 120 output tokens par image
+    cost_estimate = api_calls * cost_per_call  # ~1420 input + 120 output tokens par image
 
-    print(f"\n{'='*60}")
-    print(f" RÉSUMÉ — Manage-Biblio Report")
-    print(f"{'='*60}")
-    print(f"  Total traités      : {total}")
-    print(f"  ✅ Classifiés       : {classified} ({classified/total*100:.1f}%)")
-    print(f"  ✏️  À renommer      : {to_rename} ({to_rename/total*100:.1f}%)")
-    print(f"  📝 Renommés seuls   : {renamed_only} ({renamed_only/total*100:.1f}%)")
-    print(f"  ❌ Non classifiés   : {unclassified} ({unclassified/total*100:.1f}%)")
-    print(f"  ⚠  Confiance basse : {low_conf} ({low_conf/total*100:.1f}%)")
-    print(f"  🔇 Non identifiés  : {not_id} ({not_id/total*100:.1f}%)")
-    print(f"  💥 Erreurs extract. : {errors_extract} ({errors_extract/total*100:.1f}%)")
-    print(f"  💥 Erreurs API      : {errors_api} ({errors_api/total*100:.1f}%)")
-    print(f"  💰 Coût estimé      : ${cost_estimate:.2f}")
+    log.info(f"\n{'='*60}")
+    log.info(f" RÉSUMÉ — Manage-Biblio Report")
+    log.info(f"{'='*60}")
+    log.info(f"  Total traités      : {total}")
+    log.info(f"  ✅ Classifiés       : {classified} ({classified/total*100:.1f}%)")
+    log.info(f"  ✏️  À renommer      : {to_rename} ({to_rename/total*100:.1f}%)")
+    log.info(f"  📝 Renommés seuls   : {renamed_only} ({renamed_only/total*100:.1f}%)")
+    log.error(f"  ❌ Non classifiés   : {unclassified} ({unclassified/total*100:.1f}%)")
+    log.warning(f"  ⚠  Confiance basse : {low_conf} ({low_conf/total*100:.1f}%)")
+    log.info(f"  🔇 Non identifiés  : {not_id} ({not_id/total*100:.1f}%)")
+    log.error(f"  💥 Erreurs extract. : {errors_extract} ({errors_extract/total*100:.1f}%)")
+    log.error(f"  💥 Erreurs API      : {errors_api} ({errors_api/total*100:.1f}%)")
+    log.info(f"  💰 Coût estimé      : ${cost_estimate:.2f}")
 
     # Bilan actions
     actionable = classified + renamed_only
-    print(f"\n  📊 Bilan : {actionable}/{total} fichiers avec au moins une action")
-    print(f"     ({classified} classifiés + {renamed_only} renommés seuls)")
+    log.info(f"\n  📊 Bilan : {actionable}/{total} fichiers avec au moins une action")
+    log.info(f"     ({classified} classifiés + {renamed_only} renommés seuls)")
 
     # Confiance moyenne
     confs = [r.get('confiance', 0) for r in results if r.get('confiance', 0) > 0]
     if confs:
         avg_conf = sum(confs) / len(confs)
-        print(f"  📊 Confiance moy.   : {avg_conf:.2f}")
+        log.info(f"  📊 Confiance moy.   : {avg_conf:.2f}")
 
     # Exemples de renommages
     renamed = [r for r in results if r.get('renommage')]
     if renamed:
-        print(f"\n  Exemples de renommages :")
+        log.info(f"\n  Exemples de renommages :")
         for r in renamed[:10]:
-            print(f"    {r['fichier'][:35]:35s} → {r['nouveau_nom'][:40]}")
+            log.info(f"    {r['fichier'][:35]:35s} → {r['nouveau_nom'][:40]}")
 
     # Top thèmes détectés
     themes = Counter(r.get('theme_detecte', '') for r in results
                      if r.get('theme_detecte'))
     if themes:
-        print(f"\n  Top thèmes détectés :")
+        log.info(f"\n  Top thèmes détectés :")
         for theme, count in themes.most_common(15):
-            print(f"    {count:4d}  {theme}")
+            log.info(f"    {count:4d}  {theme}")
 
     # Top destinations
     dests = Counter(r['destination'] for r in results if r['destination'])
     if dests:
-        print(f"\n  Top destinations :")
+        log.info(f"\n  Top destinations :")
         for dest, count in dests.most_common(10):
-            print(f"    {count:4d}  {dest}")
+            log.info(f"    {count:4d}  {dest}")

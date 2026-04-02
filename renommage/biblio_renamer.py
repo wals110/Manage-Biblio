@@ -72,6 +72,10 @@ GENERIC_TITLES = {
     'table of contents', 'foreword', 'acknowledgments', 'bibliography',
     'appendix', 'glossary', 'dedication', 'about the author',
     '7th edition', 'control series',
+    # Placeholders PDF courants (métadonnées non remplies)
+    'title', 'author', 'title - author', 'book title', 'book title - author',
+    'my title', 'document', 'document title', 'no title', 'unknown',
+    'unknown title', 'test', 'sample', 'example', 'template',
 }
 
 # Mots trop vagues pour constituer un bon titre à eux seuls
@@ -625,11 +629,44 @@ def _is_better_than(new_name: str, old_name: str) -> bool:
 def compute_new_name(pdf_path: str, filename: str,
                      isbn_cache: dict = None,
                      enable_online: bool = True,
-                     enable_pdf: bool = True) -> tuple:
+                     enable_pdf: bool = True,
+                     llm_callback=None,
+                     force: bool = False) -> tuple:
     """
     Retourne (nouveau_nom, action, source).
-    action: NORMALISER | EXTRAIRE_ISBN | EXTRAIRE_PDF | EXTRAIRE_DOSSIER | INCHANGE | ECHEC
+    action: NORMALISER | EXTRAIRE_ISBN | EXTRAIRE_PDF | EXTRAIRE_LLM | EXTRAIRE_DOSSIER | INCHANGE | ECHEC
+
+    Args:
+        llm_callback: Optionnel. Fonction(pdf_path) → dict avec 'title', 'author'.
+                      Appelée en fallback quand ISBN et métadonnées PDF échouent.
+        force: Si True et llm_callback fourni, le LLM est appelé en priorité
+               (avant ISBN et PDF metadata) pour forcer une analyse fraîche.
     """
+    # Étape 0 (force) : LLM Vision en priorité si --force + --llm
+    if force and llm_callback and os.path.exists(pdf_path):
+        try:
+            vision = llm_callback(pdf_path)
+            if vision and not vision.get('error') and vision.get('title'):
+                t = sanitize_text(vision['title'])
+                a = None
+                if vision.get('author'):
+                    a = extract_first_author(vision['author'])
+                    if a:
+                        a = sanitize_text(a)
+                name = build_final_name(t, a)
+                if name and _is_good_title(name):
+                    return (name, 'EXTRAIRE_LLM', 'llm_vision')
+                else:
+                    print("    ⚠ LLM a retourné '{}' mais rejeté par filtre qualité".format(name))
+            elif vision and vision.get('error'):
+                print("    ⚠ LLM erreur : {}".format(vision.get('error')))
+            elif vision and not vision.get('title'):
+                print("    ⚠ LLM n'a pas retourné de titre (clés: {})".format(list(vision.keys())))
+            else:
+                print("    ⚠ LLM a retourné None/vide")
+        except Exception as e:
+            print("    ⚠ LLM exception : {}".format(e))
+
     # Étape 1 : nettoyage du nom de fichier
     title, author = parse_filename(filename)
     new_name = build_final_name(title, author)
@@ -667,14 +704,31 @@ def compute_new_name(pdf_path: str, filename: str,
             if name and _is_good_title(name) and _is_better_than(name, filename):
                 return (name, 'EXTRAIRE_PDF', 'pdf_extraction')
 
-    # Étape 4 : titre depuis le dossier parent
+    # Étape 4 : LLM Vision (analyse de couverture, optionnel)
+    if llm_callback and os.path.exists(pdf_path):
+        try:
+            vision = llm_callback(pdf_path)
+            if vision and not vision.get('error') and vision.get('title'):
+                t = sanitize_text(vision['title'])
+                a = None
+                if vision.get('author'):
+                    a = extract_first_author(vision['author'])
+                    if a:
+                        a = sanitize_text(a)
+                name = build_final_name(t, a)
+                if name and _is_good_title(name) and _is_better_than(name, filename):
+                    return (name, 'EXTRAIRE_LLM', 'llm_vision')
+        except Exception:
+            pass  # Erreur LLM → on continue avec les méthodes suivantes
+
+    # Étape 5 : titre depuis le dossier parent
     folder_title = extract_title_from_folder(pdf_path)
     if folder_title:
         name = build_final_name(sanitize_text(folder_title))
         if name and _is_good_title(name) and _is_better_than(name, filename):
             return (name, 'EXTRAIRE_DOSSIER', 'folder_name')
 
-    # Étape 5 : le nettoyage partiel est-il au moins une amélioration ?
+    # Étape 6 : le nettoyage partiel est-il au moins une amélioration ?
     if new_name and new_name != filename and _is_better_than(new_name, filename):
         return (new_name, 'NORMALISER', 'filename_partial')
 
@@ -699,17 +753,30 @@ def resolve_duplicate(new_path: Path, seen: set) -> Path:
 # ===================================================================
 #  COMMANDES PRINCIPALES
 # ===================================================================
-def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True):
-    """Scanne la bibliothèque et génère un rapport CSV."""
+def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
+         llm_callback=None, max_files: int = 0, force: bool = False,
+         verbose: bool = False):
+    """Scanne la bibliothèque et génère un rapport CSV.
+
+    Args:
+        llm_callback: Optionnel. Fonction(pdf_path) → dict avec 'title', 'author'.
+                      Utilisée en fallback quand les méthodes offline échouent.
+        max_files: Limiter à N fichiers (0 = pas de limite).
+        force: Si True, ignore is_name_clean() et re-analyse tous les fichiers.
+        verbose: Si True, affiche les détails de chaque étape de détection.
+    """
     root = Path(root_path)
     if not root.exists():
         print(f"❌ '{root_path}' n'existe pas.")
         sys.exit(1)
 
     pdf_files = sorted(set(list(root.rglob('*.pdf')) + list(root.rglob('*.PDF'))))
+    total_found = len(pdf_files)
+    if max_files > 0:
+        pdf_files = pdf_files[:max_files]
     total = len(pdf_files)
     print(f"\n📚 Bibliothèque : {root_path}")
-    print(f"📄 PDFs trouvés : {total}\n")
+    print(f"📄 PDFs trouvés : {total_found}" + (f" (limité à {total})" if max_files > 0 else "") + "\n")
 
     # Charger le cache ISBN
     cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ISBN_CACHE_FILE)
@@ -718,7 +785,7 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True):
     results = []
     seen = set()
     stats = {'INCHANGE': 0, 'NORMALISER': 0, 'EXTRAIRE_ISBN': 0,
-             'EXTRAIRE_PDF': 0, 'EXTRAIRE_DOSSIER': 0, 'ECHEC': 0}
+             'EXTRAIRE_PDF': 0, 'EXTRAIRE_LLM': 0, 'EXTRAIRE_DOSSIER': 0, 'ECHEC': 0}
     save_interval = 50
 
     for i, pdf_path in enumerate(pdf_files, 1):
@@ -728,7 +795,7 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True):
         print(f"\r  [{pct:3d}%] ({i}/{total}) {fn[:55]:<55}", end='', flush=True)
 
         # Déjà propre ?
-        if is_name_clean(fn):
+        if not force and is_name_clean(fn):
             stats['INCHANGE'] += 1
             seen.add(str(pdf_path).lower())
             continue
@@ -736,12 +803,25 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True):
         # Calculer le nouveau nom
         try:
             new_fn, action, source = compute_new_name(
-                str(pdf_path), fn, isbn_cache, enable_online, enable_pdf)
+                str(pdf_path), fn, isbn_cache, enable_online, enable_pdf,
+                llm_callback=llm_callback, force=force)
         except KeyboardInterrupt:
             print(f"\n\n⚠️  Interrompu à {pct}%.")
             break
         except Exception as e:
             new_fn, action, source = fn, 'ECHEC', str(e)[:60]
+
+        # Log verbose du résultat
+        if verbose:
+            if action == 'ECHEC':
+                print(f"\n    ❌ {fn}")
+                print(f"       → ECHEC ({source})")
+            elif action == 'INCHANGE':
+                print(f"\n    ⏭ {fn} → inchangé")
+            else:
+                print(f"\n    ✅ {fn}")
+                print(f"       → {new_fn}")
+                print(f"       via {action} ({source})")
 
         # Gérer les doublons
         new_full = pdf_path.parent / new_fn
@@ -786,6 +866,7 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True):
     print(f"    - Nom nettoyé    : {stats.get('NORMALISER', 0)}")
     print(f"    - Via ISBN       : {stats.get('EXTRAIRE_ISBN', 0)}")
     print(f"    - Via PDF        : {stats.get('EXTRAIRE_PDF', 0)}")
+    print(f"    - Via LLM Vision : {stats.get('EXTRAIRE_LLM', 0)}")
     print(f"    - Via dossier    : {stats.get('EXTRAIRE_DOSSIER', 0)}")
     print(f"  Échecs             : {stats.get('ECHEC', 0)}")
     print(f"\n📝 Rapport : {report_path}")

@@ -13,7 +13,11 @@ import threading
 from datetime import datetime
 from typing import Callable, Dict, Optional
 
+from lib.logger import get_logger
+
 __version__ = "4.0.0"
+
+log = get_logger()
 
 
 class CheckpointManager:
@@ -57,7 +61,7 @@ class CheckpointManager:
                     return content.get("results", {})
             return {}
         except (json.JSONDecodeError, KeyError):
-            print("  ⚠ Fichier de progression corrompu \u2014 redémarrage à zéro")
+            log.warning("  ⚠ Fichier de progression corrompu \u2014 redémarrage à zéro")
             return {}
 
     def _save_raw(self, progress, model="", total_files=0):
@@ -96,7 +100,7 @@ class CheckpointManager:
         with self._lock:
             if os.path.exists(self.path):
                 os.remove(self.path)
-                print("🗑  Progression précédente supprimée.")
+                log.info("🗑  Progression précédente supprimée.")
 
     def retry_errors(self):
         # type: () -> int
@@ -104,24 +108,24 @@ class CheckpointManager:
         with self._lock:
             progress = self._load_raw()
             if not progress:
-                print("  Pas de checkpoint trouvé.")
+                log.info("  Pas de checkpoint trouvé.")
                 return 0
 
             to_retry = [k for k, v in progress.items()
                         if v.get("status") in self.RETRYABLE_STATUSES]
             if not to_retry:
-                print("  Aucun fichier en erreur dans le checkpoint.")
+                log.error("  Aucun fichier en erreur dans le checkpoint.")
                 return 0
 
             for k in to_retry:
                 del progress[k]
 
             self._save_raw(progress)
-            print("🔄 {} fichiers retirés du checkpoint (seront retraités)".format(len(to_retry)))
+            log.info("🔄 {} fichiers retirés du checkpoint (seront retraités)".format(len(to_retry)))
             return len(to_retry)
 
-    def reclassify(self, classify_fn):
-        # type: (Callable[[str, float], Optional[str]]) -> int
+    def reclassify(self, classify_fn, min_confidence=0.5):
+        # type: (Callable[[str, float], Optional[str]], float) -> int
         """
         Reclassify non_classifié/renommé_seul entries.
 
@@ -131,7 +135,7 @@ class CheckpointManager:
         with self._lock:
             progress = self._load_raw()
             if not progress:
-                print("  Pas de checkpoint trouvé pour reclassifier.")
+                log.info("  Pas de checkpoint trouvé pour reclassifier.")
                 return 0
 
             reclassified = 0
@@ -140,7 +144,7 @@ class CheckpointManager:
                     continue
                 theme = result.get("theme_detecte", "")
                 confidence = float(result.get("confiance", 0))
-                if theme and confidence >= 0.3:
+                if theme and confidence >= min_confidence:
                     dest = classify_fn(theme, confidence)
                     if dest:
                         result["destination"] = dest
@@ -151,5 +155,5 @@ class CheckpointManager:
 
             if reclassified > 0:
                 self._save_raw(progress)
-            print("🔄 Reclassification : {} fichiers récupérés".format(reclassified))
+            log.info("🔄 Reclassification : {} fichiers récupérés".format(reclassified))
             return reclassified

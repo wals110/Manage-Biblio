@@ -127,13 +127,22 @@ Identification par LLM Vision et classement thématique, sans renommage ni raffi
 
 ### `rename` — Renommage intelligent
 
-Renomme les fichiers au format `Titre - Auteur.pdf` en utilisant les métadonnées PDF et les recherches ISBN.
+Renomme les fichiers au format `Titre - Auteur.pdf` via un pipeline en cascade : nettoyage du nom, recherche ISBN, extraction des métadonnées PDF, et optionnellement analyse de la couverture par LLM Vision.
 
 ```bash
-./biblio.sh rename /chemin                # Dry-run
-./biblio.sh rename /chemin --execute      # Appliquer
-./biblio.sh rename /chemin --no-online    # Sans recherche ISBN en ligne
+./biblio.sh rename /chemin                          # Dry-run (ISBN + métadonnées PDF)
+./biblio.sh rename /chemin --execute                # Appliquer
+./biblio.sh rename /chemin --llm                    # Activer LLM Vision en fallback
+./biblio.sh rename /chemin --llm --pages 2          # Analyser 2 pages (couverture + page titre)
+./biblio.sh rename /chemin --llm --force            # Forcer l'analyse LLM en priorité
+./biblio.sh rename /chemin --llm --force --pages 3  # Force + 3 pages pour les LNCS, etc.
+./biblio.sh rename /chemin --max 10 --verbose       # Test limité avec détails
+./biblio.sh rename /chemin --no-online              # Sans recherche ISBN en ligne
 ```
+
+Le pipeline de renommage essaie, dans l'ordre : nettoyage du nom de fichier, recherche ISBN en ligne, extraction depuis les métadonnées PDF, analyse de couverture par LLM Vision (si `--llm`), puis titre depuis le dossier parent. Chaque étape n'est essayée que si les précédentes n'ont pas trouvé de bon titre.
+
+Avec `--force`, le LLM Vision passe en priorité (avant ISBN et PDF) pour forcer une analyse fraîche. Avec `--pages N`, le LLM reçoit les N premières pages au lieu de la seule couverture, ce qui permet d'identifier les livres dont le vrai titre est sur la page intérieure (typiquement les collections Springer LNCS).
 
 ### `refine` — Raffinement sous-catégories
 
@@ -176,6 +185,8 @@ Review et application des propositions de nouveaux dossiers générées automati
 | `--retry-errors` | Retraiter les fichiers en erreur |
 | `--reclassify` | Re-mapper les thèmes sans rappeler l'API |
 | `--api-key KEY` | Clé API (ou variable `SILICONFLOW_API_KEY`) |
+| `--force` | Re-analyser tous les fichiers (ignore noms "propres") |
+| `--pages N` | Nombre de pages à analyser par LLM Vision (défaut: 1, max: 5) |
 
 ## Comment ça marche
 

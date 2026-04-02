@@ -12,6 +12,8 @@ from typing import Optional, List, Tuple, Dict, Any
 
 import yaml
 
+from lib.logger import setup_logger, get_logger
+
 
 def get_project_root() -> Path:
     """
@@ -88,6 +90,7 @@ class Profile:
         self.name = name
         self._project_root = get_project_root()
         self._profile_dir = self._project_root / PROFILES_DIR / name
+        self.profile_dir = self._profile_dir
 
         if not self._profile_dir.exists():
             raise FileNotFoundError(
@@ -138,6 +141,7 @@ class Profile:
         self.description = data.get("description", "")
         self.target = data.get("target", "")
         self.inbox = data.get("inbox", "")
+        self.fallback = data.get("fallback", "_A-TRIER")
 
         # LLM config is nested under 'llm:' key
         llm = data.get("llm", {})
@@ -188,6 +192,56 @@ class Profile:
             return self.theme_mapping[theme]
         return None
 
+    def validate(self, check_dirs=True):
+        # type: (bool) -> List[str]
+        """
+        Valide la configuration du profil.
+
+        Vérifie que les chemins existent et que la configuration est cohérente.
+
+        Args:
+            check_dirs: Si True, vérifie l'existence des répertoires sur le disque.
+
+        Returns:
+            List[str]: Liste des erreurs trouvées (vide si tout est OK).
+        """
+        errors = []  # type: List[str]
+
+        # Vérifications de configuration
+        if not self.target:
+            errors.append("'target' non défini dans le profil")
+        if not self.inbox:
+            errors.append("'inbox' non défini dans le profil")
+        if not self.llm_model:
+            errors.append("'llm.model' non défini dans le profil")
+        if not self.llm_endpoint:
+            errors.append("'llm.endpoint' non défini dans le profil")
+
+        # Vérifications de cohérence inbox vs target
+        if self.target and self.inbox:
+            if os.path.realpath(self.inbox) == os.path.realpath(self.target):
+                errors.append(
+                    "inbox et target pointent vers le même dossier : {}"
+                    .format(self.target))
+            fallback_path = os.path.join(self.target, self.fallback)
+            if os.path.realpath(self.inbox) == os.path.realpath(fallback_path):
+                errors.append(
+                    "inbox pointe vers le dossier fallback ({}) — "
+                    "risque de suppression de fichiers".format(self.fallback))
+
+        # Vérifications sur disque
+        if check_dirs:
+            if self.target and not os.path.isdir(self.target):
+                errors.append(
+                    "target introuvable : {} (disque non monté ?)"
+                    .format(self.target))
+            if self.inbox and not os.path.isdir(self.inbox):
+                errors.append(
+                    "inbox introuvable : {} (créer le dossier ?)"
+                    .format(self.inbox))
+
+        return errors
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Serialize profile to dictionary.
@@ -200,6 +254,7 @@ class Profile:
             "description": self.description,
             "target": self.target,
             "inbox": self.inbox,
+            "fallback": self.fallback,
             "llm_provider": self.llm_provider,
             "llm_model": self.llm_model,
             "llm_endpoint": self.llm_endpoint,
@@ -273,7 +328,8 @@ def init_profile(name: str, target: str) -> Profile:
             "name": name,
             "description": "Profile: {}".format(name),
             "target": target,
-            "inbox": os.path.join(target, "_A-TRIER"),
+            "inbox": os.path.join(target, "_INBOX"),
+            "fallback": "_A-TRIER",
             "llm": {
                 "provider": "siliconflow",
                 "model": "Qwen/Qwen2.5-VL-7B-Instruct",
@@ -281,7 +337,11 @@ def init_profile(name: str, target: str) -> Profile:
             },
             "defaults": {
                 "workers": 5,
+                "delay": 0.2,
                 "min_confidence": 0.5,
+                "cost_per_call": 0.00034,
+                "max_api_errors": 10,
+                "max_retries": 3,
             }
         },
         "tree.yaml": {
@@ -305,14 +365,17 @@ def init_profile(name: str, target: str) -> Profile:
 
 if __name__ == "__main__":
     # Example usage
-    print("Project root:", get_project_root())
-    print("Available profiles:", list_profiles())
+    from lib.logger import setup_logger
+    setup_logger()
+    log = get_logger()
+    log.info("Project root: %s", get_project_root())
+    log.info("Available profiles: %s", list_profiles())
 
     try:
         default_profile = Profile("default")
-        print(f"\nLoaded profile: {default_profile.name}")
-        print(f"Description: {default_profile.description}")
-        print(f"Target: {default_profile.target}")
-        print(f"LLM Provider: {default_profile.llm_provider}")
+        log.info("Loaded profile: %s", default_profile.name)
+        log.info("Description: %s", default_profile.description)
+        log.info("Target: %s", default_profile.target)
+        log.info("LLM Provider: %s", default_profile.llm_provider)
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        log.error("Error: %s", e)

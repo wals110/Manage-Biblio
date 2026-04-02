@@ -51,6 +51,10 @@ try:
 except ImportError:
     HAS_YAML = False
 
+from lib.logger import get_logger
+
+log = get_logger()
+
 
 # ── Prompt pour le LLM Mapper (dossier existant) ──
 MAPPER_PROMPT_TEMPLATE = """Tu es un bibliothécaire expert. On te donne :
@@ -143,14 +147,14 @@ class LLMMapper:
         if not validated:
             # Dossier invalide → tenter une suggestion
             if self.verbose:
-                print("  ⚠ Mapper: dossier invalide '{}' pour thème '{}'".format(
+                log.warning("  ⚠ Mapper: dossier invalide '{}' pour thème '{}'".format(
                     folder, theme))
             self._suggest_new_folder(theme, title, filename)
             return None
 
         if confidence < self.min_confidence:
             if self.verbose:
-                print("  ⚠ Mapper: confiance trop basse ({}) pour '{}'".format(
+                log.warning("  ⚠ Mapper: confiance trop basse ({}) pour '{}'".format(
                     confidence, theme))
             # Confiance basse → suggérer quand même un nouveau dossier
             self._suggest_new_folder(theme, title, filename)
@@ -161,7 +165,7 @@ class LLMMapper:
         self.learned[theme] = validated
 
         if self.verbose:
-            print("  🧠 Mapper: '{}' → {} (conf: {}, {})".format(
+            log.info("  🧠 Mapper: '{}' → {} (conf: {}, {})".format(
                 theme, validated, confidence, reason))
 
         return validated
@@ -207,7 +211,7 @@ class LLMMapper:
             self.suggest_count += 1
 
             if self.verbose:
-                print("  💡 Suggestion: '{}' → NOUVEAU {} ({})".format(
+                log.info("  💡 Suggestion: '{}' → NOUVEAU {} ({})".format(
                     theme, result['folder'], result.get('reason', '')))
 
     def _call_llm(self, prompt):
@@ -240,13 +244,13 @@ class LLMMapper:
                 if resp.status_code == 429:
                     wait = min(2 ** attempt * 2, 15)
                     if self.verbose:
-                        print("  ⏳ Mapper rate limit, attente {}s...".format(wait))
+                        log.info("  ⏳ Mapper rate limit, attente {}s...".format(wait))
                     time.sleep(wait)
                     continue
 
                 if resp.status_code != 200:
                     if self.verbose:
-                        print("  ⚠ Mapper API erreur {}: {}".format(
+                        log.error("  ⚠ Mapper API erreur {}: {}".format(
                             resp.status_code, resp.text[:150]))
                     return None
 
@@ -256,7 +260,7 @@ class LLMMapper:
 
             except Exception as e:
                 if self.verbose:
-                    print("  ⚠ Mapper exception: {}".format(e))
+                    log.warning("  ⚠ Mapper exception: {}".format(e))
                 if attempt < 2:
                     time.sleep(1)
                     continue
@@ -315,7 +319,7 @@ class LLMMapper:
             return 0
 
         if not HAS_YAML:
-            print("  ⚠ PyYAML requis pour la sauvegarde du mapping")
+            log.warning("  ⚠ PyYAML requis pour la sauvegarde du mapping")
             return 0
 
         # Charger le mapping existant
@@ -333,7 +337,7 @@ class LLMMapper:
 
         if added > 0:
             _write_theme_mapping(theme_mapping_path, existing)
-            print("  💾 {} nouveaux thèmes ajoutés dans theme_mapping.yaml ({} total)".format(
+            log.info("  💾 {} nouveaux thèmes ajoutés dans theme_mapping.yaml ({} total)".format(
                 added, len(existing)))
 
         return added
@@ -351,7 +355,7 @@ class LLMMapper:
             return None
 
         if not HAS_YAML:
-            print("  ⚠ PyYAML requis pour les suggestions")
+            log.warning("  ⚠ PyYAML requis pour les suggestions")
             return None
 
         path = os.path.join(logs_dir, 'suggestions.yaml')
@@ -395,7 +399,7 @@ class LLMMapper:
                 f.write("\n")
 
         count = sum(1 for s in existing if s.get('status') == 'pending')
-        print("  💡 {} suggestions sauvegardées dans {}".format(count, path))
+        log.info("  💡 {} suggestions sauvegardées dans {}".format(count, path))
         return path
 
     def print_stats(self):
@@ -407,7 +411,7 @@ class LLMMapper:
                      "{} appris".format(len(self.learned))]
             if self.suggest_count > 0:
                 parts.append("{} suggestions".format(self.suggest_count))
-            print("\n🧠 LLM Mapper : {}".format(", ".join(parts)))
+            log.info("\n🧠 LLM Mapper : {}".format(", ".join(parts)))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -437,12 +441,12 @@ def apply_suggestions(suggestions, profile_dir, target_base):
         Dict avec compteurs : folders_created, themes_added, skipped
     """
     if not HAS_YAML:
-        print("  ⚠ PyYAML requis")
+        log.warning("  ⚠ PyYAML requis")
         return {'folders_created': 0, 'themes_added': 0, 'skipped': 0}
 
     pending = [s for s in suggestions if s.get('status') == 'pending']
     if not pending:
-        print("  ✅ Aucune suggestion en attente.")
+        log.info("  ✅ Aucune suggestion en attente.")
         return {'folders_created': 0, 'themes_added': 0, 'skipped': 0}
 
     # ── 1. Charger tree.yaml ──
@@ -476,7 +480,7 @@ def apply_suggestions(suggestions, profile_dir, target_base):
         if not os.path.exists(full_path):
             os.makedirs(full_path, exist_ok=True)
             folders_created += 1
-            print("  📁 Créé : {}".format(folder))
+            log.info("  📁 Créé : {}".format(folder))
 
         # Ajouter dans tree.yaml
         if folder not in existing_folders:
@@ -512,7 +516,7 @@ def apply_suggestions(suggestions, profile_dir, target_base):
     # ── 4. Sauvegarder theme_mapping.yaml ──
     _write_theme_mapping(mapping_path, theme_mapping)
 
-    print("\n  ✅ {} dossiers créés, {} thèmes ajoutés, {} ignorés".format(
+    log.info("\n  ✅ {} dossiers créés, {} thèmes ajoutés, {} ignorés".format(
         folders_created, themes_added, skipped))
 
     return {

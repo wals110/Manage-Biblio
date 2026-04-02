@@ -1,6 +1,6 @@
 # ===========================================================================
 # Mapping thème → chemin cible
-# Auto-enrichi par LLM Mapper (438 entrées)
+# Auto-enrichi par LLM Mapper (440 entrées)
 # ===========================================================================
 
 # ── 01-SCIENCES ──
@@ -124,6 +124,7 @@ Metaheuristics: "02-INFORMATIQUE/02-Algorithmes-Structures"
 go: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
 haskell: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
 kotlin: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
+Language Theory: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
 perl: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
 php: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
 programming: "02-INFORMATIQUE/03-Langages-Programmation/Autres"
@@ -200,6 +201,7 @@ Statistical Language Processing: "02-INFORMATIQUE/05-IA-ML/NLP"
 translation technology: "02-INFORMATIQUE/05-IA-ML/NLP"
 biometrics: "02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur"
 Computational Botany: "02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur"
+Computational Imaging: "02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur"
 computer vision: "02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur"
 image processing: "02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur"
 machine vision: "02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur"

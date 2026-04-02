@@ -23,10 +23,10 @@ Usage:
     )
 
     if result:
-        print(f"Titre: {result['title']}")
-        print(f"Auteur: {result['author']}")
-        print(f"Thème: {result['theme']}")
-        print(f"Confiance: {result['confidence']}")
+        log.info(f"Titre: {result['title']}")
+        log.info(f"Auteur: {result['author']}")
+        log.info(f"Thème: {result['theme']}")
+        log.info(f"Confiance: {result['confidence']}")
 
     # Analyser via Ollama (local)
     result = analyze_cover(
@@ -65,6 +65,10 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
+from lib.logger import get_logger
+
+log = get_logger()
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION API
@@ -90,37 +94,58 @@ Rules:
 - For author, use "Firstname Lastname" format if possible
 - Be specific with the theme (e.g. "Machine Learning" not just "Computer Science")"""
 
+VISION_PROMPT_MULTI = """You are given multiple pages from a book (cover and first pages). Extract the following information and respond ONLY with a valid JSON object, nothing else:
+
+{
+  "title": "the specific book title (NOT the series/collection name)",
+  "author": "the author name(s), or empty string if not visible",
+  "theme": "the main topic/discipline in English (e.g. Mathematics, Computer Science, Physics, Chemistry, Biology, Medicine, Philosophy, History, Economics, Law, Psychology, Religion, Literature, Art, Music, Cooking, Sports, Photography, Engineering, Electronics, Networking, Programming, Machine Learning, Data Science, etc.)",
+  "language": "the main language of the book (fr, en, ar, de, es, etc.)",
+  "confidence": 0.0 to 1.0
+}
+
+Rules:
+- IMPORTANT: Look for the SPECIFIC title of this book, not the collection/series name (e.g. not "Lecture Notes in Computer Science" but the actual book title)
+- The title page is often on the 2nd or 3rd page, not the cover
+- If you cannot read the title clearly, set confidence below 0.3
+- If the images are not from a book, set all fields to empty strings and confidence to 0
+- Keep the title exactly as written (preserve original language and case)
+- For author, use "Firstname Lastname" format if possible
+- Be specific with the theme (e.g. "Machine Learning" not just "Computer Science")"""
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # EXTRACTION COUVERTURE
 # ════════════════════════════════════════════════════════════════════════════
 
-def extract_cover_image(pdf_path: str, dpi: int = 150) -> Optional['Image.Image']:
+def extract_cover_image(pdf_path: str, dpi: int = 150,
+                        n_pages: int = 1) -> Optional[List['Image.Image']]:
     """
-    Extrait la première page du PDF comme image PIL.
+    Extrait les N premières pages du PDF comme images PIL.
 
     Args:
         pdf_path: Chemin vers le fichier PDF
         dpi: Résolution de l'extraction (par défaut 150 dpi)
+        n_pages: Nombre de pages à extraire (par défaut 1)
 
     Returns:
-        Image PIL ou None si extraction échoue
+        Liste d'images PIL ou None si extraction échoue
     """
     if not HAS_PDF2IMAGE:
-        print("  ⚠ pdf2image non installé (pip install pdf2image)")
+        log.warning("  ⚠ pdf2image non installé (pip install pdf2image)")
         return None
     try:
         images = convert_from_path(
             pdf_path,
             first_page=1,
-            last_page=1,
+            last_page=n_pages,
             dpi=dpi,
             fmt='png',
             thread_count=2,
         )
-        return images[0] if images else None
+        return images if images else None
     except Exception as e:
-        print(f"  ⚠ Erreur extraction couverture: {e}")
+        log.error(f"  ⚠ Erreur extraction couverture: {e}")
         return None
 
 
@@ -157,17 +182,17 @@ def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
 # APPEL API LLM VISION
 # ════════════════════════════════════════════════════════════════════════════
 
-def call_vision_api(img_base64: str, api_key: str, endpoint: str,
+def call_vision_api(images_base64, api_key: str, endpoint: str,
                     model: str = DEFAULT_MODEL,
                     timeout: int = 30,
                     max_retries: int = 3) -> Optional[Dict]:
     """
-    Envoie l'image au modèle LLM Vision et parse la réponse JSON.
+    Envoie une ou plusieurs images au modèle LLM Vision et parse la réponse JSON.
 
     Compatible avec plusieurs endpoints (SiliconFlow, Ollama, etc.).
 
     Args:
-        img_base64: Image encodée en base64
+        images_base64: String base64 (une image) ou liste de strings base64 (multi-pages)
         api_key: Clé API pour l'authentification (peut être vide pour Ollama local)
         endpoint: URL de l'API LLM Vision (e.g., https://api.siliconflow.com/v1/chat/completions)
         model: Nom du modèle à utiliser (par défaut Qwen3-VL-8B-Instruct)
@@ -178,8 +203,12 @@ def call_vision_api(img_base64: str, api_key: str, endpoint: str,
         Dict avec title, author, theme, language, confidence ou None en cas d'erreur
     """
     if not HAS_REQUESTS:
-        print("  ⚠ requests non installé (pip install requests)")
+        log.warning("  ⚠ requests non installé (pip install requests)")
         return None
+
+    # Normaliser : accepte une string ou une liste
+    if isinstance(images_base64, str):
+        images_base64 = [images_base64]
 
     headers = {
         "Content-Type": "application/json",
@@ -189,23 +218,29 @@ def call_vision_api(img_base64: str, api_key: str, endpoint: str,
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    # Construire le contenu avec toutes les images + le prompt
+    content_parts = []  # type: List[Dict]
+    for i, img_b64 in enumerate(images_base64):
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {
+                "url": "data:image/jpeg;base64,{}".format(img_b64),
+            },
+        })
+
+    # Choisir le prompt adapté (mono ou multi-pages)
+    prompt = VISION_PROMPT_MULTI if len(images_base64) > 1 else VISION_PROMPT
+    content_parts.append({
+        "type": "text",
+        "text": prompt,
+    })
+
     payload = {
         "model": model,
         "messages": [
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{img_base64}",
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": VISION_PROMPT,
-                    },
-                ],
+                "content": content_parts,
             }
         ],
         "max_tokens": 300,
@@ -224,12 +259,12 @@ def call_vision_api(img_base64: str, api_key: str, endpoint: str,
             if resp.status_code == 429:
                 # Rate limit — attendre et réessayer
                 wait = min(2 ** attempt * 2, 30)
-                print(f"  ⏳ Rate limit, attente {wait}s...")
+                log.info(f"  ⏳ Rate limit, attente {wait}s...")
                 time.sleep(wait)
                 continue
 
             if resp.status_code != 200:
-                print(f"  ⚠ API erreur {resp.status_code}: {resp.text[:200]}")
+                log.error(f"  ⚠ API erreur {resp.status_code}: {resp.text[:200]}")
                 if attempt < max_retries - 1:
                     time.sleep(2)
                     continue
@@ -242,13 +277,13 @@ def call_vision_api(img_base64: str, api_key: str, endpoint: str,
             return parse_vision_response(content)
 
         except req_lib.exceptions.Timeout:
-            print(f"  ⏳ Timeout (tentative {attempt + 1}/{max_retries})")
+            log.info(f"  ⏳ Timeout (tentative {attempt + 1}/{max_retries})")
             if attempt < max_retries - 1:
                 time.sleep(2)
                 continue
             return None
         except Exception as e:
-            print(f"  ⚠ Erreur API: {e}")
+            log.error(f"  ⚠ Erreur API: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2)
                 continue
@@ -277,7 +312,7 @@ def parse_vision_response(content: str) -> Optional[Dict]:
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
 
     if not json_match:
-        print(f"  ⚠ Pas de JSON dans la réponse: {content[:100]}")
+        log.warning(f"  ⚠ Pas de JSON dans la réponse: {content[:100]}")
         return None
 
     try:
@@ -292,7 +327,7 @@ def parse_vision_response(content: str) -> Optional[Dict]:
             'confidence': float(result.get('confidence', 0.0)),
         }
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"  ⚠ JSON invalide: {e} — contenu: {content[:150]}")
+        log.warning(f"  ⚠ JSON invalide: {e} — contenu: {content[:150]}")
         return None
 
 
@@ -303,11 +338,13 @@ def parse_vision_response(content: str) -> Optional[Dict]:
 def analyze_cover(pdf_path: str, api_key: str, endpoint: str,
                   model: str = DEFAULT_MODEL,
                   dpi: int = 150,
-                  verbose: bool = False) -> Optional[Dict]:
+                  verbose: bool = False,
+                  max_retries: int = 3,
+                  n_pages: int = 1) -> Optional[Dict]:
     """
-    Analyse complète d'une couverture de livre.
+    Analyse complète d'une couverture de livre (une ou plusieurs pages).
 
-    Enchaîne les étapes : extraction image → conversion base64 → appel API → parsing.
+    Enchaîne les étapes : extraction image(s) → conversion base64 → appel API → parsing.
 
     Args:
         pdf_path: Chemin vers le fichier PDF
@@ -316,6 +353,8 @@ def analyze_cover(pdf_path: str, api_key: str, endpoint: str,
         model: Nom du modèle à utiliser (par défaut Qwen3-VL-8B-Instruct)
         dpi: Résolution d'extraction (par défaut 150 dpi)
         verbose: Afficher les détails du traitement
+        max_retries: Nombre de tentatives en cas d'erreur (par défaut 3)
+        n_pages: Nombre de pages à analyser (par défaut 1, max 5)
 
     Returns:
         Dict avec title, author, theme, language, confidence ou None en cas d'erreur
@@ -326,37 +365,49 @@ def analyze_cover(pdf_path: str, api_key: str, endpoint: str,
             api_key="sk-xxx",
             endpoint="https://api.siliconflow.com/v1/chat/completions",
             model="Qwen/Qwen3-VL-8B-Instruct",
-            verbose=True
+            verbose=True,
+            n_pages=2
         )
         if result and result['confidence'] > 0.5:
-            print(f"Title: {result['title']}")
+            log.info(f"Title: {result['title']}")
     """
-    if verbose:
-        print(f"📖 Analysing cover: {os.path.basename(pdf_path)}")
+    n_pages = max(1, min(n_pages, 5))  # Borner entre 1 et 5
 
-    # Étape 1: Extraire la couverture
     if verbose:
-        print("  → Extracting cover image...")
-    img = extract_cover_image(pdf_path, dpi=dpi)
-    if not img:
+        pages_label = "page 1" if n_pages == 1 else "pages 1-{}".format(n_pages)
+        log.info("📖 Analyse : {} ({})".format(os.path.basename(pdf_path), pages_label))
+
+    # Étape 1: Extraire les pages
+    if verbose:
+        log.info("  → Extraction des pages...")
+    images = extract_cover_image(pdf_path, dpi=dpi, n_pages=n_pages)
+    if not images:
         if verbose:
-            print("  ✗ Failed to extract cover image")
-        return None
+            log.info("  ✗ Échec extraction image")
+        return {'error': 'extraction'}
+
+    if verbose:
+        log.info("  → {} page(s) extraite(s)".format(len(images)))
 
     # Étape 2: Convertir en base64
     if verbose:
-        print("  → Converting to base64...")
-    img_base64 = image_to_base64(img)
+        log.info("  → Conversion base64...")
+    images_base64 = [image_to_base64(img) for img in images]
 
     # Étape 3: Appeler l'API
     if verbose:
-        print(f"  → Calling Vision API ({model})...")
-    result = call_vision_api(img_base64, api_key, endpoint, model)
+        log.info("  → Appel Vision API ({})...".format(model))
+    result = call_vision_api(images_base64, api_key, endpoint, model, max_retries=max_retries)
 
     if verbose:
         if result:
-            print(f"  ✓ Success (confidence: {result['confidence']:.2f})")
+            log.info("  ✓ Détecté : '{}' — '{}' (confiance: {:.2f})".format(
+                result.get('title', ''), result.get('author', ''),
+                result.get('confidence', 0)))
         else:
-            print("  ✗ API call failed")
+            log.info("  ✗ Échec appel API")
+
+    if result is None:
+        return {'error': 'api'}
 
     return result

@@ -6,12 +6,13 @@
 name: default
 description: "Bibliothèque principale"
 target: /Volumes/ExtSSD/BIBLIO
-inbox: /Volumes/ExtSSD/BIBLIO/_A-TRIER
+inbox: /Volumes/ExtSSD/BIBLIO/_INBOX
+fallback: _A-TRIER                      # Sous-dossier de target pour les non-classifiés
 
 # ── LLM Vision ──
 llm:
   provider: siliconflow          # siliconflow | ollama
-  model: Qwen/Qwen3-VL-8B-Instruct
+  model: Qwen/Qwen3-VL-32B-Instruct
   endpoint: https://api.siliconflow.com/v1/chat/completions
   # Pour Ollama (futur) :
   # provider: ollama
@@ -21,9 +22,13 @@ llm:
 # ── Paramètres par défaut ──
 defaults:
   workers: 10
-  min_confidence: 0.5
+  delay: 0.2                     # Délai entre requêtes séquentielles (secondes)
+  min_confidence: 0.5            # Seuil pour classification et renommage
   max_filename_length: 180
   pdf_timeout: 15
+  cost_per_call: 0.00034         # Coût estimé par appel LLM ($/appel)
+  max_api_errors: 10             # Arrêt après N erreurs API consécutives
+  max_retries: 3                 # Tentatives par appel API
   # LLM Mapper — résolution intelligente des thèmes inconnus
   llm_mapper: true               # Activer/désactiver le mapper
   mapper_min_confidence: 0.6     # Confiance minimum pour accepter le mapping
