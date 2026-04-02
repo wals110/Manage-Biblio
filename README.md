@@ -170,22 +170,40 @@ Review et application des propositions de nouveaux dossiers générées automati
 ./biblio.sh process /chemin --profile mon-profil        # Utiliser un profil
 ```
 
-### Options globales
+### Options par commande
+
+**Options communes** (toutes les commandes) :
 
 | Option | Description |
 |---|---|
 | `--profile NAME` | Profil à utiliser (défaut : `default`) |
 | `--execute` | Appliquer les modifications (sinon dry-run) |
 | `--report` | Générer un rapport CSV |
-| `--workers N` | Threads parallèles |
+| `--verbose`, `-v` | Mode détaillé |
+
+**Options classify / process** (LLM Vision + classification) :
+
+| Option | Description |
+|---|---|
+| `--api-key KEY` | Clé API (ou variable `SILICONFLOW_API_KEY`) |
+| `--workers N`, `-w N` | Threads parallèles (0 = défaut du profil) |
 | `--max N` | Limiter à N fichiers |
-| `--verbose` | Mode détaillé |
-| `--reset` | Supprimer le checkpoint |
+| `--delay SEC` | Délai entre requêtes séquentielles (défaut: 0.2) |
+| `--reset` | Supprimer le checkpoint et recommencer |
 | `--retry-errors` | Retraiter les fichiers en erreur |
 | `--reclassify` | Re-mapper les thèmes sans rappeler l'API |
-| `--api-key KEY` | Clé API (ou variable `SILICONFLOW_API_KEY`) |
-| `--force` | Re-analyser tous les fichiers (ignore noms "propres") |
-| `--pages N` | Nombre de pages à analyser par LLM Vision (défaut: 1, max: 5) |
+
+**Options rename** (renommage intelligent) :
+
+| Option | Description |
+|---|---|
+| `--llm` | Activer LLM Vision en fallback (analyse couverture) |
+| `--force` | LLM en priorité + re-analyser les noms "propres" |
+| `--pages N` | Pages à analyser par LLM Vision (défaut: 1, max: 5) |
+| `--max N` | Limiter à N fichiers |
+| `--api-key KEY` | Clé API pour `--llm` (ou variable `SILICONFLOW_API_KEY`) |
+| `--no-online` | Désactiver la recherche ISBN en ligne |
+| `--no-pdf` | Désactiver l'extraction des métadonnées PDF |
 
 ## Comment ça marche
 
