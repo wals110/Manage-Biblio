@@ -95,7 +95,7 @@ Teste que `_build_parser()` construit correctement le parser argparse avec toute
 | A5.2 | --version | `parse_args(['--version'])` | Affiche la version et quitte avec code 0 |
 | A5.3 | process avec path | `parse_args(['process', '/tmp/inbox'])` | command='process', path='/tmp/inbox' |
 | A5.4 | process sans path | `parse_args(['process'])` | path=None — utilisera l'inbox du profil par défaut |
-| A5.5 | process toutes options | `parse_args(['process', '/tmp', '--profile', 'custom', '--execute', '--report', '--verbose', '--api-key', 'sk-test', '--workers', '8', '--max', '100', '--delay', '0.5', '--reset', '--retry-errors', '--reclassify', '--progress-file', 'custom.json'])` | Les 12 options sont correctement parsées avec les bonnes valeurs |
+| A5.5 | process toutes options | `parse_args(['process', '/tmp', '--profile', 'custom', '--execute', '--verbose', '--api-key', 'sk-test', '--workers', '8', '--max', '100', '--delay', '0.5', '--reset', '--retry-errors', '--reclassify', '--progress-file', 'custom.json'])` | Les 11 options sont correctement parsées avec les bonnes valeurs |
 | A5.6 | classify basique | `parse_args(['classify'])` | Défauts corrects : path=None, execute=False, workers=0 |
 | A5.7 | classify --execute | `parse_args(['classify', '--execute'])` | Flag execute activé |
 | A5.8 | rename basique | `parse_args(['rename', '/tmp/src'])` | command='rename', path='/tmp/src' |

@@ -15,10 +15,9 @@ Sous-commandes :
 Options globales :
     --profile NAME    Profil à utiliser (défaut: default)
     --execute         Appliquer les modifications (sinon dry-run)
-    --report          Générer un rapport CSV
+    --verbose         Mode détaillé
     --workers N       Threads parallèles (pour classify/process)
     --max N           Limiter à N fichiers
-    --verbose         Afficher les détails
 
 Exemples :
     ./biblio.sh process /chemin/vers/nouveaux_pdfs
@@ -650,9 +649,8 @@ def cmd_classify(args, profile):
             results = list(cm.load().values())
             cost_per_call = profile.defaults.get('cost_per_call', 0.00034)
             print_summary(results, cost_per_call=cost_per_call)
-            if args.report:
-                report = save_report(results, logs_dir, 'rapport_classify')
-                log.info("\n📋 Rapport : {}".format(report))
+            report = save_report(results, logs_dir, 'rapport_classify')
+            log.info("\n📋 Rapport : {}".format(report))
             return
 
     log.info("\n🔍 Classification LLM Vision")
@@ -717,9 +715,8 @@ def cmd_refine(args, profile):
     logs_dir = os.path.join(PROJECT_ROOT, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
 
-    if args.report or args.execute:
-        report = save_refine_report(results, logs_dir)
-        log.info("\n📋 Rapport : {}".format(report))
+    report = save_refine_report(results, logs_dir)
+    log.info("\n📋 Rapport : {}".format(report))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -958,8 +955,6 @@ def _build_parser():
                         help='Profil à utiliser (défaut: default)')
     common.add_argument('--execute', action='store_true',
                         help='Appliquer (sinon dry-run)')
-    common.add_argument('--report', action='store_true',
-                        help='Générer un rapport CSV')
     common.add_argument('--verbose', '-v', action='store_true',
                         help='Mode verbeux')
 

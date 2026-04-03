@@ -178,7 +178,6 @@ Review et application des propositions de nouveaux dossiers générées automati
 |---|---|
 | `--profile NAME` | Profil à utiliser (défaut : `default`) |
 | `--execute` | Appliquer les modifications (sinon dry-run) |
-| `--report` | Générer un rapport CSV |
 | `--verbose`, `-v` | Mode détaillé |
 
 **Options classify / process** (LLM Vision + classification) :

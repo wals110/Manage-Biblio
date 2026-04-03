@@ -52,7 +52,7 @@ class TestBuildParser(unittest.TestCase):
         args = self.parser.parse_args([
             'process', '/tmp/inbox',
             '--profile', 'custom',
-            '--execute', '--report', '--verbose',
+            '--execute', '--verbose',
             '--api-key', 'sk-test',
             '--workers', '8', '--max', '100',
             '--delay', '0.5',
@@ -61,7 +61,6 @@ class TestBuildParser(unittest.TestCase):
         ])
         self.assertEqual(args.profile, 'custom')
         self.assertTrue(args.execute)
-        self.assertTrue(args.report)
         self.assertTrue(args.verbose)
         self.assertEqual(args.api_key, 'sk-test')
         self.assertEqual(args.workers, 8)
