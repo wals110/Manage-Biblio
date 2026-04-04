@@ -1,0 +1,24 @@
+[project]
+name = "klodo"
+version = "1.0.0-dev"
+description = "Outil unifié de gestion de bibliothèque PDF — renommage, classification, raffinement"
+requires-python = ">=3.13"
+dependencies = [
+    "pyyaml>=6.0",
+    "requests>=2.28.0",
+    "pdf2image>=1.16.0",
+    "pillow>=9.0.0",
+    "pypdf>=3.0.0",
+    "pdfplumber>=0.9.0",
+]
+
+[project.scripts]
+klodo = "klodo:main"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

@@ -35,7 +35,7 @@ def sanitize_filename(text: str) -> str:
     Nettoie un texte pour en faire un nom de fichier sûr.
 
     Supprime :
-      - Caractères interdits : < > : " / \ | ? *
+      - Caractères interdits : < > : " / \\ | ? *
       - Guillemets courbes (U+201C, U+201D, U+2018, U+2019)
       - Points excessifs (..)
       - Espaces répétés

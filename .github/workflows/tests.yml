@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Installer Python + dépendances
+        run: uv sync
+
+      - name: Installer poppler (pdf2image)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Lancer les tests
+        run: uv run python -m unittest discover -s tests -v

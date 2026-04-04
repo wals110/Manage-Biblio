@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#  Klodo v4.1 — Lanceur unifié
+#  Klodo — Lanceur unifié
 # ═══════════════════════════════════════════════════════════════════════
 #
 #  Usage :
@@ -15,12 +15,15 @@
 #  Options :
 #    --profile NAME    Profil à utiliser (défaut: default)
 #    --execute         Appliquer (sinon dry-run)
-#    --report          Générer un rapport CSV
 #    --workers N       Threads parallèles
 #    --max N           Limiter à N fichiers
 #    --retry-errors    Retraiter les erreurs
 #    --reclassify      Re-mapper les thèmes sans appel LLM
 #    --verbose         Mode détaillé
+#
+#  Prérequis :
+#    brew install poppler uv
+#    uv sync                     # Installe Python + dépendances
 #
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -38,10 +41,10 @@ NC='\033[0m'
 
 # ── Vérifications ──
 
-# Python 3
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ Python3 requis.${NC}"
-    echo "   brew install python3"
+# uv
+if ! command -v uv &> /dev/null; then
+    echo -e "${RED}❌ uv requis.${NC}"
+    echo "   curl -LsSf https://astral.sh/uv/install.sh | sh"
     exit 1
 fi
 
@@ -51,17 +54,12 @@ if [[ ! -f "$KLODO_PY" ]]; then
     exit 1
 fi
 
-# Dépendances Python
-MISSING=""
-python3 -c "import yaml" 2>/dev/null || MISSING="$MISSING pyyaml"
-python3 -c "import requests" 2>/dev/null || MISSING="$MISSING requests"
-python3 -c "import PIL" 2>/dev/null || MISSING="$MISSING Pillow"
-python3 -c "import pdf2image" 2>/dev/null || MISSING="$MISSING pdf2image"
-
-if [[ -n "$MISSING" ]]; then
-    echo -e "${YELLOW}⚠  Dépendances manquantes :${MISSING}${NC}"
-    echo "   pip3 install${MISSING}"
-    # On continue quand même (certaines commandes n'en ont pas besoin)
+# .venv existe (sinon proposer uv sync)
+if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
+    echo -e "${YELLOW}⚠  Environnement virtuel absent.${NC}"
+    echo "   Lancement de 'uv sync' pour installer les dépendances..."
+    echo ""
+    (cd "$SCRIPT_DIR" && uv sync)
 fi
 
 # poppler (pour pdf2image)
@@ -76,13 +74,11 @@ if [[ "$COMMAND" == "process" || "$COMMAND" == "classify" ]]; then
     if [[ -z "${SILICONFLOW_API_KEY:-}" ]]; then
         echo -e "${YELLOW}⚠  SILICONFLOW_API_KEY non définie${NC}"
         echo "   export SILICONFLOW_API_KEY=sk-xxx"
-        echo "   (ou utiliser --api-key sk-xxx)"
         echo ""
     fi
 fi
 
 # ── SSD monté (vérification optionnelle) ──
-# Extraire le --profile si présent pour vérifier le target
 PROFILE="default"
 prev_was_profile="false"
 for arg in "$@"; do
@@ -98,7 +94,7 @@ done
 
 PROFILE_YAML="$SCRIPT_DIR/profiles/$PROFILE/profile.yaml"
 if [[ -f "$PROFILE_YAML" ]]; then
-    TARGET=$(python3 -c "import yaml; print(yaml.safe_load(open('$PROFILE_YAML'))['target'])" 2>/dev/null || echo "")
+    TARGET=$(uv run python -c "import yaml; print(yaml.safe_load(open('$PROFILE_YAML'))['target'])" 2>/dev/null || echo "")
     if [[ -n "$TARGET" && ! -d "$TARGET" ]]; then
         echo -e "${YELLOW}⚠  Cible non accessible : $TARGET${NC}"
         echo "   Vérifier que le SSD est connecté."
@@ -107,7 +103,7 @@ if [[ -f "$PROFILE_YAML" ]]; then
 fi
 
 # ── Lancement ──
-echo -e "${CYAN}📚 Klodo v4.1${NC}"
+echo -e "${CYAN}📚 Klodo v1.0.0-dev${NC}"
 echo ""
 
-exec python3 "$KLODO_PY" "$@"
+exec uv run python "$KLODO_PY" "$@"

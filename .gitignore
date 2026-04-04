@@ -4,7 +4,7 @@ renommage/isbn_cache.json
 # Rapports et logs générés
 logs/
 
-# Python
+# Python / uv
 __pycache__/
 *.pyc
 *.pyo
