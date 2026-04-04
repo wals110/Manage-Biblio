@@ -33,6 +33,7 @@ Python 3.9 compatible.
 import time
 
 from lib.logger import get_logger
+from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_MAX_TOKENS, LLM_TEMPERATURE, LLM_RETRY_DELAY, LLM_BACKOFF_MAX
 
 log = get_logger()
 
@@ -52,7 +53,7 @@ class LLMClient:
     """
 
     def __init__(self, api_key: str, endpoint: str, model: str,
-                 timeout: int = 30, max_retries: int = 3, verbose: bool = False) -> None:
+                 timeout: int = LLM_TIMEOUT, max_retries: int = LLM_MAX_RETRIES, verbose: bool = False) -> None:
         self.api_key = api_key
         self.endpoint = endpoint
         self.model = model
@@ -62,7 +63,7 @@ class LLMClient:
         self._session: req_lib.Session | None = None
 
     def call(self, prompt: str, images_b64: list[str] | None = None,
-             max_tokens: int = 150, temperature: float = 0.1,
+             max_tokens: int = LLM_MAX_TOKENS, temperature: float = LLM_TEMPERATURE,
              timeout: int | None = None, max_retries: int | None = None) -> str | None:
         """
         Appel LLM unifié (texte ou multimodal).
@@ -92,7 +93,7 @@ class LLMClient:
         return self._send_with_retry(
             payload, effective_timeout, effective_retries)
 
-    def call_messages(self, messages: list[dict], max_tokens: int = 150, temperature: float = 0.1,
+    def call_messages(self, messages: list[dict], max_tokens: int = LLM_MAX_TOKENS, temperature: float = LLM_TEMPERATURE,
                       timeout: int | None = None, max_retries: int | None = None) -> str | None:
         """
         Appel LLM avec un payload messages pré-construit.
@@ -195,7 +196,7 @@ class LLMClient:
                 )
 
                 if resp.status_code == 429:
-                    wait = min(2 ** attempt * 2, 30)
+                    wait = min(2 ** attempt * 2, LLM_BACKOFF_MAX)
                     if self.verbose:
                         log.info("  ⏳ Rate limit, attente {}s...".format(wait))
                     time.sleep(wait)
@@ -206,7 +207,7 @@ class LLMClient:
                         log.error("  ⚠ API erreur {}: {}".format(
                             resp.status_code, resp.text[:200]))
                     if attempt < max_retries - 1:
-                        time.sleep(2)
+                        time.sleep(LLM_RETRY_DELAY)
                         continue
                     return None
 
@@ -218,7 +219,7 @@ class LLMClient:
                     log.info("  ⏳ Timeout (tentative {}/{})".format(
                         attempt + 1, max_retries))
                 if attempt < max_retries - 1:
-                    time.sleep(2)
+                    time.sleep(LLM_RETRY_DELAY)
                     continue
                 return None
 
@@ -226,7 +227,7 @@ class LLMClient:
                 if self.verbose:
                     log.warning("  ⚠ LLM exception: {}".format(e))
                 if attempt < max_retries - 1:
-                    time.sleep(2)
+                    time.sleep(LLM_RETRY_DELAY)
                     continue
                 return None
 

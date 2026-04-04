@@ -37,6 +37,7 @@ import os
 from collections.abc import Callable
 
 from lib.logger import get_logger
+from lib.constants import CONFIDENCE_THRESHOLD, KEYWORD_DEFAULT_SCORE, MAPPER_PENALTY, MAPPER_MIN_CONFIDENCE
 
 log = get_logger()
 
@@ -172,10 +173,10 @@ def classify_combined(
     et LLM Mapper pour résolution intelligente des thèmes inconnus.
 
     Priorité :
-    1. LLM theme si confiance >= 0.5 et thème trouvé dans mapping
+    1. LLM theme si confiance >= CONFIDENCE_THRESHOLD et thème trouvé dans mapping
     2. Keyword classifier (titre LLM + nom de fichier combinés)
     3. LLM Mapper — appel LLM texte pour résoudre un thème inconnu
-    4. LLM theme avec confiance basse (< 0.5) si le thème matche
+    4. LLM theme avec confiance basse (< CONFIDENCE_THRESHOLD) si le thème matche
     5. Échec total
 
     Args:
@@ -197,8 +198,8 @@ def classify_combined(
     confidence = vision_result.get('confidence', 0.0)
     title = vision_result.get('title', '')
 
-    # Priorité 1 : LLM theme si confiance >= 0.5
-    if confidence >= 0.5:
+    # Priorité 1 : LLM theme si confiance >= CONFIDENCE_THRESHOLD
+    if confidence >= CONFIDENCE_THRESHOLD:
         path = classify_by_theme(theme, theme_mapping)
         if path:
             return (path, confidence, "LLM (theme)")
@@ -224,7 +225,7 @@ def classify_combined(
                 if best[0]:  # chemin non vide
                     return (
                         best[0],                    # chemin
-                        best[1] if len(best) > 1 else 0.5,  # score
+                        best[1] if len(best) > 1 else KEYWORD_DEFAULT_SCORE,  # score
                         "Keyword ({})".format(best[2] if len(best) > 2 else ''),
                     )
         except Exception as e:
@@ -232,11 +233,11 @@ def classify_combined(
 
     # Priorité 3 : LLM Mapper — résolution intelligente du thème inconnu
     # (avec escalade vision si activée dans le mapper)
-    if llm_mapper and theme and confidence >= 0.5:
+    if llm_mapper and theme and confidence >= CONFIDENCE_THRESHOLD:
         mapped_path = llm_mapper.resolve(
             theme, title=title, filename=filename, pdf_path=pdf_path)
         if mapped_path:
-            return (mapped_path, confidence * 0.9, "LLM (mapper)")
+            return (mapped_path, confidence * MAPPER_PENALTY, "LLM (mapper)")
 
     # Priorité 4 : LLM theme avec confiance basse
     if theme:
@@ -282,7 +283,7 @@ def make_classify_fn(
         Returns:
             Path if found, None otherwise.
         """
-        if confidence < 0.5:
+        if confidence < CONFIDENCE_THRESHOLD:
             # Skip low-confidence results
             return None
         return classify_by_theme(theme, theme_mapping)

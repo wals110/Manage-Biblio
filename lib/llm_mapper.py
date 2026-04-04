@@ -45,6 +45,7 @@ except ImportError:
 
 from lib.logger import get_logger
 from lib.llm_client import LLMClient
+from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_MAX_TOKENS, MAPPER_MIN_CONFIDENCE, NO_FOLDER_MARKER, UNSORTED_FOLDER
 
 log = get_logger()
 
@@ -66,7 +67,7 @@ RÈGLES STRICTES :
 1. TOUJOURS préférer un sous-dossier spécifique à un dossier parent.
    Exemple : "01-SCIENCES/PHYSIQUE/05-Relativite-Quantique" plutôt que "01-SCIENCES/PHYSIQUE"
 2. Le "folder" DOIT être une copie EXACTE d'un dossier listé ci-dessus.
-3. Si aucun dossier ne convient, mets "folder": "_AUCUN".
+3. Si aucun dossier ne convient, mets "folder": "{no_folder_marker}".
 4. "confidence" entre 0.0 et 1.0 — mets > 0.8 seulement si le match est évident.
 
 Réponds UNIQUEMENT avec un objet JSON :
@@ -84,7 +85,7 @@ TÂCHE : En te basant sur la couverture, choisis le dossier LE PLUS PRÉCIS pour
 RÈGLES STRICTES :
 1. TOUJOURS préférer un sous-dossier spécifique à un dossier parent.
 2. Le "folder" DOIT être une copie EXACTE d'un dossier listé ci-dessus.
-3. Si aucun dossier ne convient, mets "folder": "_AUCUN".
+3. Si aucun dossier ne convient, mets "folder": "{no_folder_marker}".
 4. "confidence" entre 0.0 et 1.0.
 
 Réponds UNIQUEMENT avec un objet JSON :
@@ -113,7 +114,7 @@ class LLMMapper:
     """Résout les thèmes inconnus via appel LLM texte + auto-apprentissage."""
 
     def __init__(self, folders, api_key='', endpoint='', model='',
-                 min_confidence=0.6, verbose=False, vision=False,
+                 min_confidence=MAPPER_MIN_CONFIDENCE, verbose=False, vision=False,
                  client=None):
         # type: (list[str], str, str, str, float, bool, bool, LLMClient | None) -> None
         self.folders = folders
@@ -201,7 +202,7 @@ class LLMMapper:
         confidence = result.get('confidence', 0.0)
 
         # Le LLM dit qu'aucun dossier ne convient
-        if folder == '_AUCUN' or folder == '_A-TRIER':
+        if folder == NO_FOLDER_MARKER or folder == UNSORTED_FOLDER:
             return None
 
         # Valider que le dossier existe dans la liste
@@ -242,7 +243,10 @@ class LLMMapper:
 
         self.vision_calls += 1
 
-        prompt = MAPPER_VISION_PROMPT.format(folders_list=self._folders_text)
+        prompt = MAPPER_VISION_PROMPT.format(
+            folders_list=self._folders_text,
+            no_folder_marker=NO_FOLDER_MARKER,
+        )
 
         client = self._get_client()
         if not client:
@@ -251,7 +255,7 @@ class LLMMapper:
         content = client.call(
             prompt=prompt,
             images_b64=[b64],
-            max_tokens=150,
+            max_tokens=LLM_MAX_TOKENS,
         )
 
         if content is None:
@@ -267,6 +271,7 @@ class LLMMapper:
             title=title or '(inconnu)',
             filename=filename or '(inconnu)',
             folders_list=self._folders_text,
+            no_folder_marker=NO_FOLDER_MARKER,
         )
         self.calls += 1
         return self._call_llm(prompt)
@@ -313,8 +318,8 @@ class LLMMapper:
                     api_key=self.api_key,
                     endpoint=self.endpoint,
                     model=self.model,
-                    timeout=30,
-                    max_retries=3,
+                    timeout=LLM_TIMEOUT,
+                    max_retries=LLM_MAX_RETRIES,
                     verbose=self.verbose,
                 )
             else:
@@ -328,7 +333,7 @@ class LLMMapper:
         if not client:
             return None
 
-        content = client.call(prompt=prompt, max_tokens=150)
+        content = client.call(prompt=prompt, max_tokens=LLM_MAX_TOKENS)
         if content is None:
             return None
 

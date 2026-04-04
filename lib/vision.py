@@ -59,6 +59,7 @@ except ImportError:
 
 from lib.logger import get_logger
 from lib.llm_client import LLMClient
+from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_VISION_MAX_TOKENS, PDF_DPI, PDF_EXTRACT_THREADS, PDF_MAX_PAGES, JPEG_QUALITY, CONFIDENCE_THRESHOLD
 
 log = get_logger()
 
@@ -111,7 +112,7 @@ Rules:
 # EXTRACTION COUVERTURE
 # ════════════════════════════════════════════════════════════════════════════
 
-def extract_cover_image(pdf_path: str, dpi: int = 150,
+def extract_cover_image(pdf_path: str, dpi: int = PDF_DPI,
                         n_pages: int = 1) -> list['Image.Image'] | None:
     """
     Extrait les N premières pages du PDF comme images PIL.
@@ -134,7 +135,7 @@ def extract_cover_image(pdf_path: str, dpi: int = 150,
             last_page=n_pages,
             dpi=dpi,
             fmt='png',
-            thread_count=2,
+            thread_count=PDF_EXTRACT_THREADS,
         )
         return images if images else None
     except Exception as e:
@@ -167,7 +168,7 @@ def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
         img = img.convert('RGB')
 
     buffer = io.BytesIO()
-    img.save(buffer, format='JPEG', quality=80)
+    img.save(buffer, format='JPEG', quality=JPEG_QUALITY)
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
@@ -177,7 +178,7 @@ def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
 
 def call_vision_api(images_base64: object, api_key: str, endpoint: str,
                     model: str = DEFAULT_MODEL,
-                    timeout: int = 30, max_retries: int = 3,
+                    timeout: int = LLM_TIMEOUT, max_retries: int = LLM_MAX_RETRIES,
                     client: 'LLMClient | None' = None) -> dict | None:
     """
     Envoie une ou plusieurs images au modèle LLM Vision et parse la réponse JSON.
@@ -213,7 +214,7 @@ def call_vision_api(images_base64: object, api_key: str, endpoint: str,
     content = client.call(
         prompt=prompt,
         images_b64=images_base64,
-        max_tokens=300,
+        max_tokens=LLM_VISION_MAX_TOKENS,
         timeout=timeout,
         max_retries=max_retries,
     )
@@ -301,10 +302,10 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
             verbose=True,
             n_pages=2
         )
-        if result and result['confidence'] > 0.5:
+        if result and result['confidence'] > CONFIDENCE_THRESHOLD:
             log.info(f"Title: {result['title']}")
     """
-    n_pages = max(1, min(n_pages, 5))  # Borner entre 1 et 5
+    n_pages = max(1, min(n_pages, PDF_MAX_PAGES))  # Borner entre 1 et PDF_MAX_PAGES
 
     if verbose:
         pages_label = "page 1" if n_pages == 1 else "pages 1-{}".format(n_pages)

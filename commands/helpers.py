@@ -18,6 +18,7 @@ from lib.vision import analyze_cover
 from lib.checkpoint import CheckpointManager
 from lib.classifier import classify_combined
 from lib.llm_mapper import LLMMapper
+from lib.constants import CONFIDENCE_THRESHOLD, MAPPER_MIN_CONFIDENCE
 
 log = get_logger()
 
@@ -200,7 +201,7 @@ def execute_classify(results, target_base, fallback='_A-TRIER'):
 
 def process_single_file(pdf_path, api_key, endpoint, model,
                         theme_mapping, classifier=None, llm_mapper=None,
-                        verbose=False, min_confidence=0.5, n_pages=1):
+                        verbose=False, min_confidence=CONFIDENCE_THRESHOLD, n_pages=1):
     # type: (str, str, str, str, dict[str, str], object, object, bool, float, int) -> dict
     """
     Pipeline de classification pour un fichier :
@@ -292,7 +293,7 @@ def load_classifiers(profile, api_key, verbose=False, vision=False):
             api_key=api_key,
             endpoint=profile.llm_endpoint,
             model=profile.llm_model,
-            min_confidence=profile.defaults.get('mapper_min_confidence', 0.6),
+            min_confidence=profile.defaults.get('mapper_min_confidence', MAPPER_MIN_CONFIDENCE),
             verbose=verbose,
             vision=vision,
         )

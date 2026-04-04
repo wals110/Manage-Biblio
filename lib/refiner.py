@@ -32,6 +32,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
+from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_MAX_TOKENS, MAPPER_MIN_CONFIDENCE, PDF_DPI
 from lib.logger import get_logger
 
 log = get_logger()
@@ -240,7 +241,7 @@ Règles :
 
 
 def make_refine_llm_callback(api_key, endpoint, model,
-                              min_confidence=0.6, verbose=False,
+                              min_confidence=MAPPER_MIN_CONFIDENCE, verbose=False,
                               vision=False, client=None):
     # type: (str, str, str, float, bool, bool, 'LLMClient' | None) -> Callable
     """
@@ -276,7 +277,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
     if client is None:
         client = LLMClient(
             api_key=api_key, endpoint=endpoint, model=model,
-            timeout=30, max_retries=3, verbose=verbose)
+            timeout=LLM_TIMEOUT, max_retries=LLM_MAX_RETRIES, verbose=verbose)
 
     stats = {
         'calls': 0, 'successes': 0, 'failures': 0,
@@ -286,7 +287,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
     def _send_llm_request(messages):
         # type: (list[dict]) -> str | None
         """Send a request to the LLM via the unified client."""
-        return client.call_messages(messages, max_tokens=150)
+        return client.call_messages(messages, max_tokens=LLM_MAX_TOKENS)
 
     def _validate_result(content, filename, subdirs):
         # type: (str | None, str, list[str]) -> str | None
@@ -344,7 +345,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
                 log.warning("  ⚠ lib.vision non disponible, vision désactivée")
             return None
 
-        images = extract_cover_image(pdf_path, dpi=150, n_pages=1)
+        images = extract_cover_image(pdf_path, dpi=PDF_DPI, n_pages=1)
         if not images:
             if verbose:
                 log.info("  ⚠ Échec extraction couverture pour {}".format(filename))
