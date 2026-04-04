@@ -25,6 +25,9 @@ profiles/*
 # Review interne
 review/
 
+# PDFs de test (ajoutés manuellement)
+tests/fixtures/pdfs/*.pdf
+
 # Claude
 .claude/
 renommage/rapport_*.csv
