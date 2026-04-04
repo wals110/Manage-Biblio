@@ -109,21 +109,17 @@ def classify_by_theme(
 
 def load_keyword_classifier(categories_yaml_path: str) -> object | None:
     """
-    Load the KeywordClassifier from klodo_organizer.py.
-
-    This function dynamically imports KeywordClassifier from the organiser/
-    directory (located relative to project root). The organiser/ directory is
-    added to sys.path, and the YAML config is used to instantiate the classifier.
+    Load the KeywordClassifier from lib/keyword_classifier.py.
 
     Args:
-        categories_yaml_path: Path to categories.yaml (e.g., 'organiser/categories.yaml')
+        categories_yaml_path: Path to categories.yaml
 
     Returns:
         KeywordClassifier instance if successful.
         None if import fails or YAML file not found.
 
     Example:
-        >>> classifier = load_keyword_classifier('organiser/categories.yaml')
+        >>> classifier = load_keyword_classifier('profiles/default/categories.yaml')
         >>> if classifier:
         ...     result = classifier.classify('machine learning text', 'example.pdf')
         ...     log.info(result)
@@ -132,28 +128,17 @@ def load_keyword_classifier(categories_yaml_path: str) -> object | None:
         log.warning(f"[WARNING] categories.yaml not found: {categories_yaml_path}")
         return None
 
-    # Determine the organiser/ directory (contains klodo_organizer.py)
-    # klodo_organizer.py is always in <project_root>/organiser/
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    organiser_dir = os.path.join(project_root, 'organiser')
-
-    # Add organiser/ to sys.path if not already there
-    if organiser_dir not in sys.path:
-        sys.path.insert(0, organiser_dir)
-
     try:
         import yaml
-        # Dynamic import of KeywordClassifier from klodo_organizer.py
-        from klodo_organizer import KeywordClassifier
+        from lib.keyword_classifier import KeywordClassifier
 
-        # KeywordClassifier expects a parsed dict, not a file path
         with open(categories_yaml_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
         classifier = KeywordClassifier(config)
         return classifier
     except ImportError as e:
-        log.error(f"[ERROR] Failed to import KeywordClassifier from {organiser_dir}: {e}")
+        log.error(f"[ERROR] Failed to import KeywordClassifier: {e}")
         return None
     except Exception as e:
         log.error(f"[ERROR] Failed to instantiate KeywordClassifier: {e}")

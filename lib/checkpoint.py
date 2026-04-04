@@ -121,7 +121,7 @@ class CheckpointManager:
         Reclassify non_classifié/renommé_seul entries.
 
         classify_fn(theme, confidence) -> str | None (destination path).
-        Uses field names compatible with ocr_cover.py: 'theme_detecte', 'confiance'.
+        Uses field names 'theme_detecte', 'confiance'.
         """
         with self._lock:
             progress = self._load_raw()

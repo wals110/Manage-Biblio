@@ -37,10 +37,11 @@ class TestCompilation(unittest.TestCase):
                 err = self._compile_file(mod)
                 self.assertIsNone(err, err)
 
-    def test_organiser_modules(self):
-        """Les modules organiser/*.py compilent (legacy)."""
-        org_dir = os.path.join(PROJECT_ROOT, 'organiser')
-        modules = glob.glob(os.path.join(org_dir, '*.py'))
+    def test_commands_modules(self):
+        """Tous les modules commands/*.py compilent sans erreur."""
+        cmd_dir = os.path.join(PROJECT_ROOT, 'commands')
+        modules = glob.glob(os.path.join(cmd_dir, '*.py'))
+        self.assertGreater(len(modules), 0, "Aucun module trouvé dans commands/")
         for mod in sorted(modules):
             with self.subTest(module=os.path.basename(mod)):
                 err = self._compile_file(mod)
