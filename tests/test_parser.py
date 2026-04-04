@@ -53,7 +53,6 @@ class TestBuildParser(unittest.TestCase):
             'process', '/tmp/inbox',
             '--profile', 'custom',
             '--execute', '--verbose',
-            '--api-key', 'sk-test',
             '--workers', '8', '--max', '100',
             '--delay', '0.5',
             '--reset', '--retry-errors', '--reclassify',
@@ -62,7 +61,6 @@ class TestBuildParser(unittest.TestCase):
         self.assertEqual(args.profile, 'custom')
         self.assertTrue(args.execute)
         self.assertTrue(args.verbose)
-        self.assertEqual(args.api_key, 'sk-test')
         self.assertEqual(args.workers, 8)
         self.assertEqual(args.max, 100)
         self.assertEqual(args.delay, 0.5)
@@ -101,7 +99,7 @@ class TestBuildParser(unittest.TestCase):
         self.assertTrue(args.no_pdf)
 
     def test_rename_no_llm_options(self):
-        """rename n'a PAS d'options LLM (--workers, --api-key, etc.)."""
+        """rename n'a PAS d'options LLM (--workers, etc.)."""
         with self.assertRaises(SystemExit):
             self.parser.parse_args(['rename', '--workers', '5'])
 

@@ -650,12 +650,6 @@ class TestRefineParser(unittest.TestCase):
         args = self.parser.parse_args(['refine'])
         self.assertFalse(args.llm)
 
-    def test_refine_api_key(self):
-        """refine --llm --api-key sk-xxx."""
-        args = self.parser.parse_args(['refine', '--llm', '--api-key', 'sk-test'])
-        self.assertTrue(args.llm)
-        self.assertEqual(args.api_key, 'sk-test')
-
     def test_refine_max(self):
         """refine --llm --max 10."""
         args = self.parser.parse_args(['refine', '--llm', '--max', '10'])

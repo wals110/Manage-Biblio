@@ -19,7 +19,7 @@ from klodo_renamer import compute_new_name
 
 
 class TestRenameLLMParser(unittest.TestCase):
-    """Vérifie que --llm, --api-key et --force sont acceptés par le parser."""
+    """Vérifie que --llm et --force sont acceptés par le parser."""
 
     def setUp(self):
         self.parser = _build_parser()
@@ -29,17 +29,10 @@ class TestRenameLLMParser(unittest.TestCase):
         args = self.parser.parse_args(['rename', '/tmp', '--llm'])
         self.assertTrue(args.llm)
 
-    def test_llm_with_api_key(self):
-        """rename --llm --api-key sk-xxx."""
-        args = self.parser.parse_args(['rename', '/tmp', '--llm', '--api-key', 'sk-test'])
-        self.assertTrue(args.llm)
-        self.assertEqual(args.api_key, 'sk-test')
-
     def test_no_llm_default(self):
         """rename sans --llm → llm=False."""
         args = self.parser.parse_args(['rename', '/tmp'])
         self.assertFalse(args.llm)
-        self.assertIsNone(args.api_key)
 
     def test_force_flag(self):
         """rename --force active le flag."""

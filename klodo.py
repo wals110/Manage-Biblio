@@ -268,7 +268,7 @@ def scan_and_classify(source_dir, profile, api_key,
     log.info("💾 Checkpoint : {}".format(cm.path))
 
     if remaining > 0 and not api_key:
-        log.error("❌ Clé API requise. --api-key sk-xxx ou export SILICONFLOW_API_KEY=sk-xxx")
+        log.error("❌ Clé API requise. export SILICONFLOW_API_KEY=votre-clé")
         sys.exit(1)
 
     if not to_process:
@@ -573,9 +573,9 @@ def cmd_rename(args, profile):
     # Construire le callback LLM si demandé
     llm_callback = None
     if use_llm:
-        api_key = args.api_key or os.environ.get('SILICONFLOW_API_KEY', '')
+        api_key = os.environ.get('SILICONFLOW_API_KEY', '')
         if not api_key:
-            log.error("❌ --llm nécessite une clé API. --api-key sk-xxx ou export SILICONFLOW_API_KEY=sk-xxx")
+            log.error("❌ --llm nécessite une clé API. export SILICONFLOW_API_KEY=votre-clé")
             sys.exit(1)
         n_pages = getattr(args, 'pages', 1)
         llm_callback = _make_llm_rename_callback(
@@ -623,7 +623,7 @@ def cmd_classify(args, profile):
 
     _check_inbox_safety(source, profile.target, profile.fallback)
 
-    api_key = args.api_key or os.environ.get('SILICONFLOW_API_KEY', '')
+    api_key = os.environ.get('SILICONFLOW_API_KEY', '')
     workers = args.workers or profile.defaults.get('workers', 1)
     logs_dir = os.path.join(PROJECT_ROOT, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
@@ -704,9 +704,9 @@ def cmd_refine(args, profile):
     # ── Build LLM callback if requested ──
     llm_callback = None
     if use_llm:
-        api_key = args.api_key or os.environ.get('SILICONFLOW_API_KEY', '')
+        api_key = os.environ.get('SILICONFLOW_API_KEY', '')
         if not api_key:
-            log.error("❌ --llm requiert une clé API (--api-key ou SILICONFLOW_API_KEY)")
+            log.error("❌ --llm nécessite une clé API. export SILICONFLOW_API_KEY=votre-clé")
             sys.exit(1)
         raw_callback = make_refine_llm_callback(
             api_key=api_key,
@@ -790,7 +790,7 @@ def cmd_process(args, profile):
 
     _check_inbox_safety(source, profile.target, profile.fallback)
 
-    api_key = args.api_key or os.environ.get('SILICONFLOW_API_KEY', '')
+    api_key = os.environ.get('SILICONFLOW_API_KEY', '')
     workers = args.workers or profile.defaults.get('workers', 1)
     logs_dir = os.path.join(PROJECT_ROOT, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
@@ -837,7 +837,7 @@ def cmd_process(args, profile):
         llm_callback = None
         if use_llm_rename:
             if not api_key:
-                log.error("❌ --llm nécessite une clé API. --api-key sk-xxx ou export SILICONFLOW_API_KEY=sk-xxx")
+                log.error("❌ --llm nécessite une clé API. export SILICONFLOW_API_KEY=votre-clé")
                 sys.exit(1)
             llm_callback = _make_llm_rename_callback(
                 api_key, profile.llm_endpoint, profile.llm_model,
@@ -1073,8 +1073,6 @@ def _build_parser():
 
     # ── Options LLM ──
     llm_common = argparse.ArgumentParser(add_help=False)
-    llm_common.add_argument('--api-key', default=None,
-                            help='Clé API (ou var SILICONFLOW_API_KEY)')
     llm_common.add_argument('--workers', '-w', type=int, default=0,
                             help='Threads parallèles (0 = défaut du profil)')
     llm_common.add_argument('--max', type=int, default=0,
@@ -1134,8 +1132,6 @@ def _build_parser():
                           help='Désactiver l\'extraction PDF')
     p_rename.add_argument('--llm', action='store_true',
                           help='Activer LLM Vision en fallback (analyse couverture)')
-    p_rename.add_argument('--api-key', default=None,
-                          help='Clé API pour --llm (ou var SILICONFLOW_API_KEY)')
     p_rename.add_argument('--max', type=int, default=0,
                           help='Limiter à N fichiers')
     p_rename.add_argument('--force', action='store_true',
@@ -1153,8 +1149,6 @@ def _build_parser():
                           help='Activer le fallback LLM pour les fichiers non matchés')
     p_refine.add_argument('--vision', action='store_true',
                           help='Escalade vision : envoyer la couverture PDF si le texte échoue (requiert --llm)')
-    p_refine.add_argument('--api-key', default=None,
-                          help='Clé API pour --llm (ou var SILICONFLOW_API_KEY)')
     p_refine.add_argument('--max', type=int, default=0,
                           help='Limiter les appels LLM à N fichiers')
     p_refine.add_argument('-w', '--workers', type=int, default=1,
