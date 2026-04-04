@@ -2,8 +2,8 @@
 """Test 4 : _safe_remove_source + _copy_files — copie, suppression, anti-collision."""
 
 import os
-import sys
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -11,10 +11,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.logger import setup_logger
+
 setup_logger(verbose=False)
 
-from commands.helpers import safe_remove_source as _safe_remove_source
 from commands.helpers import copy_files as _copy_files
+from commands.helpers import safe_remove_source as _safe_remove_source
 
 
 class TestSafeRemoveSource(unittest.TestCase):

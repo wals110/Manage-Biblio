@@ -32,23 +32,27 @@ Prérequis :
     pip3 install pdf2image Pillow pyyaml requests
 """
 
-from lib import __version__
-
+import argparse
 import os
 import sys
-import argparse
+
+from lib import __version__
 
 # ── Ajout du répertoire projet au path ──
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
-from lib.profile import Profile, list_profiles
-from lib.logger import setup_logger, get_logger
-
 from commands import (
-    cmd_process, cmd_classify, cmd_rename, cmd_refine,
-    cmd_profiles, cmd_init, cmd_suggest,
+    cmd_classify,
+    cmd_init,
+    cmd_process,
+    cmd_profiles,
+    cmd_refine,
+    cmd_rename,
+    cmd_suggest,
 )
+from lib.logger import get_logger, setup_logger
+from lib.profile import Profile, list_profiles
 
 log = get_logger()
 

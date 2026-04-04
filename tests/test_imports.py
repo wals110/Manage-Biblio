@@ -9,6 +9,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.logger import setup_logger
+
 setup_logger(verbose=False)
 
 
@@ -16,12 +17,12 @@ class TestImportsLib(unittest.TestCase):
     """Vérifie que chaque module lib/ s'importe correctement."""
 
     def test_logger(self):
-        from lib.logger import setup_logger, get_logger
+        from lib.logger import get_logger, setup_logger
         self.assertIsNotNone(setup_logger)
         self.assertIsNotNone(get_logger)
 
     def test_profile(self):
-        from lib.profile import Profile, list_profiles, init_profile
+        from lib.profile import Profile
         self.assertIsNotNone(Profile)
 
     def test_checkpoint(self):
@@ -34,29 +35,25 @@ class TestImportsLib(unittest.TestCase):
 
     def test_utils(self):
         from lib.utils import (
-            sanitize_filename, build_new_filename, is_name_already_clean,
-            collect_pdf_files, save_report, print_summary,
+            sanitize_filename,
         )
         self.assertIsNotNone(sanitize_filename)
 
     def test_classifier(self):
         from lib.classifier import (
-            classify_by_theme, classify_combined, make_classify_fn,
-            load_keyword_classifier,
+            classify_combined,
         )
         self.assertIsNotNone(classify_combined)
 
     def test_refiner(self):
         from lib.refiner import (
-            load_refinement_rules, scan_and_refine,
-            save_refine_report, print_refine_summary,
+            load_refinement_rules,
         )
         self.assertIsNotNone(load_refinement_rules)
 
     def test_llm_mapper(self):
         from lib.llm_mapper import (
-            LLMMapper, load_suggestions, apply_suggestions,
-            save_suggestions_file,
+            LLMMapper,
         )
         self.assertIsNotNone(LLMMapper)
 

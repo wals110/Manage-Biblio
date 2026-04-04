@@ -11,8 +11,8 @@ from typing import Any
 
 import yaml
 
-from lib.logger import setup_logger, get_logger
 from lib.exceptions import ConfigError
+from lib.logger import get_logger, setup_logger
 
 
 def get_project_root() -> Path:

@@ -5,13 +5,15 @@ Sous-commande refine — Raffinement récursif des sous-catégories.
 import os
 import sys
 
+from commands.helpers import PROJECT_ROOT
 from lib.logger import get_logger
 from lib.refiner import (
-    load_refinement_rules, scan_and_refine,
-    save_refine_report, print_refine_summary,
+    load_refinement_rules,
     make_refine_llm_callback,
+    print_refine_summary,
+    save_refine_report,
+    scan_and_refine,
 )
-from commands.helpers import PROJECT_ROOT
 
 log = get_logger()
 

@@ -13,9 +13,8 @@ import threading
 from collections.abc import Callable
 from datetime import datetime
 
-from lib.logger import get_logger
-
 from lib import __version__
+from lib.logger import get_logger
 
 log = get_logger()
 

@@ -30,18 +30,18 @@ Dépendances : pip install pypdf pdfplumber pyyaml
 
 __version__ = "1.0.0"
 
-import os
-import sys
-import re
+import argparse
 import csv
 import math
-import yaml
+import os
+import re
 import signal
-import argparse
+import sys
 import unicodedata
-from pathlib import Path
-from datetime import datetime
 from collections import Counter, defaultdict
+from datetime import datetime
+
+import yaml
 
 # ── Optionnels ──────────────────────────────────────────────────────────────
 try:
@@ -649,7 +649,7 @@ class KlodoOrganizer:
 
         # Résumé
         print(f"\n{'─'*70}")
-        print(f"  RÉSUMÉ")
+        print("  RÉSUMÉ")
         print(f"{'─'*70}")
         print(f"  Fichiers analysés     : {len(all_files)}")
         print(f"  Déjà bien classés     : {stats['deja_classé']}")

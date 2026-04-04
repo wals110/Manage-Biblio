@@ -5,17 +5,19 @@ Sous-commande process — Pipeline complet (rename → classify → copie → re
 import os
 import sys
 
-from lib import __version__
-from lib.logger import get_logger
-from lib import renamer
-from lib.checkpoint import CheckpointManager
-from lib.refiner import load_refinement_rules, scan_and_refine, print_refine_summary
-from lib.utils import save_report, print_summary
+from commands.classify import scan_and_classify
 from commands.helpers import (
-    PROJECT_ROOT, check_inbox_safety, confirm_execute, execute_classify,
+    PROJECT_ROOT,
+    check_inbox_safety,
+    confirm_execute,
+    execute_classify,
     make_llm_rename_callback,
 )
-from commands.classify import scan_and_classify
+from lib import __version__, renamer
+from lib.checkpoint import CheckpointManager
+from lib.logger import get_logger
+from lib.refiner import load_refinement_rules, print_refine_summary, scan_and_refine
+from lib.utils import print_summary, save_report
 
 log = get_logger()
 

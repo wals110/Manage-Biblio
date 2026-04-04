@@ -35,8 +35,8 @@ Usage:
 import os
 from collections.abc import Callable
 
-from lib.logger import get_logger
 from lib.constants import CONFIDENCE_THRESHOLD, KEYWORD_DEFAULT_SCORE, MAPPER_PENALTY
+from lib.logger import get_logger
 
 log = get_logger()
 
@@ -129,6 +129,7 @@ def load_keyword_classifier(categories_yaml_path: str) -> object | None:
 
     try:
         import yaml
+
         from lib.keyword_classifier import KeywordClassifier
 
         with open(categories_yaml_path, 'r', encoding='utf-8') as f:

@@ -7,11 +7,9 @@ Provides a configured logger with:
 - Log levels: DEBUG (verbose), INFO (normal), WARNING, ERROR
 """
 
+import logging
 import os
 import sys
-import logging
-from typing import Optional
-
 
 # ── Formateurs ──
 

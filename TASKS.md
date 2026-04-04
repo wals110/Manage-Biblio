@@ -9,6 +9,7 @@
 
 ## Someday
 
+- [ ] **Embeddings locaux pour classification** - Remplacer le TF-IDF par `all-MiniLM-L6-v2` (sentence-transformers) pour une compréhension sémantique locale sur le Mac M4 Max. Dépendance ~500 Mo, gain marginal vs LLM Mapper + auto-apprentissage. À évaluer.
 - [ ] **Serveur d'inférence local** - Ollama ou vLLM sur le PC 2× GTX 1080 Ti / 64 Go RAM
 - [ ] **Interface web pour review des suggestions** - UI pour valider/rejeter les suggestions de nouveaux dossiers
 - [ ] **Détection automatique de la langue du PDF**

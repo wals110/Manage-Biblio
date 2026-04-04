@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Test 1 : Compilation de tous les modules Python du projet."""
 
-import os
-import sys
 import glob
+import os
 import py_compile
+import sys
 import unittest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

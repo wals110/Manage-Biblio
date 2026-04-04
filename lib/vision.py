@@ -37,13 +37,12 @@ Usage:
     )
 """
 
-from lib import __version__
 
-import os
-import io
-import re
-import json
 import base64
+import io
+import json
+import os
+import re
 
 try:
     from pdf2image import convert_from_path
@@ -57,9 +56,17 @@ try:
 except ImportError:
     HAS_PIL = False
 
-from lib.logger import get_logger
+from lib.constants import (
+    JPEG_QUALITY,
+    LLM_MAX_RETRIES,
+    LLM_TIMEOUT,
+    LLM_VISION_MAX_TOKENS,
+    PDF_DPI,
+    PDF_EXTRACT_THREADS,
+    PDF_MAX_PAGES,
+)
 from lib.llm_client import LLMClient
-from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_VISION_MAX_TOKENS, PDF_DPI, PDF_EXTRACT_THREADS, PDF_MAX_PAGES, JPEG_QUALITY, CONFIDENCE_THRESHOLD
+from lib.logger import get_logger
 
 log = get_logger()
 

@@ -5,9 +5,9 @@ Sous-commande rename — Renommage 'Titre - Auteur.pdf'.
 import os
 import sys
 
-from lib.logger import get_logger
-from lib import renamer
 from commands.helpers import make_llm_rename_callback
+from lib import renamer
+from lib.logger import get_logger
 
 log = get_logger()
 
