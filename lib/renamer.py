@@ -855,8 +855,10 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
 
     # Écrire le rapport
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    report_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), f"rapport_{ts}.csv")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logs_dir = os.path.join(project_root, 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    report_path = os.path.join(logs_dir, f"rapport_rename_{ts}.csv")
 
     with open(report_path, 'w', newline='', encoding='utf-8') as f:
         w = csv.DictWriter(f, fieldnames=[
@@ -880,17 +882,18 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
     print(f"  Échecs             : {stats.get('ECHEC', 0)}")
     print(f"\n📝 Rapport : {report_path}")
     if to_change:
-        print(f"🚀 Appliquer : python3 klodo_renamer.py {root_path} --execute")
+        print(f"🚀 Appliquer : ./klodo.sh rename {root_path} --execute")
 
     return report_path
 
 
 def execute(root_path: str, report_path: str = None):
     """Applique les renommages depuis le rapport."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logs_dir = os.path.join(project_root, 'logs')
 
     if not report_path:
-        reports = sorted(Path(script_dir).glob('rapport_*.csv'), reverse=True)
+        reports = sorted(Path(logs_dir).glob('rapport_rename_*.csv'), reverse=True)
         if not reports:
             print("❌ Aucun rapport trouvé. Lancez d'abord sans --execute.")
             sys.exit(1)
@@ -905,7 +908,7 @@ def execute(root_path: str, report_path: str = None):
     print(f"🔄 {len(to_rename)} fichiers à renommer.\n")
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_path = os.path.join(script_dir, f"log_renommage_{ts}.csv")
+    log_path = os.path.join(logs_dir, f"log_renommage_{ts}.csv")
     success = errors = skipped = 0
 
     with open(log_path, 'w', newline='', encoding='utf-8') as lf:
