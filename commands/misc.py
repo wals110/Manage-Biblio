@@ -5,11 +5,11 @@ Sous-commandes utilitaires — profiles, init, suggest.
 import os
 import sys
 
-from lib.logger import get_logger
-from lib.profile import Profile, list_profiles, init_profile
-from lib.checkpoint import CheckpointManager
-from lib.llm_mapper import load_suggestions, apply_suggestions, save_suggestions_file
 from commands.helpers import PROJECT_ROOT
+from lib.checkpoint import CheckpointManager
+from lib.llm_mapper import apply_suggestions, load_suggestions, save_suggestions_file
+from lib.logger import get_logger
+from lib.profile import Profile, init_profile, list_profiles
 
 log = get_logger()
 
@@ -42,7 +42,7 @@ def cmd_init(args) -> None:
         sys.exit(1)
 
     try:
-        p = init_profile(name, target)
+        init_profile(name, target)
         log.info("\n✅ Profil '{}' créé".format(name))
         log.info("   Répertoire : profiles/{}/".format(name))
         log.info("   Cible      : {}".format(target))

@@ -12,7 +12,6 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from lib.classifier import classify_by_theme, classify_combined
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
 # ═══════════════════════════════════════════════════════════════════════════
@@ -92,7 +91,7 @@ class TestClassifyCombinedEnrichedTitle(unittest.TestCase):
 
         vision = {'theme': 'Unknown', 'confidence': 0.3, 'title': 'Linear Algebra Done Right'}
 
-        result = classify_combined(
+        classify_combined(
             vision, '1234567890.pdf', THEME_MAPPING,
             classifier=mock_kw)
 
@@ -115,7 +114,7 @@ class TestClassifyCombinedEnrichedTitle(unittest.TestCase):
             'title': 'Deep Learning Fundamentals',
         }
 
-        result = classify_combined(
+        classify_combined(
             vision, 'doc.pdf', THEME_MAPPING,
             classifier=mock_kw)
 

@@ -7,7 +7,7 @@ connection pooling via requests.Session.
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from lib.llm_client import LLMClient
 
@@ -43,7 +43,7 @@ class TestLLMClientSuccess(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_call_text_success(self, mock_req):
         """Appel texte 200 → retourne le contenu."""
-        mock_session = _setup_mock_req(mock_req)
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'Réponse LLM')
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
@@ -274,7 +274,7 @@ class TestLLMClientRetryErrors(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_timeout_then_success(self, mock_req, mock_time):
         """Timeout → retry 2s → succès."""
-        mock_session = _setup_mock_req(mock_req)
+        _setup_mock_req(mock_req)
         mock_req.post.side_effect = [
             mock_req.exceptions.Timeout('timeout'),
             _make_response(200, 'ok'),

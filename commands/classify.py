@@ -3,18 +3,24 @@ Sous-commande classify — LLM Vision + classement thématique.
 """
 
 import os
-import sys
 import signal
+import sys
 import threading
 
-from lib.logger import get_logger
+from commands.helpers import (
+    PROJECT_ROOT,
+    check_inbox_safety,
+    confirm_execute,
+    execute_classify,
+    load_classifiers,
+    process_single_file,
+    run_processing,
+    save_mapper_results,
+)
 from lib.checkpoint import CheckpointManager
 from lib.classifier import make_classify_fn
-from lib.utils import collect_pdf_files, save_report, print_summary
-from commands.helpers import (
-    PROJECT_ROOT, check_inbox_safety, confirm_execute, execute_classify,
-    process_single_file, load_classifiers, run_processing, save_mapper_results,
-)
+from lib.logger import get_logger
+from lib.utils import collect_pdf_files, print_summary, save_report
 
 log = get_logger()
 
@@ -173,7 +179,7 @@ def cmd_classify(args, profile) -> None:
     if args.reclassify:
         classify_fn = make_classify_fn(profile.theme_mapping)
         min_confidence = profile.defaults.get('min_confidence', 0.5)
-        count = cm.reclassify(classify_fn, min_confidence=min_confidence)
+        cm.reclassify(classify_fn, min_confidence=min_confidence)
         if not args.execute:
             results = list(cm.load().values())
             cost_per_call = profile.defaults.get('cost_per_call', 0.00034)

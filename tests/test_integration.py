@@ -12,25 +12,27 @@ Si le dossier est vide, les tests sont skippés automatiquement.
 """
 
 import os
-import sys
 import shutil
+import sys
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 import yaml
-from lib.logger import setup_logger, get_logger
+
+from lib.logger import get_logger, setup_logger
+
 setup_logger(verbose=False)
 
-from lib.classifier import classify_by_theme, classify_combined, load_keyword_classifier
-from lib.utils import collect_pdf_files
 from commands.helpers import (
-    process_single_file, execute_classify, check_inbox_safety,
-    safe_remove_source, copy_files,
+    check_inbox_safety,
+    execute_classify,
+    process_single_file,
 )
+from lib.classifier import classify_by_theme, load_keyword_classifier
 
 log = get_logger()
 
@@ -150,7 +152,6 @@ class TestIntegrationClassify(unittest.TestCase):
             self.skipTest("Pas de PDFs de test")
 
         pdf_path = self.test_pdfs[0]
-        filename = os.path.basename(pdf_path)
 
         # Simuler une réponse LLM Vision avec un thème reconnu
         mock_vision.return_value = _mock_vision_response(

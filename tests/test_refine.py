@@ -2,8 +2,8 @@
 """Tests pour le module refiner v2 — parcours récursif + matching sous-dossiers."""
 
 import os
-import sys
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -11,18 +11,17 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.logger import setup_logger
+
 setup_logger(verbose=False)
 
 from lib.refiner import (
+    _normalize_dirname,
     load_refinement_rules,
     match_keywords,
     match_subdirs,
-    scan_and_refine,
     save_refine_report,
-    print_refine_summary,
-    _normalize_dirname,
+    scan_and_refine,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════
 # Helpers
@@ -791,8 +790,8 @@ class TestScanAndRefineWorkers(unittest.TestCase):
 
         mock_llm.stats = {'calls': 0, 'successes': 0, 'failures': 0}
 
-        results = scan_and_refine(self.tmp, [], execute=False,
-                                  llm_callback=mock_llm, workers=2)
+        scan_and_refine(self.tmp, [], execute=False,
+                        llm_callback=mock_llm, workers=2)
 
         # Deep Learning Book.pdf matched by subdir name → no LLM
         # unknown-stuff.pdf → LLM called

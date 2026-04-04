@@ -31,16 +31,15 @@ try:
 except ImportError:
     __version__ = "0.0.0"
 
-import os
-import sys
-import re
+import argparse
 import csv
 import json
+import os
+import re
+import sys
 import time
-import signal
-import argparse
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import unquote
 
 # ---------------------------------------------------------------------------
@@ -467,7 +466,7 @@ def _pdf_worker(pdf_path: str, result_dict):
             if not text.strip():
                 return
 
-            lines = [l.strip() for l in text.split('\n') if l.strip()]
+            lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
             skip = _re.compile(
                 r'^(page\s*\d|copyright|©|isbn|table\s*(des|of)|all\s*rights|'
                 r'printed|www\.|http|edition|preface|avant-propos|sommaire|'
@@ -864,7 +863,7 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
     to_change = [r for r in results if r['action'] != 'INCHANGE' and r['action'] != 'ECHEC']
 
     print(f"\n{'='*60}")
-    print(f"📊 RÉSUMÉ")
+    print("📊 RÉSUMÉ")
     print(f"{'='*60}")
     print(f"  Total PDFs         : {total}")
     print(f"  Déjà propres       : {stats.get('INCHANGE', 0)}")
@@ -884,7 +883,6 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
 
 def execute(root_path: str, report_path: str = None):
     """Applique les renommages depuis le rapport."""
-    root = Path(root_path)
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     if not report_path:

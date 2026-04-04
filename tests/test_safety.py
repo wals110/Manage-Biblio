@@ -2,8 +2,8 @@
 """Test 3 : _check_inbox_safety — empêche inbox = target ou inbox = fallback."""
 
 import os
-import sys
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -11,6 +11,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.logger import setup_logger
+
 setup_logger(verbose=False)
 
 from commands.helpers import check_inbox_safety as _check_inbox_safety
