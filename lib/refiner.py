@@ -28,11 +28,17 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Callable
 from datetime import datetime
 
-from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_MAX_TOKENS, MAPPER_MIN_CONFIDENCE, PDF_DPI
+from lib.constants import (
+    LLM_MAX_RETRIES,
+    LLM_MAX_TOKENS,
+    LLM_TIMEOUT,
+    MAPPER_MIN_CONFIDENCE,
+    PDF_DPI,
+)
 from lib.logger import get_logger
+from lib.utils import sanitize_for_prompt
 
 log = get_logger()
 
@@ -354,7 +360,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
 
         subdirs_text = "\n".join("- {}".format(s) for s in subdirs)
         prompt_text = REFINE_VISION_PROMPT.format(
-            filename=filename,
+            filename=sanitize_for_prompt(filename),
             current_folder=current_folder or '(racine)',
             subdirs_list=subdirs_text,
         )
@@ -396,7 +402,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
         # ── Étape 1 : Texte seul ──
         subdirs_text = "\n".join("- {}".format(s) for s in subdirs)
         prompt = REFINE_LLM_PROMPT.format(
-            filename=filename,
+            filename=sanitize_for_prompt(filename),
             current_folder=current_folder or '(racine)',
             subdirs_list=subdirs_text,
         )

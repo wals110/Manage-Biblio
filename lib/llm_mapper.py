@@ -33,8 +33,8 @@ Usage:
     mapper.save_suggestions(logs_dir)
 """
 
-import os
 import json
+import os
 from datetime import datetime
 
 try:
@@ -43,9 +43,17 @@ try:
 except ImportError:
     HAS_YAML = False
 
-from lib.logger import get_logger
+from lib.constants import (
+    LLM_MAX_RETRIES,
+    LLM_MAX_TOKENS,
+    LLM_TIMEOUT,
+    MAPPER_MIN_CONFIDENCE,
+    NO_FOLDER_MARKER,
+    UNSORTED_FOLDER,
+)
 from lib.llm_client import LLMClient
-from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_MAX_TOKENS, MAPPER_MIN_CONFIDENCE, NO_FOLDER_MARKER, UNSORTED_FOLDER
+from lib.logger import get_logger
+from lib.utils import sanitize_for_prompt
 
 log = get_logger()
 
@@ -267,9 +275,9 @@ class LLMMapper:
         # type: (str, str, str) -> dict | None
         """Appel LLM pour mapper un thème vers un dossier existant."""
         prompt = MAPPER_PROMPT_TEMPLATE.format(
-            theme=theme,
-            title=title or '(inconnu)',
-            filename=filename or '(inconnu)',
+            theme=sanitize_for_prompt(theme),
+            title=sanitize_for_prompt(title),
+            filename=sanitize_for_prompt(filename),
             folders_list=self._folders_text,
             no_folder_marker=NO_FOLDER_MARKER,
         )
@@ -286,8 +294,8 @@ class LLMMapper:
             return
 
         prompt = SUGGEST_PROMPT_TEMPLATE.format(
-            theme=theme,
-            title=title or '(inconnu)',
+            theme=sanitize_for_prompt(theme),
+            title=sanitize_for_prompt(title),
             folders_list=self._folders_text,
         )
 

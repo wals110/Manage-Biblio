@@ -3,6 +3,7 @@
 Shared utility functions for Klodo project.
 
 Contains:
+  - sanitize_for_prompt() — clean text before LLM prompt interpolation
   - sanitize_filename() — safe filename cleaning
   - build_new_filename() — format "Titre - Auteur.pdf"
   - title_case_smart() — intelligent capitalization
@@ -14,11 +15,11 @@ Contains:
 Python 3.13 compatible with modern type hints.
 """
 
-import os
 import csv
+import os
 import re
-from datetime import datetime
 from collections import Counter
+from datetime import datetime
 
 from lib.logger import get_logger
 
@@ -28,6 +29,32 @@ log = get_logger()
 # ════════════════════════════════════════════════════════════════════════════
 # FILENAME SANITIZATION
 # ════════════════════════════════════════════════════════════════════════════
+
+def sanitize_for_prompt(text: str, max_length: int = 200) -> str:
+    """
+    Nettoie un texte (nom de fichier, titre) avant interpolation dans un prompt LLM.
+
+    Supprime :
+      - Caractères de contrôle (U+0000–U+001F)
+      - Accolades { } (cassent les templates .format())
+      - Guillemets doubles (cassent le JSON dans le prompt)
+      - Retours à la ligne et tabulations
+
+    Tronque à max_length caractères pour limiter les tokens.
+    """
+    if not text:
+        return '(inconnu)'
+    # Supprimer caractères de contrôle et retours à la ligne
+    text = re.sub(r'[\x00-\x1f\x7f]', ' ', text)
+    # Supprimer accolades (cassent .format()) et guillemets doubles (cassent JSON)
+    text = re.sub(r'[{}""]', '', text)
+    # Normaliser espaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    # Tronquer
+    if len(text) > max_length:
+        text = text[:max_length].rsplit(' ', 1)[0]
+    return text or '(inconnu)'
+
 
 def sanitize_filename(text: str) -> str:
     """
@@ -306,7 +333,7 @@ def print_summary(results: list[dict], cost_per_call: float = 0.00034):
     cost_estimate = api_calls * cost_per_call  # ~1420 input + 120 output tokens par image
 
     log.info(f"\n{'='*60}")
-    log.info(f" RÉSUMÉ — Klodo Report")
+    log.info(" RÉSUMÉ — Klodo Report")
     log.info(f"{'='*60}")
     log.info(f"  Total traités      : {total}")
     log.info(f"  ✅ Classifiés       : {classified} ({classified/total*100:.1f}%)")
@@ -330,13 +357,13 @@ def print_summary(results: list[dict], cost_per_call: float = 0.00034):
     themes = Counter(r.get('theme_detecte', '') for r in results
                      if r.get('theme_detecte'))
     if themes:
-        log.info(f"\n  Top thèmes détectés :")
+        log.info("\n  Top thèmes détectés :")
         for theme, count in themes.most_common(15):
             log.info(f"    {count:4d}  {theme}")
 
     # Top destinations
     dests = Counter(r['destination'] for r in results if r['destination'])
     if dests:
-        log.info(f"\n  Top destinations :")
+        log.info("\n  Top destinations :")
         for dest, count in dests.most_common(10):
             log.info(f"    {count:4d}  {dest}")
