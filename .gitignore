@@ -18,6 +18,10 @@ venv/
 *.tmp
 *.png
 
+# Profils personnels (chemins locaux, configs utilisateur)
+profiles/*
+!profiles/template/
+
 # Review interne
 review/
 

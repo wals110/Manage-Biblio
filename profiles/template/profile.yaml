@@ -2,6 +2,8 @@
 # Profil : default
 # Description : Bibliothèque principale (~19 000 PDFs, 9 sections)
 # ═══════════════════════════════════════════════════════════════════════════
+# Copier ce fichier vers profile.yaml et adapter les chemins :
+#   cp profile.yaml.example profile.yaml
 
 name: default
 description: "Bibliothèque principale"
@@ -32,6 +34,3 @@ defaults:
   # LLM Mapper — résolution intelligente des thèmes inconnus
   llm_mapper: true               # Activer/désactiver le mapper
   mapper_min_confidence: 0.6     # Confiance minimum pour accepter le mapping
-
-
-
