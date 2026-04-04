@@ -6,16 +6,13 @@ la copie de fichiers et le traitement parallèle.
 """
 
 import os
-import sys
 import time
 import shutil
-import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from lib.logger import get_logger
 from lib.vision import analyze_cover
-from lib.checkpoint import CheckpointManager
 from lib.classifier import classify_combined
 from lib.llm_mapper import LLMMapper
 from lib.constants import CONFIDENCE_THRESHOLD, MAPPER_MIN_CONFIDENCE

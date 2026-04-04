@@ -30,7 +30,6 @@ import shutil
 import time
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
 
 from lib.constants import LLM_TIMEOUT, LLM_MAX_RETRIES, LLM_MAX_TOKENS, MAPPER_MIN_CONFIDENCE, PDF_DPI
 from lib.logger import get_logger

@@ -32,12 +32,11 @@ Usage:
     classify_fn = make_classify_fn(theme_mapping)
 """
 
-import sys
 import os
 from collections.abc import Callable
 
 from lib.logger import get_logger
-from lib.constants import CONFIDENCE_THRESHOLD, KEYWORD_DEFAULT_SCORE, MAPPER_PENALTY, MAPPER_MIN_CONFIDENCE
+from lib.constants import CONFIDENCE_THRESHOLD, KEYWORD_DEFAULT_SCORE, MAPPER_PENALTY
 
 log = get_logger()
 
