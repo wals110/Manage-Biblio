@@ -2,7 +2,8 @@
 Tests pour lib/llm_client.py — Client LLM unifié.
 
 Couvre : succès, retry 429, retry erreur serveur, timeout,
-échec total, appel vision, call_messages, header Authorization.
+échec total, appel vision, call_messages, header Authorization,
+connection pooling via requests.Session.
 """
 
 import unittest
@@ -22,14 +23,28 @@ def _make_response(status_code=200, content='{"result": "ok"}'):
     return resp
 
 
+def _setup_mock_req(mock_req):
+    """Configure mock_req pour que Session() retourne un mock avec .post = mock_req.post.
+
+    Cela permet aux tests de continuer à vérifier mock_req.post tout en passant
+    par la session (connection pooling).
+    """
+    mock_session = MagicMock()
+    mock_session.post = mock_req.post
+    mock_session.headers = {}
+    mock_req.Session.return_value = mock_session
+    mock_req.exceptions.Timeout = type('Timeout', (Exception,), {})
+    return mock_session
+
+
 class TestLLMClientSuccess(unittest.TestCase):
     """Appels réussis."""
 
     @patch('lib.llm_client.req_lib')
     def test_call_text_success(self, mock_req):
         """Appel texte 200 → retourne le contenu."""
+        mock_session = _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'Réponse LLM')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         result = client.call('Quel est le thème ?')
@@ -49,8 +64,8 @@ class TestLLMClientSuccess(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_call_vision_success(self, mock_req):
         """Appel vision avec images → payload multimodal correct."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, '{"title": "Test"}')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         result = client.call('Analyse cette couverture', images_b64=['base64data'])
@@ -68,8 +83,8 @@ class TestLLMClientSuccess(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_call_vision_multi_images(self, mock_req):
         """Appel vision avec plusieurs images → toutes présentes dans le payload."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'ok')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         client.call('Prompt', images_b64=['img1', 'img2', 'img3'])
@@ -85,8 +100,8 @@ class TestLLMClientSuccess(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_call_messages_success(self, mock_req):
         """call_messages avec payload pré-construit."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'réponse')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         messages = [{"role": "user", "content": "test"}]
@@ -100,8 +115,8 @@ class TestLLMClientSuccess(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_custom_max_tokens_temperature(self, mock_req):
         """max_tokens et temperature overridés par appel."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'ok')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         client.call('test', max_tokens=500, temperature=0.8)
@@ -112,44 +127,73 @@ class TestLLMClientSuccess(unittest.TestCase):
 
 
 class TestLLMClientHeaders(unittest.TestCase):
-    """Construction des headers HTTP."""
+    """Construction des headers HTTP via Session."""
 
     @patch('lib.llm_client.req_lib')
     def test_auth_header_with_api_key(self, mock_req):
-        """Clé API fournie → header Authorization présent."""
+        """Clé API fournie → header Authorization sur la session."""
+        mock_session = _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response()
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-mykey', 'http://api.test/v1', 'model-1')
         client.call('test')
 
-        headers = mock_req.post.call_args[1]['headers']
-        self.assertEqual(headers['Authorization'], 'Bearer sk-mykey')
-        self.assertEqual(headers['Content-Type'], 'application/json')
+        # Les headers sont mis sur la session, pas passés à chaque post()
+        self.assertEqual(mock_session.headers['Authorization'], 'Bearer sk-mykey')
+        self.assertEqual(mock_session.headers['Content-Type'], 'application/json')
 
     @patch('lib.llm_client.req_lib')
     def test_no_auth_header_without_api_key(self, mock_req):
         """Pas de clé API → pas de header Authorization (Ollama local)."""
+        mock_session = _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response()
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('', 'http://localhost:11434/v1', 'model-1')
         client.call('test')
 
-        headers = mock_req.post.call_args[1]['headers']
-        self.assertNotIn('Authorization', headers)
+        self.assertNotIn('Authorization', mock_session.headers)
 
     @patch('lib.llm_client.req_lib')
     def test_no_auth_header_none_api_key(self, mock_req):
         """api_key=None → pas de header Authorization."""
+        mock_session = _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response()
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient(None, 'http://localhost:11434/v1', 'model-1')
         client.call('test')
 
-        headers = mock_req.post.call_args[1]['headers']
-        self.assertNotIn('Authorization', headers)
+        self.assertNotIn('Authorization', mock_session.headers)
+
+
+class TestLLMClientSession(unittest.TestCase):
+    """Connection pooling via requests.Session."""
+
+    @patch('lib.llm_client.req_lib')
+    def test_session_reused_across_calls(self, mock_req):
+        """La même session est réutilisée pour plusieurs appels."""
+        _setup_mock_req(mock_req)
+        mock_req.post.return_value = _make_response(200, 'ok')
+
+        client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
+        client.call('premier appel')
+        client.call('deuxième appel')
+
+        # Session créée une seule fois
+        mock_req.Session.assert_called_once()
+        # Deux appels POST sur la même session
+        self.assertEqual(mock_req.post.call_count, 2)
+
+    @patch('lib.llm_client.req_lib')
+    def test_session_created_lazily(self, mock_req):
+        """La session n'est pas créée au constructeur, seulement au premier appel."""
+        _setup_mock_req(mock_req)
+
+        client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
+        mock_req.Session.assert_not_called()
+
+        mock_req.post.return_value = _make_response(200, 'ok')
+        client.call('test')
+        mock_req.Session.assert_called_once()
 
 
 class TestLLMClientRetry429(unittest.TestCase):
@@ -159,10 +203,10 @@ class TestLLMClientRetry429(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_429_then_success(self, mock_req, mock_time):
         """429 au premier appel → backoff → succès au deuxième."""
+        _setup_mock_req(mock_req)
         resp_429 = _make_response(429)
         resp_200 = _make_response(200, 'succès')
         mock_req.post.side_effect = [resp_429, resp_200]
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         result = client.call('test')
@@ -176,9 +220,9 @@ class TestLLMClientRetry429(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_429_backoff_escalation(self, mock_req, mock_time):
         """429 trois fois → backoff 2s, 4s, puis None."""
+        _setup_mock_req(mock_req)
         resp_429 = _make_response(429)
         mock_req.post.return_value = resp_429
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1',
                            max_retries=3)
@@ -194,9 +238,9 @@ class TestLLMClientRetry429(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_429_backoff_capped_at_30(self, mock_req, mock_time):
         """Le backoff est plafonné à 30 secondes."""
+        _setup_mock_req(mock_req)
         resp_429 = _make_response(429)
         mock_req.post.return_value = resp_429
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1',
                            max_retries=6)
@@ -214,10 +258,10 @@ class TestLLMClientRetryErrors(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_500_then_success(self, mock_req, mock_time):
         """Erreur 500 → retry 2s → succès."""
+        _setup_mock_req(mock_req)
         resp_500 = _make_response(500, 'Internal Server Error')
         resp_200 = _make_response(200, 'ok')
         mock_req.post.side_effect = [resp_500, resp_200]
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         result = client.call('test')
@@ -230,7 +274,7 @@ class TestLLMClientRetryErrors(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_timeout_then_success(self, mock_req, mock_time):
         """Timeout → retry 2s → succès."""
-        mock_req.exceptions.Timeout = type('Timeout', (Exception,), {})
+        mock_session = _setup_mock_req(mock_req)
         mock_req.post.side_effect = [
             mock_req.exceptions.Timeout('timeout'),
             _make_response(200, 'ok'),
@@ -247,7 +291,7 @@ class TestLLMClientRetryErrors(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_generic_exception_then_success(self, mock_req, mock_time):
         """Exception réseau → retry 2s → succès."""
-        mock_req.exceptions.Timeout = type('Timeout', (Exception,), {})
+        _setup_mock_req(mock_req)
         mock_req.post.side_effect = [
             ConnectionError('network down'),
             _make_response(200, 'ok'),
@@ -263,9 +307,9 @@ class TestLLMClientRetryErrors(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_all_retries_exhausted(self, mock_req, mock_time):
         """3 erreurs consécutives → None."""
+        _setup_mock_req(mock_req)
         resp_500 = _make_response(500, 'error')
         mock_req.post.return_value = resp_500
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1',
                            max_retries=3)
@@ -278,7 +322,7 @@ class TestLLMClientRetryErrors(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_mixed_errors_then_success(self, mock_req, mock_time):
         """429 → timeout → 200 → succès."""
-        mock_req.exceptions.Timeout = type('Timeout', (Exception,), {})
+        _setup_mock_req(mock_req)
         mock_req.post.side_effect = [
             _make_response(429),
             mock_req.exceptions.Timeout('timeout'),
@@ -298,8 +342,8 @@ class TestLLMClientOverrides(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_timeout_override(self, mock_req):
         """timeout passé à call() override celui du constructeur."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'ok')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1',
                            timeout=30)
@@ -310,8 +354,8 @@ class TestLLMClientOverrides(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_default_timeout_used(self, mock_req):
         """Sans override, le timeout du constructeur est utilisé."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, 'ok')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1',
                            timeout=45)
@@ -323,8 +367,8 @@ class TestLLMClientOverrides(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_max_retries_override(self, mock_req, mock_time):
         """max_retries passé à call() override celui du constructeur."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(500, 'error')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1',
                            max_retries=3)
@@ -354,8 +398,8 @@ class TestLLMClientEdgeCases(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_response_stripped(self, mock_req):
         """Le contenu de la réponse est stripped (espaces, newlines)."""
+        _setup_mock_req(mock_req)
         mock_req.post.return_value = _make_response(200, '  résultat\n\n ')
-        mock_req.exceptions.Timeout = Exception
 
         client = LLMClient('sk-test', 'http://api.test/v1', 'model-1')
         result = client.call('test')

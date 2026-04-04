@@ -267,9 +267,19 @@ class TestLLMMapperVision(unittest.TestCase):
         self.assertEqual(mapper.vision_calls, 0)
         self.assertEqual(mapper.vision_successes, 0)
 
+    def _setup_mock_req(self, mock_req):
+        """Configure mock_req pour le connection pooling (Session)."""
+        mock_session = MagicMock()
+        mock_session.post = mock_req.post
+        mock_session.headers = {}
+        mock_req.Session.return_value = mock_session
+        mock_req.exceptions.Timeout = type('Timeout', (Exception,), {})
+        return mock_session
+
     @patch('lib.llm_client.req_lib')
     def test_resolve_without_vision_no_escalade(self, mock_req):
         """Sans vision=True, pas d'escalade même si pdf_path fourni."""
+        self._setup_mock_req(mock_req)
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
@@ -287,6 +297,7 @@ class TestLLMMapperVision(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_resolve_with_vision_escalade(self, mock_req):
         """Avec vision=True et pdf_path, escalade après échec texte."""
+        self._setup_mock_req(mock_req)
         # Premier appel (texte) → _AUCUN
         text_resp = MagicMock()
         text_resp.status_code = 200
@@ -314,6 +325,7 @@ class TestLLMMapperVision(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_resolve_vision_also_fails(self, mock_req):
         """Vision activée mais échoue aussi → suggestion générée."""
+        self._setup_mock_req(mock_req)
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
@@ -333,6 +345,7 @@ class TestLLMMapperVision(unittest.TestCase):
     @patch('lib.llm_client.req_lib')
     def test_resolve_text_success_no_vision(self, mock_req):
         """Si le text mapper réussit, pas d'escalade vision."""
+        self._setup_mock_req(mock_req)
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {

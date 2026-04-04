@@ -61,6 +61,7 @@ class LLMClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.verbose = verbose
+        self._session = None  # type: Optional[req_lib.Session]
 
     def call(self, prompt, images_b64=None,
              max_tokens=150, temperature=0.1,
@@ -88,12 +89,11 @@ class LLMClient:
         effective_timeout = timeout if timeout is not None else self.timeout
         effective_retries = max_retries if max_retries is not None else self.max_retries
 
-        headers = self._build_headers()
         messages = self._build_messages(prompt, images_b64)
         payload = self._build_payload(messages, max_tokens, temperature)
 
         return self._send_with_retry(
-            payload, headers, effective_timeout, effective_retries)
+            payload, effective_timeout, effective_retries)
 
     def call_messages(self, messages, max_tokens=150, temperature=0.1,
                       timeout=None, max_retries=None):
@@ -121,11 +121,27 @@ class LLMClient:
         effective_timeout = timeout if timeout is not None else self.timeout
         effective_retries = max_retries if max_retries is not None else self.max_retries
 
-        headers = self._build_headers()
         payload = self._build_payload(messages, max_tokens, temperature)
 
         return self._send_with_retry(
-            payload, headers, effective_timeout, effective_retries)
+            payload, effective_timeout, effective_retries)
+
+    # ── Session HTTP (connection pooling) ─────────────────────────────
+
+    def _get_session(self):
+        # type: () -> req_lib.Session
+        """Retourne une session HTTP réutilisable (keep-alive, connection pooling).
+
+        Initialisée en lazy à la première requête, avec les headers communs
+        pré-configurés pour éviter de les recréer à chaque appel.
+        """
+        if self._session is None:
+            self._session = req_lib.Session()
+            self._session.headers.update({"Content-Type": "application/json"})
+            if self.api_key:
+                self._session.headers["Authorization"] = "Bearer {}".format(
+                    self.api_key)
+        return self._session
 
     # ── Construction du payload ─────────────────────────────────────────
 
@@ -166,8 +182,8 @@ class LLMClient:
 
     # ── Envoi avec retry ────────────────────────────────────────────────
 
-    def _send_with_retry(self, payload, headers, timeout, max_retries):
-        # type: (Dict, Dict[str, str], int, int) -> Optional[str]
+    def _send_with_retry(self, payload, timeout, max_retries):
+        # type: (Dict, int, int) -> Optional[str]
         """
         Envoie la requête HTTP avec retry et backoff.
 
@@ -177,11 +193,12 @@ class LLMClient:
           - Timeout / exceptions : retry après 2s
           - Après max_retries tentatives, retourne None.
         """
+        session = self._get_session()
+
         for attempt in range(max_retries):
             try:
-                resp = req_lib.post(
+                resp = session.post(
                     self.endpoint,
-                    headers=headers,
                     json=payload,
                     timeout=timeout,
                 )
