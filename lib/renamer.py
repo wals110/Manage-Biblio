@@ -781,8 +781,11 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
     print(f"\n📚 Bibliothèque : {root_path}")
     print(f"📄 PDFs trouvés : {total_found}" + (f" (limité à {total})" if max_files > 0 else "") + "\n")
 
-    # Charger le cache ISBN
-    cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ISBN_CACHE_FILE)
+    # Charger le cache ISBN (dans logs/ à la racine du projet)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logs_dir = os.path.join(project_root, 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    cache_path = os.path.join(logs_dir, ISBN_CACHE_FILE)
     isbn_cache = _load_isbn_cache(cache_path) if enable_online else {}
 
     results = []

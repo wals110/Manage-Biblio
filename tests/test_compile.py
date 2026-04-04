@@ -47,15 +47,6 @@ class TestCompilation(unittest.TestCase):
                 err = self._compile_file(mod)
                 self.assertIsNone(err, err)
 
-    def test_renommage_modules(self):
-        """Les modules renommage/*.py compilent."""
-        ren_dir = os.path.join(PROJECT_ROOT, 'renommage')
-        modules = glob.glob(os.path.join(ren_dir, '*.py'))
-        for mod in sorted(modules):
-            with self.subTest(module=os.path.basename(mod)):
-                err = self._compile_file(mod)
-                self.assertIsNone(err, err)
-
 
 if __name__ == '__main__':
     unittest.main()

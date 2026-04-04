@@ -7,6 +7,7 @@ import sys
 
 from lib import __version__
 from lib.logger import get_logger
+from lib import renamer
 from lib.checkpoint import CheckpointManager
 from lib.refiner import load_refinement_rules, scan_and_refine, print_refine_summary
 from lib.utils import save_report, print_summary
@@ -57,15 +58,6 @@ def cmd_process(args, profile) -> None:
         log.info("  Étape {}/{} : Renommage".format(step, n_steps))
         log.info("━" * 40)
 
-        # Importer klodo_renamer dynamiquement
-        renamer_dir = os.path.join(PROJECT_ROOT, 'renommage')
-        sys.path.insert(0, renamer_dir)
-        try:
-            import klodo_renamer
-        except ImportError:
-            log.error("❌ klodo_renamer.py introuvable dans renommage/")
-            sys.exit(1)
-
         enable_online = not getattr(args, 'no_online', False)
         enable_pdf = not getattr(args, 'no_pdf', False)
         use_llm_rename = getattr(args, 'llm', False)
@@ -82,13 +74,13 @@ def cmd_process(args, profile) -> None:
                 api_key, profile.llm_endpoint, profile.llm_model,
                 verbose=args.verbose, n_pages=n_pages)
 
-        report_path = klodo_renamer.scan(
+        report_path = renamer.scan(
             source, enable_online=enable_online, enable_pdf=enable_pdf,
             llm_callback=llm_callback, max_files=getattr(args, 'max', 0),
             force=force, verbose=args.verbose)
 
         if args.execute:
-            klodo_renamer.execute(source, report_path)
+            renamer.execute(source, report_path)
             log.info("  ✅ Renommage appliqué.")
         else:
             log.info("  📋 Rapport renommage : {}".format(report_path))

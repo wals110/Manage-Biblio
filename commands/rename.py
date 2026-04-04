@@ -6,26 +6,18 @@ import os
 import sys
 
 from lib.logger import get_logger
-from commands.helpers import PROJECT_ROOT, make_llm_rename_callback
+from lib import renamer
+from commands.helpers import make_llm_rename_callback
 
 log = get_logger()
 
 
 def cmd_rename(args, profile) -> None:
     # type: (object, object)
-    """Sous-commande rename : renommage 'Titre - Auteur.pdf' via klodo_renamer."""
+    """Sous-commande rename : renommage 'Titre - Auteur.pdf'."""
     source = args.path or profile.inbox
     if not source or not os.path.isdir(source):
         log.error("❌ Dossier introuvable : {}".format(source))
-        sys.exit(1)
-
-    # Importer klodo_renamer dynamiquement
-    renamer_dir = os.path.join(PROJECT_ROOT, 'renommage')
-    sys.path.insert(0, renamer_dir)
-    try:
-        import klodo_renamer
-    except ImportError:
-        log.error("❌ klodo_renamer.py introuvable dans renommage/")
         sys.exit(1)
 
     enable_online = not (hasattr(args, 'no_online') and args.no_online)
@@ -61,11 +53,11 @@ def cmd_rename(args, profile) -> None:
         force_label))
 
     # Scan (dry-run)
-    report_path = klodo_renamer.scan(
+    report_path = renamer.scan(
         source, enable_online=enable_online, enable_pdf=enable_pdf,
         llm_callback=llm_callback, max_files=max_files, force=force,
         verbose=args.verbose)
 
     # Exécution si demandée
     if args.execute:
-        klodo_renamer.execute(source, report_path)
+        renamer.execute(source, report_path)

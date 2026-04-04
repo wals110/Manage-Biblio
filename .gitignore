@@ -1,7 +1,4 @@
-# Cache ISBN
-renommage/isbn_cache.json
-
-# Rapports et logs générés
+# Rapports, logs et caches générés
 logs/
 
 # Python / uv
@@ -30,4 +27,3 @@ tests/fixtures/pdfs/*.pdf
 
 # Claude
 .claude/
-renommage/rapport_*.csv

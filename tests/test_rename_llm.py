@@ -9,13 +9,12 @@ import unittest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'renommage'))
 
 from lib.logger import setup_logger
 setup_logger(verbose=False)
 
 from klodo import _build_parser
-from klodo_renamer import compute_new_name
+from lib.renamer import compute_new_name
 
 
 class TestRenameLLMParser(unittest.TestCase):
@@ -200,7 +199,7 @@ class TestScanForce(unittest.TestCase):
 
     def test_without_force_skips_clean(self):
         """Sans --force, les noms propres sont ignorés (INCHANGE)."""
-        from klodo_renamer import scan
+        from lib.renamer import scan
         report = scan(self.tmp, enable_online=False, enable_pdf=False,
                       force=False)
         # Le rapport ne contient pas le fichier propre (il est INCHANGE)
@@ -211,7 +210,7 @@ class TestScanForce(unittest.TestCase):
 
     def test_with_force_analyses_clean(self):
         """Avec --force, même les noms propres sont re-analysés."""
-        from klodo_renamer import scan
+        from lib.renamer import scan
         report = scan(self.tmp, enable_online=False, enable_pdf=False,
                       force=True)
         import csv
@@ -225,7 +224,7 @@ class TestScanForce(unittest.TestCase):
             return {'title': 'Introduction to Algorithms Third Edition',
                     'author': 'Thomas H. Cormen'}
 
-        from klodo_renamer import scan
+        from lib.renamer import scan
         report = scan(self.tmp, enable_online=False, enable_pdf=False,
                       llm_callback=mock_llm, force=True)
         import csv
