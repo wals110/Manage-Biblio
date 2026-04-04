@@ -35,15 +35,8 @@ Usage:
 
 import os
 import json
-import time
 from datetime import datetime
 from typing import Optional, List, Dict
-
-try:
-    import requests as req_lib
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
 
 try:
     import yaml
@@ -52,6 +45,7 @@ except ImportError:
     HAS_YAML = False
 
 from lib.logger import get_logger
+from lib.llm_client import LLMClient
 
 log = get_logger()
 
@@ -119,9 +113,10 @@ Règles :
 class LLMMapper:
     """Résout les thèmes inconnus via appel LLM texte + auto-apprentissage."""
 
-    def __init__(self, folders, api_key, endpoint, model,
-                 min_confidence=0.6, verbose=False, vision=False):
-        # type: (List[str], str, str, str, float, bool, bool) -> None
+    def __init__(self, folders, api_key='', endpoint='', model='',
+                 min_confidence=0.6, verbose=False, vision=False,
+                 client=None):
+        # type: (List[str], str, str, str, float, bool, bool, Optional[LLMClient]) -> None
         self.folders = folders
         self.api_key = api_key
         self.endpoint = endpoint
@@ -132,6 +127,8 @@ class LLMMapper:
         self.learned = {}  # type: Dict[str, str]
         self.suggestions = []  # type: List[Dict]
         self._folders_text = "\n".join("- {}".format(f) for f in folders)
+        # Client LLM : fourni ou créé à la demande
+        self._client = client
         # Stats
         self.calls = 0
         self.successes = 0
@@ -156,9 +153,9 @@ class LLMMapper:
         Returns:
             Chemin du dossier ou None si échec / suggestion générée.
         """
-        if not HAS_REQUESTS:
+        if not self._get_client():
             return None
-        if not self.api_key:
+        if not self._client.api_key:
             return None
 
         result = self._call_mapper(theme, title, filename)
@@ -248,52 +245,20 @@ class LLMMapper:
 
         prompt = MAPPER_VISION_PROMPT.format(folders_list=self._folders_text)
 
-        # Construire le payload multimodal
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = "Bearer {}".format(self.api_key)
-
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": "data:image/jpeg;base64,{}".format(b64),
-                            },
-                        },
-                        {"type": "text", "text": prompt},
-                    ],
-                },
-            ],
-            "max_tokens": 150,
-            "temperature": 0.1,
-        }
-
-        try:
-            resp = req_lib.post(
-                self.endpoint,
-                headers=headers,
-                json=payload,
-                timeout=30,
-            )
-            if resp.status_code != 200:
-                if self.verbose:
-                    log.warning("  ⚠ Mapper vision API erreur {}: {}".format(
-                        resp.status_code, resp.text[:150]))
-                return None
-
-            data = resp.json()
-            content = data['choices'][0]['message']['content'].strip()
-            return self._parse_response(content)
-
-        except Exception as e:
-            if self.verbose:
-                log.warning("  ⚠ Mapper vision exception: {}".format(e))
+        client = self._get_client()
+        if not client:
             return None
+
+        content = client.call(
+            prompt=prompt,
+            images_b64=[b64],
+            max_tokens=150,
+        )
+
+        if content is None:
+            return None
+
+        return self._parse_response(content)
 
     def _call_mapper(self, theme, title, filename):
         # type: (str, str, str) -> Optional[Dict]
@@ -339,59 +304,35 @@ class LLMMapper:
                 log.info("  💡 Suggestion: '{}' → NOUVEAU {} ({})".format(
                     theme, result['folder'], result.get('reason', '')))
 
+    def _get_client(self):
+        # type: () -> Optional[LLMClient]
+        """Retourne le client LLM, en le créant à la demande si nécessaire."""
+        if self._client is None:
+            if self.api_key and self.endpoint:
+                self._client = LLMClient(
+                    api_key=self.api_key,
+                    endpoint=self.endpoint,
+                    model=self.model,
+                    timeout=30,
+                    max_retries=3,
+                    verbose=self.verbose,
+                )
+            else:
+                return None
+        return self._client
+
     def _call_llm(self, prompt):
         # type: (str) -> Optional[Dict]
-        """Appel LLM générique, retourne le JSON parsé."""
-        headers = {
-            "Content-Type": "application/json",
-        }
-        if self.api_key:
-            headers["Authorization"] = "Bearer {}".format(self.api_key)
+        """Appel LLM générique via le client unifié, retourne le JSON parsé."""
+        client = self._get_client()
+        if not client:
+            return None
 
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "user", "content": prompt},
-            ],
-            "max_tokens": 150,
-            "temperature": 0.1,
-        }
+        content = client.call(prompt=prompt, max_tokens=150)
+        if content is None:
+            return None
 
-        for attempt in range(3):
-            try:
-                resp = req_lib.post(
-                    self.endpoint,
-                    headers=headers,
-                    json=payload,
-                    timeout=20,
-                )
-
-                if resp.status_code == 429:
-                    wait = min(2 ** attempt * 2, 15)
-                    if self.verbose:
-                        log.info("  ⏳ Mapper rate limit, attente {}s...".format(wait))
-                    time.sleep(wait)
-                    continue
-
-                if resp.status_code != 200:
-                    if self.verbose:
-                        log.error("  ⚠ Mapper API erreur {}: {}".format(
-                            resp.status_code, resp.text[:150]))
-                    return None
-
-                data = resp.json()
-                content = data['choices'][0]['message']['content'].strip()
-                return self._parse_response(content)
-
-            except Exception as e:
-                if self.verbose:
-                    log.warning("  ⚠ Mapper exception: {}".format(e))
-                if attempt < 2:
-                    time.sleep(1)
-                    continue
-                return None
-
-        return None
+        return self._parse_response(content)
 
     def _validate_folder(self, folder):
         # type: (str) -> Optional[str]

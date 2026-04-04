@@ -44,8 +44,7 @@ import io
 import re
 import json
 import base64
-import time
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Dict
 
 try:
     from pdf2image import convert_from_path
@@ -59,13 +58,8 @@ try:
 except ImportError:
     HAS_PIL = False
 
-try:
-    import requests as req_lib
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
-
 from lib.logger import get_logger
+from lib.llm_client import LLMClient
 
 log = get_logger()
 
@@ -182,114 +176,54 @@ def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
 # APPEL API LLM VISION
 # ════════════════════════════════════════════════════════════════════════════
 
-def call_vision_api(images_base64, api_key: str, endpoint: str,
-                    model: str = DEFAULT_MODEL,
-                    timeout: int = 30,
-                    max_retries: int = 3) -> Optional[Dict]:
+def call_vision_api(images_base64, api_key, endpoint,
+                    model=DEFAULT_MODEL,
+                    timeout=30, max_retries=3,
+                    client=None):
+    # type: (object, str, str, str, int, int, Optional[LLMClient]) -> Optional[Dict]
     """
     Envoie une ou plusieurs images au modèle LLM Vision et parse la réponse JSON.
 
     Compatible avec plusieurs endpoints (SiliconFlow, Ollama, etc.).
+    Utilise LLMClient pour le transport HTTP (retry, backoff, logging).
 
     Args:
         images_base64: String base64 (une image) ou liste de strings base64 (multi-pages)
         api_key: Clé API pour l'authentification (peut être vide pour Ollama local)
-        endpoint: URL de l'API LLM Vision (e.g., https://api.siliconflow.com/v1/chat/completions)
+        endpoint: URL de l'API LLM Vision
         model: Nom du modèle à utiliser (par défaut Qwen3-VL-8B-Instruct)
         timeout: Timeout en secondes (par défaut 30)
         max_retries: Nombre de tentatives en cas d'erreur (par défaut 3)
+        client: Instance LLMClient pré-configurée (optionnel, créée si absente)
 
     Returns:
         Dict avec title, author, theme, language, confidence ou None en cas d'erreur
     """
-    if not HAS_REQUESTS:
-        log.warning("  ⚠ requests non installé (pip install requests)")
-        return None
-
     # Normaliser : accepte une string ou une liste
     if isinstance(images_base64, str):
         images_base64 = [images_base64]
 
-    headers = {
-        "Content-Type": "application/json",
-    }
-
-    # Ajouter Authorization seulement si la clé est fournie (Ollama local n'en a pas besoin)
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    # Construire le contenu avec toutes les images + le prompt
-    content_parts = []  # type: List[Dict]
-    for i, img_b64 in enumerate(images_base64):
-        content_parts.append({
-            "type": "image_url",
-            "image_url": {
-                "url": "data:image/jpeg;base64,{}".format(img_b64),
-            },
-        })
-
     # Choisir le prompt adapté (mono ou multi-pages)
     prompt = VISION_PROMPT_MULTI if len(images_base64) > 1 else VISION_PROMPT
-    content_parts.append({
-        "type": "text",
-        "text": prompt,
-    })
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": content_parts,
-            }
-        ],
-        "max_tokens": 300,
-        "temperature": 0.1,
-    }
+    # Créer un client si non fourni (rétrocompatibilité)
+    if client is None:
+        client = LLMClient(
+            api_key=api_key, endpoint=endpoint, model=model,
+            timeout=timeout, max_retries=max_retries, verbose=True)
 
-    for attempt in range(max_retries):
-        try:
-            resp = req_lib.post(
-                endpoint,
-                headers=headers,
-                json=payload,
-                timeout=timeout,
-            )
+    content = client.call(
+        prompt=prompt,
+        images_b64=images_base64,
+        max_tokens=300,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
 
-            if resp.status_code == 429:
-                # Rate limit — attendre et réessayer
-                wait = min(2 ** attempt * 2, 30)
-                log.info(f"  ⏳ Rate limit, attente {wait}s...")
-                time.sleep(wait)
-                continue
+    if content is None:
+        return None
 
-            if resp.status_code != 200:
-                log.error(f"  ⚠ API erreur {resp.status_code}: {resp.text[:200]}")
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                    continue
-                return None
-
-            data = resp.json()
-            content = data['choices'][0]['message']['content'].strip()
-
-            # Parser le JSON de la réponse
-            return parse_vision_response(content)
-
-        except req_lib.exceptions.Timeout:
-            log.info(f"  ⏳ Timeout (tentative {attempt + 1}/{max_retries})")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-                continue
-            return None
-        except Exception as e:
-            log.error(f"  ⚠ Erreur API: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-                continue
-            return None
-
-    return None
+    return parse_vision_response(content)
 
 
 def parse_vision_response(content: str) -> Optional[Dict]:
@@ -335,12 +269,14 @@ def parse_vision_response(content: str) -> Optional[Dict]:
 # FONCTION CONVENIANCE
 # ════════════════════════════════════════════════════════════════════════════
 
-def analyze_cover(pdf_path: str, api_key: str, endpoint: str,
-                  model: str = DEFAULT_MODEL,
-                  dpi: int = 150,
-                  verbose: bool = False,
-                  max_retries: int = 3,
-                  n_pages: int = 1) -> Optional[Dict]:
+def analyze_cover(pdf_path, api_key='', endpoint='',
+                  model=DEFAULT_MODEL,
+                  dpi=150,
+                  verbose=False,
+                  max_retries=3,
+                  n_pages=1,
+                  client=None):
+    # type: (str, str, str, str, int, bool, int, int, Optional[LLMClient]) -> Optional[Dict]
     """
     Analyse complète d'une couverture de livre (une ou plusieurs pages).
 
@@ -397,7 +333,8 @@ def analyze_cover(pdf_path: str, api_key: str, endpoint: str,
     # Étape 3: Appeler l'API
     if verbose:
         log.info("  → Appel Vision API ({})...".format(model))
-    result = call_vision_api(images_base64, api_key, endpoint, model, max_retries=max_retries)
+    result = call_vision_api(images_base64, api_key, endpoint, model,
+                             max_retries=max_retries, client=client)
 
     if verbose:
         if result:

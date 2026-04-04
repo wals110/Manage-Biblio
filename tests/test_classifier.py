@@ -267,7 +267,7 @@ class TestLLMMapperVision(unittest.TestCase):
         self.assertEqual(mapper.vision_calls, 0)
         self.assertEqual(mapper.vision_successes, 0)
 
-    @patch('lib.llm_mapper.req_lib')
+    @patch('lib.llm_client.req_lib')
     def test_resolve_without_vision_no_escalade(self, mock_req):
         """Sans vision=True, pas d'escalade même si pdf_path fourni."""
         mock_resp = MagicMock()
@@ -284,7 +284,7 @@ class TestLLMMapperVision(unittest.TestCase):
         self.assertIsNone(result)
         mapper._try_vision_mapper.assert_not_called()
 
-    @patch('lib.llm_mapper.req_lib')
+    @patch('lib.llm_client.req_lib')
     def test_resolve_with_vision_escalade(self, mock_req):
         """Avec vision=True et pdf_path, escalade après échec texte."""
         # Premier appel (texte) → _AUCUN
@@ -311,7 +311,7 @@ class TestLLMMapperVision(unittest.TestCase):
         mapper._try_vision_mapper.assert_called_once_with('/test.pdf')
         self.assertEqual(mapper.vision_successes, 1)
 
-    @patch('lib.llm_mapper.req_lib')
+    @patch('lib.llm_client.req_lib')
     def test_resolve_vision_also_fails(self, mock_req):
         """Vision activée mais échoue aussi → suggestion générée."""
         mock_resp = MagicMock()
@@ -330,7 +330,7 @@ class TestLLMMapperVision(unittest.TestCase):
         self.assertIsNone(result)
         mapper._try_vision_mapper.assert_called_once()
 
-    @patch('lib.llm_mapper.req_lib')
+    @patch('lib.llm_client.req_lib')
     def test_resolve_text_success_no_vision(self, mock_req):
         """Si le text mapper réussit, pas d'escalade vision."""
         mock_resp = MagicMock()

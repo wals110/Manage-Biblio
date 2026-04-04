@@ -240,8 +240,8 @@ Règles :
 
 def make_refine_llm_callback(api_key, endpoint, model,
                               min_confidence=0.6, verbose=False,
-                              vision=False):
-    # type: (str, str, str, float, bool, bool) -> Callable
+                              vision=False, client=None):
+    # type: (str, str, str, float, bool, bool, Optional['LLMClient']) -> Callable
     """
     Build a LLM callback function for refine.
 
@@ -262,17 +262,20 @@ def make_refine_llm_callback(api_key, endpoint, model,
         min_confidence: Minimum confidence to accept (default 0.6)
         verbose: Print debug info
         vision: Enable vision escalation (default False)
+        client: Instance LLMClient pré-configurée (optionnel)
 
     Returns:
         Callable that takes (filename, current_folder, subdirs, pdf_path)
         and returns (subfolder_name or None, source_tag).
         source_tag is 'llm' for text match, 'llm_vision' for vision match.
     """
-    try:
-        import requests as req_lib
-    except ImportError:
-        log.warning("  ⚠ requests non disponible, LLM refine désactivé")
-        return None
+    from lib.llm_client import LLMClient
+
+    # Créer le client si non fourni
+    if client is None:
+        client = LLMClient(
+            api_key=api_key, endpoint=endpoint, model=model,
+            timeout=30, max_retries=3, verbose=verbose)
 
     stats = {
         'calls': 0, 'successes': 0, 'failures': 0,
@@ -281,49 +284,8 @@ def make_refine_llm_callback(api_key, endpoint, model,
 
     def _send_llm_request(messages):
         # type: (List[Dict]) -> Optional[str]
-        """Send a request to the LLM and return raw content or None."""
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = "Bearer {}".format(api_key)
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": 150,
-            "temperature": 0.1,
-        }
-
-        for attempt in range(3):
-            try:
-                resp = req_lib.post(
-                    endpoint, headers=headers, json=payload, timeout=30,
-                )
-
-                if resp.status_code == 429:
-                    wait = min(2 ** attempt * 2, 15)
-                    if verbose:
-                        log.info("  ⏳ Refine LLM rate limit, attente {}s...".format(wait))
-                    time.sleep(wait)
-                    continue
-
-                if resp.status_code != 200:
-                    if verbose:
-                        log.error("  ⚠ Refine LLM erreur {}: {}".format(
-                            resp.status_code, resp.text[:150]))
-                    return None
-
-                data = resp.json()
-                return data['choices'][0]['message']['content'].strip()
-
-            except Exception as e:
-                if verbose:
-                    log.warning("  ⚠ Refine LLM exception: {}".format(e))
-                if attempt < 2:
-                    time.sleep(1)
-                    continue
-                return None
-
-        return None
+        """Send a request to the LLM via the unified client."""
+        return client.call_messages(messages, max_tokens=150)
 
     def _validate_result(content, filename, subdirs):
         # type: (Optional[str], str, List[str]) -> Optional[str]
