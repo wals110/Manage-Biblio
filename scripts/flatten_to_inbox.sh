@@ -58,8 +58,8 @@ fi
 INBOX="$BIBLIO/_INBOX"
 
 if [[ ! -d "$INBOX" ]]; then
-    echo -e "${YELLOW}Création de $INBOX${NC}"
     if $EXECUTE; then
+        echo -e "${YELLOW}Création de $INBOX${NC}"
         mkdir -p "$INBOX"
     fi
 fi
@@ -77,7 +77,11 @@ echo ""
 
 # ── Comptage initial ──
 TOTAL_BEFORE=$(find "$BIBLIO" -name "*.pdf" -not -path "*/_INBOX/*" | wc -l | tr -d ' ')
-INBOX_BEFORE=$(find "$INBOX" -name "*.pdf" 2>/dev/null | wc -l | tr -d ' ')
+if [[ -d "$INBOX" ]]; then
+    INBOX_BEFORE=$(find "$INBOX" -name "*.pdf" 2>/dev/null | wc -l | tr -d ' ')
+else
+    INBOX_BEFORE=0
+fi
 
 echo -e "  PDFs hors INBOX : ${GREEN}$TOTAL_BEFORE${NC}"
 echo -e "  PDFs dans INBOX : ${GREEN}$INBOX_BEFORE${NC}"

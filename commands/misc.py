@@ -1,7 +1,8 @@
 """
-Sous-commandes utilitaires — profiles, init, suggest.
+Sous-commandes utilitaires — profiles, init, suggest, clean.
 """
 
+import glob
 import os
 import sys
 
@@ -94,7 +95,7 @@ def cmd_suggest(args, profile) -> None:
         # Reclassifier les fichiers concernés si --execute
         if args.execute and result['themes_added'] > 0:
             log.info("\n🔄 Reclassification avec les nouveaux mappings...")
-            cm = CheckpointManager(logs_dir, 'progress.json')
+            cm = CheckpointManager(profile.cache_dir, 'progress.json')
             from lib.classifier import make_classify_fn
             # Recharger le profil pour avoir les nouveaux mappings
             updated_profile = Profile(profile.name)
@@ -131,3 +132,52 @@ def cmd_suggest(args, profile) -> None:
         log.info("  ✅ Pour appliquer : ./klodo.sh suggest --apply")
         if pending:
             log.info("  🔄 Pour appliquer + reclassifier : ./klodo.sh suggest --apply --execute")
+
+
+def cmd_clean(args, profile) -> None:
+    # type: (object, object)
+    """Sous-commande clean : supprime les fichiers de cache du profil."""
+    cache_dir = profile.cache_dir
+    target = args.target  # "progress", "isbn", "logs", "all"
+
+    targets = {
+        "progress": ["progress*.json"],
+        "isbn": ["isbn_cache.json"],
+        "logs": [os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv")],
+        "all": ["progress*.json", "isbn_cache.json",
+                os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv")],
+    }
+
+    if target not in targets:
+        log.error("❌ Cible inconnue : '{}'. Choix : {}".format(
+            target, ", ".join(targets.keys())))
+        sys.exit(1)
+
+    patterns = targets[target]
+    files = []
+    for pattern in patterns:
+        if os.path.isabs(pattern) or os.sep in pattern:
+            # Pattern absolu (logs/rapport_*.csv)
+            files.extend(sorted(glob.glob(pattern)))
+        else:
+            # Pattern relatif au cache du profil
+            files.extend(sorted(glob.glob(os.path.join(cache_dir, pattern))))
+
+    if not files:
+        log.info("\n✅ Rien à nettoyer ({} pour le profil '{}').".format(target, profile.name))
+        return
+
+    log.info("\n🧹 Nettoyage — profil '{}' ({})".format(profile.name, target))
+    for f in files:
+        name = os.path.basename(f)
+        if args.execute:
+            os.remove(f)
+            log.info("  ✗ {} supprimé".format(name))
+        else:
+            log.info("  [DRY-RUN] {}".format(name))
+
+    if args.execute:
+        log.info("\n✅ {} fichier(s) supprimé(s).".format(len(files)))
+    else:
+        log.info("\n  {} fichier(s) à supprimer.".format(len(files)))
+        log.info("  Relancer avec --execute pour appliquer.")

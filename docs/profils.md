@@ -9,6 +9,9 @@ Un profil définit une configuration complète pour une bibliothèque : arboresc
 ```
 profiles/
 ├── default/                   Profil principal
+│   ├── .cache/                Cache auto-géré (gitignored)
+│   │   ├── progress.json      Checkpoint de progression
+│   │   └── isbn_cache.json    Cache ISBN (~3400 entrées)
 │   ├── profile.yaml           Config générale
 │   ├── tree.yaml              Arborescence (88 dossiers)
 │   ├── theme_mapping.yaml     Mapping thème → chemin (355+)
@@ -16,10 +19,13 @@ profiles/
 │   └── refinement.yaml        Règles raffinement (45)
 │
 └── ma-biblio/                 Profil personnalisé
+    ├── .cache/
     ├── profile.yaml
     ├── tree.yaml
     └── ...
 ```
+
+Le dossier `.cache/` est créé automatiquement au premier run. Il contient les fichiers d'état liés au profil (checkpoint, cache ISBN). Nettoyable via `./klodo.sh clean all --profile <nom> --execute`.
 
 ## Créer un profil
 

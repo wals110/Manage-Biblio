@@ -79,7 +79,8 @@ def cmd_process(args, profile) -> None:
         report_path = renamer.scan(
             source, enable_online=enable_online, enable_pdf=enable_pdf,
             llm_callback=llm_callback, max_files=getattr(args, 'max', 0),
-            force=force, verbose=args.verbose)
+            force=force, verbose=args.verbose,
+            cache_dir=profile.cache_dir)
 
         if args.execute:
             renamer.execute(source, report_path)
@@ -94,7 +95,8 @@ def cmd_process(args, profile) -> None:
     log.info("  Étape {}/{} : LLM Vision + Classification".format(step, n_steps))
     log.info("━" * 40)
 
-    cm = CheckpointManager(logs_dir, args.progress_file or 'progress.json')
+    checkpoint_dir = profile.cache_dir
+    cm = CheckpointManager(checkpoint_dir, args.progress_file or 'progress.json')
     if args.reset:
         cm.clear()
     if args.retry_errors:
@@ -104,6 +106,7 @@ def cmd_process(args, profile) -> None:
         source, profile, api_key,
         max_files=args.max, verbose=args.verbose, delay=args.delay,
         workers=workers, logs_dir=logs_dir,
+        checkpoint_dir=checkpoint_dir,
         checkpoint_name=args.progress_file or 'progress.json',
         skip_confirm=getattr(args, 'yes', False),
         vision=getattr(args, 'vision', False),

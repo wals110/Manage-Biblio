@@ -9,6 +9,7 @@ Sous-commandes :
     classify  LLM Vision + classement thématique
     rename    Renommage "Titre - Auteur.pdf" (ISBN / métadonnées)
     refine    Raffinement des sous-catégories par mots-clés
+    clean     Nettoyer le cache (progress, isbn, logs, all)
     profiles  Lister les profils disponibles
     init      Créer un nouveau profil
 
@@ -44,6 +45,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from commands import (
     cmd_classify,
+    cmd_clean,
     cmd_init,
     cmd_process,
     cmd_profiles,
@@ -176,7 +178,14 @@ def _build_parser():
     p_suggest.add_argument('--apply', action='store_true',
                            help='Appliquer les suggestions validées')
 
-    # ── init ──
+    # ── clean ──
+    p_clean = subparsers.add_parser(
+        'clean', parents=[common],
+        help='Nettoyer le cache du profil (progress, isbn, logs, all)')
+    p_clean.add_argument('target', choices=['progress', 'isbn', 'logs', 'all'],
+                         help='Quoi nettoyer : progress, isbn, logs ou all')
+
+    # ── init ��─
     p_init = subparsers.add_parser(
         'init', help='Créer un nouveau profil')
     p_init.add_argument('name', help='Nom du profil')
@@ -227,6 +236,7 @@ def main():
         'rename': cmd_rename,
         'refine': cmd_refine,
         'suggest': cmd_suggest,
+        'clean': cmd_clean,
     }
     handler = dispatch.get(args.command)
     if handler:

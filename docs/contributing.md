@@ -6,33 +6,32 @@ Merci de votre intérêt pour Klodo ! Ce guide explique comment contribuer au pr
 
 ## Prérequis
 
-- Python 3.9+ (pas de syntaxe 3.10+)
+- Python 3.13 (via [uv](https://docs.astral.sh/uv/))
 - poppler (extraction PDF → image)
-- Les dépendances de `requirements.txt`
 
 ## Démarrer
 
 ```bash
 git clone https://github.com/votre-user/klodo.git
 cd klodo
-pip3 install -r requirements.txt
+uv sync
 ```
 
 ## Conventions de code
 
-### Python 3.9
+### Python 3.13
 
-Le projet cible **Python 3.9**. Les syntaxes 3.10+ sont interdites :
+Le projet cible **Python 3.13**. Utilisez les type hints modernes :
 
 ```python
-# ✗ Interdit
+# ✓ Correct — syntaxe moderne
 def foo(x: dict | None): ...
 def bar(items: list[str]): ...
+from collections.abc import Callable
 
-# ✓ Correct
-from typing import Optional, List, Dict
+# ✗ Obsolète — ne pas utiliser
+from typing import Optional, List, Dict, Callable
 def foo(x: Optional[dict]): ...
-def bar(items: List[str]): ...
 ```
 
 ### Architecture
@@ -46,22 +45,23 @@ def bar(items: List[str]): ...
 ### Style
 
 - Docstrings pour toutes les fonctions publiques
-- Type annotations (style commentaire `# type:` pour compatibilité 3.9)
+- Type annotations modernes (Python 3.13 : `X | None`, `list[str]`, `dict[str, int]`)
+- Linter : `ruff` (configuré dans `pyproject.toml`)
 - Pas de dépendances lourdes sans discussion préalable
 
 ## Tests
 
-La suite de tests couvre 61 tests répartis en modules :
+La suite de tests couvre 191 tests répartis en modules :
 
 ```bash
 # Lancer tous les tests
 ./tests/run_all.sh
 
 # Lancer un module spécifique
-python -m unittest tests.test_refine -v
+uv run python -m unittest tests.test_refine -v
 
 # Lancer un test spécifique
-python -m unittest tests.test_refine.TestScanAndRefineVision -v
+uv run python -m unittest tests.test_refine.TestScanAndRefineVision -v
 ```
 
 ### Ajouter des tests
@@ -92,7 +92,7 @@ class TestMaFeature(unittest.TestCase):
 2. Créez une branche (`git checkout -b feature/ma-feature`)
 3. Commitez vos changements
 4. Lancez les tests (`./tests/run_all.sh`)
-5. Vérifiez la compatibilité Python 3.9
+5. Vérifiez avec `ruff check .`
 6. Ouvrez une Pull Request
 
 ## Idées de contribution

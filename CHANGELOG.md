@@ -2,7 +2,16 @@
 
 All notable changes to Klodo are documented in this file.
 
-## [1.0.0-dev] — 2026-04-04
+## [1.0.0-dev] — 2026-04-05
+
+### Cache & Storage
+- Move `progress.json` and `isbn_cache.json` from `logs/` to `profiles/<name>/.cache/`
+- Each profile now has its own isolated cache directory
+- `logs/` now only contains horodated rapport CSV files
+
+### Features
+- Add `clean` subcommand (`./klodo.sh clean progress|isbn|logs|all --execute`)
+- Add `scripts/clean_logs.sh` for standalone CSV cleanup
 
 ### Code Quality
 - Modernize all type hints for Python 3.13 (`X | None`, `list[str]`, `dict[str, int]`)

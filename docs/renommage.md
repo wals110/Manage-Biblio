@@ -18,7 +18,7 @@ Vérifie si le nom de fichier est déjà exploitable (`is_name_clean()`). Suppri
 
 ### Étape 2 : Recherche ISBN
 
-Si le nom contient un ISBN (10 ou 13 chiffres), recherche dans Google Books et OpenLibrary pour récupérer le titre et l'auteur. Les résultats sont mis en cache localement (`isbn_cache.json`, ~3400 entrées).
+Si le nom contient un ISBN (10 ou 13 chiffres), recherche dans Google Books et OpenLibrary pour récupérer le titre et l'auteur. Les résultats sont mis en cache dans `profiles/<nom>/.cache/isbn_cache.json` (~3400 entrées).
 
 ### Étape 3 : Métadonnées PDF
 
@@ -84,14 +84,14 @@ Dernier recours : utilise le nom du dossier parent comme approximation du sujet.
 | `--force` | LLM en priorité + re-analyser les noms "propres" |
 | `--pages N` | Pages à analyser (défaut: 1, max: 5) |
 | `--max N` | Limiter à N fichiers |
-| `--api-key KEY` | Clé API pour `--llm` |
+| ~~`--api-key`~~ | Supprimé — utiliser la variable `SILICONFLOW_API_KEY` |
 | `--no-online` | Désactiver la recherche ISBN en ligne |
 | `--no-pdf` | Désactiver l'extraction des métadonnées PDF |
 
 ## Cache ISBN
 
-Les résultats de recherche ISBN sont stockés dans `renommage/isbn_cache.json`. Ce cache accélère les prochains runs et réduit les appels réseau. Il contient ~3400 entrées après le traitement initial de la bibliothèque.
+Les résultats de recherche ISBN sont stockés dans `profiles/<nom>/.cache/isbn_cache.json`. Ce cache accélère les prochains runs et réduit les appels réseau. Il contient ~3400 entrées après le traitement initial de la bibliothèque. Nettoyable via `./klodo.sh clean isbn --execute`.
 
 ## Module
 
-**Fichiers** : `renommage/klodo_renamer.py` (moteur), `lib/vision.py` (LLM Vision), `lib/utils.py` (sanitize).
+**Fichiers** : `lib/renamer.py` (moteur), `lib/vision.py` (LLM Vision), `lib/utils.py` (sanitize).

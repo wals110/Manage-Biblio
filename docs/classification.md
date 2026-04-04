@@ -51,7 +51,7 @@ C'est le chemin le plus rapide : une simple lookup dans un dictionnaire. Aucun a
 
 Si le theme mapping échoue, le système cherche des mots-clés dans un texte enrichi combinant le titre détecté par Vision, le thème et le nom de fichier. Cela permet de classer même les fichiers aux noms illisibles (hash, IDs numériques) grâce au titre identifié par le LLM.
 
-Les mots-clés sont définis dans `categories.yaml` avec des scores pondérés. Le classifieur TF-IDF (dans `organiser/klodo_organizer.py`) complète avec un matching statistique.
+Les mots-clés sont définis dans `categories.yaml` avec des scores pondérés. Le classifieur TF-IDF (`lib/keyword_classifier.py`) complète avec un matching statistique.
 
 **Pièges connus** et protections :
 - `WORD_BOUNDARY_KEYWORDS` pour les mots courts (≤3 chars) : évite "AI" dans "CHAIR"
@@ -204,7 +204,7 @@ Le renommage en premier est important : un fichier bien nommé fournit plus de s
 
 | Option | Commandes | Description |
 |---|---|---|
-| `--api-key KEY` | classify, process | Clé API (ou variable `SILICONFLOW_API_KEY`) |
+| ~~`--api-key`~~ | — | Supprimé — utiliser la variable `SILICONFLOW_API_KEY` |
 | `--workers N`, `-w N` | classify, process | Threads parallèles (0 = défaut du profil) |
 | `--max N` | classify, process | Limiter à N fichiers |
 | `--delay SEC` | classify, process | Délai entre requêtes séquentielles (défaut: 0.2) |

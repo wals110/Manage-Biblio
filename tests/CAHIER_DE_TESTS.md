@@ -1,4 +1,4 @@
-# Cahier de tests — Klodo v4.1
+# Cahier de tests — Klodo v1.0.0-dev
 
 ## Vue d'ensemble
 
@@ -19,9 +19,7 @@ Vérifie que tous les fichiers Python du projet sont syntaxiquement corrects via
 | # | Cas | Description | Vérifie |
 |---|---|---|---|
 | A1.1 | klodo.py compile | Compile le point d'entrée principal du CLI | Pas d'erreur de syntaxe dans klodo.py |
-| A1.2 | Tous les lib/*.py compilent | Compile chacun des 8 modules du dossier lib/ (logger, profile, checkpoint, vision, utils, classifier, refiner, llm_mapper) | Aucun module cassé par un refactoring |
-| A1.3 | organiser/*.py compilent | Compile les modules legacy du classifieur original (ocr_cover, klodo_organizer) | Les anciens modules restent valides |
-| A1.4 | renommage/*.py compilent | Compile le moteur de renommage klodo_renamer.py | Le renamer est syntaxiquement correct |
+| A1.2 | Tous les lib/*.py compilent | Compile chacun des modules du dossier lib/ (logger, profile, checkpoint, vision, utils, classifier, keyword_classifier, llm_client, llm_mapper, refiner, renamer, constants, exceptions) | Aucun module cassé par un refactoring |
 
 ### A2. Imports croisés (test_imports.py)
 

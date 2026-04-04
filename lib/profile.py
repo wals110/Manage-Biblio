@@ -151,6 +151,9 @@ class Profile:
 
         self.defaults = data.get("defaults", {})
 
+        # Cache directory: inside the profile folder (.cache/)
+        self.cache_dir = str(self._profile_dir / ".cache")
+
     def _load_tree_yaml(self) -> None:
         """Load tree.yaml and set tree attribute."""
         data = self._load_yaml("tree.yaml")

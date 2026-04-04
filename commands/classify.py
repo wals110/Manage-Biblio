@@ -27,9 +27,10 @@ log = get_logger()
 
 def scan_and_classify(source_dir, profile, api_key,
                       max_files=0, verbose=False, delay=0.2,
-                      workers=1, logs_dir='', checkpoint_name='progress.json',
+                      workers=1, logs_dir='', checkpoint_dir='',
+                      checkpoint_name='progress.json',
                       skip_confirm=False, vision=False, n_pages=1):
-    # type: (str, object, str, int, bool, float, int, str, str, bool, bool, int) -> list[dict]
+    # type: (str, object, str, int, bool, float, int, str, str, str, bool, bool, int) -> list[dict]
     """
     Scanne un répertoire et traite chaque PDF via LLM Vision.
     Supporte la reprise automatique et le traitement parallèle.
@@ -37,8 +38,8 @@ def scan_and_classify(source_dir, profile, api_key,
     pdf_files = collect_pdf_files(source_dir, max_files)
     total_found = len(pdf_files)
 
-    # Checkpoint
-    cm = CheckpointManager(logs_dir, checkpoint_name)
+    # Checkpoint (profile dir if provided, else logs_dir for backward compat)
+    cm = CheckpointManager(checkpoint_dir or logs_dir, checkpoint_name)
     progress = cm.load()
     resumed = sum(1 for p in pdf_files if p in progress)
 
@@ -167,8 +168,9 @@ def cmd_classify(args, profile) -> None:
     logs_dir = os.path.join(PROJECT_ROOT, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
 
-    # Checkpoint
-    cm = CheckpointManager(logs_dir, args.progress_file or 'progress.json')
+    # Checkpoint (stored in profile directory)
+    checkpoint_dir = profile.cache_dir
+    cm = CheckpointManager(checkpoint_dir, args.progress_file or 'progress.json')
 
     if args.reset:
         cm.clear()
@@ -204,6 +206,7 @@ def cmd_classify(args, profile) -> None:
         source, profile, api_key,
         max_files=args.max, verbose=args.verbose, delay=args.delay,
         workers=workers, logs_dir=logs_dir,
+        checkpoint_dir=checkpoint_dir,
         checkpoint_name=args.progress_file or 'progress.json',
         skip_confirm=getattr(args, 'yes', False),
         vision=use_vision, n_pages=n_pages)

@@ -7,10 +7,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-4.1.0-blue?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/python-3.9+-green?style=flat-square&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/version-1.0.0--dev-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/python-3.13-green?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/LLM-Qwen3--VL-purple?style=flat-square" alt="LLM">
-  <img src="https://img.shields.io/badge/tests-162%20pass-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-191%20pass-brightgreen?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
 </p>
 
@@ -47,7 +47,7 @@ Déposez vos PDF, lancez une commande, récupérez une bibliothèque classée.
 
 ## Installation
 
-**Prérequis** : Python 3.9+, macOS ou Linux.
+**Prérequis** : Python 3.13+ (via [uv](https://docs.astral.sh/uv/)), macOS ou Linux.
 
 ```bash
 # Cloner
@@ -57,8 +57,8 @@ cd klodo
 # Dépendances système (macOS)
 brew install poppler
 
-# Dépendances Python
-pip3 install -r requirements.txt
+# Dépendances Python (via uv)
+uv sync
 
 # Clé API SiliconFlow (gratuit pour les modèles open-source)
 export SILICONFLOW_API_KEY=votre-clé-api
@@ -69,7 +69,7 @@ export SILICONFLOW_API_KEY=votre-clé-api
 
 ```bash
 sudo apt-get install poppler-utils
-pip3 install -r requirements.txt
+uv sync
 ```
 </details>
 
@@ -101,6 +101,7 @@ pip3 install -r requirements.txt
 | `rename` | Renommage intelligent (ISBN, métadonnées, LLM Vision) | [renommage.md](docs/renommage.md) |
 | `refine` | Raffinement récursif des sous-catégories | [raffinement.md](docs/raffinement.md) |
 | `suggest` | Review des suggestions de nouveaux dossiers | [classification.md](docs/classification.md#niveau-4--suggestions) |
+| `clean` | Nettoyer le cache du profil (progress, isbn, logs, all) | — |
 | `profiles` | Lister les profils disponibles | [profils.md](docs/profils.md) |
 | `init` | Créer un nouveau profil | [profils.md](docs/profils.md#créer-un-profil) |
 
@@ -118,6 +119,9 @@ pip3 install -r requirements.txt
 
 # Retraiter les erreurs du dernier run
 ./klodo.sh classify /chemin --retry-errors --execute
+
+# Nettoyer le cache d'un profil
+./klodo.sh clean all --profile test --execute
 ```
 
 ### Options communes

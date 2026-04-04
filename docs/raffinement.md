@@ -139,7 +139,7 @@ Chaque run génère un rapport CSV horodaté dans `logs/` avec les colonnes :
 |---|---|
 | `--llm` | Activer le fallback LLM (Niveau 3) |
 | `--vision` | Activer l'escalade vision (Niveau 4, requiert `--llm`) |
-| `--api-key KEY` | Clé API (ou variable `SILICONFLOW_API_KEY`) |
+| ~~`--api-key`~~ | Supprimé — utiliser la variable `SILICONFLOW_API_KEY` |
 | `--max N` | Limiter les appels LLM à N fichiers |
 | `-w N`, `--workers N` | Threads parallèles (défaut: 1) |
 
