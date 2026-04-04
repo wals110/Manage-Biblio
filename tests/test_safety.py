@@ -14,6 +14,7 @@ from lib.logger import setup_logger
 setup_logger(verbose=False)
 
 from commands.helpers import check_inbox_safety as _check_inbox_safety
+from lib.exceptions import SafetyError
 
 
 class TestCheckInboxSafety(unittest.TestCase):
@@ -35,36 +36,31 @@ class TestCheckInboxSafety(unittest.TestCase):
 
     def test_normal_config_passes(self):
         """Config valide (inbox != target != fallback) → pas d'erreur."""
-        # Ne doit PAS lever SystemExit
         _check_inbox_safety(self.inbox, self.target, '_A-TRIER')
 
     def test_inbox_equals_target_blocks(self):
-        """inbox == target → sys.exit(1)."""
-        with self.assertRaises(SystemExit) as ctx:
+        """inbox == target → SafetyError."""
+        with self.assertRaises(SafetyError):
             _check_inbox_safety(self.target, self.target, '_A-TRIER')
-        self.assertEqual(ctx.exception.code, 1)
 
     def test_inbox_equals_fallback_blocks(self):
-        """inbox == fallback → sys.exit(1)."""
-        with self.assertRaises(SystemExit) as ctx:
+        """inbox == fallback → SafetyError."""
+        with self.assertRaises(SafetyError):
             _check_inbox_safety(self.fallback_dir, self.target, '_A-TRIER')
-        self.assertEqual(ctx.exception.code, 1)
 
     def test_symlink_inbox_to_target_blocks(self):
-        """Symlink inbox → target → sys.exit(1) (détection via realpath)."""
+        """Symlink inbox → target → SafetyError (détection via realpath)."""
         link = os.path.join(self.tmp, 'link_to_target')
         os.symlink(self.target, link)
-        with self.assertRaises(SystemExit) as ctx:
+        with self.assertRaises(SafetyError):
             _check_inbox_safety(link, self.target, '_A-TRIER')
-        self.assertEqual(ctx.exception.code, 1)
 
     def test_symlink_inbox_to_fallback_blocks(self):
-        """Symlink inbox → fallback → sys.exit(1)."""
+        """Symlink inbox → fallback → SafetyError."""
         link = os.path.join(self.tmp, 'link_to_fallback')
         os.symlink(self.fallback_dir, link)
-        with self.assertRaises(SystemExit) as ctx:
+        with self.assertRaises(SafetyError):
             _check_inbox_safety(link, self.target, '_A-TRIER')
-        self.assertEqual(ctx.exception.code, 1)
 
     def test_different_fallback_name(self):
         """Fallback avec un nom custom → détection correcte."""
@@ -73,7 +69,7 @@ class TestCheckInboxSafety(unittest.TestCase):
         # inbox != custom_fallback → OK
         _check_inbox_safety(self.inbox, self.target, 'NON_CLASSE')
         # inbox == custom_fallback → bloque
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SafetyError):
             _check_inbox_safety(custom_fallback, self.target, 'NON_CLASSE')
 
 

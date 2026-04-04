@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from lib.logger import setup_logger, get_logger
+from lib.exceptions import ConfigError
 
 
 def get_project_root() -> Path:
@@ -42,7 +43,7 @@ def get_project_root() -> Path:
     if (cwd / "profiles").exists() and (cwd / "lib").exists():
         return cwd
 
-    raise RuntimeError(
+    raise ConfigError(
         "Cannot find project root. Searched for 'profiles/' and 'lib/' directories."
     )
 
@@ -93,7 +94,7 @@ class Profile:
         self.profile_dir = self._profile_dir
 
         if not self._profile_dir.exists():
-            raise FileNotFoundError(
+            raise ConfigError(
                 f"Profile directory not found: {self._profile_dir}"
             )
 
@@ -121,7 +122,7 @@ class Profile:
         filepath = self._profile_dir / filename
 
         if not filepath.exists():
-            raise FileNotFoundError(
+            raise ConfigError(
                 f"Profile file not found: {filepath}"
             )
 
@@ -130,9 +131,9 @@ class Profile:
                 data = yaml.safe_load(f)
                 return data if data is not None else {}
         except yaml.YAMLError as e:
-            raise ValueError(
+            raise ConfigError(
                 f"Malformed YAML in {filepath}: {e}"
-            )
+            ) from e
 
     def _load_profile_yaml(self) -> None:
         """Load profile.yaml and set basic attributes."""
@@ -284,7 +285,7 @@ def list_profiles() -> list[str]:
             if d.is_dir() and not d.name.startswith(".")
         ]
         return sorted(profiles)
-    except RuntimeError:
+    except ConfigError:
         return []
 
 
@@ -376,5 +377,5 @@ if __name__ == "__main__":
         log.info("Description: %s", default_profile.description)
         log.info("Target: %s", default_profile.target)
         log.info("LLM Provider: %s", default_profile.llm_provider)
-    except FileNotFoundError as e:
+    except ConfigError as e:
         log.error("Error: %s", e)

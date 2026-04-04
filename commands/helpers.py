@@ -19,6 +19,7 @@ from lib.checkpoint import CheckpointManager
 from lib.classifier import classify_combined
 from lib.llm_mapper import LLMMapper
 from lib.constants import CONFIDENCE_THRESHOLD, MAPPER_MIN_CONFIDENCE
+from lib.exceptions import SafetyError
 
 log = get_logger()
 
@@ -39,16 +40,16 @@ def check_inbox_safety(source, target, fallback):
     real_fallback = os.path.realpath(fallback_path)
 
     if real_source == real_target:
-        log.error("❌ SÉCURITÉ : inbox et target pointent vers le même dossier !")
-        log.error("   inbox  = {}".format(source))
-        log.error("   target = {}".format(target))
-        sys.exit(1)
+        msg = ("inbox et target pointent vers le même dossier !\n"
+               "   inbox  = {}\n   target = {}".format(source, target))
+        log.error("❌ SÉCURITÉ : " + msg)
+        raise SafetyError(msg)
 
     if real_source == real_fallback:
-        log.error("❌ SÉCURITÉ : inbox pointe vers le dossier fallback ({}) !".format(fallback))
-        log.error("   inbox    = {}".format(source))
-        log.error("   fallback = {}".format(fallback_path))
-        sys.exit(1)
+        msg = ("inbox pointe vers le dossier fallback ({}) !\n"
+               "   inbox    = {}\n   fallback = {}".format(fallback, source, fallback_path))
+        log.error("❌ SÉCURITÉ : " + msg)
+        raise SafetyError(msg)
 
 
 def confirm_execute(results, source, target, fallback='_A-TRIER'):
