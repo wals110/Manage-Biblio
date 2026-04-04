@@ -44,7 +44,6 @@ import io
 import re
 import json
 import base64
-from typing import Optional, List, Dict
 
 try:
     from pdf2image import convert_from_path
@@ -113,7 +112,7 @@ Rules:
 # ════════════════════════════════════════════════════════════════════════════
 
 def extract_cover_image(pdf_path: str, dpi: int = 150,
-                        n_pages: int = 1) -> Optional[List['Image.Image']]:
+                        n_pages: int = 1) -> list['Image.Image'] | None:
     """
     Extrait les N premières pages du PDF comme images PIL.
 
@@ -176,11 +175,10 @@ def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
 # APPEL API LLM VISION
 # ════════════════════════════════════════════════════════════════════════════
 
-def call_vision_api(images_base64, api_key, endpoint,
-                    model=DEFAULT_MODEL,
-                    timeout=30, max_retries=3,
-                    client=None):
-    # type: (object, str, str, str, int, int, Optional[LLMClient]) -> Optional[Dict]
+def call_vision_api(images_base64: object, api_key: str, endpoint: str,
+                    model: str = DEFAULT_MODEL,
+                    timeout: int = 30, max_retries: int = 3,
+                    client: 'LLMClient | None' = None) -> dict | None:
     """
     Envoie une ou plusieurs images au modèle LLM Vision et parse la réponse JSON.
 
@@ -226,7 +224,7 @@ def call_vision_api(images_base64, api_key, endpoint,
     return parse_vision_response(content)
 
 
-def parse_vision_response(content: str) -> Optional[Dict]:
+def parse_vision_response(content: str) -> dict | None:
     """
     Parse la réponse JSON du LLM Vision.
 
@@ -269,14 +267,13 @@ def parse_vision_response(content: str) -> Optional[Dict]:
 # FONCTION CONVENIANCE
 # ════════════════════════════════════════════════════════════════════════════
 
-def analyze_cover(pdf_path, api_key='', endpoint='',
-                  model=DEFAULT_MODEL,
-                  dpi=150,
-                  verbose=False,
-                  max_retries=3,
-                  n_pages=1,
-                  client=None):
-    # type: (str, str, str, str, int, bool, int, int, Optional[LLMClient]) -> Optional[Dict]
+def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
+                  model: str = DEFAULT_MODEL,
+                  dpi: int = 150,
+                  verbose: bool = False,
+                  max_retries: int = 3,
+                  n_pages: int = 1,
+                  client: 'LLMClient | None' = None) -> dict | None:
     """
     Analyse complète d'une couverture de livre (une ou plusieurs pages).
 

@@ -31,7 +31,6 @@ Python 3.9 compatible.
 """
 
 import time
-from typing import Optional, List, Dict
 
 from lib.logger import get_logger
 
@@ -52,21 +51,19 @@ class LLMClient:
     pour tous les modules de Klodo (vision, mapper, refiner).
     """
 
-    def __init__(self, api_key, endpoint, model,
-                 timeout=30, max_retries=3, verbose=False):
-        # type: (str, str, str, int, int, bool) -> None
+    def __init__(self, api_key: str, endpoint: str, model: str,
+                 timeout: int = 30, max_retries: int = 3, verbose: bool = False) -> None:
         self.api_key = api_key
         self.endpoint = endpoint
         self.model = model
         self.timeout = timeout
         self.max_retries = max_retries
         self.verbose = verbose
-        self._session = None  # type: Optional[req_lib.Session]
+        self._session: req_lib.Session | None = None
 
-    def call(self, prompt, images_b64=None,
-             max_tokens=150, temperature=0.1,
-             timeout=None, max_retries=None):
-        # type: (str, Optional[List[str]], int, float, Optional[int], Optional[int]) -> Optional[str]
+    def call(self, prompt: str, images_b64: list[str] | None = None,
+             max_tokens: int = 150, temperature: float = 0.1,
+             timeout: int | None = None, max_retries: int | None = None) -> str | None:
         """
         Appel LLM unifié (texte ou multimodal).
 
@@ -95,9 +92,8 @@ class LLMClient:
         return self._send_with_retry(
             payload, effective_timeout, effective_retries)
 
-    def call_messages(self, messages, max_tokens=150, temperature=0.1,
-                      timeout=None, max_retries=None):
-        # type: (List[Dict], int, float, Optional[int], Optional[int]) -> Optional[str]
+    def call_messages(self, messages: list[dict], max_tokens: int = 150, temperature: float = 0.1,
+                      timeout: int | None = None, max_retries: int | None = None) -> str | None:
         """
         Appel LLM avec un payload messages pré-construit.
 
@@ -128,8 +124,7 @@ class LLMClient:
 
     # ── Session HTTP (connection pooling) ─────────────────────────────
 
-    def _get_session(self):
-        # type: () -> req_lib.Session
+    def _get_session(self) -> req_lib.Session:
         """Retourne une session HTTP réutilisable (keep-alive, connection pooling).
 
         Initialisée en lazy à la première requête, avec les headers communs
@@ -145,19 +140,17 @@ class LLMClient:
 
     # ── Construction du payload ─────────────────────────────────────────
 
-    def _build_headers(self):
-        # type: () -> Dict[str, str]
+    def _build_headers(self) -> dict[str, str]:
         """Construit les headers HTTP. Authorization ajoutée si api_key fournie."""
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = "Bearer {}".format(self.api_key)
         return headers
 
-    def _build_messages(self, prompt, images_b64=None):
-        # type: (str, Optional[List[str]]) -> List[Dict]
+    def _build_messages(self, prompt: str, images_b64: list[str] | None = None) -> list[dict]:
         """Construit le tableau messages (texte pur ou multimodal)."""
         if images_b64:
-            content_parts = []  # type: List
+            content_parts: list = []
             for img_b64 in images_b64:
                 content_parts.append({
                     "type": "image_url",
@@ -170,8 +163,7 @@ class LLMClient:
         else:
             return [{"role": "user", "content": prompt}]
 
-    def _build_payload(self, messages, max_tokens, temperature):
-        # type: (List[Dict], int, float) -> Dict
+    def _build_payload(self, messages: list[dict], max_tokens: int, temperature: float) -> dict:
         """Construit le payload JSON complet."""
         return {
             "model": self.model,
@@ -182,8 +174,7 @@ class LLMClient:
 
     # ── Envoi avec retry ────────────────────────────────────────────────
 
-    def _send_with_retry(self, payload, timeout, max_retries):
-        # type: (Dict, int, int) -> Optional[str]
+    def _send_with_retry(self, payload: dict, timeout: int, max_retries: int) -> str | None:
         """
         Envoie la requête HTTP avec retry et backoff.
 

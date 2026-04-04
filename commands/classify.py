@@ -6,7 +6,6 @@ import os
 import sys
 import signal
 import threading
-from typing import Optional, List, Dict
 
 from lib.logger import get_logger
 from lib.checkpoint import CheckpointManager
@@ -24,7 +23,7 @@ def scan_and_classify(source_dir, profile, api_key,
                       max_files=0, verbose=False, delay=0.2,
                       workers=1, logs_dir='', checkpoint_name='progress.json',
                       skip_confirm=False, vision=False, n_pages=1):
-    # type: (str, object, str, int, bool, float, int, str, str, bool, bool, int) -> List[Dict]
+    # type: (str, object, str, int, bool, float, int, str, str, bool, bool, int) -> list[dict]
     """
     Scanne un répertoire et traite chaque PDF via LLM Vision.
     Supporte la reprise automatique et le traitement parallèle.
@@ -93,7 +92,7 @@ def scan_and_classify(source_dir, profile, api_key,
     classifier, mapper = load_classifiers(profile, api_key, verbose, vision=vision)
 
     def _process_one(pdf_path):
-        # type: (str) -> Optional[Dict]
+        # type: (str) -> dict | None
         """Traite un fichier PDF et met à jour le checkpoint."""
         if interrupted[0]:
             return None
@@ -147,8 +146,8 @@ def scan_and_classify(source_dir, profile, api_key,
     return list(progress.values())
 
 
-def cmd_classify(args, profile):
-    # type: (object, object) -> None
+def cmd_classify(args, profile) -> None:
+    # type: (object, object)
     """Sous-commande classify : LLM Vision + classement thématique."""
     source = args.path or profile.inbox
     if not source or not os.path.isdir(source):

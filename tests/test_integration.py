@@ -17,7 +17,6 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
-from typing import Dict, List, Optional
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -41,7 +40,7 @@ FIXTURES_PROFILE = os.path.join(FIXTURES_DIR, 'profile')
 
 
 def _get_test_pdfs():
-    # type: () -> List[str]
+    # type: () -> list[str]
     """Retourne la liste des PDFs dans fixtures/pdfs/."""
     if not os.path.isdir(FIXTURES_PDFS):
         return []
@@ -67,8 +66,7 @@ class FakeProfile:
     le constructeur qui dépend de get_project_root().
     """
 
-    def __init__(self, inbox, target):
-        # type: (str, str) -> None
+    def __init__(self, inbox: str, target: str) -> None:
         profile_data = _load_fixture_yaml('profile.yaml')
         tree_data = _load_fixture_yaml('tree.yaml')
         mapping_data = _load_fixture_yaml('theme_mapping.yaml')
@@ -92,8 +90,7 @@ class FakeProfile:
         self.profile_dir = FIXTURES_PROFILE
 
 
-def _mock_vision_response(theme, title='', author='', confidence=0.9):
-    # type: (str, str, str, float) -> Dict
+def _mock_vision_response(theme: str, title: str = '', author: str = '', confidence: float = 0.9) -> dict:
     """Construit une réponse LLM Vision simulée."""
     return {
         'title': title or 'Test Title',

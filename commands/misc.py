@@ -14,8 +14,8 @@ from commands.helpers import PROJECT_ROOT
 log = get_logger()
 
 
-def cmd_profiles(args):
-    # type: (object,) -> None
+def cmd_profiles(args) -> None:
+    # type: (object,)
     """Liste les profils disponibles."""
     profiles = list_profiles()
     if not profiles:
@@ -31,8 +31,8 @@ def cmd_profiles(args):
             log.error("  {} — ⚠ Erreur: {}".format(name, e))
 
 
-def cmd_init(args):
-    # type: (object,) -> None
+def cmd_init(args) -> None:
+    # type: (object,)
     """Crée un nouveau profil."""
     name = args.name
     target = args.target
@@ -56,8 +56,8 @@ def cmd_init(args):
         sys.exit(1)
 
 
-def cmd_suggest(args, profile):
-    # type: (object, object) -> None
+def cmd_suggest(args, profile) -> None:
+    # type: (object, object)
     """Sous-commande suggest : review et application des suggestions de nouveaux dossiers."""
     logs_dir = os.path.join(PROJECT_ROOT, 'logs')
     suggestions = load_suggestions(logs_dir)

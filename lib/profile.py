@@ -8,7 +8,7 @@ Each profile contains configuration for target library, LLM settings, and classi
 import os
 import sys
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Any
 
 import yaml
 
@@ -104,7 +104,7 @@ class Profile:
         self._load_refinement_yaml()
         self._load_categories_yaml()
 
-    def _load_yaml(self, filename: str) -> Dict[str, Any]:
+    def _load_yaml(self, filename: str) -> dict[str, Any]:
         """
         Load a YAML file from the profile directory.
 
@@ -176,7 +176,7 @@ class Profile:
         """Load categories.yaml and set categories attribute."""
         self.categories = self._load_yaml("categories.yaml")
 
-    def get_folder_path(self, theme: str) -> Optional[str]:
+    def get_folder_path(self, theme: str) -> str | None:
         """
         Get the target folder path for a given theme.
 
@@ -192,8 +192,7 @@ class Profile:
             return self.theme_mapping[theme]
         return None
 
-    def validate(self, check_dirs=True):
-        # type: (bool) -> List[str]
+    def validate(self, check_dirs=True) -> list[str]:
         """
         Valide la configuration du profil.
 
@@ -203,9 +202,9 @@ class Profile:
             check_dirs: Si True, vérifie l'existence des répertoires sur le disque.
 
         Returns:
-            List[str]: Liste des erreurs trouvées (vide si tout est OK).
+            list[str]: Liste des erreurs trouvés (vide si tout est OK).
         """
-        errors = []  # type: List[str]
+        errors: list[str] = []
 
         # Vérifications de configuration
         if not self.target:
@@ -242,7 +241,7 @@ class Profile:
 
         return errors
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serialize profile to dictionary.
 
@@ -266,7 +265,7 @@ class Profile:
         }
 
 
-def list_profiles() -> List[str]:
+def list_profiles() -> list[str]:
     """
     List all available profile names.
 

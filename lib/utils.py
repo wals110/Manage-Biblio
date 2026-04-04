@@ -11,14 +11,13 @@ Contains:
   - save_report() — write CSV report with timestamp
   - print_summary() — formatted results summary
 
-Python 3.9 compatible (no 3.10+ type hints).
+Python 3.13 compatible with modern type hints.
 """
 
 import os
 import csv
 import re
 from datetime import datetime
-from typing import Optional, List, Tuple, Dict
 from collections import Counter
 
 from lib.logger import get_logger
@@ -121,7 +120,7 @@ def title_case_smart(text: str) -> str:
     return ' '.join(result)
 
 
-def build_new_filename(title: str, author: str) -> Optional[str]:
+def build_new_filename(title: str, author: str) -> str | None:
     """
     Construit un nouveau nom de fichier au format "Titre - Auteur.pdf".
 
@@ -201,7 +200,7 @@ def is_name_already_clean(filename: str) -> bool:
 # FILE COLLECTION
 # ════════════════════════════════════════════════════════════════════════════
 
-def collect_pdf_files(dir_path: str, max_files: int = 0) -> List[str]:
+def collect_pdf_files(dir_path: str, max_files: int = 0) -> list[str]:
     """
     Marche récursivement dans dir_path et collecte tous les fichiers .pdf.
 
@@ -230,7 +229,7 @@ def collect_pdf_files(dir_path: str, max_files: int = 0) -> List[str]:
 # REPORTING
 # ════════════════════════════════════════════════════════════════════════════
 
-def save_report(results: List[Dict], output_dir: str, prefix: str = 'rapport') -> str:
+def save_report(results: list[dict], output_dir: str, prefix: str = 'rapport') -> str:
     """
     Sauvegarde un rapport CSV avec timestamp dans le nom du fichier.
 
@@ -274,7 +273,7 @@ def save_report(results: List[Dict], output_dir: str, prefix: str = 'rapport') -
     return report_path
 
 
-def print_summary(results: List[Dict], cost_per_call: float = 0.00034):
+def print_summary(results: list[dict], cost_per_call: float = 0.00034):
     """
     Affiche un résumé formaté des résultats de traitement.
 

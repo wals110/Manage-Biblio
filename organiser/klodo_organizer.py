@@ -42,7 +42,6 @@ import unicodedata
 from pathlib import Path
 from datetime import datetime
 from collections import Counter, defaultdict
-from typing import Optional, Tuple, List, Dict
 
 # ── Optionnels ──────────────────────────────────────────────────────────────
 try:
@@ -111,7 +110,7 @@ def normalize_text(text: str) -> str:
     return text
 
 
-def tokenize(text: str) -> List[str]:
+def tokenize(text: str) -> list[str]:
     """Découpe un texte en tokens significatifs."""
     text = normalize_text(text)
     tokens = re.findall(r'[a-zA-Z#+.]{2,}', text)
@@ -119,7 +118,7 @@ def tokenize(text: str) -> List[str]:
     return tokens
 
 
-def extract_bigrams(tokens: List[str]) -> List[str]:
+def extract_bigrams(tokens: list[str]) -> list[str]:
     """Extrait les bigrammes d'une liste de tokens."""
     return [f"{tokens[i]} {tokens[i+1]}" for i in range(len(tokens) - 1)]
 
@@ -242,7 +241,7 @@ class KeywordClassifier:
         else:
             return kw in text_lower
 
-    def classify(self, text: str, current_dir: str = '') -> List[Tuple[str, float, str]]:
+    def classify(self, text: str, current_dir: str = '') -> list[tuple[str, float, str]]:
         """
         Retourne une liste de (chemin, score, mot_clé_matché) triée par score.
         Le score tient compte du nombre de mots-clés matchés et de la priorité.
@@ -395,7 +394,7 @@ class LearningClassifier:
         print(f"  [Apprentissage] {len(self.profiles)} profils construits "
               f"à partir de {doc_count} fichiers.")
 
-    def classify(self, text: str) -> List[Tuple[str, float, str]]:
+    def classify(self, text: str) -> list[tuple[str, float, str]]:
         """Classe un texte par similarité cosinus avec les profils."""
         if not self.actif or not self.profiles:
             return []
@@ -590,7 +589,7 @@ class KlodoOrganizer:
             'details': 'aucune correspondance trouvée',
         }
 
-    def scan(self) -> List[dict]:
+    def scan(self) -> list[dict]:
         """
         Parcourt toute la bibliothèque et propose un classement.
         Retourne une liste de propositions de déplacement.

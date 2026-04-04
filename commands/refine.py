@@ -16,8 +16,8 @@ from commands.helpers import PROJECT_ROOT
 log = get_logger()
 
 
-def cmd_refine(args, profile):
-    # type: (object, object) -> None
+def cmd_refine(args, profile) -> None:
+    # type: (object, object)
     """Sous-commande refine : raffinement des sous-catégories (parcours récursif)."""
     base_path = args.path or profile.target
     if not base_path or not os.path.isdir(base_path):

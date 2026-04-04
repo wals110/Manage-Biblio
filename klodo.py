@@ -37,7 +37,6 @@ from lib import __version__
 import os
 import sys
 import argparse
-from typing import Dict
 
 # ── Ajout du répertoire projet au path ──
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -224,7 +223,7 @@ def main():
         'rename': cmd_rename,
         'refine': cmd_refine,
         'suggest': cmd_suggest,
-    }  # type: Dict
+    }
     handler = dispatch.get(args.command)
     if handler:
         handler(args, profile)

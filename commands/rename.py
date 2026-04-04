@@ -11,8 +11,8 @@ from commands.helpers import PROJECT_ROOT, make_llm_rename_callback
 log = get_logger()
 
 
-def cmd_rename(args, profile):
-    # type: (object, object) -> None
+def cmd_rename(args, profile) -> None:
+    # type: (object, object)
     """Sous-commande rename : renommage 'Titre - Auteur.pdf' via klodo_renamer."""
     source = args.path or profile.inbox
     if not source or not os.path.isdir(source):

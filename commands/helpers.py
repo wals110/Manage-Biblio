@@ -12,7 +12,6 @@ import shutil
 import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, List, Tuple, Dict
 
 from lib.logger import get_logger
 from lib.vision import analyze_cover
@@ -52,7 +51,7 @@ def check_inbox_safety(source, target, fallback):
 
 
 def confirm_execute(results, source, target, fallback='_A-TRIER'):
-    # type: (List[Dict], str, str, str) -> bool
+    # type: (list[dict], str, str, str) -> bool
     """Affiche un récapitulatif et demande confirmation avant exécution."""
     classified = [r for r in results if r['status'] == 'classifié']
     not_classified = [r for r in results
@@ -100,7 +99,7 @@ def safe_remove_source(src, dest):
 
 
 def copy_files(file_list, target_base, dest_subdir, label):
-    # type: (List[Dict], str, Optional[str], str) -> Tuple[int, int]
+    # type: (list[dict], str, str | None, str) -> tuple[int, int]
     """Copie une liste de fichiers vers target_base/dest_subdir.
 
     Pour les classifiés, dest_subdir vient de r['destination'].
@@ -168,7 +167,7 @@ def copy_files(file_list, target_base, dest_subdir, label):
 
 
 def execute_classify(results, target_base, fallback='_A-TRIER'):
-    # type: (List[Dict], str, str) -> None
+    # type: (list[dict], str, str) -> None
     """Copie les fichiers classifiés vers la cible, puis supprime la source.
     Les non-classifiés vont dans le dossier fallback."""
     total_cleaned = 0
@@ -202,7 +201,7 @@ def execute_classify(results, target_base, fallback='_A-TRIER'):
 def process_single_file(pdf_path, api_key, endpoint, model,
                         theme_mapping, classifier=None, llm_mapper=None,
                         verbose=False, min_confidence=0.5, n_pages=1):
-    # type: (str, str, str, str, Dict[str, str], object, object, bool, float, int) -> Dict
+    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int) -> dict
     """
     Pipeline de classification pour un fichier :
     1. Extraction couverture → image
@@ -222,7 +221,7 @@ def process_single_file(pdf_path, api_key, endpoint, model,
         'score': 0.0,
         'mot_cle': '',
         'status': 'pending',
-    }  # type: Dict
+    }  # type: dict
 
     vision = analyze_cover(pdf_path, api_key, endpoint, model,
                            verbose=verbose, n_pages=n_pages)
@@ -271,7 +270,7 @@ def process_single_file(pdf_path, api_key, endpoint, model,
 
 
 def load_classifiers(profile, api_key, verbose=False, vision=False):
-    # type: (object, str, bool, bool) -> Tuple
+    # type: (object, str, bool, bool) -> tuple
     """Charge le classifieur mots-clés et le LLM Mapper."""
     from lib.classifier import load_keyword_classifier
 
@@ -307,12 +306,12 @@ def load_classifiers(profile, api_key, verbose=False, vision=False):
 
 
 def run_processing(to_process, process_fn, workers, delay, interrupted, print_lock):
-    # type: (List[str], object, int, float, list, threading.Lock) -> None
+    # type: (list[str], object, int, float, list, threading.Lock) -> None
     """Exécute le traitement en parallèle ou séquentiel."""
     if workers > 1:
         log.info("🚀 {} requêtes avec {} threads...\n".format(len(to_process), workers))
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {}  # type: Dict
+            futures = {}  # type: dict
             for pdf_path in to_process:
                 if interrupted[0]:
                     break
@@ -354,7 +353,7 @@ def make_llm_rename_callback(api_key, endpoint, model, verbose=False, n_pages=1)
     # type: (str, str, str, bool, int) -> object
     """Crée un callback LLM Vision pour le renommage."""
     def callback(pdf_path):
-        # type: (str) -> Dict
+        # type: (str) -> dict
         return analyze_cover(pdf_path, api_key, endpoint, model,
                              verbose=verbose, n_pages=n_pages)
     return callback

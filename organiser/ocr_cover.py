@@ -49,7 +49,6 @@ import argparse
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Optional, List, Tuple, Dict
 
 try:
     from pdf2image import convert_from_path
@@ -107,7 +106,7 @@ Rules:
 # EXTRACTION COUVERTURE
 # ════════════════════════════════════════════════════════════════════════════
 
-def extract_cover_image(pdf_path: str, dpi: int = 150) -> Optional['Image.Image']:
+def extract_cover_image(pdf_path: str, dpi: int = 150) -> 'Image.Image' | None:
     """Extrait la première page du PDF comme image PIL."""
     if not HAS_PDF2IMAGE:
         print("  ⚠ pdf2image non installé (pip install pdf2image)")
@@ -156,7 +155,7 @@ def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
 def call_vision_api(img_base64: str, api_key: str,
                     model: str = DEFAULT_MODEL,
                     timeout: int = 30,
-                    max_retries: int = 3) -> Optional[Dict]:
+                    max_retries: int = 3) -> dict | None:
     """
     Envoie l'image au modèle LLM Vision via SiliconFlow et parse la réponse JSON.
     Retourne un dict avec title, author, theme, language, confidence.
@@ -238,7 +237,7 @@ def call_vision_api(img_base64: str, api_key: str,
     return None
 
 
-def parse_vision_response(content: str) -> Optional[Dict]:
+def parse_vision_response(content: str) -> dict | None:
     """Parse la réponse JSON du LLM Vision."""
     # Extraire le JSON de la réponse (le LLM peut ajouter du texte autour)
     json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
@@ -283,7 +282,7 @@ def sanitize_filename(text: str) -> str:
     return text
 
 
-def build_new_filename(title: str, author: str) -> Optional[str]:
+def build_new_filename(title: str, author: str) -> str | None:
     """
     Construit un nouveau nom de fichier au format "Titre - Auteur.pdf".
     Retourne None si le titre est trop court ou inexploitable.
@@ -803,7 +802,7 @@ THEME_TO_PATH = {
 }
 
 
-def classify_by_theme(theme: str) -> Optional[str]:
+def classify_by_theme(theme: str) -> str | None:
     """
     Mappe un thème LLM vers un chemin dans l'arborescence BIBLIO.
     Recherche d'abord exact, puis par sous-chaîne.
@@ -850,8 +849,8 @@ def load_classifier(config_path: str):
     return KeywordClassifier(config)
 
 
-def classify_combined(vision_result: Dict, filename: str,
-                      classifier=None) -> Tuple[str, float, str]:
+def classify_combined(vision_result: dict, filename: str,
+                      classifier=None) -> tuple[str, float, str]:
     """
     Classification combinée : thème LLM + classifieur par mots-clés.
     Priorité au thème LLM si la confiance est élevée.
@@ -889,7 +888,7 @@ def classify_combined(vision_result: Dict, filename: str,
 
 def process_single_file(pdf_path: str, api_key: str,
                         classifier=None, model: str = DEFAULT_MODEL,
-                        verbose: bool = False) -> Dict:
+                        verbose: bool = False) -> dict:
     """
     Pipeline complet pour un fichier :
     1. Extraction couverture → image
@@ -1003,7 +1002,7 @@ def get_progress_path(logs_dir: str) -> str:
     return os.path.join(logs_dir, _PROGRESS_FILENAME)
 
 
-def load_progress(logs_dir: str) -> Dict[str, Dict]:
+def load_progress(logs_dir: str) -> dict[str, dict]:
     """
     Charge la progression depuis le fichier JSON.
     Retourne un dict {chemin_fichier: résultat}.
@@ -1020,7 +1019,7 @@ def load_progress(logs_dir: str) -> Dict[str, Dict]:
         return {}
 
 
-def save_progress(logs_dir: str, progress: Dict[str, Dict],
+def save_progress(logs_dir: str, progress: dict[str, dict],
                   model: str = "", total_files: int = 0):
     """Sauvegarde la progression dans le fichier JSON."""
     progress_path = get_progress_path(logs_dir)
@@ -1077,7 +1076,7 @@ def scan_directory(dir_path: str, api_key: str, classifier=None,
                    model: str = DEFAULT_MODEL,
                    max_files: int = 0, verbose: bool = False,
                    delay: float = 0.2, workers: int = 1,
-                   logs_dir: str = '') -> List[Dict]:
+                   logs_dir: str = '') -> list[dict]:
     """Scanne un répertoire et traite chaque PDF via LLM Vision.
     Supporte la reprise automatique et le traitement parallèle."""
     pdf_files = []
@@ -1092,7 +1091,7 @@ def scan_directory(dir_path: str, api_key: str, classifier=None,
         pdf_files = pdf_files[:max_files]
 
     # ── Charger la progression existante ──
-    progress = {}  # type: Dict[str, Dict]
+    progress: dict[str, dict] = {}
     resumed = 0
     if logs_dir:
         progress = load_progress(logs_dir)
@@ -1132,8 +1131,7 @@ def scan_directory(dir_path: str, api_key: str, classifier=None,
     # ── Gestion Ctrl+C ──
     interrupted = [False]
 
-    def signal_handler(sig, frame):
-        # type: (int, object) -> None
+    def signal_handler(sig: int, frame: object) -> None:
         interrupted[0] = True
         print(f"\n\n⚠  Interruption détectée (Ctrl+C)")
         print(f"   Attente de la fin des requêtes en cours...")
@@ -1147,8 +1145,7 @@ def scan_directory(dir_path: str, api_key: str, classifier=None,
     api_errors = [0]
     max_consecutive_errors = 10
 
-    def _process_one(pdf_path):
-        # type: (str) -> Optional[Dict]
+    def _process_one(pdf_path: str) -> dict | None:
         """Traite un fichier (appelé par chaque thread)."""
         if interrupted[0]:
             return None
@@ -1195,7 +1192,7 @@ def scan_directory(dir_path: str, api_key: str, classifier=None,
     if workers > 1:
         print(f"🚀 Lancement de {len(to_process)} requêtes avec {workers} threads...\n")
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {}  # type: Dict
+            futures: dict = {}
             for pdf_path in to_process:
                 if interrupted[0]:
                     break
@@ -1241,7 +1238,7 @@ def scan_directory(dir_path: str, api_key: str, classifier=None,
     return list(progress.values())
 
 
-def save_report(results: List[Dict], output_dir: str) -> str:
+def save_report(results: list[dict], output_dir: str) -> str:
     """Sauvegarde un rapport CSV."""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     report_path = os.path.join(output_dir, f'rapport_ocr_{timestamp}.csv')
@@ -1271,7 +1268,7 @@ def save_report(results: List[Dict], output_dir: str) -> str:
     return report_path
 
 
-def print_summary(results: List[Dict]):
+def print_summary(results: list[dict]):
     """Affiche un résumé des résultats."""
     total = len(results)
     if total == 0:

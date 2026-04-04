@@ -26,8 +26,7 @@ class TestSafeRemoveSource(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def _create_file(self, name, content='hello' * 100):
-        # type: (str, str) -> str
+    def _create_file(self, name: str, content: str = 'hello' * 100) -> str:
         """Crée un fichier temporaire et retourne son chemin."""
         path = os.path.join(self.tmp, name)
         with open(path, 'w') as f:
@@ -94,8 +93,7 @@ class TestCopyFiles(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def _create_inbox_file(self, name, content='PDF content'):
-        # type: (str, str) -> str
+    def _create_inbox_file(self, name: str, content: str = 'PDF content') -> str:
         """Crée un fichier dans l'inbox."""
         path = os.path.join(self.inbox, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)

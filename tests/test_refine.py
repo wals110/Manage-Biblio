@@ -28,8 +28,7 @@ from lib.refiner import (
 # Helpers
 # ═══════════════════════════════════════════════════════════════════
 
-def _create_tree(base, structure):
-    # type: (str, dict) -> None
+def _create_tree(base: str, structure: dict) -> None:
     """
     Crée une arborescence à partir d'un dict.
     Clé = nom de dossier/fichier, Valeur = dict (sous-dossier) ou None (fichier).

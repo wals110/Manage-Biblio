@@ -36,7 +36,6 @@ Usage:
 import os
 import json
 from datetime import datetime
-from typing import Optional, List, Dict
 
 try:
     import yaml
@@ -116,7 +115,7 @@ class LLMMapper:
     def __init__(self, folders, api_key='', endpoint='', model='',
                  min_confidence=0.6, verbose=False, vision=False,
                  client=None):
-        # type: (List[str], str, str, str, float, bool, bool, Optional[LLMClient]) -> None
+        # type: (list[str], str, str, str, float, bool, bool, LLMClient | None) -> None
         self.folders = folders
         self.api_key = api_key
         self.endpoint = endpoint
@@ -124,8 +123,8 @@ class LLMMapper:
         self.min_confidence = min_confidence
         self.verbose = verbose
         self.vision = vision
-        self.learned = {}  # type: Dict[str, str]
-        self.suggestions = []  # type: List[Dict]
+        self.learned = {}  # type: dict[str, str]
+        self.suggestions = []  # type: list[dict]
         self._folders_text = "\n".join("- {}".format(f) for f in folders)
         # Client LLM : fourni ou créé à la demande
         self._client = client
@@ -137,7 +136,7 @@ class LLMMapper:
         self.vision_successes = 0
 
     def resolve(self, theme, title='', filename='', pdf_path=None):
-        # type: (str, str, str, Optional[str]) -> Optional[str]
+        # type: (str, str, str, str | None) -> str | None
         """
         Demande au LLM de mapper un thème inconnu vers un dossier existant.
         Si aucun dossier ne convient et que vision est activée, escalade
@@ -193,7 +192,7 @@ class LLMMapper:
         return None
 
     def _process_mapper_result(self, result, theme):
-        # type: (Optional[Dict], str) -> Optional[str]
+        # type: (dict | None, str) -> str | None
         """Valide le résultat du mapper (texte ou vision). Retourne le chemin validé ou None."""
         if result is None:
             return None
@@ -222,7 +221,7 @@ class LLMMapper:
         return validated
 
     def _try_vision_mapper(self, pdf_path):
-        # type: (str) -> Optional[Dict]
+        # type: (str) -> dict | None
         """Escalade vision : envoie la couverture PDF au LLM Vision pour classification."""
         try:
             from lib.vision import extract_cover_image, image_to_base64
@@ -261,7 +260,7 @@ class LLMMapper:
         return self._parse_response(content)
 
     def _call_mapper(self, theme, title, filename):
-        # type: (str, str, str) -> Optional[Dict]
+        # type: (str, str, str) -> dict | None
         """Appel LLM pour mapper un thème vers un dossier existant."""
         prompt = MAPPER_PROMPT_TEMPLATE.format(
             theme=theme,
@@ -274,6 +273,7 @@ class LLMMapper:
 
     def _suggest_new_folder(self, theme, title, filename):
         # type: (str, str, str) -> None
+
         """Demande au LLM de proposer un nouveau dossier pour ce thème."""
         # Éviter les doublons de suggestion pour le même thème
         existing_themes = {s['theme'].lower() for s in self.suggestions}
@@ -305,7 +305,7 @@ class LLMMapper:
                     theme, result['folder'], result.get('reason', '')))
 
     def _get_client(self):
-        # type: () -> Optional[LLMClient]
+        # type: () -> LLMClient | None
         """Retourne le client LLM, en le créant à la demande si nécessaire."""
         if self._client is None:
             if self.api_key and self.endpoint:
@@ -322,7 +322,7 @@ class LLMMapper:
         return self._client
 
     def _call_llm(self, prompt):
-        # type: (str) -> Optional[Dict]
+        # type: (str) -> dict | None
         """Appel LLM générique via le client unifié, retourne le JSON parsé."""
         client = self._get_client()
         if not client:
@@ -335,7 +335,7 @@ class LLMMapper:
         return self._parse_response(content)
 
     def _validate_folder(self, folder):
-        # type: (str) -> Optional[str]
+        # type: (str) -> str | None
         """Valide et normalise un chemin de dossier. Retourne le chemin exact ou None."""
         if folder in self.folders:
             return folder
@@ -346,7 +346,7 @@ class LLMMapper:
         return None
 
     def _parse_response(self, content):
-        # type: (str) -> Optional[Dict]
+        # type: (str) -> dict | None
         """Parse la réponse JSON du LLM, avec tolérance."""
         # Nettoyer les balises markdown ```json ... ```
         if '```' in content:
@@ -389,7 +389,7 @@ class LLMMapper:
             return 0
 
         # Charger le mapping existant
-        existing = {}  # type: Dict[str, str]
+        existing = {}  # type: dict[str, str]
         if os.path.exists(theme_mapping_path):
             with open(theme_mapping_path, 'r', encoding='utf-8') as f:
                 existing = yaml.safe_load(f) or {}
@@ -409,7 +409,7 @@ class LLMMapper:
         return added
 
     def save_suggestions(self, logs_dir):
-        # type: (str) -> Optional[str]
+        # type: (str) -> str | None
         """
         Sauvegarde les suggestions de nouveaux dossiers dans suggestions.yaml.
         Fusionne avec les suggestions existantes (ne supprime rien).
@@ -427,7 +427,7 @@ class LLMMapper:
         path = os.path.join(logs_dir, 'suggestions.yaml')
 
         # Charger les suggestions existantes
-        existing = []  # type: List[Dict]
+        existing = []  # type: list[dict]
         if os.path.exists(path):
             with open(path, 'r', encoding='utf-8') as f:
                 existing = yaml.safe_load(f) or []
@@ -488,7 +488,7 @@ class LLMMapper:
 # ════════════════════════════════════════════════════════════════════════════
 
 def load_suggestions(logs_dir):
-    # type: (str) -> List[Dict]
+    # type: (str) -> list[dict]
     """Charge les suggestions depuis suggestions.yaml."""
     path = os.path.join(logs_dir, 'suggestions.yaml')
     if not os.path.exists(path):
@@ -499,7 +499,7 @@ def load_suggestions(logs_dir):
 
 
 def apply_suggestions(suggestions, profile_dir, target_base):
-    # type: (List[Dict], str, str) -> Dict[str, int]
+    # type: (list[dict], str, str) -> dict[str, int]
     """
     Applique les suggestions validées :
     1. Crée les nouveaux dossiers dans la bibliothèque
@@ -596,7 +596,7 @@ def apply_suggestions(suggestions, profile_dir, target_base):
 
 
 def save_suggestions_file(suggestions, logs_dir):
-    # type: (List[Dict], str) -> None
+    # type: (list[dict], str) -> None
     """Réécrit le fichier suggestions.yaml (après apply ou modification)."""
     path = os.path.join(logs_dir, 'suggestions.yaml')
     with open(path, 'w', encoding='utf-8') as f:
@@ -617,7 +617,7 @@ def save_suggestions_file(suggestions, logs_dir):
 
 
 def _write_theme_mapping(path, mapping):
-    # type: (str, Dict[str, str]) -> None
+    # type: (str, dict[str, str]) -> None
     """Écrit le fichier theme_mapping.yaml trié par section."""
     with open(path, 'w', encoding='utf-8') as f:
         f.write("# " + "=" * 75 + "\n")

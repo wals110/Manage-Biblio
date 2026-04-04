@@ -34,7 +34,7 @@ Usage:
 
 import sys
 import os
-from typing import Optional, List, Tuple, Dict, Any, Callable
+from collections.abc import Callable
 
 from lib.logger import get_logger
 
@@ -43,8 +43,8 @@ log = get_logger()
 
 def classify_by_theme(
     theme: str,
-    theme_mapping: Dict[str, str],
-) -> Optional[str]:
+    theme_mapping: dict[str, str],
+) -> str | None:
     """
     Map a theme string to a BIBLIO_V2 path using the provided theme mapping.
 
@@ -106,7 +106,7 @@ def classify_by_theme(
     return best_match
 
 
-def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
+def load_keyword_classifier(categories_yaml_path: str) -> object | None:
     """
     Load the KeywordClassifier from klodo_organizer.py.
 
@@ -160,13 +160,13 @@ def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
 
 
 def classify_combined(
-    vision_result: Dict[str, Any],
+    vision_result: dict[str, object],
     filename: str,
-    theme_mapping: Dict[str, str],
-    classifier: Optional[Any] = None,
-    llm_mapper: Optional[Any] = None,
-    pdf_path: Optional[str] = None,
-) -> Tuple[str, float, str]:
+    theme_mapping: dict[str, str],
+    classifier: object | None = None,
+    llm_mapper: object | None = None,
+    pdf_path: str | None = None,
+) -> tuple[str | None, float, str]:
     """
     Combine LLM Vision theme classification, keyword classification,
     et LLM Mapper pour résolution intelligente des thèmes inconnus.
@@ -249,8 +249,8 @@ def classify_combined(
 
 
 def make_classify_fn(
-    theme_mapping: Dict[str, str],
-) -> Callable[[str, float], Optional[str]]:
+    theme_mapping: dict[str, str],
+) -> Callable[[str, float], str | None]:
     """
     Create a classification function suitable for CheckpointManager.reclassify().
 
@@ -271,7 +271,7 @@ def make_classify_fn(
         '02-INFORMATIQUE/05-IA-ML/Machine-Learning'
     """
 
-    def classify_fn(theme: str, confidence: float) -> Optional[str]:
+    def classify_fn(theme: str, confidence: float) -> str | None:
         """
         Classify by theme using the provided theme_mapping.
 

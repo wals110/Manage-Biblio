@@ -19,8 +19,8 @@ from commands.classify import scan_and_classify
 log = get_logger()
 
 
-def cmd_process(args, profile):
-    # type: (object, object) -> None
+def cmd_process(args, profile) -> None:
+    # type: (object, object)
     """Pipeline complet : renommage → LLM Vision → classement → raffinement."""
     source = args.path or profile.inbox
     if not source or not os.path.isdir(source):

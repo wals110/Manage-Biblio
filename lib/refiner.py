@@ -28,8 +28,9 @@ import os
 import re
 import shutil
 import time
+from collections.abc import Callable
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Callable, Any
+from typing import Any
 
 from lib.logger import get_logger
 
@@ -37,7 +38,7 @@ log = get_logger()
 
 
 def load_refinement_rules(rules_data):
-    # type: (List[Dict]) -> List[Tuple[str, str, List[str]]]
+    # type: (list[dict]) -> list[tuple[str, str, list[str]]]
     """
     Convert YAML refinement rules to internal format.
 
@@ -80,7 +81,7 @@ def load_refinement_rules(rules_data):
 
 
 def match_keywords(filename, keywords):
-    # type: (str, List[str]) -> Optional[str]
+    # type: (str, list[str]) -> str | None
     """
     Case-insensitive keyword matching in filename.
 
@@ -110,7 +111,7 @@ def match_keywords(filename, keywords):
 
 
 def _normalize_dirname(dirname):
-    # type: (str) -> List[str]
+    # type: (str) -> list[str]
     """
     Generate matching variants from a directory name.
 
@@ -152,7 +153,7 @@ def _normalize_dirname(dirname):
 
 
 def match_subdirs(filename, subdirs):
-    # type: (str, List[str]) -> Optional[str]
+    # type: (str, list[str]) -> str | None
     """
     Implicit matching: use sub-folder names as keywords.
 
@@ -241,7 +242,7 @@ Règles :
 def make_refine_llm_callback(api_key, endpoint, model,
                               min_confidence=0.6, verbose=False,
                               vision=False, client=None):
-    # type: (str, str, str, float, bool, bool, Optional['LLMClient']) -> Callable
+    # type: (str, str, str, float, bool, bool, 'LLMClient' | None) -> Callable
     """
     Build a LLM callback function for refine.
 
@@ -283,12 +284,12 @@ def make_refine_llm_callback(api_key, endpoint, model,
     }
 
     def _send_llm_request(messages):
-        # type: (List[Dict]) -> Optional[str]
+        # type: (list[dict]) -> str | None
         """Send a request to the LLM via the unified client."""
         return client.call_messages(messages, max_tokens=150)
 
     def _validate_result(content, filename, subdirs):
-        # type: (Optional[str], str, List[str]) -> Optional[str]
+        # type: (str | None, str, list[str]) -> str | None
         """Parse and validate LLM response. Returns validated subfolder or None."""
         if not content:
             return None
@@ -334,7 +335,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
         return validated
 
     def _try_vision(filename, current_folder, subdirs, pdf_path):
-        # type: (str, str, List[str], str) -> Optional[str]
+        # type: (str, str, list[str], str) -> str | None
         """Escalade vision : envoyer la couverture du PDF au LLM."""
         try:
             from lib.vision import extract_cover_image, image_to_base64
@@ -379,7 +380,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
         return result
 
     def _call_refine_llm(filename, current_folder, subdirs, pdf_path=None):
-        # type: (str, str, List[str], Optional[str]) -> Tuple[Optional[str], str]
+        # type: (str, str, list[str], str | None) -> tuple[str | None, str]
         """
         Call LLM to pick the best sub-folder for a file.
 
@@ -424,7 +425,7 @@ def make_refine_llm_callback(api_key, endpoint, model,
 
 
 def _parse_llm_json(content):
-    # type: (str) -> Optional[Dict]
+    # type: (str) -> dict | None
     """Parse JSON response from LLM, with tolerance for markdown blocks."""
     # Strip markdown ```json ... ```
     if '```' in content:
@@ -451,7 +452,7 @@ def _parse_llm_json(content):
 
 
 def _apply_match(base_path, result, execute):
-    # type: (str, Dict, bool) -> Dict
+    # type: (str, dict, bool) -> dict
     """
     Apply a matched result: check for duplicates and optionally move.
 
@@ -496,12 +497,12 @@ def _apply_match(base_path, result, execute):
 
 def scan_and_refine(
     base_path,        # type: str
-    rules,            # type: List[Tuple[str, str, List[str]]]
+    rules,            # type: list[tuple[str, str, list[str]]]
     execute=False,    # type: bool
-    llm_callback=None,  # type: Optional[Callable]
+    llm_callback=None,  # type: Callable | None
     workers=1,        # type: int
 ):
-    # type: (...) -> List[Dict]
+    # type: (...) -> list[dict]
     """
     Recursively scan library and propose/apply sub-category refinements.
 
@@ -544,10 +545,10 @@ def scan_and_refine(
         - Leaf folders (no sub-directories) are skipped entirely
     """
     results = []
-    pending_llm = []  # type: List[Dict]
+    pending_llm = []  # type: list[dict]
 
     # Pre-index rules by parent for O(1) lookup
-    rules_by_parent = {}  # type: Dict[str, List[Tuple[str, List[str]]]]
+    rules_by_parent = {}  # type: dict[str, list[tuple[str, list[str]]]]
     for parent_rel, target_subdir, keywords in rules:
         parent_key = parent_rel.replace('\\', '/')
         if parent_key not in rules_by_parent:
@@ -717,7 +718,7 @@ def scan_and_refine(
             return ' | '.join(parts)
 
         def _log_progress(pdf, llm_result, source_tag=''):
-            # type: (str, Optional[str], str) -> None
+            # type: (str, str | None, str) -> None
             """Update progress bar for each file processed by LLM."""
             with _progress_lock:
                 _progress_state['done'] += 1
@@ -748,7 +749,7 @@ def scan_and_refine(
                 pass
 
         def _process_one_llm(item):
-            # type: (Dict) -> Dict
+            # type: (dict) -> dict
             """Process a single file through LLM callback."""
             pdf = item['fichier']
             source_rel = item['source']
@@ -815,7 +816,7 @@ def scan_and_refine(
 
 
 def save_refine_report(results, logs_dir):
-    # type: (List[Dict], str) -> str
+    # type: (list[dict], str) -> str
     """
     Save refinement results as timestamped CSV report.
 
@@ -855,7 +856,7 @@ def save_refine_report(results, logs_dir):
 
 
 def print_refine_summary(results):
-    # type: (List[Dict]) -> None
+    # type: (list[dict]) -> None
     """
     Print human-readable summary of refinement results.
 
@@ -873,7 +874,7 @@ def print_refine_summary(results):
         return
 
     # Count by status
-    status_counts = {}  # type: Dict[str, int]
+    status_counts = {}  # type: dict[str, int]
     for result in results:
         status = result.get('status', 'unknown')
         status_counts[status] = status_counts.get(status, 0) + 1
@@ -894,7 +895,7 @@ def print_refine_summary(results):
         log.info('  {:15s} : {:6d}'.format(status, count))
 
     # Count by source_match type
-    match_counts = {}  # type: Dict[str, int]
+    match_counts = {}  # type: dict[str, int]
     for result in results:
         sm = result.get('source_match', '')
         if sm:
@@ -905,7 +906,7 @@ def print_refine_summary(results):
             log.info('  {:15s} : {:6d}'.format(sm, count))
 
     # Count by destination (top 20, excludes non_classé)
-    dest_counts = {}  # type: Dict[str, int]
+    dest_counts = {}  # type: dict[str, int]
     for result in results:
         if result.get('status') == 'non_classé':
             continue
@@ -920,7 +921,7 @@ def print_refine_summary(results):
 
     # Count non_classé by source folder (top 20)
     if non_classe > 0:
-        nc_folder_counts = {}  # type: Dict[str, int]
+        nc_folder_counts = {}  # type: dict[str, int]
         for result in results:
             if result.get('status') != 'non_classé':
                 continue

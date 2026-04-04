@@ -10,8 +10,8 @@ Python 3.9+
 import json
 import os
 import threading
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable, Dict, Optional
 
 from lib.logger import get_logger
 
@@ -30,22 +30,19 @@ class CheckpointManager:
     RETRYABLE_STATUSES = {"erreur_api", "erreur_extraction", "confiance_basse"}
     RECLASSIFIABLE_STATUSES = {"non_classifié", "renommé_seul"}
 
-    def __init__(self, logs_dir, filename="progress.json"):
-        # type: (str, str) -> None
+    def __init__(self, logs_dir: str, filename: str = "progress.json") -> None:
         self.logs_dir = logs_dir
         self.filename = filename
         self._lock = threading.Lock()
         os.makedirs(logs_dir, exist_ok=True)
 
     @property
-    def path(self):
-        # type: () -> str
+    def path(self) -> str:
         return os.path.join(self.logs_dir, self.filename)
 
     # ── Internal (no lock) ──────────────────────────────────────────────
 
-    def _load_raw(self):
-        # type: () -> Dict[str, Dict]
+    def _load_raw(self) -> dict[str, dict]:
         """Load checkpoint without acquiring lock (caller must hold lock)."""
         if not os.path.exists(self.path):
             return {}
@@ -64,8 +61,7 @@ class CheckpointManager:
             log.warning("  ⚠ Fichier de progression corrompu \u2014 redémarrage à zéro")
             return {}
 
-    def _save_raw(self, progress, model="", total_files=0):
-        # type: (Dict[str, Dict], str, int) -> None
+    def _save_raw(self, progress: dict[str, dict], model: str = "", total_files: int = 0) -> None:
         """Save checkpoint without acquiring lock (caller must hold lock)."""
         tmp_path = self.path + ".tmp"
         data = {
@@ -82,28 +78,24 @@ class CheckpointManager:
 
     # ── Public API (thread-safe) ────────────────────────────────────────
 
-    def load(self):
-        # type: () -> Dict[str, Dict]
+    def load(self) -> dict[str, dict]:
         """Load checkpoint. Returns {file_path: result_dict}."""
         with self._lock:
             return self._load_raw()
 
-    def save(self, progress, model="", total_files=0):
-        # type: (Dict[str, Dict], str, int) -> None
+    def save(self, progress: dict[str, dict], model: str = "", total_files: int = 0) -> None:
         """Save checkpoint with atomic write."""
         with self._lock:
             self._save_raw(progress, model, total_files)
 
-    def clear(self):
-        # type: () -> None
+    def clear(self) -> None:
         """Delete checkpoint file."""
         with self._lock:
             if os.path.exists(self.path):
                 os.remove(self.path)
                 log.info("🗑  Progression précédente supprimée.")
 
-    def retry_errors(self):
-        # type: () -> int
+    def retry_errors(self) -> int:
         """Remove retryable errors from checkpoint. Returns count removed."""
         with self._lock:
             progress = self._load_raw()
@@ -124,12 +116,11 @@ class CheckpointManager:
             log.info("🔄 {} fichiers retirés du checkpoint (seront retraités)".format(len(to_retry)))
             return len(to_retry)
 
-    def reclassify(self, classify_fn, min_confidence=0.5):
-        # type: (Callable[[str, float], Optional[str]], float) -> int
+    def reclassify(self, classify_fn: Callable[[str, float], str | None], min_confidence: float = 0.5) -> int:
         """
         Reclassify non_classifié/renommé_seul entries.
 
-        classify_fn(theme, confidence) -> Optional[str] (destination path).
+        classify_fn(theme, confidence) -> str | None (destination path).
         Uses field names compatible with ocr_cover.py: 'theme_detecte', 'confiance'.
         """
         with self._lock:
