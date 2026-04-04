@@ -26,7 +26,10 @@ Options :
 Dépendances : pip install pypdf pdfplumber requests
 """
 
-__version__ = "2.0.0"
+try:
+    from lib import __version__
+except ImportError:
+    __version__ = "0.0.0"
 
 import os
 import sys

@@ -32,7 +32,7 @@ Prérequis :
     pip3 install pdf2image Pillow pyyaml requests
 """
 
-__version__ = "4.0.0"
+from lib import __version__
 
 import os
 import sys

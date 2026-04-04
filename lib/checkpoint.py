@@ -15,7 +15,7 @@ from typing import Callable, Dict, Optional
 
 from lib.logger import get_logger
 
-__version__ = "4.0.0"
+from lib import __version__
 
 log = get_logger()
 

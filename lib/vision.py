@@ -37,7 +37,7 @@ Usage:
     )
 """
 
-__version__ = "1.0.0"
+from lib import __version__
 
 import os
 import io
