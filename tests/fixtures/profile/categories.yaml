@@ -1,0 +1,37 @@
+# Mots-clés de test pour le KeywordClassifier
+categories:
+  01-SCIENCES/MATHEMATIQUES:
+    - algebra
+    - calculus
+    - theorem
+    - equation
+    - mathematics
+    - probability
+
+  01-SCIENCES/PHYSIQUE:
+    - physics
+    - quantum
+    - relativity
+    - mechanics
+    - thermodynamics
+
+  02-INFORMATIQUE/IA-ML:
+    - machine learning
+    - deep learning
+    - neural network
+    - artificial intelligence
+    - classification
+
+  02-INFORMATIQUE/Langages:
+    - python
+    - java
+    - programming
+    - compiler
+    - algorithm
+
+  03-INGENIERIE/ELECTRONIQUE:
+    - electronics
+    - circuit
+    - transistor
+    - semiconductor
+    - voltage

@@ -1,0 +1,20 @@
+# Profil de test pour les tests d'intégration.
+# Les chemins inbox/target sont remplacés dynamiquement par le test.
+
+name: test
+description: Profil de test intégration
+
+inbox: /tmp/klodo-test-inbox
+target: /tmp/klodo-test-target
+fallback: _A-TRIER
+
+llm:
+  endpoint: https://api.siliconflow.cn/v1/chat/completions
+  model: test-model
+
+defaults:
+  workers: 1
+  min_confidence: 0.5
+  cost_per_call: 0.00034
+  llm_mapper: false
+  max_api_errors: 3

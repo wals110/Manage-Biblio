@@ -1,0 +1,8 @@
+# Arborescence de test — 6 dossiers sur 3 sections
+folders:
+  - 01-SCIENCES/MATHEMATIQUES
+  - 01-SCIENCES/PHYSIQUE
+  - 02-INFORMATIQUE/IA-ML
+  - 02-INFORMATIQUE/Langages
+  - 03-INGENIERIE/ELECTRONIQUE
+  - _A-TRIER

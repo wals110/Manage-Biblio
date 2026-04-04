@@ -1,0 +1,11 @@
+# Mapping de test — 10 entrées couvrant les 3 sections
+mathematics: "01-SCIENCES/MATHEMATIQUES"
+algebra: "01-SCIENCES/MATHEMATIQUES"
+physics: "01-SCIENCES/PHYSIQUE"
+quantum mechanics: "01-SCIENCES/PHYSIQUE"
+machine learning: "02-INFORMATIQUE/IA-ML"
+deep learning: "02-INFORMATIQUE/IA-ML"
+artificial intelligence: "02-INFORMATIQUE/IA-ML"
+python: "02-INFORMATIQUE/Langages"
+programming: "02-INFORMATIQUE/Langages"
+electronics: "03-INGENIERIE/ELECTRONIQUE"
