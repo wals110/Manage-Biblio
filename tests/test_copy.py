@@ -13,7 +13,8 @@ sys.path.insert(0, PROJECT_ROOT)
 from lib.logger import setup_logger
 setup_logger(verbose=False)
 
-from klodo import _safe_remove_source, _copy_files
+from commands.helpers import safe_remove_source as _safe_remove_source
+from commands.helpers import copy_files as _copy_files
 
 
 class TestSafeRemoveSource(unittest.TestCase):

@@ -62,23 +62,16 @@ class TestImportsLib(unittest.TestCase):
 
 
 class TestImportsKlodo(unittest.TestCase):
-    """Vérifie que klodo.py exporte toutes les fonctions attendues."""
+    """Vérifie que klodo.py et commands/ exportent toutes les fonctions attendues."""
 
-    EXPECTED_FUNCTIONS = [
-        # Pipeline
-        'process_single_file',
-        'scan_and_classify',
-        'execute_classify',
-        # Helpers extraits (refactoring)
-        '_load_classifiers',
-        '_run_processing',
-        '_save_mapper_results',
-        '_check_inbox_safety',
-        '_confirm_execute',
-        '_safe_remove_source',
-        '_copy_files',
+    # Fonctions dans klodo.py (point d'entrée)
+    KLODO_FUNCTIONS = [
         '_build_parser',
-        # Sous-commandes
+        'main',
+    ]
+
+    # Fonctions dans commands/ (sous-commandes)
+    COMMANDS_FUNCTIONS = [
         'cmd_classify',
         'cmd_process',
         'cmd_rename',
@@ -86,27 +79,52 @@ class TestImportsKlodo(unittest.TestCase):
         'cmd_suggest',
         'cmd_profiles',
         'cmd_init',
-        # Entry point
-        'main',
     ]
 
-    def test_all_functions_exist(self):
-        """Toutes les fonctions attendues sont accessibles dans klodo."""
+    # Fonctions dans commands/helpers.py
+    HELPER_FUNCTIONS = [
+        'process_single_file',
+        'load_classifiers',
+        'run_processing',
+        'save_mapper_results',
+        'check_inbox_safety',
+        'confirm_execute',
+        'safe_remove_source',
+        'copy_files',
+        'execute_classify',
+    ]
+
+    def test_klodo_functions_exist(self):
+        """Fonctions du point d'entrée klodo.py sont accessibles."""
         import klodo
-        for fn_name in self.EXPECTED_FUNCTIONS:
+        for fn_name in self.KLODO_FUNCTIONS:
             with self.subTest(function=fn_name):
                 self.assertTrue(
                     hasattr(klodo, fn_name),
                     "Fonction manquante : klodo.{}".format(fn_name))
 
-    def test_functions_are_callable(self):
-        """Toutes les fonctions exportées sont appelables."""
-        import klodo
-        for fn_name in self.EXPECTED_FUNCTIONS:
+    def test_commands_functions_exist(self):
+        """Sous-commandes exportées par commands/__init__.py."""
+        import commands
+        for fn_name in self.COMMANDS_FUNCTIONS:
             with self.subTest(function=fn_name):
-                fn = getattr(klodo, fn_name, None)
+                self.assertTrue(
+                    hasattr(commands, fn_name),
+                    "Fonction manquante : commands.{}".format(fn_name))
+
+    def test_helper_functions_exist(self):
+        """Helpers partagés dans commands/helpers.py."""
+        from commands import helpers
+        for fn_name in self.HELPER_FUNCTIONS:
+            with self.subTest(function=fn_name):
+                fn = getattr(helpers, fn_name, None)
                 self.assertTrue(callable(fn),
-                                "klodo.{} n'est pas callable".format(fn_name))
+                                "commands.helpers.{} n'est pas callable".format(fn_name))
+
+    def test_scan_and_classify_exists(self):
+        """scan_and_classify est accessible depuis commands.classify."""
+        from commands.classify import scan_and_classify
+        self.assertTrue(callable(scan_and_classify))
 
 
 if __name__ == '__main__':
