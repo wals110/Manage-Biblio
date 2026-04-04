@@ -37,12 +37,26 @@ Après `flatten_to_inbox.sh`, vérifier que l'arborescence est vide mais intacte
 | T0.1b | `ls BIBLIO-TEST/02-INFORMATIQUE/05-IA-ML/` | Les sous-dossiers existent toujours (Deep-Learning, Machine-Learning, NLP, Vision-par-Ordinateur) |
 | T0.1c | `find BIBLIO-TEST/_INBOX -name "*.pdf" \| wc -l` | Résultat = nombre total de PDFs de la copie |
 
-### T0.2 — Profil et configuration
+### T0.2 — Créer le profil de test
+```bash
+./klodo.sh init test --target /Volumes/ExtSSD/BIBLIO-TEST
+```
+
 | # | Action | Vérification |
 |---|--------|-------------|
-| T0.2a | `./klodo.sh profiles` | Le profil `default` apparaît avec le bon chemin target |
-| T0.2b | `./klodo.sh classify --help` | L'aide s'affiche sans erreur |
-| T0.2c | Vérifier que `SILICONFLOW_API_KEY` est défini | `echo $SILICONFLOW_API_KEY` affiche la clé |
+| T0.2a | Le dossier `profiles/test/` est créé | `ls profiles/test/` montre profile.yaml, tree.yaml, theme_mapping.yaml, categories.yaml |
+| T0.2b | `profile.yaml` contient le bon target | `target: /Volumes/ExtSSD/BIBLIO-TEST` |
+| T0.2c | Éditer `profiles/test/profile.yaml` pour configurer inbox | `inbox: /Volumes/ExtSSD/BIBLIO-TEST/_INBOX` |
+| T0.2d | `./klodo.sh profiles` | Le profil `test` apparaît à côté de `default` |
+
+### T0.3 — Vérifications générales
+| # | Action | Vérification |
+|---|--------|-------------|
+| T0.3a | `./klodo.sh classify --help` | L'aide s'affiche sans erreur |
+| T0.3b | Vérifier que `SILICONFLOW_API_KEY` est défini | `echo $SILICONFLOW_API_KEY` affiche la clé |
+| T0.3c | `./klodo.sh classify _INBOX --profile test --max 1 --verbose` | Le profil test est chargé, pas d'erreur de config |
+
+> **Note :** Pour toutes les commandes suivantes, ajouter `--profile test` pour utiliser le profil de test au lieu du profil production.
 
 ---
 
@@ -417,6 +431,25 @@ mkdir -p /tmp/empty_inbox
 | T7.6a | Message d'erreur clair | "Dossier introuvable" |
 | T7.6b | Exit code non-zéro | `echo $?` = 1 |
 
+### T7.7 — Profil inexistant
+```bash
+./klodo.sh classify _INBOX --profile profil-fantome --verbose
+```
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T7.7a | Message d'erreur clair | "Profil 'profil-fantome' introuvable" ou équivalent |
+| T7.7b | Exit code non-zéro | `echo $?` = 1 |
+
+### T7.8 — Init avec un nom déjà pris
+```bash
+./klodo.sh init default --target /tmp/autre
+```
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T7.8a | Refus ou avertissement | Ne pas écraser le profil existant sans confirmation |
+
 ---
 
 ## Phase 8 — Qualité de classification (validation manuelle)
@@ -539,11 +572,11 @@ time ./klodo.sh process _INBOX --llm --pages 1 -w 10 --max 500
 | 4 — Raffinement | 3 séries | Moyenne | 20 min |
 | 5 — Checkpoint/reprise | 3 séries | Haute | 15 min |
 | 6 — Suggestions | 3 séries | Moyenne | 15 min |
-| 7 — Sécurité/limites | 6 séries | Haute | 15 min |
+| 7 — Sécurité/limites | 8 séries | Haute | 15 min |
 | 8 — Qualité manuelle | 3 séries | Haute | 30 min |
 | 9 — Reclassification | 2 séries | Moyenne | 10 min |
 | 10 — Performance | 2 séries | Basse | 20 min |
-| **Total** | **38 séries** | | **~3h30** |
+| **Total** | **40 séries** | | **~3h30** |
 
 ---
 
