@@ -12,9 +12,6 @@ dependencies = [
     "pdfplumber>=0.9.0",
 ]
 
-[project.scripts]
-klodo = "klodo:main"
-
 [tool.ruff]
 target-version = "py313"
 line-length = 100
