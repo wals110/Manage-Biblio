@@ -11,7 +11,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from lib.logger import setup_logger
 setup_logger(verbose=False)
 
-from biblio import _build_parser
+from klodo import _build_parser
 
 
 class TestBuildParser(unittest.TestCase):

@@ -1,5 +1,5 @@
 """
-Profile management module for Manage-Biblio project.
+Profile management module for Klodo project.
 
 Handles loading and managing profile configurations from YAML files.
 Each profile contains configuration for target library, LLM settings, and classification rules.
@@ -52,7 +52,7 @@ PROFILES_DIR = "profiles"
 
 class Profile:
     """
-    Manages a profile configuration for the Manage-Biblio project.
+    Manages a profile configuration for the Klodo project.
 
     A profile consists of:
     - profile.yaml: Basic config (name, description, target, inbox, LLM settings)

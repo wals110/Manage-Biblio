@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 440" font-family="Segoe Print, Comic Sans MS, cursive" font-size="12">
+  <defs>
+    <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="15"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.2"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowBack" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+    </marker>
+  </defs>
+  <g filter="url(#h)">
+    <!-- Column headers (participants) -->
+    <rect x="20" y="10" width="90" height="35" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+    <text x="65" y="33" text-anchor="middle" font-size="12" fill="#374151">Utilisateur</text>
+
+    <rect x="160" y="10" width="80" height="35" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="200" y="33" text-anchor="middle" font-size="12" fill="#1e40af">klodo.py</text>
+
+    <rect x="290" y="10" width="80" height="35" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="330" y="33" text-anchor="middle" font-size="12" fill="#5b21b6">vision.py</text>
+
+    <rect x="420" y="10" width="90" height="35" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="465" y="33" text-anchor="middle" font-size="12" fill="#5b21b6">classifier.py</text>
+
+    <rect x="560" y="10" width="80" height="35" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="600" y="33" text-anchor="middle" font-size="12" fill="#5b21b6">refiner.py</text>
+
+    <rect x="690" y="10" width="70" height="35" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="725" y="33" text-anchor="middle" font-size="12" fill="#92400e">LLM API</text>
+
+    <!-- Lifelines -->
+    <line x1="65" y1="45" x2="65" y2="430" stroke="#d1d5db" stroke-width="1" stroke-dasharray="4,4"/>
+    <line x1="200" y1="45" x2="200" y2="430" stroke="#bfdbfe" stroke-width="1" stroke-dasharray="4,4"/>
+    <line x1="330" y1="45" x2="330" y2="430" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="4,4"/>
+    <line x1="465" y1="45" x2="465" y2="430" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="4,4"/>
+    <line x1="600" y1="45" x2="600" y2="430" stroke="#c4b5fd" stroke-width="1" stroke-dasharray="4,4"/>
+    <line x1="725" y1="45" x2="725" y2="430" stroke="#fde68a" stroke-width="1" stroke-dasharray="4,4"/>
+
+    <!-- Step 1: User → CLI -->
+    <line x1="70" y1="80" x2="195" y2="80" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="132" y="74" text-anchor="middle" font-size="11" fill="#3b82f6">process /chemin</text>
+
+    <!-- Step 2: CLI → vision (rename) -->
+    <line x1="205" y1="110" x2="325" y2="110" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="265" y="104" text-anchor="middle" font-size="11" fill="#8b5cf6">rename: analyze_cover(pdf)</text>
+
+    <!-- Step 3: vision → API -->
+    <line x1="335" y1="140" x2="720" y2="140" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="527" y="134" text-anchor="middle" font-size="11" fill="#b45309">Image base64 + prompt</text>
+
+    <!-- Step 4: API → vision -->
+    <line x1="720" y1="170" x2="335" y2="170" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arrowBack)" stroke-dasharray="5,3"/>
+    <text x="527" y="164" text-anchor="middle" font-size="11" fill="#6b7280">{title, author}</text>
+
+    <!-- Step 5: vision → CLI (rename result) -->
+    <line x1="325" y1="200" x2="205" y2="200" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arrowBack)" stroke-dasharray="5,3"/>
+    <text x="265" y="194" text-anchor="middle" font-size="11" fill="#6b7280">Nouveau nom</text>
+
+    <!-- Note: Rename -->
+    <rect x="140" y="215" width="120" height="22" rx="4" fill="#dbeafe" stroke="none"/>
+    <text x="200" y="231" text-anchor="middle" font-size="10" fill="#3b82f6" font-style="italic">Fichiers renommés</text>
+
+    <!-- Step 6: CLI → vision (classify) -->
+    <line x1="205" y1="255" x2="325" y2="255" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="265" y="249" text-anchor="middle" font-size="11" fill="#8b5cf6">analyze_cover(pdf)</text>
+
+    <!-- Step 7: vision → API -->
+    <line x1="335" y1="275" x2="720" y2="275" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="527" y="269" text-anchor="middle" font-size="11" fill="#b45309">Image base64 + prompt</text>
+
+    <!-- Step 8: API → vision -->
+    <line x1="720" y1="295" x2="335" y2="295" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arrowBack)" stroke-dasharray="5,3"/>
+    <text x="527" y="289" text-anchor="middle" font-size="11" fill="#6b7280">{title, author, theme}</text>
+
+    <!-- Step 9: CLI → classifier -->
+    <line x1="205" y1="320" x2="460" y2="320" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="332" y="314" text-anchor="middle" font-size="11" fill="#8b5cf6">classify_combined(theme)</text>
+
+    <!-- Note: 4 niveaux -->
+    <rect x="420" y="328" width="90" height="18" rx="4" fill="#ede9fe" stroke="none"/>
+    <text x="465" y="342" text-anchor="middle" font-size="10" fill="#8b5cf6" font-style="italic">4 niveaux cascade</text>
+
+    <!-- Step 10: classifier → CLI -->
+    <line x1="460" y1="355" x2="205" y2="355" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arrowBack)" stroke-dasharray="5,3"/>
+    <text x="332" y="349" text-anchor="middle" font-size="11" fill="#6b7280">Chemin cible</text>
+
+    <!-- Step 11: CLI → refiner -->
+    <line x1="205" y1="380" x2="595" y2="380" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="400" y="374" text-anchor="middle" font-size="11" fill="#8b5cf6">scan_and_refine()</text>
+
+    <!-- Step 12: refiner → CLI -->
+    <line x1="595" y1="400" x2="205" y2="400" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arrowBack)" stroke-dasharray="5,3"/>
+    <text x="400" y="394" text-anchor="middle" font-size="11" fill="#6b7280">Rapport CSV</text>
+
+    <!-- Step 13: CLI → User -->
+    <line x1="195" y1="420" x2="70" y2="420" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrowBack)"/>
+    <text x="132" y="414" text-anchor="middle" font-size="11" fill="#3b82f6">Résumé + rapport</text>
+  </g>
+</svg>

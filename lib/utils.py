@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Shared utility functions for Manage-Biblio project.
+Shared utility functions for Klodo project.
 
 Contains:
   - sanitize_filename() — safe filename cleaning
@@ -280,10 +280,9 @@ def print_summary(results: List[Dict], cost_per_call: float = 0.00034):
 
     Affiche :
       - Total traités
-      - Breakdown par statut (classifiés, renommés, erreurs, etc.)
+      - Breakdown par statut (classifiés, erreurs, etc.)
       - Coût estimé API
       - Confiance moyenne
-      - Exemples de renommages
       - Top 15 thèmes détectés
       - Top 10 destinations
 
@@ -297,25 +296,21 @@ def print_summary(results: List[Dict], cost_per_call: float = 0.00034):
         return
 
     classified = sum(1 for r in results if r['status'] == 'classifié')
-    renamed_only = sum(1 for r in results if r['status'] == 'renommé_seul')
     low_conf = sum(1 for r in results if r['status'] == 'confiance_basse')
     not_id = sum(1 for r in results if r['status'] == 'non_identifié')
     errors_extract = sum(1 for r in results if r['status'] == 'erreur_extraction')
     errors_api = sum(1 for r in results if r['status'] == 'erreur_api')
     unclassified = sum(1 for r in results if r['status'] == 'non_classifié')
-    to_rename = sum(1 for r in results if r.get('renommage'))
 
     # Coût estimé (basé sur Qwen3-VL-8B : ~$0.34 / 1000 images)
     api_calls = total - errors_extract
     cost_estimate = api_calls * cost_per_call  # ~1420 input + 120 output tokens par image
 
     log.info(f"\n{'='*60}")
-    log.info(f" RÉSUMÉ — Manage-Biblio Report")
+    log.info(f" RÉSUMÉ — Klodo Report")
     log.info(f"{'='*60}")
     log.info(f"  Total traités      : {total}")
     log.info(f"  ✅ Classifiés       : {classified} ({classified/total*100:.1f}%)")
-    log.info(f"  ✏️  À renommer      : {to_rename} ({to_rename/total*100:.1f}%)")
-    log.info(f"  📝 Renommés seuls   : {renamed_only} ({renamed_only/total*100:.1f}%)")
     log.error(f"  ❌ Non classifiés   : {unclassified} ({unclassified/total*100:.1f}%)")
     log.warning(f"  ⚠  Confiance basse : {low_conf} ({low_conf/total*100:.1f}%)")
     log.info(f"  🔇 Non identifiés  : {not_id} ({not_id/total*100:.1f}%)")
@@ -323,23 +318,14 @@ def print_summary(results: List[Dict], cost_per_call: float = 0.00034):
     log.error(f"  💥 Erreurs API      : {errors_api} ({errors_api/total*100:.1f}%)")
     log.info(f"  💰 Coût estimé      : ${cost_estimate:.2f}")
 
-    # Bilan actions
-    actionable = classified + renamed_only
-    log.info(f"\n  📊 Bilan : {actionable}/{total} fichiers avec au moins une action")
-    log.info(f"     ({classified} classifiés + {renamed_only} renommés seuls)")
+    # Bilan
+    log.info(f"\n  📊 Bilan : {classified}/{total} fichiers classifiés")
 
     # Confiance moyenne
     confs = [r.get('confiance', 0) for r in results if r.get('confiance', 0) > 0]
     if confs:
         avg_conf = sum(confs) / len(confs)
         log.info(f"  📊 Confiance moy.   : {avg_conf:.2f}")
-
-    # Exemples de renommages
-    renamed = [r for r in results if r.get('renommage')]
-    if renamed:
-        log.info(f"\n  Exemples de renommages :")
-        for r in renamed[:10]:
-            log.info(f"    {r['fichier'][:35]:35s} → {r['nouveau_nom'][:40]}")
 
     # Top thèmes détectés
     themes = Counter(r.get('theme_detecte', '') for r in results

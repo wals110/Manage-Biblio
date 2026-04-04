@@ -108,7 +108,7 @@ def classify_by_theme(
 
 def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
     """
-    Load the KeywordClassifier from biblio_organizer.py.
+    Load the KeywordClassifier from klodo_organizer.py.
 
     This function dynamically imports KeywordClassifier from the organiser/
     directory (located relative to project root). The organiser/ directory is
@@ -131,8 +131,8 @@ def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
         log.warning(f"[WARNING] categories.yaml not found: {categories_yaml_path}")
         return None
 
-    # Determine the organiser/ directory (contains biblio_organizer.py)
-    # biblio_organizer.py is always in <project_root>/organiser/
+    # Determine the organiser/ directory (contains klodo_organizer.py)
+    # klodo_organizer.py is always in <project_root>/organiser/
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     organiser_dir = os.path.join(project_root, 'organiser')
 
@@ -142,8 +142,8 @@ def load_keyword_classifier(categories_yaml_path: str) -> Optional[Any]:
 
     try:
         import yaml
-        # Dynamic import of KeywordClassifier from biblio_organizer.py
-        from biblio_organizer import KeywordClassifier
+        # Dynamic import of KeywordClassifier from klodo_organizer.py
+        from klodo_organizer import KeywordClassifier
 
         # KeywordClassifier expects a parsed dict, not a file path
         with open(categories_yaml_path, 'r', encoding='utf-8') as f:
@@ -165,6 +165,7 @@ def classify_combined(
     theme_mapping: Dict[str, str],
     classifier: Optional[Any] = None,
     llm_mapper: Optional[Any] = None,
+    pdf_path: Optional[str] = None,
 ) -> Tuple[str, float, str]:
     """
     Combine LLM Vision theme classification, keyword classification,
@@ -172,7 +173,7 @@ def classify_combined(
 
     Priorité :
     1. LLM theme si confiance >= 0.5 et thème trouvé dans mapping
-    2. Keyword classifier fallback (mots-clés dans le nom du fichier)
+    2. Keyword classifier (titre LLM + nom de fichier combinés)
     3. LLM Mapper — appel LLM texte pour résoudre un thème inconnu
     4. LLM theme avec confiance basse (< 0.5) si le thème matche
     5. Échec total
@@ -202,10 +203,21 @@ def classify_combined(
         if path:
             return (path, confidence, "LLM (theme)")
 
-    # Priorité 2 : Keyword classifier fallback
+    # Priorité 2 : Keyword classifier (titre LLM + thème + nom de fichier)
+    # On combine toutes les infos textuelles disponibles pour maximiser
+    # les chances de matcher un mot-clé pertinent.
     if classifier:
         try:
-            keyword_results = classifier.classify(filename, '')
+            # Construire un texte enrichi : titre + thème + filename
+            text_parts = []
+            if title:
+                text_parts.append(title)
+            if theme:
+                text_parts.append(theme)
+            text_parts.append(filename)
+            enriched_text = ' '.join(text_parts)
+
+            keyword_results = classifier.classify(enriched_text, '')
             # classify() retourne une liste de (chemin, score, mot_clé)
             if keyword_results and len(keyword_results) > 0:
                 best = keyword_results[0]  # Meilleur résultat
@@ -219,8 +231,10 @@ def classify_combined(
             log.error("[WARNING] Keyword classifier error for {}: {}".format(filename, e))
 
     # Priorité 3 : LLM Mapper — résolution intelligente du thème inconnu
+    # (avec escalade vision si activée dans le mapper)
     if llm_mapper and theme and confidence >= 0.5:
-        mapped_path = llm_mapper.resolve(theme, title=title, filename=filename)
+        mapped_path = llm_mapper.resolve(
+            theme, title=title, filename=filename, pdf_path=pdf_path)
         if mapped_path:
             return (mapped_path, confidence * 0.9, "LLM (mapper)")
 

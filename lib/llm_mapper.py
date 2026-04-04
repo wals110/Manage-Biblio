@@ -10,7 +10,7 @@ même thème soit résolu instantanément la prochaine fois (apprentissage).
 
 Si aucun dossier existant ne convient, le mapper peut proposer la création
 d'un nouveau dossier via un fichier suggestions.yaml, que l'utilisateur
-review et valide avec `./biblio.sh suggest --apply`.
+review et valide avec `./klodo.sh suggest --apply`.
 
 Usage:
     from lib.llm_mapper import LLMMapper
@@ -57,24 +57,45 @@ log = get_logger()
 
 
 # ── Prompt pour le LLM Mapper (dossier existant) ──
-MAPPER_PROMPT_TEMPLATE = """Tu es un bibliothécaire expert. On te donne :
-- Un THÈME détecté pour un livre : "{theme}"
-- Le TITRE du livre : "{title}"
-- Le NOM DU FICHIER : "{filename}"
+MAPPER_PROMPT_TEMPLATE = """Tu es un bibliothécaire expert chargé de classer des livres PDF.
 
-Voici la liste des dossiers disponibles dans la bibliothèque :
+LIVRE À CLASSER :
+- Thème détecté : "{theme}"
+- Titre : "{title}"
+- Fichier : "{filename}"
+
+DOSSIERS DISPONIBLES (liste exhaustive) :
 {folders_list}
 
-Ta tâche : choisir LE MEILLEUR dossier pour ce livre.
+TÂCHE : Choisis le dossier LE PLUS PRÉCIS (le plus profond dans l'arborescence) pour ce livre.
 
-Réponds UNIQUEMENT avec un objet JSON (pas de texte avant/après) :
-{{"folder": "chemin/exact/du/dossier", "confidence": 0.95, "reason": "explication courte"}}
+RÈGLES STRICTES :
+1. TOUJOURS préférer un sous-dossier spécifique à un dossier parent.
+   Exemple : "01-SCIENCES/PHYSIQUE/05-Relativite-Quantique" plutôt que "01-SCIENCES/PHYSIQUE"
+2. Le "folder" DOIT être une copie EXACTE d'un dossier listé ci-dessus.
+3. Si aucun dossier ne convient, mets "folder": "_AUCUN".
+4. "confidence" entre 0.0 et 1.0 — mets > 0.8 seulement si le match est évident.
 
-Règles :
-- Le "folder" DOIT être un des dossiers listés ci-dessus (copie exacte)
-- Si aucun dossier ne convient vraiment, mets "folder": "_AUCUN"
-- "confidence" entre 0.0 et 1.0
-- Sois précis : préfère les sous-dossiers spécifiques aux dossiers parents
+Réponds UNIQUEMENT avec un objet JSON :
+{{"folder": "chemin/exact/du/dossier", "confidence": 0.85, "reason": "explication courte"}}
+"""
+
+# ── Prompt vision pour le LLM Mapper (escalade) ──
+MAPPER_VISION_PROMPT = """Tu es un bibliothécaire expert. Regarde cette couverture de livre PDF.
+
+DOSSIERS DISPONIBLES (liste exhaustive) :
+{folders_list}
+
+TÂCHE : En te basant sur la couverture, choisis le dossier LE PLUS PRÉCIS pour ce livre.
+
+RÈGLES STRICTES :
+1. TOUJOURS préférer un sous-dossier spécifique à un dossier parent.
+2. Le "folder" DOIT être une copie EXACTE d'un dossier listé ci-dessus.
+3. Si aucun dossier ne convient, mets "folder": "_AUCUN".
+4. "confidence" entre 0.0 et 1.0.
+
+Réponds UNIQUEMENT avec un objet JSON :
+{{"folder": "chemin/exact/du/dossier", "confidence": 0.85, "reason": "explication courte"}}
 """
 
 # ── Prompt pour proposer un nouveau dossier ──
@@ -99,14 +120,15 @@ class LLMMapper:
     """Résout les thèmes inconnus via appel LLM texte + auto-apprentissage."""
 
     def __init__(self, folders, api_key, endpoint, model,
-                 min_confidence=0.6, verbose=False):
-        # type: (List[str], str, str, str, float, bool) -> None
+                 min_confidence=0.6, verbose=False, vision=False):
+        # type: (List[str], str, str, str, float, bool, bool) -> None
         self.folders = folders
         self.api_key = api_key
         self.endpoint = endpoint
         self.model = model
         self.min_confidence = min_confidence
         self.verbose = verbose
+        self.vision = vision
         self.learned = {}  # type: Dict[str, str]
         self.suggestions = []  # type: List[Dict]
         self._folders_text = "\n".join("- {}".format(f) for f in folders)
@@ -114,12 +136,22 @@ class LLMMapper:
         self.calls = 0
         self.successes = 0
         self.suggest_count = 0
+        self.vision_calls = 0
+        self.vision_successes = 0
 
-    def resolve(self, theme, title='', filename=''):
-        # type: (str, str, str) -> Optional[str]
+    def resolve(self, theme, title='', filename='', pdf_path=None):
+        # type: (str, str, str, Optional[str]) -> Optional[str]
         """
         Demande au LLM de mapper un thème inconnu vers un dossier existant.
-        Si aucun dossier ne convient, génère une suggestion de nouveau dossier.
+        Si aucun dossier ne convient et que vision est activée, escalade
+        avec la couverture PDF.
+        En dernier recours, génère une suggestion de nouveau dossier.
+
+        Args:
+            theme: Thème détecté par LLM Vision.
+            title: Titre du livre (optionnel).
+            filename: Nom du fichier PDF (optionnel).
+            pdf_path: Chemin complet du PDF (pour escalade vision, optionnel).
 
         Returns:
             Chemin du dossier ou None si échec / suggestion générée.
@@ -130,45 +162,138 @@ class LLMMapper:
             return None
 
         result = self._call_mapper(theme, title, filename)
+        validated = self._process_mapper_result(result, theme)
+
+        if validated:
+            # Succès text-mapper
+            self.successes += 1
+            self.learned[theme] = validated
+            if self.verbose:
+                reason = result.get('reason', '') if result else ''
+                confidence = result.get('confidence', 0.0) if result else 0.0
+                log.info("  🧠 Mapper: '{}' → {} (conf: {}, {})".format(
+                    theme, validated, confidence, reason))
+            return validated
+
+        # Escalade vision si activée et pdf_path fourni
+        if self.vision and pdf_path:
+            vision_result = self._try_vision_mapper(pdf_path)
+            if vision_result:
+                vision_validated = self._process_mapper_result(vision_result, theme)
+                if vision_validated:
+                    self.vision_successes += 1
+                    self.successes += 1
+                    self.learned[theme] = vision_validated
+                    if self.verbose:
+                        reason = vision_result.get('reason', '')
+                        confidence = vision_result.get('confidence', 0.0)
+                        log.info("  👁 Mapper vision: '{}' → {} (conf: {}, {})".format(
+                            theme, vision_validated, confidence, reason))
+                    return vision_validated
+
+        # Tout a échoué → suggérer un nouveau dossier
+        self._suggest_new_folder(theme, title, filename)
+        return None
+
+    def _process_mapper_result(self, result, theme):
+        # type: (Optional[Dict], str) -> Optional[str]
+        """Valide le résultat du mapper (texte ou vision). Retourne le chemin validé ou None."""
         if result is None:
             return None
 
         folder = result.get('folder', '')
         confidence = result.get('confidence', 0.0)
-        reason = result.get('reason', '')
 
-        # Le LLM dit qu'aucun dossier ne convient → proposer un nouveau
+        # Le LLM dit qu'aucun dossier ne convient
         if folder == '_AUCUN' or folder == '_A-TRIER':
-            self._suggest_new_folder(theme, title, filename)
             return None
 
         # Valider que le dossier existe dans la liste
         validated = self._validate_folder(folder)
         if not validated:
-            # Dossier invalide → tenter une suggestion
             if self.verbose:
                 log.warning("  ⚠ Mapper: dossier invalide '{}' pour thème '{}'".format(
                     folder, theme))
-            self._suggest_new_folder(theme, title, filename)
             return None
 
         if confidence < self.min_confidence:
             if self.verbose:
                 log.warning("  ⚠ Mapper: confiance trop basse ({}) pour '{}'".format(
                     confidence, theme))
-            # Confiance basse → suggérer quand même un nouveau dossier
-            self._suggest_new_folder(theme, title, filename)
             return None
 
-        # Succès
-        self.successes += 1
-        self.learned[theme] = validated
-
-        if self.verbose:
-            log.info("  🧠 Mapper: '{}' → {} (conf: {}, {})".format(
-                theme, validated, confidence, reason))
-
         return validated
+
+    def _try_vision_mapper(self, pdf_path):
+        # type: (str) -> Optional[Dict]
+        """Escalade vision : envoie la couverture PDF au LLM Vision pour classification."""
+        try:
+            from lib.vision import extract_cover_image, image_to_base64
+        except ImportError:
+            if self.verbose:
+                log.warning("  ⚠ Mapper vision: lib.vision non disponible")
+            return None
+
+        images = extract_cover_image(pdf_path, dpi=150, n_pages=1)
+        if not images:
+            if self.verbose:
+                log.warning("  ⚠ Mapper vision: extraction couverture échouée")
+            return None
+
+        b64 = image_to_base64(images[0])
+        if not b64:
+            return None
+
+        self.vision_calls += 1
+
+        prompt = MAPPER_VISION_PROMPT.format(folders_list=self._folders_text)
+
+        # Construire le payload multimodal
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = "Bearer {}".format(self.api_key)
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/jpeg;base64,{}".format(b64),
+                            },
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                },
+            ],
+            "max_tokens": 150,
+            "temperature": 0.1,
+        }
+
+        try:
+            resp = req_lib.post(
+                self.endpoint,
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                if self.verbose:
+                    log.warning("  ⚠ Mapper vision API erreur {}: {}".format(
+                        resp.status_code, resp.text[:150]))
+                return None
+
+            data = resp.json()
+            content = data['choices'][0]['message']['content'].strip()
+            return self._parse_response(content)
+
+        except Exception as e:
+            if self.verbose:
+                log.warning("  ⚠ Mapper vision exception: {}".format(e))
+            return None
 
     def _call_mapper(self, theme, title, filename):
         # type: (str, str, str) -> Optional[Dict]
@@ -383,7 +508,7 @@ class LLMMapper:
             f.write("#   1. Reviewez chaque suggestion ci-dessous\n")
             f.write("#   2. Supprimez les lignes que vous ne voulez pas\n")
             f.write("#   3. Modifiez les chemins si nécessaire\n")
-            f.write("#   4. Lancez : ./biblio.sh suggest --apply\n")
+            f.write("#   4. Lancez : ./klodo.sh suggest --apply\n")
             f.write("#\n")
             f.write("# STATUS : pending = à valider, applied = déjà appliqué\n")
             f.write("# " + "=" * 65 + "\n\n")
@@ -409,6 +534,9 @@ class LLMMapper:
             parts = ["{} appels".format(self.calls),
                      "{} résolus".format(self.successes),
                      "{} appris".format(len(self.learned))]
+            if self.vision_calls > 0:
+                parts.append("👁 {} vision ({} résolus)".format(
+                    self.vision_calls, self.vision_successes))
             if self.suggest_count > 0:
                 parts.append("{} suggestions".format(self.suggest_count))
             log.info("\n🧠 LLM Mapper : {}".format(", ".join(parts)))

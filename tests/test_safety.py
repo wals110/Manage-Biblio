@@ -13,7 +13,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from lib.logger import setup_logger
 setup_logger(verbose=False)
 
-from biblio import _check_inbox_safety
+from klodo import _check_inbox_safety
 
 
 class TestCheckInboxSafety(unittest.TestCase):

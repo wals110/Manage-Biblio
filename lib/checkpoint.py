@@ -1,5 +1,5 @@
 """
-Checkpoint module for Manage-Biblio pipeline.
+Checkpoint module for Klodo pipeline.
 
 Provides thread-safe checkpoint/resume with atomic writes.
 Compatible with the existing progress_migration.json / progress_ocr.json format.

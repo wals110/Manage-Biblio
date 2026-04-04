@@ -22,9 +22,9 @@ class TestCompilation(unittest.TestCase):
         except py_compile.PyCompileError as e:
             return str(e)
 
-    def test_biblio_py(self):
-        """biblio.py compile sans erreur."""
-        err = self._compile_file(os.path.join(PROJECT_ROOT, 'biblio.py'))
+    def test_klodo_py(self):
+        """klodo.py compile sans erreur."""
+        err = self._compile_file(os.path.join(PROJECT_ROOT, 'klodo.py'))
         self.assertIsNone(err, err)
 
     def test_lib_modules(self):

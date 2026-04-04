@@ -1,16 +1,16 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#  Biblio v4.0 — Lanceur unifié
+#  Klodo v4.1 — Lanceur unifié
 # ═══════════════════════════════════════════════════════════════════════
 #
 #  Usage :
-#    ./biblio.sh process /chemin/vers/pdfs              # Pipeline complet (dry-run)
-#    ./biblio.sh process --execute                      # Pipeline + appliquer
-#    ./biblio.sh classify /chemin --workers 10           # LLM Vision
-#    ./biblio.sh rename /chemin                          # Renommage seul
-#    ./biblio.sh refine                                  # Raffinement sous-catégories
-#    ./biblio.sh profiles                                # Lister les profils
-#    ./biblio.sh init mon-profil --target /chemin        # Nouveau profil
+#    ./klodo.sh process /chemin/vers/pdfs              # Pipeline complet (dry-run)
+#    ./klodo.sh process --execute                      # Pipeline + appliquer
+#    ./klodo.sh classify /chemin --workers 10           # LLM Vision
+#    ./klodo.sh rename /chemin                          # Renommage seul
+#    ./klodo.sh refine                                  # Raffinement sous-catégories
+#    ./klodo.sh profiles                                # Lister les profils
+#    ./klodo.sh init mon-profil --target /chemin        # Nouveau profil
 #
 #  Options :
 #    --profile NAME    Profil à utiliser (défaut: default)
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BIBLIO_PY="$SCRIPT_DIR/biblio.py"
+KLODO_PY="$SCRIPT_DIR/klodo.py"
 
 # Couleurs
 RED='\033[0;31m'
@@ -45,9 +45,9 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# biblio.py existe
-if [[ ! -f "$BIBLIO_PY" ]]; then
-    echo -e "${RED}❌ biblio.py introuvable : $BIBLIO_PY${NC}"
+# klodo.py existe
+if [[ ! -f "$KLODO_PY" ]]; then
+    echo -e "${RED}❌ klodo.py introuvable : $KLODO_PY${NC}"
     exit 1
 fi
 
@@ -107,7 +107,7 @@ if [[ -f "$PROFILE_YAML" ]]; then
 fi
 
 # ── Lancement ──
-echo -e "${CYAN}📚 Biblio v4.0${NC}"
+echo -e "${CYAN}📚 Klodo v4.1${NC}"
 echo ""
 
-exec python3 "$BIBLIO_PY" "$@"
+exec python3 "$KLODO_PY" "$@"

@@ -1,5 +1,5 @@
 """
-Logger module for Manage-Biblio project.
+Logger module for Klodo project.
 
 Provides a configured logger with:
 - Console output with emoji formatting (like current prints)
@@ -48,7 +48,7 @@ _logger = None  # type: Optional[logging.Logger]
 
 def setup_logger(verbose=False, log_file=None):
     # type: (bool, Optional[str]) -> logging.Logger
-    """Configure et retourne le logger biblio.
+    """Configure et retourne le logger klodo.
 
     Args:
         verbose: Si True, niveau DEBUG. Sinon INFO.
@@ -68,7 +68,7 @@ def setup_logger(verbose=False, log_file=None):
                 handler.setLevel(level)
         return _logger
 
-    logger = logging.getLogger('biblio')
+    logger = logging.getLogger('klodo')
     level = logging.DEBUG if verbose else logging.INFO
     logger.setLevel(level)
     logger.propagate = False
@@ -98,7 +98,7 @@ def setup_logger(verbose=False, log_file=None):
 
 def get_logger():
     # type: () -> logging.Logger
-    """Retourne le logger biblio. Le crée avec les défauts si non initialisé."""
+    """Retourne le logger klodo. Le crée avec les défauts si non initialisé."""
     global _logger
     if _logger is None:
         return setup_logger()

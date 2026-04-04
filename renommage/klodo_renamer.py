@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Biblio Renamer — Renommage intelligent de bibliothèques PDF.
+Klodo Renamer — Renommage intelligent de bibliothèques PDF.
 =============================================================
 Renomme les fichiers PDF vers la nomenclature : "Titre - Auteur.pdf"
 
@@ -14,9 +14,9 @@ Le script ne modifie QUE les fichiers dont le nom est "pas propre".
 Il peut être relancé autant de fois que nécessaire.
 
 Usage :
-    python3 biblio_renamer.py /chemin/vers/biblio              # Rapport seul
-    python3 biblio_renamer.py /chemin/vers/biblio --execute     # Appliquer
-    python3 biblio_renamer.py --undo log_renommage_*.csv        # Annuler
+    python3 klodo_renamer.py /chemin/vers/biblio              # Rapport seul
+    python3 klodo_renamer.py /chemin/vers/biblio --execute     # Appliquer
+    python3 klodo_renamer.py --undo log_renommage_*.csv        # Annuler
 
 Options :
     --no-online     Désactiver la recherche ISBN en ligne
@@ -871,7 +871,7 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
     print(f"  Échecs             : {stats.get('ECHEC', 0)}")
     print(f"\n📝 Rapport : {report_path}")
     if to_change:
-        print(f"🚀 Appliquer : python3 biblio_renamer.py {root_path} --execute")
+        print(f"🚀 Appliquer : python3 klodo_renamer.py {root_path} --execute")
 
     return report_path
 
@@ -929,7 +929,7 @@ def execute(root_path: str, report_path: str = None):
     print(f"  ⏭️  Ignorés  : {skipped}")
     print(f"  ❌ Erreurs  : {errors}")
     print(f"\n  📝 Log     : {log_path}")
-    print(f"  ↩️  Annuler  : python3 biblio_renamer.py --undo {log_path}")
+    print(f"  ↩️  Annuler  : python3 klodo_renamer.py --undo {log_path}")
 
 
 def undo(log_path: str):
@@ -964,7 +964,7 @@ def undo(log_path: str):
 # ===================================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="Biblio Renamer — Renommage intelligent de bibliothèques PDF",
+        description="Klodo Renamer — Renommage intelligent de bibliothèques PDF",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples :

@@ -15,7 +15,7 @@
   </defs>
 
   <!-- Title -->
-  <text x="375" y="32" text-anchor="middle" font-size="22" font-weight="600" fill="#1e1e1e">Pipeline Biblio v4.0</text>
+  <text x="375" y="32" text-anchor="middle" font-size="22" font-weight="600" fill="#1e1e1e">Pipeline Klodo v4.1</text>
 
   <!-- PDF Input -->
   <rect x="270" y="52" width="200" height="48" rx="10" fill="#a5d8ff" stroke="#4a9eed" stroke-width="1.5" filter="url(#shadow)"/>

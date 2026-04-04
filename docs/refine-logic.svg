@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" font-family="'Segoe UI', Arial, sans-serif">
+  <!-- Background -->
+  <rect width="900" height="720" fill="#fafafa" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="36" text-anchor="middle" font-size="20" font-weight="bold" fill="#1e293b">Logique de raffinement récursif</text>
+
+  <!-- ========== LEFT SIDE: Tree example ========== -->
+  <text x="30" y="72" font-size="15" font-weight="bold" fill="#475569">Exemple d'arborescence</text>
+
+  <!-- 02-INFORMATIQUE (non-leaf) -->
+  <rect x="30" y="86" width="260" height="32" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="42" y="107" font-size="13" fill="#92400e">📁 02-INFORMATIQUE/</text>
+  <text x="218" y="107" font-size="10" fill="#b45309" font-style="italic">non-feuille</text>
+
+  <!-- Files at this level (mal placés) -->
+  <rect x="60" y="126" width="230" height="26" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="72" y="143" font-size="11" fill="#dc2626">📄 neural-networks.pdf</text>
+  <text x="228" y="143" font-size="9" fill="#ef4444">⚠ mal placé</text>
+
+  <rect x="60" y="156" width="230" height="26" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="72" y="173" font-size="11" fill="#dc2626">📄 random-doc.pdf</text>
+  <text x="228" y="173" font-size="9" fill="#ef4444">⚠ mal placé</text>
+
+  <rect x="60" y="186" width="230" height="26" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="72" y="203" font-size="11" fill="#dc2626">📄 cooking-recipes.pdf</text>
+  <text x="228" y="203" font-size="9" fill="#ef4444">⚠ mal placé</text>
+
+  <!-- Subfolder: 05-IA-ML (leaf) -->
+  <rect x="60" y="222" width="220" height="28" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="72" y="241" font-size="12" fill="#065f46">📁 05-IA-ML/</text>
+  <text x="206" y="241" font-size="10" fill="#047857" font-style="italic">feuille ✓</text>
+
+  <!-- Files in leaf (OK) -->
+  <rect x="90" y="256" width="190" height="22" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="100" y="272" font-size="10" fill="#166534">📄 deep-learning.pdf ✓ OK</text>
+
+  <!-- Subfolder: 03-LANGAGES (leaf) -->
+  <rect x="60" y="288" width="220" height="28" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="72" y="307" font-size="12" fill="#065f46">📁 03-LANGAGES/</text>
+  <text x="206" y="307" font-size="10" fill="#047857" font-style="italic">feuille ✓</text>
+
+  <!-- _A-CLASSER (created by refine) -->
+  <rect x="60" y="326" width="220" height="28" rx="6" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="72" y="345" font-size="12" fill="#3730a3">📁 _A-CLASSER/</text>
+  <text x="200" y="345" font-size="10" fill="#4f46e5" font-style="italic">créé auto</text>
+
+  <!-- ========== RIGHT SIDE: Decision flowchart ========== -->
+  <text x="470" y="72" font-size="15" font-weight="bold" fill="#475569">Décision par fichier</text>
+
+  <!-- Start: Parcours récursif -->
+  <rect x="520" y="86" width="220" height="36" rx="18" fill="#6366f1" stroke="none"/>
+  <text x="630" y="109" text-anchor="middle" font-size="12" fill="white" font-weight="bold">Parcours récursif arborescence</text>
+
+  <!-- Arrow -->
+  <line x1="630" y1="122" x2="630" y2="148" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Diamond: Has subfolders? -->
+  <polygon points="630,148 720,183 630,218 540,183" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="630" y="180" text-anchor="middle" font-size="11" fill="#92400e">Dossier a des</text>
+  <text x="630" y="193" text-anchor="middle" font-size="11" fill="#92400e">sous-dossiers ?</text>
+
+  <!-- No branch (leaf) -->
+  <line x1="720" y1="183" x2="790" y2="183" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="750" y="176" font-size="10" fill="#64748b">non</text>
+  <rect x="790" y="170" width="90" height="28" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="835" y="189" text-anchor="middle" font-size="11" fill="#065f46">Feuille → skip</text>
+
+  <!-- Yes branch -->
+  <line x1="630" y1="218" x2="630" y2="248" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="640" y="238" font-size="10" fill="#64748b">oui</text>
+
+  <!-- Collect PDFs -->
+  <rect x="530" y="248" width="200" height="32" rx="6" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="630" y="269" text-anchor="middle" font-size="11" fill="#0c4a6e">Collecter les PDF à ce niveau</text>
+
+  <!-- Arrow -->
+  <line x1="630" y1="280" x2="630" y2="310" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- For each PDF -->
+  <rect x="540" y="310" width="180" height="28" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="630" y="329" text-anchor="middle" font-size="11" fill="#334155">Pour chaque PDF :</text>
+
+  <!-- Arrow -->
+  <line x1="630" y1="338" x2="630" y2="368" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Diamond: keyword match? -->
+  <polygon points="630,368 710,400 630,432 550,400" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="630" y="397" text-anchor="middle" font-size="11" fill="#92400e">Mot-clé</text>
+  <text x="630" y="410" text-anchor="middle" font-size="11" fill="#92400e">détecté ?</text>
+
+  <!-- Yes: Move to subfolder -->
+  <line x1="710" y1="400" x2="800" y2="400" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="750" y="393" font-size="10" fill="#16a34a">oui</text>
+  <rect x="800" y="384" width="85" height="34" rx="6" fill="#bbf7d0" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="842" y="400" text-anchor="middle" font-size="10" fill="#166534">① Déplacer</text>
+  <text x="842" y="412" text-anchor="middle" font-size="10" fill="#166534">→ sous-dossier</text>
+
+  <!-- No branch -->
+  <line x1="630" y1="432" x2="630" y2="462" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="640" y="452" font-size="10" fill="#64748b">non</text>
+
+  <!-- Diamond: Candidate for new theme? -->
+  <polygon points="630,462 720,497 630,532 540,497" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="630" y="493" text-anchor="middle" font-size="11" fill="#92400e">Candidat</text>
+  <text x="630" y="506" text-anchor="middle" font-size="11" fill="#92400e">nouveau thème ?</text>
+
+  <!-- Yes: Suggest -->
+  <line x1="720" y1="497" x2="800" y2="497" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="750" y="490" font-size="10" fill="#7c3aed">oui</text>
+  <rect x="800" y="481" width="85" height="34" rx="6" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="842" y="497" text-anchor="middle" font-size="10" fill="#5b21b6">② Suggestion</text>
+  <text x="842" y="509" text-anchor="middle" font-size="10" fill="#5b21b6">review humain</text>
+
+  <!-- No branch -->
+  <line x1="630" y1="532" x2="630" y2="562" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="640" y="552" font-size="10" fill="#64748b">non</text>
+
+  <!-- Move to _A-CLASSER -->
+  <rect x="555" y="562" width="150" height="34" rx="6" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="630" y="578" text-anchor="middle" font-size="10" fill="#3730a3">③ Déplacer</text>
+  <text x="630" y="590" text-anchor="middle" font-size="10" fill="#3730a3">→ _A-CLASSER/</text>
+
+  <!-- ========== BOTTOM: Arrows showing example ========== -->
+  <text x="30" y="400" font-size="14" font-weight="bold" fill="#475569">Résultat sur l'exemple :</text>
+
+  <!-- neural-networks.pdf → 05-IA-ML -->
+  <rect x="30" y="416" width="400" height="28" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="42" y="435" font-size="11" fill="#166534">📄 neural-networks.pdf  →  ① mot-clé "neural" →  05-IA-ML/</text>
+
+  <!-- cooking-recipes.pdf → suggestion -->
+  <rect x="30" y="452" width="400" height="28" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="42" y="471" font-size="11" fill="#5b21b6">📄 cooking-recipes.pdf  →  ② suggestion nouveau dossier CUISINE ?</text>
+
+  <!-- random-doc.pdf → _A-CLASSER -->
+  <rect x="30" y="488" width="400" height="28" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="42" y="507" font-size="11" fill="#3730a3">📄 random-doc.pdf  →  ③ aucun thème → _A-CLASSER/</text>
+
+  <!-- Legend -->
+  <rect x="30" y="540" width="430" height="100" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="42" y="562" font-size="12" font-weight="bold" fill="#475569">Légende</text>
+  <rect x="42" y="572" width="14" height="14" rx="2" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="64" y="584" font-size="11" fill="#64748b">Dossier non-feuille (contient sous-dossiers) → fichiers à raffiner</text>
+  <rect x="42" y="594" width="14" height="14" rx="2" fill="#d1fae5" stroke="#10b981" stroke-width="1"/>
+  <text x="64" y="606" font-size="11" fill="#64748b">Dossier feuille (pas de sous-dossiers) → fichiers OK, on ne touche pas</text>
+  <rect x="42" y="616" width="14" height="14" rx="2" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="64" y="628" font-size="11" fill="#64748b">_A-CLASSER → créé automatiquement si aucun thème détecté</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+</svg>

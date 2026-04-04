@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 540" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
+  <defs>
+    <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="9"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.2"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+  <g filter="url(#h)">
+    <!-- Input -->
+    <rect x="195" y="10" width="260" height="45" rx="12" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+    <text x="325" y="39" text-anchor="middle" font-size="13">📄 978-3-030-12345.pdf</text>
+
+    <line x1="325" y1="55" x2="325" y2="82" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Result box (tall, right side, spans all levels) -->
+    <rect x="535" y="87" width="125" height="370" rx="14" fill="#d1fae5" stroke="#22c55e" stroke-width="2.5"/>
+    <text x="597" y="268" text-anchor="middle" font-size="20">✏️</text>
+    <text x="597" y="290" text-anchor="middle" font-size="12" fill="#166534">Titre</text>
+    <text x="597" y="306" text-anchor="middle" font-size="12" fill="#166534">- Auteur.pdf</text>
+
+    <!-- Étape 1 : Nettoyage -->
+    <rect x="195" y="87" width="260" height="48" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <text x="325" y="109" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e40af">1. Nettoyage du nom</text>
+    <text x="325" y="125" text-anchor="middle" font-size="11" fill="#3b82f6">suppression caractères spéciaux</text>
+
+    <line x1="460" y1="111" x2="530" y2="111" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <text x="488" y="105" font-size="11" fill="#22c55e">propre</text>
+
+    <line x1="325" y1="135" x2="325" y2="162" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="5,3"/>
+    <text x="340" y="152" font-size="11" fill="#ef4444">générique</text>
+
+    <!-- Étape 2 : ISBN -->
+    <rect x="195" y="167" width="260" height="48" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <text x="325" y="189" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e40af">2. Recherche ISBN</text>
+    <text x="325" y="205" text-anchor="middle" font-size="11" fill="#3b82f6">Google Books, OpenLibrary</text>
+
+    <line x1="460" y1="191" x2="530" y2="191" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <text x="490" y="185" font-size="11" fill="#22c55e">✓</text>
+
+    <line x1="325" y1="215" x2="325" y2="242" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="5,3"/>
+    <text x="335" y="232" font-size="11" fill="#ef4444">✗</text>
+
+    <!-- Étape 3 : Métadonnées PDF -->
+    <rect x="195" y="247" width="260" height="48" rx="10" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+    <text x="325" y="269" text-anchor="middle" font-size="13" font-weight="bold" fill="#5b21b6">3. Métadonnées PDF</text>
+    <text x="325" y="285" text-anchor="middle" font-size="11" fill="#8b5cf6">pypdf + pdfplumber</text>
+
+    <line x1="460" y1="271" x2="530" y2="271" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <text x="490" y="265" font-size="11" fill="#22c55e">✓</text>
+
+    <line x1="325" y1="295" x2="325" y2="322" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="5,3"/>
+    <text x="335" y="312" font-size="11" fill="#ef4444">✗</text>
+
+    <!-- Étape 4 : LLM Vision -->
+    <rect x="195" y="327" width="260" height="48" rx="10" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+    <text x="325" y="349" text-anchor="middle" font-size="13" font-weight="bold" fill="#9d174d">4. LLM Vision</text>
+    <text x="325" y="365" text-anchor="middle" font-size="11" fill="#ec4899">analyse couverture (--llm)</text>
+
+    <line x1="460" y1="351" x2="530" y2="351" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <text x="490" y="345" font-size="11" fill="#22c55e">✓</text>
+
+    <line x1="325" y1="375" x2="325" y2="402" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="5,3"/>
+    <text x="335" y="392" font-size="11" fill="#ef4444">✗</text>
+
+    <!-- Étape 5 : Dossier parent -->
+    <rect x="195" y="407" width="260" height="48" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+    <text x="325" y="429" text-anchor="middle" font-size="13" font-weight="bold" fill="#92400e">5. Dossier parent</text>
+    <text x="325" y="445" text-anchor="middle" font-size="11" fill="#b45309">titre depuis le nom du dossier</text>
+
+    <line x1="460" y1="431" x2="530" y2="431" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <text x="490" y="425" font-size="11" fill="#22c55e">✓</text>
+  </g>
+
+  <!-- Label -->
+  <text x="340" y="500" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">Cascade : chaque source est essayée si la précédente échoue</text>
+</svg>

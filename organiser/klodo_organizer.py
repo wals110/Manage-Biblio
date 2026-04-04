@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Biblio Organizer — Classement thématique de bibliothèques PDF.
+Klodo Organizer — Classement thématique de bibliothèques PDF.
 ==============================================================
 Classe automatiquement les fichiers PDF dans une arborescence thématique
 en combinant deux approches :
@@ -12,10 +12,10 @@ Pour les fichiers aux noms vagues, extraction du contenu PDF (métadonnées,
 premières pages) pour identifier le sujet.
 
 Usage :
-    python3 biblio_organizer.py /chemin/vers/biblio                  # Rapport
-    python3 biblio_organizer.py /chemin/vers/biblio --execute         # Appliquer
-    python3 biblio_organizer.py /chemin/vers/biblio --learn-only      # Apprendre
-    python3 biblio_organizer.py --undo log_classement_*.csv           # Annuler
+    python3 klodo_organizer.py /chemin/vers/biblio                  # Rapport
+    python3 klodo_organizer.py /chemin/vers/biblio --execute         # Appliquer
+    python3 klodo_organizer.py /chemin/vers/biblio --learn-only      # Apprendre
+    python3 klodo_organizer.py --undo log_classement_*.csv           # Annuler
 
 Options :
     --config FILE     Fichier de config (défaut: categories.yaml)
@@ -447,7 +447,7 @@ class LearningClassifier:
 # MOTEUR PRINCIPAL
 # ════════════════════════════════════════════════════════════════════════════
 
-class BiblioOrganizer:
+class KlodoOrganizer:
     """Moteur principal de classification."""
 
     def __init__(self, base_path: str, config_path: str,
@@ -598,7 +598,7 @@ class BiblioOrganizer:
         proposals = []
 
         print(f"\n{'='*70}")
-        print(f"  BIBLIO ORGANIZER v{__version__}")
+        print(f"  KLODO ORGANIZER v{__version__}")
         print(f"  Racine : {self.base_path}")
         print(f"{'='*70}\n")
 
@@ -774,7 +774,7 @@ def undo_from_log(log_file: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Biblio Organizer — Classement thématique de PDFs",
+        description="Klodo Organizer — Classement thématique de PDFs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument('path', help="Chemin vers la bibliothèque ou fichier de log (avec --undo)")
@@ -824,7 +824,7 @@ def main():
         args.no_pdf = True
 
     # Créer l'organisateur
-    organizer = BiblioOrganizer(
+    organizer = KlodoOrganizer(
         base_path=args.path,
         config_path=config_path,
         use_pdf=not args.no_pdf,

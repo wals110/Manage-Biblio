@@ -13,7 +13,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from lib.logger import setup_logger
 setup_logger(verbose=False)
 
-from biblio import _safe_remove_source, _copy_files
+from klodo import _safe_remove_source, _copy_files
 
 
 class TestSafeRemoveSource(unittest.TestCase):
@@ -108,58 +108,40 @@ class TestCopyFiles(unittest.TestCase):
         results = [{
             'chemin': path, 'fichier': 'algo.pdf',
             'destination': '02-INFORMATIQUE/ALGO',
-            'renommage': False, 'nouveau_nom': '',
         }]
-        done, cleaned = _copy_files(results, self.target, None, False, 'test')
+        done, cleaned = _copy_files(results, self.target, None, 'test')
         self.assertEqual(done, 1)
         self.assertEqual(cleaned, 1)
         self.assertTrue(os.path.exists(
             os.path.join(self.target, '02-INFORMATIQUE/ALGO/algo.pdf')))
         self.assertFalse(os.path.exists(path))
 
-    def test_rename_during_copy(self):
-        """classify_only=False + renommage → fichier renommé à destination."""
+    def test_no_rename_during_copy(self):
+        """classify ne renomme jamais — le fichier garde son nom original."""
         path = self._create_inbox_file('old_name.pdf')
         results = [{
             'chemin': path, 'fichier': 'old_name.pdf',
             'destination': '01-SCIENCES/PHYSIQUE',
-            'renommage': True, 'nouveau_nom': 'Physique Quantique - Feynman.pdf',
         }]
-        done, cleaned = _copy_files(results, self.target, None, False, 'test')
+        done, cleaned = _copy_files(results, self.target, None, 'test')
         self.assertEqual(done, 1)
         self.assertTrue(os.path.exists(os.path.join(
-            self.target, '01-SCIENCES/PHYSIQUE/Physique Quantique - Feynman.pdf')))
-
-    def test_classify_only_no_rename(self):
-        """classify_only=True → garde le nom original même si renommage=True."""
-        path = self._create_inbox_file('keep_name.pdf')
-        results = [{
-            'chemin': path, 'fichier': 'keep_name.pdf',
-            'destination': '04-SHS/PHILOSOPHIE',
-            'renommage': True, 'nouveau_nom': 'Nouveau Nom.pdf',
-        }]
-        done, cleaned = _copy_files(results, self.target, None, True, 'test')
-        self.assertEqual(done, 1)
-        self.assertTrue(os.path.exists(os.path.join(
-            self.target, '04-SHS/PHILOSOPHIE/keep_name.pdf')))
-        self.assertFalse(os.path.exists(os.path.join(
-            self.target, '04-SHS/PHILOSOPHIE/Nouveau Nom.pdf')))
+            self.target, '01-SCIENCES/PHYSIQUE/old_name.pdf')))
 
     def test_fallback_copy(self):
         """Non-classifiés → copiés vers le dossier fallback."""
         path = self._create_inbox_file('unknown.pdf')
         results = [{
             'chemin': path, 'fichier': 'unknown.pdf',
-            'destination': '', 'renommage': False, 'nouveau_nom': '',
+            'destination': '',
         }]
-        done, cleaned = _copy_files(results, self.target, '_A-TRIER', False, 'test')
+        done, cleaned = _copy_files(results, self.target, '_A-TRIER', 'test')
         self.assertEqual(done, 1)
         self.assertTrue(os.path.exists(
             os.path.join(self.target, '_A-TRIER/unknown.pdf')))
 
     def test_anti_collision_different_size(self):
         """Fichier existant avec même nom mais taille différente → suffixe (2)."""
-        # Créer un fichier existant dans la destination
         dest_dir = os.path.join(self.target, '02-INFORMATIQUE/IA-ML')
         os.makedirs(dest_dir)
         with open(os.path.join(dest_dir, 'ml.pdf'), 'w') as f:
@@ -169,9 +151,8 @@ class TestCopyFiles(unittest.TestCase):
         results = [{
             'chemin': path, 'fichier': 'ml.pdf',
             'destination': '02-INFORMATIQUE/IA-ML',
-            'renommage': False, 'nouveau_nom': '',
         }]
-        done, cleaned = _copy_files(results, self.target, None, False, 'test')
+        done, cleaned = _copy_files(results, self.target, None, 'test')
         self.assertEqual(done, 1)
         self.assertTrue(os.path.exists(
             os.path.join(dest_dir, 'ml (2).pdf')))
@@ -188,9 +169,8 @@ class TestCopyFiles(unittest.TestCase):
         results = [{
             'chemin': path, 'fichier': 'dup.pdf',
             'destination': '01-SCIENCES',
-            'renommage': False, 'nouveau_nom': '',
         }]
-        done, cleaned = _copy_files(results, self.target, None, False, 'test')
+        done, cleaned = _copy_files(results, self.target, None, 'test')
         self.assertEqual(done, 0, "Ne devrait pas compter comme copié (déjà présent)")
 
     def test_missing_source_skip(self):
@@ -198,9 +178,8 @@ class TestCopyFiles(unittest.TestCase):
         results = [{
             'chemin': '/nonexistent/path.pdf', 'fichier': 'path.pdf',
             'destination': '01-SCIENCES',
-            'renommage': False, 'nouveau_nom': '',
         }]
-        done, cleaned = _copy_files(results, self.target, None, False, 'test')
+        done, cleaned = _copy_files(results, self.target, None, 'test')
         self.assertEqual(done, 0)
         self.assertEqual(cleaned, 0)
 
@@ -214,9 +193,8 @@ class TestCopyFiles(unittest.TestCase):
             results.append({
                 'chemin': p, 'fichier': 'book{}.pdf'.format(i),
                 'destination': '08-LOISIRS/LITTERATURE',
-                'renommage': False, 'nouveau_nom': '',
             })
-        done, cleaned = _copy_files(results, self.target, None, False, 'test')
+        done, cleaned = _copy_files(results, self.target, None, 'test')
         self.assertEqual(done, 5)
         self.assertEqual(cleaned, 5)
         for p in paths:

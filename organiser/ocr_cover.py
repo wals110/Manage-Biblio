@@ -842,7 +842,7 @@ def load_classifier(config_path: str):
         return None
 
     sys.path.insert(0, os.path.dirname(config_path))
-    from biblio_organizer import KeywordClassifier
+    from klodo_organizer import KeywordClassifier
 
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)

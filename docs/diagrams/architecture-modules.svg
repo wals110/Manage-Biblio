@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 460" font-family="Segoe Print, Comic Sans MS, cursive" font-size="12">
+  <defs>
+    <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="13"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.2"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <g filter="url(#h)">
+    <!-- CLI layer -->
+    <rect x="250" y="10" width="280" height="55" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <text x="390" y="33" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e40af">klodo.py — Point d'entrée CLI</text>
+    <text x="390" y="52" text-anchor="middle" font-size="11" fill="#3b82f6">Parser argparse + sous-commandes</text>
+
+    <!-- Arrows from CLI to lib modules -->
+    <line x1="390" y1="65" x2="390" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- LIB layer -->
+    <rect x="30" y="110" width="720" height="170" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+    <text x="390" y="132" text-anchor="middle" font-size="14" font-weight="bold" fill="#5b21b6">lib/ — Modules métier</text>
+
+    <!-- Module boxes -->
+    <rect x="50" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="107" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">vision.py</text>
+    <text x="107" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">LLM Vision</text>
+
+    <rect x="180" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="237" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">classifier.py</text>
+    <text x="237" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Classification</text>
+
+    <rect x="310" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="367" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">llm_mapper.py</text>
+    <text x="367" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Résolution thèmes</text>
+
+    <rect x="440" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="497" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">refiner.py</text>
+    <text x="497" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Raffinement</text>
+
+    <rect x="570" y="145" width="80" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="610" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">utils.py</text>
+    <text x="610" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Rapports</text>
+
+    <rect x="665" y="145" width="75" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="702" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">profile.py</text>
+    <text x="702" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Profils</text>
+
+    <!-- Second row of lib -->
+    <rect x="180" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="237" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">checkpoint.py</text>
+    <text x="237" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Reprise</text>
+
+    <rect x="310" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="367" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">logger.py</text>
+    <text x="367" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Logging</text>
+
+    <!-- External modules -->
+    <rect x="30" y="310" width="300" height="65" rx="12" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+    <text x="180" y="332" text-anchor="middle" font-size="14" font-weight="bold" fill="#92400e">Moteurs hérités</text>
+
+    <rect x="45" y="340" width="130" height="28" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="110" y="359" text-anchor="middle" font-size="11" fill="#92400e">klodo_renamer.py</text>
+
+    <rect x="190" y="340" width="130" height="28" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="255" y="359" text-anchor="middle" font-size="11" fill="#92400e">klodo_organizer.py</text>
+
+    <!-- Arrows from classifier to organizer -->
+    <line x1="237" y1="195" x2="255" y2="340" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+
+    <!-- Profiles -->
+    <rect x="410" y="310" width="340" height="130" rx="12" fill="#d1fae5" stroke="#22c55e" stroke-width="2"/>
+    <text x="580" y="332" text-anchor="middle" font-size="14" font-weight="bold" fill="#166534">profiles/default/</text>
+
+    <rect x="425" y="345" width="100" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="475" y="363" text-anchor="middle" font-size="10" fill="#166534">profile.yaml</text>
+
+    <rect x="540" y="345" width="85" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="582" y="363" text-anchor="middle" font-size="10" fill="#166534">tree.yaml</text>
+
+    <rect x="640" y="345" width="100" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="690" y="363" text-anchor="middle" font-size="10" fill="#166534">theme_mapping</text>
+
+    <rect x="425" y="380" width="110" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="480" y="398" text-anchor="middle" font-size="10" fill="#166534">categories.yaml</text>
+
+    <rect x="550" y="380" width="110" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="605" y="398" text-anchor="middle" font-size="10" fill="#166534">refinement.yaml</text>
+
+    <!-- Arrows from profile.py to profiles -->
+    <line x1="702" y1="195" x2="580" y2="310" stroke="#22c55e" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+
+    <!-- Arrows from classifier to theme_mapping -->
+    <line x1="367" y1="195" x2="580" y2="345" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+
+    <!-- Arrows from refiner to refinement -->
+    <line x1="497" y1="195" x2="605" y2="380" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+  </g>
+</svg>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Biblio — Outil unifié de gestion de bibliothèque PDF.
-======================================================
+Klodo — Outil unifié de gestion de bibliothèque PDF.
+=====================================================
 Pipeline complet : renommage → identification LLM → classification → raffinement.
 
 Sous-commandes :
@@ -20,12 +20,12 @@ Options globales :
     --max N           Limiter à N fichiers
 
 Exemples :
-    ./biblio.sh process /chemin/vers/nouveaux_pdfs
-    ./biblio.sh classify /chemin/vers/dossier --workers 10
-    ./biblio.sh rename /chemin/vers/dossier
-    ./biblio.sh refine
-    ./biblio.sh profiles
-    ./biblio.sh init mon-profil --target /Volumes/MonDisque/BIBLIO
+    ./klodo.sh process /chemin/vers/nouveaux_pdfs
+    ./klodo.sh classify /chemin/vers/dossier --workers 10
+    ./klodo.sh rename /chemin/vers/dossier
+    ./klodo.sh refine
+    ./klodo.sh profiles
+    ./klodo.sh init mon-profil --target /Volumes/MonDisque/BIBLIO
 
 Prérequis :
     brew install poppler
@@ -54,8 +54,7 @@ from lib.checkpoint import CheckpointManager
 from lib.vision import analyze_cover
 from lib.logger import setup_logger, get_logger
 from lib.utils import (
-    sanitize_filename, build_new_filename, is_name_already_clean,
-    collect_pdf_files, save_report, print_summary,
+    sanitize_filename, collect_pdf_files, save_report, print_summary,
 )
 from lib.classifier import (
     classify_by_theme, classify_combined, make_classify_fn,
@@ -64,6 +63,7 @@ from lib.classifier import (
 from lib.refiner import (
     load_refinement_rules, scan_and_refine,
     save_refine_report, print_refine_summary,
+    make_refine_llm_callback,
 )
 from lib.llm_mapper import (
     LLMMapper, load_suggestions, apply_suggestions, save_suggestions_file,
@@ -78,14 +78,15 @@ log = get_logger()
 
 def process_single_file(pdf_path, api_key, endpoint, model,
                         theme_mapping, classifier=None, llm_mapper=None,
-                        verbose=False, min_confidence=0.5):
-    # type: (str, str, str, str, Dict[str, str], object, object, bool, float) -> Dict
+                        verbose=False, min_confidence=0.5, n_pages=1):
+    # type: (str, str, str, str, Dict[str, str], object, object, bool, float, int) -> Dict
     """
-    Pipeline pour un fichier :
+    Pipeline de classification pour un fichier :
     1. Extraction couverture → image
     2. Envoi au LLM Vision → titre, auteur, thème
-    3. Proposition de renommage
-    4. Classification
+    3. Classification thématique
+
+    Note : le renommage est géré exclusivement par la commande `rename`.
     """
     filename = os.path.basename(pdf_path)
     result = {
@@ -96,8 +97,6 @@ def process_single_file(pdf_path, api_key, endpoint, model,
         'theme_detecte': '',
         'langue': '',
         'confiance': 0.0,
-        'nouveau_nom': '',
-        'renommage': False,
         'destination': '',
         'score': 0.0,
         'mot_cle': '',
@@ -105,7 +104,8 @@ def process_single_file(pdf_path, api_key, endpoint, model,
     }  # type: Dict
 
     # 1. Analyse de la couverture via LLM Vision
-    vision = analyze_cover(pdf_path, api_key, endpoint, model, verbose=verbose)
+    vision = analyze_cover(pdf_path, api_key, endpoint, model,
+                           verbose=verbose, n_pages=n_pages)
 
     # Gestion des erreurs (analyze_cover retourne {'error': type} en cas d'échec)
     if vision.get('error') == 'extraction':
@@ -132,24 +132,18 @@ def process_single_file(pdf_path, api_key, endpoint, model,
     result['langue'] = language
     result['confiance'] = confidence
 
-    # 2. Proposition de renommage
-    if title and confidence >= min_confidence and not is_name_already_clean(filename):
-        new_name = build_new_filename(title, author)
-        if new_name and new_name != filename:
-            result['nouveau_nom'] = new_name
-            result['renommage'] = True
-
-    # 3. Classification
+    # 2. Classification
     if confidence >= min_confidence:
         dest, score, keyword = classify_combined(
-            vision, filename, theme_mapping, classifier, llm_mapper)
+            vision, filename, theme_mapping, classifier, llm_mapper,
+            pdf_path=pdf_path)
         if dest:
             result['destination'] = dest
             result['score'] = score
             result['mot_cle'] = keyword
             result['status'] = 'classifié'
         else:
-            result['status'] = 'renommé_seul' if result['renommage'] else 'non_classifié'
+            result['status'] = 'non_classifié'
     elif confidence > 0:
         result['status'] = 'confiance_basse'
     else:
@@ -158,9 +152,12 @@ def process_single_file(pdf_path, api_key, endpoint, model,
     return result
 
 
-def _load_classifiers(profile, api_key, verbose=False):
-    # type: (Profile, str, bool) -> Tuple[object, object]
+def _load_classifiers(profile, api_key, verbose=False, vision=False):
+    # type: (Profile, str, bool, bool) -> Tuple[object, object]
     """Charge le classifieur mots-clés et le LLM Mapper.
+
+    Args:
+        vision: Si True, active l'escalade vision dans le LLM Mapper.
 
     Returns:
         Tuple (classifier, mapper) — chacun peut être None.
@@ -185,8 +182,13 @@ def _load_classifiers(profile, api_key, verbose=False):
             model=profile.llm_model,
             min_confidence=profile.defaults.get('mapper_min_confidence', 0.6),
             verbose=verbose,
+            vision=vision,
         )
-        log.info("🧠 LLM Mapper activé (résolution thèmes inconnus)")
+        mode = "🧠 LLM Mapper activé (résolution thèmes inconnus"
+        if vision:
+            mode += " + 👁 escalade vision"
+        mode += ")"
+        log.info(mode)
 
     return classifier, mapper
 
@@ -238,8 +240,8 @@ def _save_mapper_results(mapper, profile, logs_dir):
 def scan_and_classify(source_dir, profile, api_key,
                       max_files=0, verbose=False, delay=0.2,
                       workers=1, logs_dir='', checkpoint_name='progress.json',
-                      skip_confirm=False):
-    # type: (str, Profile, str, int, bool, float, int, str, str, bool) -> List[Dict]
+                      skip_confirm=False, vision=False, n_pages=1):
+    # type: (str, Profile, str, int, bool, float, int, str, str, bool, bool, int) -> List[Dict]
     """
     Scanne un répertoire et traite chaque PDF via LLM Vision.
     Supporte la reprise automatique et le traitement parallèle.
@@ -305,7 +307,7 @@ def scan_and_classify(source_dir, profile, api_key,
     min_confidence = profile.defaults.get('min_confidence', 0.5)
     max_api_errors = profile.defaults.get('max_api_errors', 10)
 
-    classifier, mapper = _load_classifiers(profile, api_key, verbose)
+    classifier, mapper = _load_classifiers(profile, api_key, verbose, vision=vision)
 
     def _process_one(pdf_path):
         # type: (str) -> Optional[Dict]
@@ -317,7 +319,7 @@ def scan_and_classify(source_dir, profile, api_key,
         result = process_single_file(
             pdf_path, api_key, endpoint, model,
             theme_mapping, classifier, mapper, verbose=verbose,
-            min_confidence=min_confidence)
+            min_confidence=min_confidence, n_pages=n_pages)
 
         with progress_lock:
             progress[pdf_path] = result
@@ -390,7 +392,6 @@ def _confirm_execute(results, source, target, fallback='_A-TRIER'):
     classified = [r for r in results if r['status'] == 'classifié']
     not_classified = [r for r in results
                       if r['status'] != 'classifié' and r.get('chemin')]
-    renamed = [r for r in results if r.get('renommage')]
 
     log.info("\n" + "=" * 60)
     log.info("  ⚠  CONFIRMATION AVANT EXÉCUTION")
@@ -399,7 +400,6 @@ def _confirm_execute(results, source, target, fallback='_A-TRIER'):
     log.info("  Cible         : {}".format(target))
     log.info("  Classifiés    : {} fichiers à copier".format(len(classified)))
     log.info("  Non-classifiés: {} fichiers → {}".format(len(not_classified), fallback))
-    log.info("  Renommés      : {} fichiers".format(len(renamed)))
     log.info("  ⚡ Les fichiers source seront supprimés après copie vérifiée")
     log.info("=" * 60)
 
@@ -431,8 +431,8 @@ def _safe_remove_source(src, dest):
         return False
 
 
-def _copy_files(file_list, target_base, dest_subdir, classify_only, label):
-    # type: (List[Dict], str, Optional[str], bool, str) -> Tuple[int, int]
+def _copy_files(file_list, target_base, dest_subdir, label):
+    # type: (List[Dict], str, Optional[str], str) -> Tuple[int, int]
     """Copie une liste de fichiers vers target_base/dest_subdir.
 
     Pour les classifiés, dest_subdir vient de r['destination'].
@@ -442,7 +442,6 @@ def _copy_files(file_list, target_base, dest_subdir, classify_only, label):
         file_list: Liste de résultats (dicts avec chemin, fichier, etc.)
         target_base: Racine de la bibliothèque cible
         dest_subdir: Sous-dossier fixe (fallback) ou None pour utiliser r['destination']
-        classify_only: Si True, ne pas renommer les fichiers
         label: Label pour les messages de log
 
     Returns:
@@ -460,10 +459,7 @@ def _copy_files(file_list, target_base, dest_subdir, classify_only, label):
             skipped_src += 1
             continue
 
-        if not classify_only and r.get('renommage') and r.get('nouveau_nom'):
-            final_name = r['nouveau_nom']
-        else:
-            final_name = r['fichier']
+        final_name = r['fichier']
 
         dest_dir = os.path.join(target_base, dest_subdir or r['destination'])
         dest = os.path.join(dest_dir, final_name)
@@ -503,8 +499,8 @@ def _copy_files(file_list, target_base, dest_subdir, classify_only, label):
     return done, cleaned
 
 
-def execute_classify(results, target_base, classify_only=False, fallback='_A-TRIER'):
-    # type: (List[Dict], str, bool, str) -> None
+def execute_classify(results, target_base, fallback='_A-TRIER'):
+    # type: (List[Dict], str, str) -> None
     """Copie les fichiers classifiés vers la cible, puis supprime la source.
     Les non-classifiés vont dans le dossier fallback. Après copie vérifiée,
     le fichier source est supprimé de l'inbox pour éviter les doublons."""
@@ -515,7 +511,7 @@ def execute_classify(results, target_base, classify_only=False, fallback='_A-TRI
     if classified:
         log.info("\n🚀 Copie de {} fichiers classifiés...".format(len(classified)))
         _, cleaned = _copy_files(
-            classified, target_base, None, classify_only, "fichiers copiés")
+            classified, target_base, None, "fichiers copiés")
         total_cleaned += cleaned
     else:
         log.info("\n⏭  Aucun fichier classifié à traiter.")
@@ -527,7 +523,7 @@ def execute_classify(results, target_base, classify_only=False, fallback='_A-TRI
         log.info("\n📁 Copie de {} non-classifiés vers {}...".format(
             len(not_classified), fallback))
         _, cleaned = _copy_files(
-            not_classified, target_base, fallback, classify_only,
+            not_classified, target_base, fallback,
             "copiés vers {}".format(fallback))
         total_cleaned += cleaned
 
@@ -555,19 +551,19 @@ def _make_llm_rename_callback(api_key, endpoint, model, verbose=False, n_pages=1
 
 def cmd_rename(args, profile):
     # type: (argparse.Namespace, Profile) -> None
-    """Sous-commande rename : renommage 'Titre - Auteur.pdf' via biblio_renamer."""
+    """Sous-commande rename : renommage 'Titre - Auteur.pdf' via klodo_renamer."""
     source = args.path or profile.inbox
     if not source or not os.path.isdir(source):
         log.error("❌ Dossier introuvable : {}".format(source))
         sys.exit(1)
 
-    # Importer biblio_renamer dynamiquement
+    # Importer klodo_renamer dynamiquement
     renamer_dir = os.path.join(PROJECT_ROOT, 'renommage')
     sys.path.insert(0, renamer_dir)
     try:
-        import biblio_renamer
+        import klodo_renamer
     except ImportError:
-        log.error("❌ biblio_renamer.py introuvable dans renommage/")
+        log.error("❌ klodo_renamer.py introuvable dans renommage/")
         sys.exit(1)
 
     enable_online = not (hasattr(args, 'no_online') and args.no_online)
@@ -603,14 +599,14 @@ def cmd_rename(args, profile):
         force_label))
 
     # Scan (dry-run)
-    report_path = biblio_renamer.scan(
+    report_path = klodo_renamer.scan(
         source, enable_online=enable_online, enable_pdf=enable_pdf,
         llm_callback=llm_callback, max_files=max_files, force=force,
         verbose=args.verbose)
 
     # Exécution si demandée
     if args.execute:
-        biblio_renamer.execute(source, report_path)
+        klodo_renamer.execute(source, report_path)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -659,12 +655,19 @@ def cmd_classify(args, profile):
     log.info("🤖 Modèle  : {}".format(profile.llm_model))
     log.info("👤 Profil  : {}".format(profile.name))
 
+    use_vision = getattr(args, 'vision', False)
+    n_pages = getattr(args, 'pages', 1)
+    if use_vision:
+        log.info("👁 Vision : escalade activée dans le mapper")
+    if n_pages > 1:
+        log.info("📄 Pages  : {} pages analysées par LLM Vision".format(n_pages))
     results = scan_and_classify(
         source, profile, api_key,
         max_files=args.max, verbose=args.verbose, delay=args.delay,
         workers=workers, logs_dir=logs_dir,
         checkpoint_name=args.progress_file or 'progress.json',
-        skip_confirm=getattr(args, 'yes', False))
+        skip_confirm=getattr(args, 'yes', False),
+        vision=use_vision, n_pages=n_pages)
 
     cost_per_call = profile.defaults.get('cost_per_call', 0.00034)
     print_summary(results, cost_per_call=cost_per_call)
@@ -678,7 +681,7 @@ def cmd_classify(args, profile):
                 results, source, profile.target, profile.fallback):
             log.info("\n⏭  Exécution annulée. Le rapport est disponible pour review.")
             return
-        execute_classify(results, profile.target, classify_only=True,
+        execute_classify(results, profile.target,
                          fallback=profile.fallback)
 
 
@@ -688,27 +691,81 @@ def cmd_classify(args, profile):
 
 def cmd_refine(args, profile):
     # type: (argparse.Namespace, Profile) -> None
-    """Sous-commande refine : raffinement des sous-catégories."""
+    """Sous-commande refine : raffinement des sous-catégories (parcours récursif)."""
     base_path = args.path or profile.target
     if not base_path or not os.path.isdir(base_path):
         log.error("❌ Dossier introuvable : {}".format(base_path))
         sys.exit(1)
 
     rules = load_refinement_rules(profile.refinement_rules)
-    if not rules:
-        log.error("❌ Aucune règle de raffinement dans le profil '{}'".format(profile.name))
-        return
+    use_llm = getattr(args, 'llm', False)
+    use_vision = getattr(args, 'vision', False)
+
+    # ── Build LLM callback if requested ──
+    llm_callback = None
+    if use_llm:
+        api_key = args.api_key or os.environ.get('SILICONFLOW_API_KEY', '')
+        if not api_key:
+            log.error("❌ --llm requiert une clé API (--api-key ou SILICONFLOW_API_KEY)")
+            sys.exit(1)
+        raw_callback = make_refine_llm_callback(
+            api_key=api_key,
+            endpoint=profile.llm_endpoint,
+            model=profile.llm_model,
+            min_confidence=0.6,
+            verbose=args.verbose,
+            vision=use_vision,
+        )
+        # Wrap with --max limit if specified
+        max_llm = getattr(args, 'max', 0)
+        if raw_callback and max_llm > 0:
+            _counter = [0]
+            _inner = raw_callback
+
+            def _limited_callback(filename, current_folder, subdirs,
+                                  pdf_path=None):
+                if _counter[0] >= max_llm:
+                    return (None, '')
+                _counter[0] += 1
+                return _inner(filename, current_folder, subdirs,
+                              pdf_path=pdf_path)
+
+            _limited_callback.stats = raw_callback.stats
+            llm_callback = _limited_callback
+        else:
+            llm_callback = raw_callback
 
     mode = "EXECUTE" if args.execute else "DRY-RUN"
-    log.info("\n🔍 Raffinement des sous-catégories ({})".format(mode))
+    llm_label = " + LLM" if use_llm else ""
+    if use_vision:
+        llm_label += " + Vision"
+    max_llm = getattr(args, 'max', 0)
+    log.info("\n🔍 Raffinement récursif des sous-catégories ({}{})".format(mode, llm_label))
     log.info("📁 Base   : {}".format(base_path))
-    log.info("👤 Profil : {} ({} règles)".format(profile.name, len(rules)))
+    log.info("👤 Profil : {} ({} règles YAML)".format(profile.name, len(rules)))
+    llm_workers = getattr(args, 'workers', 1) or 1
+    if use_llm:
+        log.info("🤖 LLM    : {} ({})".format(profile.llm_model, profile.llm_endpoint))
+        if use_vision:
+            log.info("👁 Vision  : escalade activée (couverture PDF)")
+        if max_llm > 0:
+            log.info("🔢 Max LLM: {} appels".format(max_llm))
+        if llm_workers > 1:
+            log.info("⚡ Workers: {} threads".format(llm_workers))
 
-    results = scan_and_refine(base_path, rules, execute=args.execute)
+    results = scan_and_refine(base_path, rules, execute=args.execute,
+                              llm_callback=llm_callback, workers=llm_workers)
 
     if not results:
         log.info("✅ Aucun fichier à raffiner — tout est bien classé.")
         return
+
+    # Print LLM stats if available
+    if llm_callback and hasattr(llm_callback, 'stats'):
+        stats = llm_callback.stats
+        if stats['calls'] > 0:
+            log.info("\n🤖 LLM Refine : {} appels, {} résolus, {} échecs".format(
+                stats['calls'], stats['successes'], stats['failures']))
 
     print_refine_summary(results)
 
@@ -738,18 +795,70 @@ def cmd_process(args, profile):
     logs_dir = os.path.join(PROJECT_ROOT, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
 
+    skip_rename = getattr(args, 'no_rename', False)
+    n_steps = 3 if skip_rename else 4
+
     log.info("=" * 60)
-    log.info("  📚 Biblio v{} — Pipeline complet".format(__version__))
+    log.info("  📚 Klodo v{} — Pipeline complet".format(__version__))
     log.info("=" * 60)
     log.info("  Source  : {}".format(source))
     log.info("  Cible   : {}".format(profile.target))
     log.info("  Profil  : {}".format(profile.name))
     log.info("  Modèle  : {}".format(profile.llm_model))
     log.info("  Mode    : {}".format("EXECUTE" if args.execute else "DRY-RUN"))
+    if skip_rename:
+        log.info("  Rename  : désactivé (--no-rename)")
 
-    # ── Étape 1 : Classification LLM ──
-    log.info("━" * 40)
-    log.info("  Étape 1/3 : LLM Vision + Classification")
+    step = 0
+
+    # ── Étape 1 : Renommage (sauf si --no-rename) ──
+    if not skip_rename:
+        step += 1
+        log.info("\n" + "━" * 40)
+        log.info("  Étape {}/{} : Renommage".format(step, n_steps))
+        log.info("━" * 40)
+
+        # Importer klodo_renamer dynamiquement
+        renamer_dir = os.path.join(PROJECT_ROOT, 'renommage')
+        sys.path.insert(0, renamer_dir)
+        try:
+            import klodo_renamer
+        except ImportError:
+            log.error("❌ klodo_renamer.py introuvable dans renommage/")
+            sys.exit(1)
+
+        enable_online = not getattr(args, 'no_online', False)
+        enable_pdf = not getattr(args, 'no_pdf', False)
+        use_llm_rename = getattr(args, 'llm', False)
+        force = getattr(args, 'force', False)
+        n_pages = getattr(args, 'pages', 1)
+
+        # Construire le callback LLM si demandé
+        llm_callback = None
+        if use_llm_rename:
+            if not api_key:
+                log.error("❌ --llm nécessite une clé API. --api-key sk-xxx ou export SILICONFLOW_API_KEY=sk-xxx")
+                sys.exit(1)
+            llm_callback = _make_llm_rename_callback(
+                api_key, profile.llm_endpoint, profile.llm_model,
+                verbose=args.verbose, n_pages=n_pages)
+
+        report_path = klodo_renamer.scan(
+            source, enable_online=enable_online, enable_pdf=enable_pdf,
+            llm_callback=llm_callback, max_files=getattr(args, 'max', 0),
+            force=force, verbose=args.verbose)
+
+        if args.execute:
+            klodo_renamer.execute(source, report_path)
+            log.info("  ✅ Renommage appliqué.")
+        else:
+            log.info("  📋 Rapport renommage : {}".format(report_path))
+            log.info("  ℹ  Dry-run : les fichiers ne sont pas renommés.")
+
+    # ── Étape 2 : Classification LLM ──
+    step += 1
+    log.info("\n" + "━" * 40)
+    log.info("  Étape {}/{} : LLM Vision + Classification".format(step, n_steps))
     log.info("━" * 40)
 
     cm = CheckpointManager(logs_dir, args.progress_file or 'progress.json')
@@ -763,7 +872,9 @@ def cmd_process(args, profile):
         max_files=args.max, verbose=args.verbose, delay=args.delay,
         workers=workers, logs_dir=logs_dir,
         checkpoint_name=args.progress_file or 'progress.json',
-        skip_confirm=getattr(args, 'yes', False))
+        skip_confirm=getattr(args, 'yes', False),
+        vision=getattr(args, 'vision', False),
+        n_pages=getattr(args, 'pages', 1))
 
     cost_per_call = profile.defaults.get('cost_per_call', 0.00034)
     print_summary(results, cost_per_call=cost_per_call)
@@ -779,17 +890,19 @@ def cmd_process(args, profile):
             log.info("\n⏭  Exécution annulée. Le rapport est disponible pour review.")
             return
 
-        # Étape 2 : Copie vers la cible
+        # Étape 3 : Copie vers la cible
+        step += 1
         log.info("\n" + "━" * 40)
-        log.info("  Étape 2/3 : Copie vers {}".format(profile.target))
+        log.info("  Étape {}/{} : Copie vers {}".format(step, n_steps, profile.target))
         log.info("━" * 40)
         execute_classify(results, profile.target, fallback=profile.fallback)
 
-        # Étape 3 : Raffinement sous-catégories
+        # Étape 4 : Raffinement sous-catégories
         rules = load_refinement_rules(profile.refinement_rules)
         if rules:
+            step += 1
             log.info("\n" + "━" * 40)
-            log.info("  Étape 3/3 : Raffinement sous-catégories")
+            log.info("  Étape {}/{} : Raffinement sous-catégories".format(step, n_steps))
             log.info("━" * 40)
             refine_results = scan_and_refine(
                 profile.target, rules, execute=True)
@@ -927,9 +1040,9 @@ def cmd_suggest(args, profile):
 
         log.info("\n  📝 Pour modifier : éditez logs/suggestions.yaml")
         log.info("     Supprimez les lignes non voulues, ajustez les chemins")
-        log.info("  ✅ Pour appliquer : ./biblio.sh suggest --apply")
+        log.info("  ✅ Pour appliquer : ./klodo.sh suggest --apply")
         if pending:
-            log.info("  🔄 Pour appliquer + reclassifier : ./biblio.sh suggest --apply --execute")
+            log.info("  🔄 Pour appliquer + reclassifier : ./klodo.sh suggest --apply --execute")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -940,12 +1053,12 @@ def _build_parser():
     # type: () -> argparse.ArgumentParser
     """Construit le parser argparse avec toutes les sous-commandes."""
     parser = argparse.ArgumentParser(
-        prog='biblio',
-        description='Biblio v{} — Outil unifié de gestion de bibliothèque PDF'.format(__version__),
+        prog='klodo',
+        description='Klodo v{} — Outil unifié de gestion de bibliothèque PDF'.format(__version__),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument('--version', action='version',
-                        version='biblio {}'.format(__version__))
+                        version='klodo {}'.format(__version__))
 
     subparsers = parser.add_subparsers(dest='command', help='Sous-commande')
 
@@ -983,6 +1096,20 @@ def _build_parser():
         help='Pipeline complet (renommage + LLM + classement + raffinement)')
     p_process.add_argument('path', nargs='?', default=None,
                            help='Dossier source (défaut: inbox du profil)')
+    p_process.add_argument('--no-rename', action='store_true',
+                           help='Désactiver l\'étape de renommage (classify + refine uniquement)')
+    p_process.add_argument('--llm', action='store_true',
+                           help='Activer LLM Vision pour le renommage (fallback)')
+    p_process.add_argument('--force', action='store_true',
+                           help='Re-analyser tous les fichiers lors du renommage')
+    p_process.add_argument('--no-online', action='store_true',
+                           help='Désactiver la recherche ISBN en ligne (renommage)')
+    p_process.add_argument('--no-pdf', action='store_true',
+                           help='Désactiver l\'extraction PDF (renommage)')
+    p_process.add_argument('--vision', action='store_true',
+                           help='Escalade vision dans le LLM Mapper quand le texte échoue')
+    p_process.add_argument('--pages', type=int, default=1,
+                           help='Nombre de pages à analyser par LLM Vision (défaut: 1, max: 5)')
 
     # ── classify ──
     p_classify = subparsers.add_parser(
@@ -990,6 +1117,10 @@ def _build_parser():
         help='LLM Vision + classement thématique')
     p_classify.add_argument('path', nargs='?', default=None,
                             help='Dossier source (défaut: inbox du profil)')
+    p_classify.add_argument('--vision', action='store_true',
+                            help='Escalade vision dans le LLM Mapper quand le texte échoue')
+    p_classify.add_argument('--pages', type=int, default=1,
+                            help='Nombre de pages à analyser par LLM Vision (défaut: 1, max: 5)')
 
     # ── rename ──
     p_rename = subparsers.add_parser(
@@ -1015,9 +1146,19 @@ def _build_parser():
     # ── refine ──
     p_refine = subparsers.add_parser(
         'refine', parents=[common],
-        help='Raffinement des sous-catégories par mots-clés')
+        help='Raffinement récursif des sous-catégories')
     p_refine.add_argument('path', nargs='?', default=None,
                           help='Dossier bibliothèque (défaut: target du profil)')
+    p_refine.add_argument('--llm', action='store_true',
+                          help='Activer le fallback LLM pour les fichiers non matchés')
+    p_refine.add_argument('--vision', action='store_true',
+                          help='Escalade vision : envoyer la couverture PDF si le texte échoue (requiert --llm)')
+    p_refine.add_argument('--api-key', default=None,
+                          help='Clé API pour --llm (ou var SILICONFLOW_API_KEY)')
+    p_refine.add_argument('--max', type=int, default=0,
+                          help='Limiter les appels LLM à N fichiers')
+    p_refine.add_argument('-w', '--workers', type=int, default=1,
+                          help='Nombre de threads parallèles pour les appels LLM (défaut: 1)')
 
     # ── profiles ──
     subparsers.add_parser('profiles', help='Lister les profils disponibles')
@@ -1043,7 +1184,7 @@ def main():
     """Main CLI entry point."""
     parser = _build_parser()
     args = parser.parse_args()
-    setup_logger(verbose=getattr(args, 'verbose', False), log_file='logs/biblio.log')
+    setup_logger(verbose=getattr(args, 'verbose', False), log_file='logs/klodo.log')
 
     if not args.command:
         parser.print_help()

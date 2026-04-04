@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════
-#  Biblio — Suite de tests fonctionnels
+#  Klodo — Suite de tests fonctionnels
 # ═══════════════════════════════════════════════════════════
 #
 #  Usage :
@@ -26,7 +26,7 @@ for arg in "$@"; do
 done
 
 echo "═══════════════════════════════════════════════════"
-echo "  📚 Biblio — Tests fonctionnels"
+echo "  📚 Klodo — Tests fonctionnels"
 echo "═══════════════════════════════════════════════════"
 echo ""
 

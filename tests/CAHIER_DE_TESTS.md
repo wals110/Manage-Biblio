@@ -1,8 +1,8 @@
-# Cahier de tests — Biblio v4.0
+# Cahier de tests — Klodo v4.1
 
 ## Vue d'ensemble
 
-Ce cahier couvre l'ensemble des cas de figure pour le projet Biblio.
+Ce cahier couvre l'ensemble des cas de figure pour le projet Klodo.
 Les tests sont organisés en deux catégories :
 
 - **Tests automatiques** (`./tests/run_all.sh`) — exécutables sans SSD ni clé API
@@ -18,10 +18,10 @@ Vérifie que tous les fichiers Python du projet sont syntaxiquement corrects via
 
 | # | Cas | Description | Vérifie |
 |---|---|---|---|
-| A1.1 | biblio.py compile | Compile le point d'entrée principal du CLI | Pas d'erreur de syntaxe dans biblio.py |
+| A1.1 | klodo.py compile | Compile le point d'entrée principal du CLI | Pas d'erreur de syntaxe dans klodo.py |
 | A1.2 | Tous les lib/*.py compilent | Compile chacun des 8 modules du dossier lib/ (logger, profile, checkpoint, vision, utils, classifier, refiner, llm_mapper) | Aucun module cassé par un refactoring |
-| A1.3 | organiser/*.py compilent | Compile les modules legacy du classifieur original (ocr_cover, biblio_organizer) | Les anciens modules restent valides |
-| A1.4 | renommage/*.py compilent | Compile le moteur de renommage biblio_renamer.py | Le renamer est syntaxiquement correct |
+| A1.3 | organiser/*.py compilent | Compile les modules legacy du classifieur original (ocr_cover, klodo_organizer) | Les anciens modules restent valides |
+| A1.4 | renommage/*.py compilent | Compile le moteur de renommage klodo_renamer.py | Le renamer est syntaxiquement correct |
 
 ### A2. Imports croisés (test_imports.py)
 
@@ -37,8 +37,8 @@ Vérifie que chaque module s'importe correctement et que les dépendances crois�
 | A2.6 | lib.classifier | Importe classify_by_theme, classify_combined, make_classify_fn, load_keyword_classifier | Le classifieur hybride est opérationnel |
 | A2.7 | lib.refiner | Importe load_refinement_rules, scan_and_refine, save_refine_report, print_refine_summary | Le raffinement sous-catégories est chargeable |
 | A2.8 | lib.llm_mapper | Importe LLMMapper, load_suggestions, apply_suggestions, save_suggestions_file | Le mapper LLM et les suggestions fonctionnent |
-| A2.9 | biblio.py — fonctions existent | Vérifie avec hasattr() que les 19 fonctions attendues (process_single_file, scan_and_classify, _load_classifiers, _run_processing, etc.) existent dans le module biblio | Aucune fonction supprimée ou renommée par erreur lors d'un refactoring |
-| A2.10 | biblio.py — fonctions callable | Vérifie avec callable() que chaque fonction est bien une fonction et pas un autre objet | Pas de variable écrasant une fonction par erreur |
+| A2.9 | klodo.py — fonctions existent | Vérifie avec hasattr() que les 19 fonctions attendues (process_single_file, scan_and_classify, _load_classifiers, _run_processing, etc.) existent dans le module biblio | Aucune fonction supprimée ou renommée par erreur lors d'un refactoring |
+| A2.10 | klodo.py — fonctions callable | Vérifie avec callable() que chaque fonction est bien une fonction et pas un autre objet | Pas de variable écrasant une fonction par erreur |
 
 ### A3. Sécurité inbox (test_safety.py)
 
@@ -77,8 +77,7 @@ Cette fonction copie une liste de fichiers (résultats du pipeline) vers la bibl
 | # | Cas | Description | Résultat attendu |
 |---|---|---|---|
 | A4.7 | Fichier classifié → sous-dossier | Crée un fichier "algo.pdf" dans inbox, le copie avec destination "02-INFORMATIQUE/ALGO" | Fichier copié dans le bon sous-dossier, source supprimée de l'inbox |
-| A4.8 | Renommage pendant copie | Fichier "old_name.pdf" avec renommage=True et nouveau_nom="Physique Quantique - Feynman.pdf" | Le fichier arrive à destination sous son nouveau nom |
-| A4.9 | classify_only=True | Fichier avec renommage=True mais classify_only activé | Garde le nom original malgré renommage=True — utile pour la commande classify (pas de renommage) |
+| A4.8 | Pas de renommage pendant copie | Fichier "old_name.pdf" classifié | Le fichier garde son nom original — le renommage est géré par la commande rename |
 | A4.10 | Non-classifié → fallback | Fichier sans destination, copié avec dest_subdir="_A-TRIER" | Copié dans le dossier fallback _A-TRIER |
 | A4.11 | Anti-collision (taille diff) | Un fichier "ml.pdf" existe déjà dans la destination avec un contenu différent | Crée "ml (2).pdf" au lieu d'écraser — fichiers différents avec le même nom |
 | A4.12 | Anti-collision (même taille) | Un fichier "dup.pdf" existe déjà dans la destination avec exactement le même contenu | Skip "déjà présent" (done=0) — évite la duplication inutile |
@@ -106,7 +105,7 @@ Teste que `_build_parser()` construit correctement le parser argparse avec toute
 | A5.13 | profiles | `parse_args(['profiles'])` | command='profiles' — commande simple sans options |
 | A5.14 | suggest review | `parse_args(['suggest'])` | apply=False — mode review par défaut |
 | A5.15 | suggest --apply --execute | `parse_args(['suggest', '--apply', '--execute'])` | Les deux flags activés pour appliquer + reclassifier |
-| A5.16 | init nom --target | `parse_args(['init', 'mon-profil', '--target', '/Volumes/SSD/LIB'])` | name='mon-profil', target='/Volumes/SSD/LIB' |
+| A5.16 | init nom --target | `parse_args(['init', 'mon-profil', '--target', '/chemin/vers/biblio'])` | name='mon-profil', target='/chemin/vers/biblio' |
 | A5.17 | init sans --target | `parse_args(['init', 'test'])` | SystemExit — --target est requis |
 | A5.18 | --profile défaut | `parse_args(['classify'])` | profile='default' |
 | A5.19 | --delay défaut | `parse_args(['classify'])` | delay=0.2 |
@@ -141,13 +140,130 @@ Teste l'intégration du LLM Vision comme fallback dans le pipeline de renommage.
 | A6.19 | Avec --force, noms propres analysés | Même fichier avec scan(force=True) | Fichier présent dans le rapport, re-analysé |
 | A6.20 | --force + --llm renomme propre | Fichier propre avec mock LLM retournant un meilleur titre | action=EXTRAIRE_LLM, nouveau nom contient le titre du LLM |
 
+### A7. Refine v2 (test_refine.py)
+
+Teste le module de raffinement v2 avec 3 niveaux de matching + LLM fallback. Déplace les fichiers depuis les catégories parentes vers les sous-catégories en analysant les noms de fichiers (mots-clés), les règles YAML, et optionnellement le LLM. Valide la normalisation des chemins, la correspondance avec les sous-dossiers, la récursion, l'application des règles, et l'intégration du LLM fallback.
+
+#### TestNormalizeDirname
+
+Teste la fonction `normalize_dirname()` qui nettoie les noms de répertoires en supprimant les caractères problématiques et les préfixes numériques.
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A7.1 | Nom simple | `normalize_dirname('Mathématiques')` | 'mathematiques' — minuscules, accents supprimés |
+| A7.2 | Préfixe numérique supprimé | `normalize_dirname('02-INFORMATIQUE')` | 'informatique' — numéro et tiret supprimés |
+| A7.3 | Pas de tirets | `normalize_dirname('01-SCIENCES/PHYSIQUE')` | 'sciences/physique' — chemins conservés, tirets enlevés |
+| A7.4 | Un seul tiret | `normalize_dirname('ALGO-AVANCE')` | 'algo-avance' — tirets simples conservés (pas de préfixe numérique) |
+
+#### TestMatchSubdirs
+
+Teste la fonction `match_subdirs()` qui trouve les sous-dossiers d'un répertoire parent correspondant à un motif donné (après normalisation).
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A7.5 | Correspondance avec tirets | Parent contient "ALGO-AVANCE", motif=algo | Match trouvé — normalisation appliquée |
+| A7.6 | Correspondance simple | Parent contient "PYTHON", motif=python | Match exact après normalisation |
+| A7.7 | Pas de correspondance | Parent contient "JAVA", motif=python | Aucun match |
+| A7.8 | Dossiers cachés ignorés | Parent contient ".hidden" et "PYTHON", motif=python | Dossiers ".hidden" ignorés, match sur PYTHON |
+| A7.9 | Dossiers "_" ignorés | Parent contient "_A-TRIER" et "PYTHON", motif=python | "_A-TRIER" ignoré, match sur PYTHON |
+| A7.10 | Variantes courtes ignorées | Parent contient "ML" et "MACHINELEARNING", motif=machine | "ML" ignoré (≤3 chars), match sur MACHINELEARNING |
+| A7.11 | Préfixe numérique sur subdirs | Parent contient "03-ALGO-AVANCE", motif=algo | Match trouvé après suppression du préfixe numérique |
+
+#### TestScanAndRefineRecursive
+
+Teste la fonction `scan_and_refine_recursive()` qui récurse à travers l'arborescence BIBLIO et applique les règles de raffinement (YAML + noms de dossiers).
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A7.12 | Dossier feuille (leaf) — skip | Dossier sans sous-dossiers avec un PDF | Aucun déplacement — dossier feuille n'est pas raffiné |
+| A7.13 | Non-feuille avec PDF → détection | Dossier parent avec sous-dossiers ET un PDF « algorithme.pdf » | Détection : le PDF doit être déplacé selon la règle YAML ou le nom du sous-dossier |
+| A7.14 | Correspondance règle YAML | Fichier « bayesian_networks.pdf » dans INFORMATIQUE, refinement.yaml contient règle : { keywords: [bayesian], target: IA-ML } | Déplacement de fichier → INFORMATIQUE/IA-ML |
+| A7.15 | Correspondance nom sous-dossier | Fichier « python_tutorial.pdf » dans INFORMATIQUE avec sous-dossier "PYTHON-BASICS" | Déplacement → INFORMATIQUE/PYTHON-BASICS (priorité sous-dossier) |
+| A7.16 | Règle YAML prioritaire | Fichier détectable par règle YAML ET nom de sous-dossier, les deux en désaccord | Règle YAML gagne (priorité spécifiée) |
+| A7.17 | Dossier NON_CLASSE → skip | Fichier dans "_A-TRIER" (fallback) | Aucun déplacement — dossier fallback n'est pas raffiné |
+| A7.18 | --execute déplace réellement | Avec execute=True, fichier qualifié | Fichier physiquement déplacé au destination |
+| A7.19 | Fichier déjà présent à destination | Fichier source et destination identiques | Skip « déjà présent » (done=0, file_hash_match=True) |
+| A7.20 | Récursion multi-niveaux | Hiérarchie 01-SCIENCES/PHYSIQUE/QUANTIQUE contenant des PDFs | Tous les niveaux sont traités correctement |
+| A7.21 | Non-PDF ignorés | Dossier parent avec un PDF et d'autres fichiers (.txt, .jpg) | Seuls les PDFs sont analysés |
+| A7.22 | Non-feuille sans PDF | Dossier parent avec plusieurs sous-dossiers mais aucun PDF au niveau parent | Aucun raffinement, récursion vers les enfants |
+
+#### TestSaveRefineReport
+
+Teste la fonction `save_refine_report()` qui génère un rapport CSV des raffinements effectués.
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A7.23 | Rapport inclut source_match | Résultats avec des fichiers détectés par YAML et par nom de dossier | Colonnes « source_match_type » indiquent « yaml » ou « subdir_name » |
+| A7.24 | Rapport dossier NON_CLASSE | Fichiers non-classifiés présents | Colonne « dest_subdir » affiche vide ou « (aucun raffinement) » |
+
+#### TestLoadRefinementRules
+
+Teste la fonction `load_refinement_rules()` qui charge le fichier refinement.yaml et construit la liste des règles.
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A7.25 | Chargement basique | refinement.yaml valide avec 3 règles (keywords, target) | Liste de 3 règles correctement parsées |
+| A7.26 | Fichier vide | refinement.yaml existe mais est vide ou contient « rules: [] » | Liste vide [] retournée, pas de crash |
+| A7.27 | Champs manquants ignorés | Règle sans « keywords » ou sans « target » | Règle invalide ignorée, logging warning, continue |
+
+#### TestMatchKeywords
+
+Teste la fonction `match_keywords()` qui détecte si un nom de fichier contient les mots-clés d'une règle.
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A7.28 | Correspondance basique | filename='deep_learning.pdf', keywords=['deep', 'learning'] | Match = True |
+| A7.29 | Pas de correspondance | filename='poetry.pdf', keywords=['deep', 'learning'] | Match = False |
+| A7.30 | Insensible à la casse | filename='DEEP_Learning.pdf', keywords=['deep'] | Match = True — comparaison case-insensitive |
+
+### A8. Refine v2 Phase 2 (test_refine.py) — LLM Fallback
+
+Teste l'intégration du LLM fallback dans le refine pour les fichiers non-classés aux niveaux 1 et 2. Le LLM réutilise `classify_combined()` avec une contrainte sur les sous-dossiers du répertoire courant. Utilise des callbacks simulés (mock) au lieu de vrais appels API.
+
+#### TestScanAndRefineLLM
+
+Teste la fonction `refine_with_llm()` qui applique le LLM fallback aux fichiers `non_classé`.
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A8.1 | LLM appelé pour non_classé | Fichier sans match YAML/subdir, LLM callback fourni | Classifieur appelé avec le filename, résultat appliqué si valide |
+| A8.2 | LLM pas appelé si callback=None | Fichier non_classé, aucun callback LLM fourni | Reste non_classé, pas d'appel LLM |
+| A8.3 | LLM pas appelé si déjà classé | Fichier déjà classé au L1 ou L2 | LLM callback ignoré, pas d'appel |
+| A8.4 | LLM retourne None | Mock callback retourne None | Reste non_classé — pas d'amélioration |
+| A8.5 | LLM retourne hors-domaine | Mock callback retourne un chemin hors du dossier courant | Rejeté, reste non_classé — contrainte appliquée |
+| A8.6 | LLM retourne sous-dossier valide | Mock callback retourne "02-INFORMATIQUE/ALGO" et le fichier est dans "02-INFORMATIQUE" | Fichier déplacé vers ALGO, statut 'raffiné_llm', source_match='llm_fallback' |
+
+#### TestParseLlmJson
+
+Teste la fonction `parse_llm_json()` qui extrait un chemin JSON depuis une réponse LLM brute (peut contenir du texte libre, du markdown, du JSON mal formé).
+
+| # | Cas | Description | Résultat attendu |
+|---|---|---|---|
+| A8.7 | JSON valide | `{"path": "02-INFORMATIQUE/ALGO"}` | Extraction réussie : 'path' value |
+| A8.8 | Markdown JSON block | `\`\`\`json\n{"path": "...}\n\`\`\`` | Extraction du JSON dans le bloc markdown |
+| A8.9 | JSON avec texte avant/après | `Voici le chemin: {"path": "02-INFORMATIQUE/IA-ML"}. Vérifiez!` | Extraction du JSON, ignore le texte |
+| A8.10 | JSON invalide | `{path: "02-INFORMATIQUE"}` (pas de guillemets) | parse_json échoue, retourne None |
+| A8.11 | Chaîne vide | Réponse LLM = "" | Retourne None sans crash |
+
+#### TestRefineParser
+
+Teste que le parser CLI accepte les nouvelles options `--llm`, `--api-key`, `--max` sur la commande refine.
+
+| # | Cas | Description | Vérifie |
+|---|---|---|---|
+| A8.12 | refine --llm | `parse_args(['refine', '--llm'])` | llm=True — le flag est reconnu par le parser |
+| A8.13 | refine sans --llm | `parse_args(['refine'])` | llm=False — comportement par défaut inchangé |
+| A8.14 | refine --api-key | `parse_args(['refine', '--api-key', 'sk-test'])` | api_key='sk-test' — nécessaire pour les appels LLM |
+| A8.15 | refine --max | `parse_args(['refine', '--max', '50'])` | max=50 — limite le nombre de fichiers |
+| A8.16 | refine --max défaut | `parse_args(['refine'])` | max=None (pas de limite) |
+
 ---
 
 ## B. Tests manuels (Mac + SSD)
 
 ### Prérequis
 
-- SSD monté sur `/Volumes/ExtSSD/BIBLIO`
+- Bibliothèque montée sur le chemin configuré dans `profile.yaml`
 - Dossier `_INBOX` créé avec des PDFs de test
 - Variable `SILICONFLOW_API_KEY` exportée
 - Se placer dans le répertoire du projet
@@ -158,14 +274,14 @@ Teste la classification LLM Vision avec différents modes (dry-run, exécution, 
 
 | # | Commande | Description | Vérifie |
 |---|---|---|---|
-| B1.1 | `./biblio.sh classify --max 5` | Lance la classification sur 5 fichiers en mode dry-run : envoie les couvertures au LLM, génère un rapport CSV mais ne copie rien | Rapport CSV généré dans logs/, pas de fichier déplacé |
-| B1.2 | `./biblio.sh classify --max 5 --verbose` | Comme B1.1 mais avec les détails de chaque appel LLM (thème détecté, score, destination) | Détails LLM affichés pour chaque fichier |
-| B1.3 | `./biblio.sh classify --max 5 --execute --reset` | Vide le checkpoint, reclassifie 5 fichiers, puis copie les classifiés vers BIBLIO et les non-classifiés vers _A-TRIER. Supprime les sources de _INBOX après copie vérifiée | Fichiers copiés, sources supprimées, _INBOX a 5 fichiers de moins |
-| B1.4 | `./biblio.sh classify --max 5 --execute` (relance) | Relance sans --reset : le checkpoint contient les 5 fichiers déjà traités | Message "Tous les fichiers ont déjà été traités", rien à faire |
-| B1.5 | `./biblio.sh classify --reset` | Supprime le fichier de checkpoint progress.json | Checkpoint vidé, la prochaine exécution repart de zéro |
-| B1.6 | `./biblio.sh classify --retry-errors` | Remet en file d'attente uniquement les fichiers dont le status est erreur_api ou erreur_extraction | Seuls les fichiers en erreur sont retraités, les classifiés restent |
-| B1.7 | `./biblio.sh classify --reclassify --execute` | Reclassifie les fichiers dans le checkpoint en utilisant le theme_mapping mis à jour, sans rappeler le LLM Vision (gratuit et instantané) | Fichiers re-mappés avec les nouveaux thèmes, pas d'appel API |
-| B1.8 | `./biblio.sh classify --workers 5 --max 20` | Lance 5 threads parallèles pour traiter 20 fichiers simultanément | Pas de crash, pas de corruption du checkpoint, résultats cohérents |
+| B1.1 | `./klodo.sh classify --max 5` | Lance la classification sur 5 fichiers en mode dry-run : envoie les couvertures au LLM, génère un rapport CSV mais ne copie rien | Rapport CSV généré dans logs/, pas de fichier déplacé |
+| B1.2 | `./klodo.sh classify --max 5 --verbose` | Comme B1.1 mais avec les détails de chaque appel LLM (thème détecté, score, destination) | Détails LLM affichés pour chaque fichier |
+| B1.3 | `./klodo.sh classify --max 5 --execute --reset` | Vide le checkpoint, reclassifie 5 fichiers, puis copie les classifiés vers BIBLIO et les non-classifiés vers _A-TRIER. Supprime les sources de _INBOX après copie vérifiée | Fichiers copiés, sources supprimées, _INBOX a 5 fichiers de moins |
+| B1.4 | `./klodo.sh classify --max 5 --execute` (relance) | Relance sans --reset : le checkpoint contient les 5 fichiers déjà traités | Message "Tous les fichiers ont déjà été traités", rien à faire |
+| B1.5 | `./klodo.sh classify --reset` | Supprime le fichier de checkpoint progress.json | Checkpoint vidé, la prochaine exécution repart de zéro |
+| B1.6 | `./klodo.sh classify --retry-errors` | Remet en file d'attente uniquement les fichiers dont le status est erreur_api ou erreur_extraction | Seuls les fichiers en erreur sont retraités, les classifiés restent |
+| B1.7 | `./klodo.sh classify --reclassify --execute` | Reclassifie les fichiers dans le checkpoint en utilisant le theme_mapping mis à jour, sans rappeler le LLM Vision (gratuit et instantané) | Fichiers re-mappés avec les nouveaux thèmes, pas d'appel API |
+| B1.8 | `./klodo.sh classify --workers 5 --max 20` | Lance 5 threads parallèles pour traiter 20 fichiers simultanément | Pas de crash, pas de corruption du checkpoint, résultats cohérents |
 | B1.9 | Ctrl+C pendant classify | Interrompre le traitement avec Ctrl+C pendant que les appels LLM sont en cours | Checkpoint sauvegardé avec la progression actuelle, relance reprend là où on s'est arrêté |
 
 #### Vérifications post-exécution B1.3 :
@@ -181,9 +297,9 @@ Teste le pipeline complet qui enchaîne : classification LLM Vision → copie ve
 
 | # | Commande | Description | Vérifie |
 |---|---|---|---|
-| B2.1 | `./biblio.sh process --max 3` | Pipeline complet en dry-run sur 3 fichiers : classification LLM, rapport, mais pas de copie ni raffinement réel | Les 3 étapes s'affichent (1/3, 2/3, 3/3), rapport généré |
-| B2.2 | `./biblio.sh process --max 3 --execute` | Pipeline complet avec exécution réelle. Étape 1 : LLM Vision + classification. Étape 2 : copie vers BIBLIO + suppression inbox. Étape 3 : raffinement sous-catégories | Fichiers classifiés, copiés, sources supprimées, raffinement appliqué |
-| B2.3 | `./biblio.sh process --max 3 --execute -y` | Comme B2.2 mais avec -y (--yes) qui saute les deux confirmations interactives (avant LLM et avant copie) | Aucune question posée, exécution directe |
+| B2.1 | `./klodo.sh process --max 3` | Pipeline complet en dry-run sur 3 fichiers : classification LLM, rapport, mais pas de copie ni raffinement réel | Les 3 étapes s'affichent (1/3, 2/3, 3/3), rapport généré |
+| B2.2 | `./klodo.sh process --max 3 --execute` | Pipeline complet avec exécution réelle. Étape 1 : LLM Vision + classification. Étape 2 : copie vers BIBLIO + suppression inbox. Étape 3 : raffinement sous-catégories | Fichiers classifiés, copiés, sources supprimées, raffinement appliqué |
+| B2.3 | `./klodo.sh process --max 3 --execute -y` | Comme B2.2 mais avec -y (--yes) qui saute les deux confirmations interactives (avant LLM et avant copie) | Aucune question posée, exécution directe |
 
 #### Vérifications post-exécution B2.2 :
 - [ ] Étapes 1/3, 2/3, 3/3 affichées
@@ -196,17 +312,17 @@ Teste le renommage intelligent avec ses différents modes : offline (ISBN, méta
 
 | # | Commande | Description | Vérifie |
 |---|---|---|---|
-| B3.1 | `./biblio.sh rename /chemin` | Scan les PDFs du dossier, propose des renommages via nettoyage nom + ISBN + métadonnées PDF. Génère un rapport sans rien renommer | Rapport avec colonnes NORMALISER/EXTRAIRE_ISBN/EXTRAIRE_PDF/ECHEC |
-| B3.2 | `./biblio.sh rename /chemin --execute` | Comme B3.1 puis applique les renommages proposés. Crée un log de renommage pour pouvoir annuler (--undo) | Fichiers renommés au format "Titre - Auteur.pdf" |
-| B3.3 | `./biblio.sh rename /chemin --no-online` | Désactive la recherche ISBN via Google Books / Open Library. Seuls le nettoyage du nom et l'extraction PDF sont utilisés | Aucune requête HTTP vers les APIs ISBN |
-| B3.4 | `./biblio.sh rename /chemin --no-pdf` | Désactive l'ouverture et l'extraction des métadonnées depuis le PDF. Utile pour les fichiers corrompus ou très lents | Seuls le nettoyage du nom et la recherche ISBN sont utilisés |
-| B3.5 | `./biblio.sh rename /chemin --llm` | Active le LLM Vision comme étape de fallback. Pour chaque fichier où ISBN et métadonnées échouent, la couverture est envoyée au LLM pour identifier titre et auteur | Le résumé montre "Via LLM Vision : N" avec N > 0 |
-| B3.6 | `./biblio.sh rename /chemin --llm --execute` | Comme B3.5 puis applique les renommages, y compris ceux trouvés par le LLM | Fichiers précédemment en ECHEC sont maintenant renommés grâce au LLM |
-| B3.7 | `./biblio.sh rename /chemin --llm` sans API key | Lance --llm sans avoir exporté SILICONFLOW_API_KEY et sans --api-key | Message d'erreur clair demandant la clé API |
-| B3.8 | `./biblio.sh rename /chemin --llm --force --verbose` | Active --force pour que le LLM soit appelé en priorité, même pour les fichiers "propres". Le verbose affiche le détail de chaque détection | Les fichiers propres sont re-analysés, résultat LLM affiché pour chaque fichier |
-| B3.9 | `./biblio.sh rename /chemin --llm --pages 2 --max 6 --verbose` | Envoie les 2 premières pages (couverture + page titre) au LLM. Teste sur 6 fichiers | Le LLM détecte le vrai titre (pas le nom de la collection/série) |
-| B3.10 | `./biblio.sh rename /chemin --llm --force --pages 3 --max 6` | Combine force + 3 pages. Idéal pour les collections Springer LNCS dont le vrai titre est sur la page intérieure | 6/6 fichiers détectés avec titres spécifiques au lieu du nom de collection |
-| B3.11 | `./biblio.sh rename /chemin --max 10 --verbose` | Test limité à 10 fichiers sans LLM, mode verbose | Verbose affiche le résultat de chaque fichier (✅/❌/⏭) |
+| B3.1 | `./klodo.sh rename /chemin` | Scan les PDFs du dossier, propose des renommages via nettoyage nom + ISBN + métadonnées PDF. Génère un rapport sans rien renommer | Rapport avec colonnes NORMALISER/EXTRAIRE_ISBN/EXTRAIRE_PDF/ECHEC |
+| B3.2 | `./klodo.sh rename /chemin --execute` | Comme B3.1 puis applique les renommages proposés. Crée un log de renommage pour pouvoir annuler (--undo) | Fichiers renommés au format "Titre - Auteur.pdf" |
+| B3.3 | `./klodo.sh rename /chemin --no-online` | Désactive la recherche ISBN via Google Books / Open Library. Seuls le nettoyage du nom et l'extraction PDF sont utilisés | Aucune requête HTTP vers les APIs ISBN |
+| B3.4 | `./klodo.sh rename /chemin --no-pdf` | Désactive l'ouverture et l'extraction des métadonnées depuis le PDF. Utile pour les fichiers corrompus ou très lents | Seuls le nettoyage du nom et la recherche ISBN sont utilisés |
+| B3.5 | `./klodo.sh rename /chemin --llm` | Active le LLM Vision comme étape de fallback. Pour chaque fichier où ISBN et métadonnées échouent, la couverture est envoyée au LLM pour identifier titre et auteur | Le résumé montre "Via LLM Vision : N" avec N > 0 |
+| B3.6 | `./klodo.sh rename /chemin --llm --execute` | Comme B3.5 puis applique les renommages, y compris ceux trouvés par le LLM | Fichiers précédemment en ECHEC sont maintenant renommés grâce au LLM |
+| B3.7 | `./klodo.sh rename /chemin --llm` sans API key | Lance --llm sans avoir exporté SILICONFLOW_API_KEY et sans --api-key | Message d'erreur clair demandant la clé API |
+| B3.8 | `./klodo.sh rename /chemin --llm --force --verbose` | Active --force pour que le LLM soit appelé en priorité, même pour les fichiers "propres". Le verbose affiche le détail de chaque détection | Les fichiers propres sont re-analysés, résultat LLM affiché pour chaque fichier |
+| B3.9 | `./klodo.sh rename /chemin --llm --pages 2 --max 6 --verbose` | Envoie les 2 premières pages (couverture + page titre) au LLM. Teste sur 6 fichiers | Le LLM détecte le vrai titre (pas le nom de la collection/série) |
+| B3.10 | `./klodo.sh rename /chemin --llm --force --pages 3 --max 6` | Combine force + 3 pages. Idéal pour les collections Springer LNCS dont le vrai titre est sur la page intérieure | 6/6 fichiers détectés avec titres spécifiques au lieu du nom de collection |
+| B3.11 | `./klodo.sh rename /chemin --max 10 --verbose` | Test limité à 10 fichiers sans LLM, mode verbose | Verbose affiche le résultat de chaque fichier (✅/❌/⏭) |
 
 #### Vérifications post-exécution B3.5 :
 - [ ] Le résumé montre une ligne "Via LLM Vision : N"
@@ -220,12 +336,15 @@ Teste le renommage intelligent avec ses différents modes : offline (ISBN, méta
 
 ### B4. Commande refine
 
-Teste le raffinement qui déplace les fichiers depuis les catégories parentes vers les bonnes sous-catégories en analysant les mots-clés dans les noms de fichiers (basé sur refinement.yaml).
+Teste le raffinement qui déplace les fichiers depuis les catégories parentes vers les bonnes sous-catégories en analysant les mots-clés dans les noms de fichiers (refinement.yaml) et optionnellement avec LLM fallback.
 
 | # | Commande | Description | Vérifie |
 |---|---|---|---|
-| B4.1 | `./biblio.sh refine` | Scan toute la bibliothèque, identifie les fichiers qui sont dans une catégorie parente mais devraient être dans une sous-catégorie plus précise | Liste des fichiers à déplacer avec source → destination |
-| B4.2 | `./biblio.sh refine --execute` | Comme B4.1 puis déplace réellement les fichiers vers les sous-catégories | Fichiers déplacés, rapport généré |
+| B4.1 | `./klodo.sh refine` | Scan toute la bibliothèque, identifie les fichiers qui sont dans une catégorie parente mais devraient être dans une sous-catégorie plus précise (niveaux 1-2 : YAML + subdirs) | Liste des fichiers à déplacer avec source → destination |
+| B4.2 | `./klodo.sh refine --execute` | Comme B4.1 puis déplace réellement les fichiers vers les sous-catégories | Fichiers déplacés, rapport généré |
+| B4.3 | `./klodo.sh refine --llm` | Scan toute la bibliothèque avec LLM fallback (niveau 3) pour les fichiers non-classés aux niveaux 1-2 | Rapports incluent les fichiers raffinés par LLM (source_match='llm_fallback') |
+| B4.4 | `./klodo.sh refine --llm --execute` | Comme B4.3 puis applique les déplacements proposés par le LLM fallback | Fichiers déplacés par le LLM, rapport généré |
+| B4.5 | `./klodo.sh refine --llm --max 20 --verbose` | Test du LLM fallback limité à 20 fichiers en mode verbeux | Détails des appels LLM affichés, fichiers dans le rapport |
 
 ### B5. Commande suggest
 
@@ -233,9 +352,9 @@ Teste la gestion des suggestions de nouveaux dossiers, générées automatiqueme
 
 | # | Commande | Description | Vérifie |
 |---|---|---|---|
-| B5.1 | `./biblio.sh suggest` | Affiche les suggestions en attente (stockées dans logs/suggestions.yaml) avec le thème, le dossier proposé et la raison | Liste formatée des suggestions, instructions pour modifier/appliquer |
-| B5.2 | `./biblio.sh suggest --apply` | Crée les dossiers physiques sur le SSD et met à jour tree.yaml et theme_mapping.yaml avec les nouvelles entrées | Dossiers créés, fichiers YAML mis à jour, suggestions marquées "applied" |
-| B5.3 | `./biblio.sh suggest --apply --execute` | Comme B5.2 puis reclassifie automatiquement les fichiers du checkpoint qui étaient non_classifié, en utilisant les nouveaux mappings | Fichiers reclassifiés avec les nouveaux dossiers |
+| B5.1 | `./klodo.sh suggest` | Affiche les suggestions en attente (stockées dans logs/suggestions.yaml) avec le thème, le dossier proposé et la raison | Liste formatée des suggestions, instructions pour modifier/appliquer |
+| B5.2 | `./klodo.sh suggest --apply` | Crée les dossiers physiques sur le SSD et met à jour tree.yaml et theme_mapping.yaml avec les nouvelles entrées | Dossiers créés, fichiers YAML mis à jour, suggestions marquées "applied" |
+| B5.3 | `./klodo.sh suggest --apply --execute` | Comme B5.2 puis reclassifie automatiquement les fichiers du checkpoint qui étaient non_classifié, en utilisant les nouveaux mappings | Fichiers reclassifiés avec les nouveaux dossiers |
 
 ### B6. Commandes utilitaires
 
@@ -243,9 +362,9 @@ Teste les commandes de gestion des profils.
 
 | # | Commande | Description | Vérifie |
 |---|---|---|---|
-| B6.1 | `./biblio.sh profiles` | Liste tous les profils disponibles dans le dossier profiles/ avec leur nom, description et chemin cible | Affichage formaté : "default — Bibliothèque principale (cible: /Volumes/ExtSSD/BIBLIO)" |
-| B6.2 | `./biblio.sh init test --target /tmp/test` | Crée un nouveau profil "test" avec les fichiers YAML squelettes (profile.yaml, tree.yaml, theme_mapping.yaml, categories.yaml, refinement.yaml) | Dossier profiles/test/ créé avec les 5 fichiers |
-| B6.3 | `./biblio.sh init test --target /tmp/test` (doublon) | Tente de créer un profil qui existe déjà | Message d'erreur "Le profil 'test' existe déjà" |
+| B6.1 | `./klodo.sh profiles` | Liste tous les profils disponibles dans le dossier profiles/ avec leur nom, description et chemin cible | Affichage formaté : "default — Bibliothèque principale (cible: /chemin/vers/biblio)" |
+| B6.2 | `./klodo.sh init test --target /tmp/test` | Crée un nouveau profil "test" avec les fichiers YAML squelettes (profile.yaml, tree.yaml, theme_mapping.yaml, categories.yaml, refinement.yaml) | Dossier profiles/test/ créé avec les 5 fichiers |
+| B6.3 | `./klodo.sh init test --target /tmp/test` (doublon) | Tente de créer un profil qui existe déjà | Message d'erreur "Le profil 'test' existe déjà" |
 
 ### B7. Sécurité et cas limites
 
@@ -283,7 +402,7 @@ Teste le système de double confirmation qui protège contre les opérations co�
 ## Lancement des tests automatiques
 
 ```bash
-# Tous les tests (74+ tests)
+# Tous les tests (123 tests)
 ./tests/run_all.sh
 
 # Mode verbeux (détail de chaque test)
@@ -296,4 +415,5 @@ Teste le système de double confirmation qui protège contre les opérations co�
 ./tests/run_all.sh test_copy
 ./tests/run_all.sh test_parser
 ./tests/run_all.sh test_rename_llm
+./tests/run_all.sh test_refine
 ```

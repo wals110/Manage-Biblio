@@ -5,8 +5,8 @@
 
 name: default
 description: "Bibliothèque principale"
-target: /Volumes/ExtSSD/BIBLIO
-inbox: /Volumes/ExtSSD/BIBLIO/_INBOX
+target: /chemin/vers/biblio               # À adapter à votre installation
+inbox: /chemin/vers/biblio/_INBOX         # À adapter à votre installation
 fallback: _A-TRIER                      # Sous-dossier de target pour les non-classifiés
 
 # ── LLM Vision ──

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test 2 : Imports croisés — vérifie que biblio.py exporte toutes ses fonctions."""
+"""Test 2 : Imports croisés — vérifie que klodo.py exporte toutes ses fonctions."""
 
 import os
 import sys
@@ -61,8 +61,8 @@ class TestImportsLib(unittest.TestCase):
         self.assertIsNotNone(LLMMapper)
 
 
-class TestImportsBiblio(unittest.TestCase):
-    """Vérifie que biblio.py exporte toutes les fonctions attendues."""
+class TestImportsKlodo(unittest.TestCase):
+    """Vérifie que klodo.py exporte toutes les fonctions attendues."""
 
     EXPECTED_FUNCTIONS = [
         # Pipeline
@@ -91,22 +91,22 @@ class TestImportsBiblio(unittest.TestCase):
     ]
 
     def test_all_functions_exist(self):
-        """Toutes les fonctions attendues sont accessibles dans biblio."""
-        import biblio
+        """Toutes les fonctions attendues sont accessibles dans klodo."""
+        import klodo
         for fn_name in self.EXPECTED_FUNCTIONS:
             with self.subTest(function=fn_name):
                 self.assertTrue(
-                    hasattr(biblio, fn_name),
-                    "Fonction manquante : biblio.{}".format(fn_name))
+                    hasattr(klodo, fn_name),
+                    "Fonction manquante : klodo.{}".format(fn_name))
 
     def test_functions_are_callable(self):
         """Toutes les fonctions exportées sont appelables."""
-        import biblio
+        import klodo
         for fn_name in self.EXPECTED_FUNCTIONS:
             with self.subTest(function=fn_name):
-                fn = getattr(biblio, fn_name, None)
+                fn = getattr(klodo, fn_name, None)
                 self.assertTrue(callable(fn),
-                                "biblio.{} n'est pas callable".format(fn_name))
+                                "klodo.{} n'est pas callable".format(fn_name))
 
 
 if __name__ == '__main__':
