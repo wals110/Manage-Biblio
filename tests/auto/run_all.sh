@@ -1,19 +1,19 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════
-#  Klodo — Suite de tests fonctionnels
+#  Klodo — Suite de tests automatisés (unitaires + intégration)
 # ═══════════════════════════════════════════════════════════
 #
 #  Usage :
-#    ./tests/run_all.sh           # Lancer tous les tests
-#    ./tests/run_all.sh -v        # Mode verbeux (détail par test)
-#    ./tests/run_all.sh test_copy # Lancer un seul module
+#    ./tests/auto/run_all.sh           # Lancer tous les tests
+#    ./tests/auto/run_all.sh -v        # Mode verbeux (détail par test)
+#    ./tests/auto/run_all.sh test_copy # Lancer un seul module
 #
 # ═══════════════════════════════════════════════════════════
 
 set -e
 
 # Se placer à la racine du projet
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 VERBOSE=""
 MODULE=""
@@ -26,7 +26,7 @@ for arg in "$@"; do
 done
 
 echo "═══════════════════════════════════════════════════"
-echo "  📚 Klodo — Tests fonctionnels"
+echo "  📚 Klodo — Tests automatisés"
 echo "═══════════════════════════════════════════════════"
 echo ""
 
@@ -34,15 +34,15 @@ if [ -n "$MODULE" ]; then
     # Lancer un seul module
     echo "🧪 Module : $MODULE"
     echo ""
-    python3 -m pytest "tests/${MODULE}.py" $VERBOSE -x 2>/dev/null \
-        || python3 -m unittest "tests.${MODULE}" $VERBOSE
+    python3 -m pytest "tests/auto/${MODULE}.py" $VERBOSE -x 2>/dev/null \
+        || python3 -m unittest "tests.auto.${MODULE}" $VERBOSE
 else
     # Lancer tous les tests
     # Essayer pytest d'abord (meilleur affichage), sinon unittest
     if python3 -c "import pytest" 2>/dev/null; then
-        python3 -m pytest tests/ $VERBOSE -x --tb=short
+        python3 -m pytest tests/auto/ $VERBOSE -x --tb=short
     else
-        python3 -m unittest discover -s tests -p "test_*.py" $VERBOSE
+        python3 -m unittest discover -s tests/unit -p "test_*.py" $VERBOSE
     fi
 fi
 

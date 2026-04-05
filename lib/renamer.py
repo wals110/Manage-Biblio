@@ -42,6 +42,8 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote
 
+from lib.checkpoint import CheckpointManager
+
 # ---------------------------------------------------------------------------
 # CONFIGURATION
 # ---------------------------------------------------------------------------
@@ -791,6 +793,17 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
         cache_path = os.path.join(logs_dir, ISBN_CACHE_FILE)
     isbn_cache = _load_isbn_cache(cache_path) if enable_online else {}
 
+    # Checkpoint pour le mode --force (appels LLM coûteux)
+    use_checkpoint = force and cache_dir
+    cm = None
+    progress = {}
+    if use_checkpoint:
+        cm = CheckpointManager(cache_dir, 'progress_rename.json')
+        progress = cm.load()
+        resumed = sum(1 for p in pdf_files if str(p) in progress)
+        if resumed > 0:
+            print(f"🔄 Reprise : {resumed}/{total} déjà traités → {total - resumed} restants")
+
     results = []
     seen = set()
     stats = {'INCHANGE': 0, 'NORMALISER': 0, 'EXTRAIRE_ISBN': 0,
@@ -803,10 +816,32 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
         pct = int(i / total * 100)
         print(f"\r  [{pct:3d}%] ({i}/{total}) {fn[:55]:<55}", end='', flush=True)
 
+        # Reprise depuis checkpoint
+        pdf_key = str(pdf_path)
+        if use_checkpoint and pdf_key in progress:
+            cached = progress[pdf_key]
+            action = cached.get('action', 'INCHANGE')
+            new_fn = cached.get('nouveau_nom', fn)
+            stats[action] = stats.get(action, 0) + 1
+            if action not in ('INCHANGE',):
+                results.append({
+                    'dossier': str(rel), 'ancien_nom': fn, 'nouveau_nom': new_fn,
+                    'action': action, 'source': cached.get('source', ''),
+                    'chemin': pdf_key,
+                })
+            seen.add(str(pdf_path.parent / new_fn).lower())
+            continue
+
         # Déjà propre ?
         if not force and is_name_clean(fn):
             stats['INCHANGE'] += 1
             seen.add(str(pdf_path).lower())
+            results.append({
+                'dossier': str(rel), 'ancien_nom': fn, 'nouveau_nom': '',
+                'action': 'INCHANGE', 'source': 'déjà_propre', 'chemin': str(pdf_path),
+            })
+            if verbose:
+                print(f"\n    ⏭ {fn} → déjà propre")
             continue
 
         # Calculer le nouveau nom
@@ -816,6 +851,8 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
                 llm_callback=llm_callback, force=force)
         except KeyboardInterrupt:
             print(f"\n\n⚠️  Interrompu à {pct}%.")
+            if use_checkpoint:
+                cm.save(progress)
             break
         except Exception as e:
             new_fn, action, source = fn, 'ECHEC', str(e)[:60]
@@ -845,8 +882,19 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
             'action': action, 'source': source, 'chemin': str(pdf_path),
         })
 
+        # Sauvegarder dans le checkpoint
+        if use_checkpoint:
+            progress[pdf_key] = {
+                'nouveau_nom': new_fn, 'action': action, 'source': source,
+            }
+            if i % save_interval == 0:
+                cm.save(progress)
+
         if enable_online and i % save_interval == 0:
             _save_isbn_cache(isbn_cache, cache_path)
+
+    if use_checkpoint and cm:
+        cm.save(progress)
 
     if enable_online:
         _save_isbn_cache(isbn_cache, cache_path)

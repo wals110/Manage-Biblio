@@ -5,7 +5,7 @@ import os
 import sys
 import unittest
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.logger import setup_logger
@@ -152,6 +152,59 @@ class TestBuildParser(unittest.TestCase):
         """init sans --target → erreur."""
         with self.assertRaises(SystemExit):
             self.parser.parse_args(['init', 'test'])
+
+    # ── clean ──
+
+    def test_clean_classify(self):
+        """clean classify → cible correcte."""
+        args = self.parser.parse_args(['clean', 'classify'])
+        self.assertEqual(args.command, 'clean')
+        self.assertEqual(args.target, 'classify')
+
+    def test_clean_rename(self):
+        """clean rename → cible correcte."""
+        args = self.parser.parse_args(['clean', 'rename'])
+        self.assertEqual(args.target, 'rename')
+
+    def test_clean_progress(self):
+        """clean progress → supprime les deux checkpoints."""
+        args = self.parser.parse_args(['clean', 'progress'])
+        self.assertEqual(args.target, 'progress')
+
+    def test_clean_isbn(self):
+        """clean isbn → cible correcte."""
+        args = self.parser.parse_args(['clean', 'isbn'])
+        self.assertEqual(args.target, 'isbn')
+
+    def test_clean_logs(self):
+        """clean logs → cible correcte."""
+        args = self.parser.parse_args(['clean', 'logs'])
+        self.assertEqual(args.target, 'logs')
+
+    def test_clean_all(self):
+        """clean all → cible correcte."""
+        args = self.parser.parse_args(['clean', 'all'])
+        self.assertEqual(args.target, 'all')
+
+    def test_clean_with_execute(self):
+        """clean all --execute → flag activé."""
+        args = self.parser.parse_args(['clean', 'all', '--execute'])
+        self.assertTrue(args.execute)
+
+    def test_clean_with_profile(self):
+        """clean progress --profile test → profile correct."""
+        args = self.parser.parse_args(['clean', 'progress', '--profile', 'test'])
+        self.assertEqual(args.profile, 'test')
+
+    def test_clean_invalid_target(self):
+        """clean foo → erreur (cible invalide)."""
+        with self.assertRaises(SystemExit):
+            self.parser.parse_args(['clean', 'foo'])
+
+    def test_clean_no_target(self):
+        """clean sans cible → erreur."""
+        with self.assertRaises(SystemExit):
+            self.parser.parse_args(['clean'])
 
     # ── Défauts ──
 

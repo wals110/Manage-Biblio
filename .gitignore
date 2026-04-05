@@ -27,5 +27,9 @@ review/
 # PDFs de test (ajoutés manuellement)
 tests/fixtures/pdfs/*.pdf
 
+# Notes personnelles
+notes/
+
 # Claude
 .claude/
+tests/functional/reports/

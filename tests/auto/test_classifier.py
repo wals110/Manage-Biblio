@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 # Ajouter la racine du projet au path
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.classifier import classify_by_theme, classify_combined

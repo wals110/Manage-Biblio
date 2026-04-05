@@ -138,13 +138,15 @@ def cmd_clean(args, profile) -> None:
     # type: (object, object)
     """Sous-commande clean : supprime les fichiers de cache du profil."""
     cache_dir = profile.cache_dir
-    target = args.target  # "progress", "isbn", "logs", "all"
+    target = args.target
 
     targets = {
-        "progress": ["progress*.json"],
+        "classify": ["progress.json"],
+        "rename": ["progress_rename.json"],
+        "progress": ["progress.json", "progress_rename.json"],
         "isbn": ["isbn_cache.json"],
         "logs": [os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv")],
-        "all": ["progress*.json", "isbn_cache.json",
+        "all": ["progress.json", "progress_rename.json", "isbn_cache.json",
                 os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv")],
     }
 

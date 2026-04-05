@@ -1,0 +1,1097 @@
+version: "1.0"
+project: "Klodo"
+generated_at: "2026-04-05T23:30:00+02:00"
+
+variables:
+  PROJECT_ROOT: "."
+  KLODO: "./klodo.sh"
+  BIBLIO_TEST: "/Volumes/ExtSSD/BIBLIO-TEST"
+  INBOX: "${BIBLIO_TEST}/_INBOX"
+  A_TRIER: "${BIBLIO_TEST}/_A-TRIER"
+  FLATTEN: "echo oui | ./scripts/flatten_to_inbox.sh"
+  LOGS: "logs"
+  PROFILES: "profiles"
+  PROF: "test"
+  CACHE: "${PROFILES}/${PROF}/.cache"
+
+session:
+  pre_run:
+    - "${FLATTEN} ${BIBLIO_TEST} --execute 2>&1"
+    - "${KLODO} clean progress --profile ${PROF} --execute 2>&1"
+  post_run:
+    - "${FLATTEN} ${BIBLIO_TEST} --execute 2>&1"
+
+phases:
+  - id: phase_0
+    name: "Vérifications préalables"
+    priority: obligatoire
+    pre_run: []
+    post_run: []
+    series:
+      - id: T0.1
+        github_issue: 41
+        name: "Intégrité de l'arborescence"
+        description: "Après flatten_to_inbox.sh, l'arborescence est vide mais intacte."
+        provides: [arbo_clean]
+        requires: []
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --execute 2>&1"]
+        post_run: []
+        setup: []
+        checks:
+          - id: T0.1a
+            description: "Aucun PDF hors _INBOX"
+            command: "find ${BIBLIO_TEST} -name '*.pdf' -not -path '*/_INBOX/*' | wc -l | tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T0.1b
+            description: "Sous-dossiers INFORMATIQUE existent"
+            command: "ls ${BIBLIO_TEST}/02-INFORMATIQUE/"
+            assert: {type: output_contains, expected: ["03-IA-Machine-Learning", "04-Data-Science", "01-Programmation"]}
+            mode: auto
+          - id: T0.1c
+            description: "Tous les PDFs sont dans _INBOX"
+            command: "find ${INBOX} -name '*.pdf' | wc -l | tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+      - id: T0.2
+        github_issue: 42
+        name: "Créer le profil de test"
+        description: "Profil test pointant vers BIBLIO-TEST."
+        provides: [profile_test]
+        requires: []
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} init ${PROF} --target ${BIBLIO_TEST} 2>&1"]
+        checks:
+          - id: T0.2a
+            description: "profiles/test/ contient les fichiers YAML"
+            command: "ls ${PROFILES}/${PROF}/"
+            assert: {type: output_contains, expected: ["profile.yaml", "tree.yaml", "theme_mapping.yaml", "categories.yaml"]}
+            mode: auto
+          - id: T0.2b
+            description: "profile.yaml contient le bon target"
+            command: "grep 'target:' ${PROFILES}/${PROF}/profile.yaml"
+            assert: {type: output_contains, expected: ["${BIBLIO_TEST}"]}
+            mode: auto
+          - id: T0.2c
+            description: "Le profil test apparaît dans la liste"
+            command: "${KLODO} profiles 2>&1"
+            assert: {type: output_contains, expected: ["${PROF}"]}
+            mode: auto
+      - id: T0.3
+        github_issue: 43
+        name: "Smoke tests"
+        description: "Commandes de base fonctionnent sans erreur."
+        provides: [smoke_ok]
+        requires: [profile_test]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T0.3a
+            description: "classify --help affiche l'aide"
+            command: "${KLODO} classify --help 2>&1"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T0.3b
+            description: "SILICONFLOW_API_KEY est définie"
+            command: "test -n \"$SILICONFLOW_API_KEY\" && echo OK || echo MISSING"
+            assert: {type: output_equals, expected: "OK"}
+            mode: auto
+          - id: T0.3c
+            description: "classify --max 1 avec profil test ne crash pas"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 1 --verbose 2>&1"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+
+  - id: phase_1
+    name: "Renommage"
+    priority: haute
+    pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 200 --execute 2>&1"]
+    post_run: []
+    series:
+      - id: T1.1
+        github_issue: 44
+        name: "Dry-run sur un petit lot"
+        description: "Rapport CSV généré sans modification de fichiers."
+        provides: [rename_dryrun_ok]
+        requires: [smoke_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} rename ${INBOX} --profile ${PROF} --max 20 --verbose 2>&1"]
+        checks:
+          - id: T1.1a
+            description: "Rapport CSV rename généré dans logs/"
+            command: "ls -t ${LOGS}/rapport_rename_*.csv 2>/dev/null | head -1"
+            assert: {type: file_exists, pattern: "${LOGS}/rapport_rename_*.csv"}
+            mode: auto
+          - id: T1.1b
+            description: "Aucun fichier renommé (dry-run, pas de --execute)"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c RENOMME \"$R\" 2>/dev/null; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T1.1c
+            description: "Le rapport contient des lignes de résultat"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1)&&tail -n+2 \"$R\"|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T1.1d
+            description: "Colonnes ancien_nom, nouveau_nom, action présentes"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1)&&head -1 \"$R\""
+            assert: {type: output_contains, expected: ["ancien_nom", "nouveau_nom", "action"]}
+            mode: auto
+      - id: T1.2
+        github_issue: 45
+        name: "Renommage effectif (sans LLM)"
+        description: "Renommer avec --execute et vérifier les résultats."
+        provides: [rename_exec_ok]
+        requires: [rename_dryrun_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} rename ${INBOX} --profile ${PROF} --max 50 --execute --verbose 2>&1"]
+        checks:
+          - id: T1.2a
+            description: "Des fichiers sont renommés"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c 'RENOMME\\|ISBN\\|PDF_META' \"$R\"; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T1.2b
+            description: "Fichiers propres ont status INCHANGE"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c INCHANGE \"$R\"; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T1.2c
+            description: "Pas de doublon créé par le renommage"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); awk -F',' '$4==\"RENOMME\" && $3~/(\\(2\\)|\\(3\\))/' \"$R\" | wc -l | tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T1.2d
+            description: "Log de renommage créé"
+            command: "ls -t ${LOGS}/log_renommage_*.csv 2>/dev/null|head -1"
+            assert: {type: file_exists, pattern: "${LOGS}/log_renommage_*.csv"}
+            mode: auto
+      - id: T1.3
+        github_issue: 46
+        name: "Renommage avec LLM Vision (fallback)"
+        description: "LLM Vision en fallback pour les fichiers non résolus."
+        provides: [rename_llm_ok]
+        requires: [rename_exec_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} rename ${INBOX} --profile ${PROF} --max 20 --llm --pages 2 --execute --verbose 2>&1"]
+        checks:
+          - id: T1.3a
+            description: "Des fichiers passent par le LLM"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -ci 'llm\\|vision' \"$R\"; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T1.3b
+            description: "Le LLM retourne des noms pertinents"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les fichiers renommés par LLM ont-ils des noms pertinents (Titre - Auteur.pdf) ?"}
+            mode: manual_check
+          - id: T1.3c
+            description: "--pages 2 envoie bien 2 pages au LLM"
+            command: "grep -ci '2 page' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T1.3d
+            description: "Pas d'erreur API fatale"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c ECHEC \"$R\"; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+      - id: T1.4
+        github_issue: 47
+        name: "Renommage LLM en mode force"
+        description: "--force ré-analyse même les fichiers au nom propre."
+        provides: []
+        requires: [rename_llm_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} rename ${INBOX} --profile ${PROF} --max 10 --llm --force --pages 3 --verbose 2>&1"]
+        checks:
+          - id: T1.4a
+            description: "Tous les fichiers passent par le LLM (0 INCHANGE)"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c INCHANGE \"$R\"; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T1.4b
+            description: "--pages 3 envoie 3 pages"
+            command: "grep -ci '3 page' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+      - id: T1.5
+        github_issue: 48
+        name: "Idempotence du renommage"
+        description: "Relancer le renommage ne modifie plus rien."
+        provides: []
+        requires: [rename_exec_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} rename ${INBOX} --profile ${PROF} --max 50 --execute --verbose 2>&1"]
+        checks:
+          - id: T1.5a
+            description: "Fichiers déjà renommés → INCHANGE"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c INCHANGE \"$R\"; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T1.5b
+            description: "0 fichiers effectivement renommés au 2e passage"
+            command: "R=$(ls -t ${LOGS}/log_renommage_*.csv|head -1); grep -c OK \"$R\" 2>/dev/null; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+
+  - id: phase_2
+    name: "Classification"
+    priority: haute
+    pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+    post_run: []
+    series:
+      - id: T2.1
+        github_issue: 49
+        name: "Dry-run classification"
+        description: "Classifier sans --execute, vérifier le rapport."
+        provides: [classify_dryrun_ok]
+        requires: [smoke_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 100 --verbose 2>&1"]
+        checks:
+          - id: T2.1a
+            description: "Rapport CSV avec colonnes destination et score"
+            command: "R=$(ls -t ${LOGS}/rapport_classify_*.csv|head -1)&&head -1 \"$R\""
+            assert: {type: output_contains, expected: ["destination", "score"]}
+            mode: auto
+          - id: T2.1b
+            description: "Aucun fichier déplacé (dry-run)"
+            command: "find ${INBOX} -name '*.pdf'|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.1c
+            description: "Résumé avec breakdown par status"
+            command: "grep -ciE 'classifi|non.classifi|erreur' ${LOGS}/.setup_output_T2.1.txt 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.1d
+            description: "Thèmes détectés cohérents avec les titres"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les thèmes détectés correspondent-ils aux titres des fichiers ?"}
+            mode: manual_check
+      - id: T2.2
+        github_issue: 50
+        name: "Classification effective (petit lot)"
+        description: "Classifier avec --execute, vérifier les déplacements."
+        provides: [classify_exec_ok, files_classified]
+        requires: [classify_dryrun_ok]
+        pre_run: ["${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 100 -w 10 --execute --verbose 2>&1"]
+        checks:
+          - id: T2.2a
+            description: "Des fichiers sont copiés dans les sous-dossiers"
+            command: "find ${BIBLIO_TEST} -name '*.pdf' -not -path '*/_INBOX/*' -not -path '*/_A-TRIER/*'|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.2b
+            description: "Fichiers classifiés supprimés de _INBOX"
+            command: "find ${INBOX} -name '*.pdf' | wc -l | tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T2.2c
+            description: "Non-classifiés dans _A-TRIER"
+            command: "find ${A_TRIER} -name '*.pdf' 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.2d
+            description: "Sécurité inbox : total PDFs inchangé après classification"
+            command: "find ${BIBLIO_TEST} -name '*.pdf' | wc -l | tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.2e
+            description: "Checkpoint créé dans le cache"
+            command: "ls ${CACHE}/progress*.json 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+      - id: T2.3
+        github_issue: 51
+        name: "Cascade de classification (4 niveaux)"
+        description: "Repérer dans le rapport des fichiers classifiés par chaque niveau."
+        provides: [cascade_verified]
+        requires: [classify_exec_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T2.3a
+            description: "Theme Mapping : score élevé sans appel LLM"
+            command: "R=$(ls -t ${LOGS}/rapport_classify_*.csv|head -1); grep -c theme_mapping \"$R\" 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.3b
+            description: "Keyword Classifier : mot-clé YAML"
+            command: "R=$(ls -t ${LOGS}/rapport_classify_*.csv|head -1); grep -c keyword \"$R\" 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.3c
+            description: "LLM Mapper : classifié par le LLM"
+            command: "R=$(ls -t ${LOGS}/rapport_classify_*.csv|head -1); grep -ci llm \"$R\" 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.3d
+            description: "Suggestions de nouveaux dossiers"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Des suggestions de nouveaux dossiers sont-elles apparues dans le résumé ou dans logs/suggestions.yaml ?"}
+            mode: manual_check
+      - id: T2.4
+        github_issue: 52
+        name: "Classification avec Vision"
+        description: "Escalade Vision quand le texte échoue."
+        provides: [classify_vision_ok]
+        requires: [classify_exec_ok]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 100 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 30 --vision --pages 2 -w 5 --verbose 2>&1"]
+        checks:
+          - id: T2.4a
+            description: "Log contient 'vision' ou 'escalade'"
+            command: "grep -ci 'vision\\|escalade' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T2.4b
+            description: "La Vision améliore le taux de classification"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le taux de classification est-il supérieur à celui de T2.2 (sans Vision) ?"}
+            mode: manual_check
+          - id: T2.4c
+            description: "Coût API mentionné dans le résumé"
+            command: "grep -ciE 'co[uû]t|cost|\\$' ${LOGS}/.setup_output_T2.4.txt 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+      - id: T2.5
+        github_issue: 53
+        name: "Multi-workers"
+        description: "Comparer 1 worker vs 10 workers."
+        provides: []
+        requires: [classify_exec_ok]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 200 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: []
+        checks:
+          - id: T2.5a
+            description: "Résultats identiques avec 1 et 10 workers"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Après un run 1 worker et un run 10 workers, les destinations sont-elles identiques ?"}
+            mode: manual_check
+          - id: T2.5b
+            description: "10 workers au moins 3x plus rapide"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le run 10 workers est-il au moins 3x plus rapide que 1 worker ?"}
+            mode: manual_check
+          - id: T2.5c
+            description: "Pas de race condition ni crash"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 200 -w 10 --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+
+  - id: phase_3
+    name: "Pipeline complet"
+    priority: haute
+    pre_run: ["${FLATTEN} ${BIBLIO_TEST} --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+    post_run: []
+    series:
+      - id: T3.1
+        github_issue: 54
+        name: "Pipeline sans renommage"
+        description: "--no-rename : seulement classify + refine."
+        provides: [process_norename_ok]
+        requires: [classify_exec_ok]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 100 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} process ${INBOX} --profile ${PROF} -y --no-rename --max 100 -w 10 --execute --verbose 2>&1"]
+        checks:
+          - id: T3.1a
+            description: "Pas de rapport rename (renommage sauté)"
+            command: "echo check"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T3.1b
+            description: "Rapport process créé"
+            command: "ls -t ${LOGS}/rapport_process_*.csv 2>/dev/null|head -1"
+            assert: {type: file_exists, pattern: "${LOGS}/rapport_process_*.csv"}
+            mode: auto
+          - id: T3.1c
+            description: "Fichiers déplacés hors _INBOX"
+            command: "find ${BIBLIO_TEST} -name '*.pdf' -not -path '*/_INBOX/*'|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+      - id: T3.2
+        github_issue: 55
+        name: "Pipeline complet (rename + classify + refine)"
+        description: "Les 3 étapes enchaînées avec LLM Vision."
+        provides: [process_full_ok]
+        requires: [rename_llm_ok, classify_exec_ok]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 200 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} process ${INBOX} --profile ${PROF} -y --llm --pages 2 -w 10 --max 200 --execute --verbose 2>&1"]
+        checks:
+          - id: T3.2a
+            description: "Rapport rename créé en premier"
+            command: "ls ${LOGS}/rapport_rename_*.csv 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T3.2b
+            description: "Rapport classify créé ensuite"
+            command: "ls ${LOGS}/rapport_classify_*.csv 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T3.2c
+            description: "Le refine est lancé à la fin"
+            command: "grep -ci 'raffinement\\|refine' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T3.2d
+            description: "Fichiers ont des noms propres dans les bons dossiers"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les fichiers traités ont-ils des noms propres (Titre - Auteur.pdf) et sont-ils dans les bons dossiers ?"}
+            mode: manual_check
+          - id: T3.2e
+            description: "Résumé final cohérent"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les nombres de fichiers dans le résumé final sont-ils corrects ?"}
+            mode: manual_check
+      - id: T3.3
+        github_issue: 56
+        name: "Pipeline stress test (grand volume)"
+        description: "Lancer sur les ~18000 fichiers."
+        provides: [stress_test_ok]
+        requires: [process_full_ok]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} process ${INBOX} --profile ${PROF} -y -w 10 --execute --verbose 2>&1"]
+        checks:
+          - id: T3.3a
+            description: "Terminaison propre (pas de crash)"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le process s'est-il terminé proprement sur 18000+ fichiers ?"}
+            mode: manual_check
+          - id: T3.3b
+            description: "Taux de classification > 90%"
+            command: "grep -ciE 'classifi' ${LOGS}/.setup_output_T3.3.txt 2>/dev/null; true"
+            assert: {type: manual_check, prompt: "Le pourcentage de classification est-il > 90% ? (vérifier dans le résumé)"}
+            mode: manual_check
+          - id: T3.3c
+            description: "Temps raisonnable (< 1h sans LLM)"
+            command: "echo ok"
+            assert: {type: duration_under, seconds: 3600}
+            mode: auto
+          - id: T3.3d
+            description: "Mémoire stable (pas de fuite)"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "La mémoire est-elle restée stable (vérifier htop) ?"}
+            mode: manual_check
+          - id: T3.3e
+            description: "Pas de Traceback non catchée"
+            command: "if [ -f ${LOGS}/klodo.log ]; then grep -c Traceback ${LOGS}/klodo.log 2>/dev/null; true; else echo 0; fi"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+
+  - id: phase_4
+    name: "Raffinement"
+    priority: moyenne
+    pre_run: []
+    post_run: []
+    series:
+      - id: T4.1
+        github_issue: 57
+        name: "Refine après classification"
+        description: "Lancer le refine après un classify --execute."
+        provides: [refine_basic_ok]
+        requires: [files_classified]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} refine --profile ${PROF} --verbose 2>&1"]
+        checks:
+          - id: T4.1a
+            description: "Détecte fichiers dans dossiers parents"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le refine détecte-t-il des fichiers dans des dossiers parents (ex: 02-INFORMATIQUE au lieu de 03-IA-Machine-Learning) ?"}
+            mode: manual_check
+          - id: T4.1b
+            description: "Règles YAML matchent les bons fichiers"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les mots-clés du rapport correspondent-ils aux règles de refinement.yaml ?"}
+            mode: manual_check
+          - id: T4.1c
+            description: "Matching implicite (noms de sous-dossiers)"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Python Tutorial.pdf → 03-Langages-Programmation/Python ?"}
+            mode: manual_check
+          - id: T4.1d
+            description: "Rapport CSV refine généré"
+            command: "ls ${LOGS}/refine_*.csv 2>/dev/null|head -1"
+            assert: {type: file_exists, pattern: "${LOGS}/refine_*.csv"}
+            mode: auto
+      - id: T4.2
+        github_issue: 58
+        name: "Refine avec LLM fallback"
+        description: "--llm pour les fichiers non résolus par YAML."
+        provides: [refine_llm_ok]
+        requires: [refine_basic_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} refine --profile ${PROF} --llm --max 50 --execute --verbose 2>&1"]
+        checks:
+          - id: T4.2a
+            description: "Fichiers non résolus passent au LLM"
+            command: "grep -ci 'llm\\|fallback' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T4.2b
+            description: "Déplacements vers sous-dossiers effectués"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Des fichiers ont-ils été déplacés vers des sous-dossiers plus spécifiques ?"}
+            mode: manual_check
+          - id: T4.2c
+            description: "--max 50 limite les appels LLM"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le nombre d'appels LLM est-il limité à 50 maximum ?"}
+            mode: manual_check
+          - id: T4.2d
+            description: "Fichiers _AUCUN restent en place"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les fichiers pour lesquels le LLM a dit _AUCUN sont-ils restés en place ?"}
+            mode: manual_check
+      - id: T4.3
+        github_issue: 59
+        name: "Refine avec escalade Vision"
+        description: "--llm --vision : Vision quand le texte échoue."
+        provides: []
+        requires: [refine_llm_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} refine --profile ${PROF} --llm --vision --max 20 --execute --verbose 2>&1"]
+        checks:
+          - id: T4.3a
+            description: "Vision prend le relais quand LLM texte échoue"
+            command: "grep -ci 'escalade.*vision' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T4.3b
+            description: "Vision améliore le taux de raffinement"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Plus de fichiers déplacés qu'en T4.2 (sans Vision) ?"}
+            mode: manual_check
+
+  - id: phase_5
+    name: "Checkpoint et reprise"
+    priority: haute
+    pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+    post_run: []
+    series:
+      - id: T5.1
+        github_issue: 60
+        name: "Interruption et reprise"
+        description: "Interrompre une classification puis reprendre."
+        provides: [checkpoint_ok]
+        requires: [classify_exec_ok]
+        pre_run: ["${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y -w 10 --execute --verbose 2>&1 & PID=$!; sleep 30; kill $PID 2>/dev/null; wait $PID 2>/dev/null"]
+        checks:
+          - id: T5.1a
+            description: "Checkpoint sauvegardé pendant le traitement"
+            command: "ls ${CACHE}/progress*.json 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T5.1b
+            description: "Reprise ne retraite pas les fichiers déjà faits"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y -w 10 --execute --verbose 2>&1|grep -ci 'reprise\\|checkpoint\\|déjà'; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T5.1c
+            description: "Résultat final identique"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le résultat final est-il identique à un run sans interruption ?"}
+            mode: manual_check
+      - id: T5.2
+        github_issue: 61
+        name: "Reset du checkpoint"
+        description: "--reset supprime le checkpoint et recommence."
+        provides: []
+        requires: [checkpoint_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 50 --execute 2>&1"]
+        checks:
+          - id: T5.2a
+            description: "--reset supprime le checkpoint et relance"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 50 --reset --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+          - id: T5.2b
+            description: "Tous les fichiers sont retraités après --reset"
+            command: "grep -ciE 'reprise|checkpoint|déjà' ${LOGS}/.setup_output_T5.2.txt 2>/dev/null; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+      - id: T5.3
+        github_issue: 62
+        name: "Retry des erreurs"
+        description: "--retry-errors retraite uniquement les erreurs."
+        provides: []
+        requires: [classify_exec_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --retry-errors --execute --verbose 2>&1"]
+        checks:
+          - id: T5.3a
+            description: "Seuls les fichiers en erreur sont retraités"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Seuls les fichiers en erreur ont-ils été retraités (pas les classifiés ni non_classifiés) ?"}
+            mode: manual_check
+          - id: T5.3b
+            description: "Erreurs transientes résolues au retry"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Certains fichiers sont-ils passés de erreur_api à classifié ?"}
+            mode: manual_check
+
+  - id: phase_6
+    name: "Suggestions de nouveaux dossiers"
+    priority: moyenne
+    pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+    post_run: []
+    series:
+      - id: T6.1
+        github_issue: 63
+        name: "Générer des suggestions"
+        description: "Classifier un lot avec thèmes atypiques."
+        provides: [suggestions_generated]
+        requires: [classify_exec_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 500 -w 10 --verbose 2>&1"]
+        checks:
+          - id: T6.1a
+            description: "Suggestions mentionnées dans le résumé (ou aucun thème inconnu)"
+            command: "grep -ciE 'suggestion|nouveau|inconnu' ${LOGS}/.setup_output_T6.1.txt 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T6.1b
+            description: "suggestions.yaml créé (si thèmes inconnus détectés)"
+            command: "ls ${LOGS}/suggestions.yaml 2>/dev/null && echo EXISTS || echo MISSING"
+            assert: {type: manual_check, prompt: "suggestions.yaml existe-t-il dans logs/ ? (MISSING est normal si tous les thèmes étaient connus)"}
+            mode: manual_check
+      - id: T6.2
+        github_issue: 64
+        name: "Review des suggestions"
+        description: "Lister les suggestions."
+        provides: []
+        requires: [suggestions_generated]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T6.2a
+            description: "suggest liste avec thème, dossier, raison"
+            command: "${KLODO} suggest --profile ${PROF} 2>&1"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T6.2b
+            description: "Fichiers concernés mentionnés"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les noms des PDFs associés sont-ils mentionnés dans la liste des suggestions ?"}
+            mode: manual_check
+      - id: T6.3
+        github_issue: 65
+        name: "Appliquer les suggestions"
+        description: "--apply --execute crée les dossiers et reclassifie."
+        provides: []
+        requires: [suggestions_generated]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} suggest --profile ${PROF} --apply --execute 2>&1"]
+        checks:
+          - id: T6.3a
+            description: "Nouveaux dossiers créés sur disque"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les nouveaux dossiers proposés ont-ils été créés dans l'arborescence ?"}
+            mode: manual_check
+          - id: T6.3b
+            description: "tree.yaml mis à jour"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "tree.yaml contient-il les nouvelles entrées ?"}
+            mode: manual_check
+          - id: T6.3c
+            description: "theme_mapping.yaml enrichi"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "theme_mapping.yaml contient-il les nouveaux mappings thème → dossier ?"}
+            mode: manual_check
+          - id: T6.3d
+            description: "Fichiers reclassifiés vers les nouveaux dossiers"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les fichiers concernés ont-ils été déplacés vers les nouveaux dossiers ?"}
+            mode: manual_check
+
+  - id: phase_7
+    name: "Sécurité et cas limites"
+    priority: haute
+    pre_run: []
+    post_run: []
+    series:
+      - id: T7.1
+        github_issue: 66
+        name: "Protection inbox = target"
+        description: "L'outil refuse de classifier la bibliothèque sur elle-même."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.1a
+            description: "L'outil refuse avec exit code 1"
+            command: "${KLODO} classify ${BIBLIO_TEST} --profile ${PROF} -y --execute 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:1"]}
+            mode: auto
+          - id: T7.1b
+            description: "Aucun fichier touché"
+            command: "echo ok"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+      - id: T7.2
+        github_issue: 67
+        name: "Fichiers avec noms problématiques"
+        description: "Espaces multiples, fichier caché, double extension, noms longs."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: ["touch \"${INBOX}/fichier avec  espaces   multiples.pdf\"", "touch \"${INBOX}/.fichier_cache.pdf\"", "touch \"${INBOX}/fichier.pdf.pdf\"", "touch \"${INBOX}/ALLCAPS_TITRE_LIVRE.pdf\""]
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.2a
+            description: "rename traite les noms sans crash"
+            command: "${KLODO} rename ${INBOX} --profile ${PROF} --max 10 --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+          - id: T7.2b
+            description: "classify traite les noms sanitisés sans erreur"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 10 --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+          - id: T7.2c
+            description: "Fichier caché .fichier ignoré ou traité sans crash"
+            command: "ls ${INBOX}/.fichier* 2>/dev/null | wc -l | tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T7.2d
+            description: "Noms trop longs tronqués (< 200 caractères)"
+            command: "find ${INBOX} -name '*.pdf' -exec basename {} \\; | awk '{if(length>200) n++} END{print n+0}'"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+      - id: T7.3
+        github_issue: 68
+        name: "Fichiers PDF corrompus"
+        description: "Un faux PDF (fichier texte avec extension .pdf)."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: ["echo 'ceci nest pas un pdf' > \"${INBOX}/faux_document.pdf\""]
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.3a
+            description: "rename gère le PDF corrompu sans crash"
+            command: "${KLODO} rename ${INBOX} --profile ${PROF} --max 5 --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+          - id: T7.3b
+            description: "classify gère le PDF corrompu sans crash"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 5 --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+      - id: T7.4
+        github_issue: 69
+        name: "Pas de clé API"
+        description: "Comportement sans SILICONFLOW_API_KEY."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.4a
+            description: "Message d'erreur clair mentionnant l'API"
+            command: "unset SILICONFLOW_API_KEY; ${KLODO} classify ${INBOX} --profile ${PROF} -y --max 5 --verbose 2>&1"
+            assert: {type: output_contains, expected: ["API"]}
+            mode: auto
+          - id: T7.4b
+            description: "Pas de crash avec Traceback"
+            command: "unset SILICONFLOW_API_KEY; ${KLODO} classify ${INBOX} --profile ${PROF} -y --max 5 2>&1|grep -c Traceback; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+      - id: T7.5
+        github_issue: 70
+        name: "Dossier source vide"
+        description: "Terminaison propre sur dossier vide."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: ["mkdir -p /tmp/klodo_empty"]
+        post_run: ["rmdir /tmp/klodo_empty 2>/dev/null"]
+        setup: []
+        checks:
+          - id: T7.5a
+            description: "Message 'aucun fichier trouvé' et exit 0"
+            command: "${KLODO} classify /tmp/klodo_empty --profile ${PROF} -y --verbose 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:0"]}
+            mode: auto
+          - id: T7.5b
+            description: "Pas de division par zéro dans le résumé"
+            command: "${KLODO} classify /tmp/klodo_empty --profile ${PROF} -y --verbose 2>&1|grep -c ZeroDivision; true"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+      - id: T7.6
+        github_issue: 71
+        name: "Dossier source inexistant"
+        description: "Message d'erreur et exit 1."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.6a
+            description: "Message 'introuvable'"
+            command: "${KLODO} classify /chemin/qui/nexiste/pas --profile ${PROF} -y --verbose 2>&1"
+            assert: {type: output_contains, expected: ["introuvable"]}
+            mode: auto
+          - id: T7.6b
+            description: "Exit code 1"
+            command: "${KLODO} classify /chemin/qui/nexiste/pas --profile ${PROF} -y 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:1"]}
+            mode: auto
+      - id: T7.7
+        github_issue: 72
+        name: "Profil inexistant"
+        description: "Message d'erreur et exit 1."
+        provides: []
+        requires: []
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.7a
+            description: "Message 'introuvable'"
+            command: "${KLODO} classify ${INBOX} --profile profil-fantome -y --verbose 2>&1"
+            assert: {type: output_contains, expected: ["introuvable"]}
+            mode: auto
+          - id: T7.7b
+            description: "Exit code 1"
+            command: "${KLODO} classify ${INBOX} --profile profil-fantome -y 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_contains, expected: ["EXIT:1"]}
+            mode: auto
+      - id: T7.8
+        github_issue: 73
+        name: "Init avec un nom déjà pris"
+        description: "Ne pas écraser un profil existant sans confirmation."
+        provides: []
+        requires: [profile_test]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T7.8a
+            description: "Refus ou avertissement"
+            command: "${KLODO} init default --target /tmp/autre 2>&1; echo \"EXIT:$?\""
+            assert: {type: output_not_contains, expected: ["Profil créé"]}
+            mode: auto
+
+  - id: phase_8
+    name: "Qualité de classification"
+    priority: haute
+    pre_run: []
+    post_run: []
+    series:
+      - id: T8.1
+        github_issue: 74
+        name: "Échantillon qualité (50 fichiers)"
+        description: "Vérifier manuellement la qualité sur un échantillon."
+        provides: []
+        requires: [process_full_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T8.1a
+            description: "Taux de bonne classification > 85%"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Sur un échantillon de 50 fichiers du rapport, plus de 85% sont-ils dans le bon dossier ?"}
+            mode: manual_check
+          - id: T8.1b
+            description: "Pas de confusion entre sections majeures"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Aucun livre de maths dans 08-LOISIRS, aucun roman dans 01-SCIENCES ?"}
+            mode: manual_check
+          - id: T8.1c
+            description: "Sous-dossiers pertinents"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Deep Learning with Python dans 03-IA-Machine-Learning (pas juste 02-INFORMATIQUE) ?"}
+            mode: manual_check
+          - id: T8.1d
+            description: "Les _A-TRIER sont des vrais cas ambigus"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Les fichiers dans _A-TRIER sont-ils de vrais cas ambigus (pas des erreurs évidentes) ?"}
+            mode: manual_check
+      - id: T8.2
+        github_issue: 75
+        name: "Vérification par section"
+        description: "Pour chaque section majeure, vérifier un fichier type."
+        provides: []
+        requires: [process_full_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T8.2a
+            description: "Fichiers types dans les bonnes sections"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Vérifier : Quantum Mechanics → PHYSIQUE, Algorithms → 02-Algorithmes, Python → 03-Langages/Python, Le Capital → ECONOMIE, Le Coran → ISLAM, Gray's Anatomy → Anatomie, Bobby Fischer → ECHECS, Intelligent Investor → FINANCE ?"}
+            mode: manual_check
+      - id: T8.3
+        github_issue: 76
+        name: "Faux positifs connus"
+        description: "Vérifier que les pièges documentés sont gérés."
+        provides: []
+        requires: [process_full_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T8.3a
+            description: "'Albert Einstein' ne matche pas 'bert' (NLP)"
+            command: "find ${BIBLIO_TEST}/02-INFORMATIQUE/03-IA-Machine-Learning -name '*Einstein*' 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T8.3b
+            description: "'Christopher Columbus' ne matche pas 'christ' (religion)"
+            command: "find ${BIBLIO_TEST}/05-RELIGIONS -name '*Columbus*' -o -name '*Christoph*' 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T8.3c
+            description: "'Linux Bible' ne matche pas 'bible' (religion)"
+            command: "find ${BIBLIO_TEST}/05-RELIGIONS -name '*Linux*' 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+          - id: T8.3d
+            description: "'Blaise Pascal' (philosophe) ne matche pas 'Pascal' (langage)"
+            command: "find ${BIBLIO_TEST}/02-INFORMATIQUE -name '*Blaise*Pascal*' 2>/dev/null|wc -l|tr -d ' '"
+            assert: {type: output_equals, expected: "0"}
+            mode: auto
+
+  - id: phase_9
+    name: "Reclassification et enrichissement"
+    priority: moyenne
+    pre_run: []
+    post_run: []
+    series:
+      - id: T9.1
+        github_issue: 77
+        name: "Reclassify après enrichissement du mapping"
+        description: "--reclassify après ajout de nouvelles entrées dans theme_mapping.yaml."
+        provides: []
+        requires: [classify_exec_ok]
+        pre_run: []
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 200 -w 10 --execute 2>&1"]
+        checks:
+          - id: T9.1a
+            description: "Fichiers reclassifiés vers les bons dossiers"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Après ajout d'entrées dans theme_mapping.yaml et --reclassify, les fichiers sont-ils déplacés vers les bons dossiers ?"}
+            mode: manual_check
+          - id: T9.1b
+            description: "Pas d'appel LLM (re-mapping gratuit)"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "Le reclassify a-t-il fonctionné sans appel LLM (pure YAML) ?"}
+            mode: manual_check
+      - id: T9.2
+        github_issue: 78
+        name: "Auto-apprentissage du LLM Mapper"
+        description: "Les thèmes résolus par le LLM sont persistés."
+        provides: []
+        requires: [classify_exec_ok]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 100 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 100 -w 10 --execute --verbose 2>&1"]
+        checks:
+          - id: T9.2a
+            description: "Thèmes ajoutés à theme_mapping.yaml"
+            command: "wc -l < ${PROFILES}/${PROF}/theme_mapping.yaml | tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T9.2b
+            description: "Résolution instantanée au prochain run"
+            command: "echo check"
+            assert: {type: manual_check, prompt: "En relançant, les mêmes thèmes sont-ils résolus instantanément (pas d'appel LLM) ?"}
+            mode: manual_check
+
+  - id: phase_10
+    name: "Performance et stabilité"
+    priority: basse
+    pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+    post_run: []
+    series:
+      - id: T10.1
+        github_issue: 79
+        name: "Mesurer les temps"
+        description: "Benchmarker les performances."
+        provides: []
+        requires: [smoke_ok]
+        pre_run: []
+        post_run: []
+        setup: []
+        checks:
+          - id: T10.1a
+            description: "Renommage 500 fichiers (sans LLM) < 60 secondes"
+            command: "${KLODO} rename ${INBOX} --profile ${PROF} --max 500 2>&1"
+            assert: {type: duration_under, seconds: 60}
+            mode: auto
+          - id: T10.1b
+            description: "Classification 500 fichiers (10 workers) < 5 minutes"
+            command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 500 -w 10 2>&1"
+            assert: {type: duration_under, seconds: 300}
+            mode: auto
+          - id: T10.1c
+            description: "Pipeline complet 500 fichiers avec LLM < 15 minutes"
+            command: "${KLODO} process ${INBOX} --profile ${PROF} -y --llm --pages 1 -w 10 --max 500 2>&1"
+            assert: {type: duration_under, seconds: 900}
+            mode: auto
+      - id: T10.2
+        github_issue: 80
+        name: "Stabilité réseau (erreurs API)"
+        description: "Provoquer des erreurs réseau et vérifier la résilience."
+        provides: []
+        requires: [classify_exec_ok]
+        pre_run: ["${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        post_run: []
+        setup: ["${KLODO} classify ${INBOX} --profile ${PROF} -y --max 50 --delay 0 -w 20 --verbose 2>&1"]
+        checks:
+          - id: T10.2a
+            description: "Erreurs 429 retry avec backoff"
+            command: "grep -ci 'retry\\|backoff\\|429' ${LOGS}/klodo.log 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T10.2b
+            description: "Erreurs 500 ne crashent pas"
+            command: "R=$(ls -t ${LOGS}/rapport_classify_*.csv|head -1); grep -c erreur_api \"$R\" 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T10.2c
+            description: "Le traitement continue après les erreurs"
+            command: "R=$(ls -t ${LOGS}/rapport_classify_*.csv|head -1)&&tail -n+2 \"$R\"|wc -l|tr -d ' '"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+          - id: T10.2d
+            description: "Max erreurs consécutives arrête proprement"
+            command: "grep -ciE 'arrêt|stop|abort|max.*erreur|trop.*erreur' ${LOGS}/.setup_output_T10.2.txt 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
+
+custom: []

@@ -55,18 +55,18 @@ La suite de tests couvre 191 tests répartis en modules :
 
 ```bash
 # Lancer tous les tests
-./tests/run_all.sh
+./tests/auto/run_all.sh
 
 # Lancer un module spécifique
-uv run python -m unittest tests.test_refine -v
+uv run python -m unittest tests.auto.test_refine -v
 
 # Lancer un test spécifique
-uv run python -m unittest tests.test_refine.TestScanAndRefineVision -v
+uv run python -m unittest tests.auto.test_refine.TestScanAndRefineVision -v
 ```
 
 ### Ajouter des tests
 
-Les tests sont dans `tests/`. Chaque module a son fichier de tests correspondant. Utilisez `tempfile.mkdtemp()` pour les fichiers temporaires et nettoyez dans `tearDown()`.
+Les tests automatisés (unitaires + intégration) sont dans `tests/auto/`. Chaque module a son fichier de tests correspondant. Utilisez `tempfile.mkdtemp()` pour les fichiers temporaires et nettoyez dans `tearDown()`.
 
 ```python
 class TestMaFeature(unittest.TestCase):
@@ -91,7 +91,7 @@ class TestMaFeature(unittest.TestCase):
 1. Forkez le repo
 2. Créez une branche (`git checkout -b feature/ma-feature`)
 3. Commitez vos changements
-4. Lancez les tests (`./tests/run_all.sh`)
+4. Lancez les tests (`./tests/auto/run_all.sh`)
 5. Vérifiez avec `ruff check .`
 6. Ouvrez une Pull Request
 

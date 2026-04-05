@@ -53,6 +53,7 @@ from commands import (
     cmd_rename,
     cmd_suggest,
 )
+from lib.exceptions import ConfigError
 from lib.logger import get_logger, setup_logger
 from lib.profile import Profile, list_profiles
 
@@ -84,6 +85,8 @@ def _build_parser():
                         help='Appliquer (sinon dry-run)')
     common.add_argument('--verbose', '-v', action='store_true',
                         help='Mode verbeux')
+    common.add_argument('--yes', '-y', action='store_true',
+                        help='Répondre oui à toutes les confirmations')
 
     # ── Options LLM ──
     llm_common = argparse.ArgumentParser(add_help=False)
@@ -181,9 +184,10 @@ def _build_parser():
     # ── clean ──
     p_clean = subparsers.add_parser(
         'clean', parents=[common],
-        help='Nettoyer le cache du profil (progress, isbn, logs, all)')
-    p_clean.add_argument('target', choices=['progress', 'isbn', 'logs', 'all'],
-                         help='Quoi nettoyer : progress, isbn, logs ou all')
+        help='Nettoyer le cache du profil (classify, rename, progress, isbn, logs, all)')
+    p_clean.add_argument('target',
+                         choices=['classify', 'rename', 'progress', 'isbn', 'logs', 'all'],
+                         help='Quoi nettoyer : classify, rename, progress (les deux), isbn, logs ou all')
 
     # ── init ��─
     p_init = subparsers.add_parser(
@@ -216,7 +220,7 @@ def main():
     # Charger le profil
     try:
         profile = Profile(args.profile)
-    except FileNotFoundError:
+    except (FileNotFoundError, ConfigError):
         log.error("❌ Profil '{}' introuvable.".format(args.profile))
         log.info("   Profils disponibles : {}".format(', '.join(list_profiles())))
         sys.exit(1)
