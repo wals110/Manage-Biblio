@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   test:
@@ -21,6 +21,9 @@ jobs:
 
       - name: Installer poppler (pdf2image)
         run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
 
       - name: Lancer les tests
         run: uv run python -m unittest discover -s tests/auto -v

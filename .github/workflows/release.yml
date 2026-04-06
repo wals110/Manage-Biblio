@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check functional tests are all PASS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OPEN=$(gh issue list --label "functional-test" --state open --json number -q 'length')
+          if [ "$OPEN" -ne 0 ]; then
+            echo "::error::RELEASE BLOCKED: $OPEN functional test issues still open"
+            gh issue list --label "functional-test" --state open --json number,title -q '.[] | "  [#\(.number)] \(.title)"'
+            exit 1
+          fi
+          echo "All functional tests PASS — release gate OK"
+
+  build:
+    needs: release-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Installer Python + deps
+        run: uv sync
+
+      - name: Lancer les tests
+        run: uv run python -m unittest discover -s tests/auto -v
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Créer la release GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          gh release create "$TAG" --title "$TAG" --generate-notes

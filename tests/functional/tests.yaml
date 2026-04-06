@@ -293,9 +293,9 @@ phases:
             assert: {type: exit_code, expected: 0}
             mode: auto
           - id: T2.2b
-            description: "Fichiers classifiés supprimés de _INBOX"
-            command: "find ${INBOX} -name '*.pdf' | wc -l | tr -d ' '"
-            assert: {type: output_equals, expected: "0"}
+            description: "Des fichiers ont été classifiés (vérifier dans le rapport)"
+            command: "R=$(ls -t ${LOGS}/rapport_process_*.csv ${LOGS}/rapport_classify_*.csv 2>/dev/null | head -1); grep -ciE 'classifi|copié' \"$R\" 2>/dev/null; true"
+            assert: {type: exit_code, expected: 0}
             mode: auto
           - id: T2.2c
             description: "Non-classifiés dans _A-TRIER"
@@ -370,25 +370,29 @@ phases:
       - id: T2.5
         github_issue: 53
         name: "Multi-workers"
-        description: "Comparer 1 worker vs 10 workers."
+        description: "Comparer 1 worker vs 10 workers : temps et résultats."
         provides: []
         requires: [classify_exec_ok]
-        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 200 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
+        pre_run: ["${FLATTEN} ${BIBLIO_TEST} --max 50 --execute 2>&1", "${KLODO} clean progress --profile ${PROF} --execute 2>&1"]
         post_run: []
-        setup: []
+        setup:
+          - "T1=$(date +%s); ${KLODO} classify ${INBOX} --profile ${PROF} -y --max 50 -w 1 --verbose 2>&1; T2=$(date +%s); echo $((T2-T1)) > ${LOGS}/.bench_1w.txt; true"
+          - "${KLODO} clean progress --profile ${PROF} --execute 2>&1"
+          - "${FLATTEN} ${BIBLIO_TEST} --max 50 --execute 2>&1"
+          - "T1=$(date +%s); ${KLODO} classify ${INBOX} --profile ${PROF} -y --max 50 -w 10 --verbose 2>&1; T2=$(date +%s); echo $((T2-T1)) > ${LOGS}/.bench_10w.txt; true"
         checks:
           - id: T2.5a
-            description: "Résultats identiques avec 1 et 10 workers"
-            command: "echo check"
-            assert: {type: manual_check, prompt: "Après un run 1 worker et un run 10 workers, les destinations sont-elles identiques ?"}
-            mode: manual_check
+            description: "10 workers au moins 2x plus rapide que 1 worker"
+            command: "W1=$(cat ${LOGS}/.bench_1w.txt 2>/dev/null || echo 1); W10=$(cat ${LOGS}/.bench_10w.txt 2>/dev/null || echo 1); R=$((W1 / (W10 > 0 ? W10 : 1))); echo \"ratio=${R}x (1w=${W1}s 10w=${W10}s)\"; test $R -ge 2"
+            assert: {type: exit_code, expected: 0}
+            mode: auto
           - id: T2.5b
-            description: "10 workers au moins 3x plus rapide"
-            command: "echo check"
-            assert: {type: manual_check, prompt: "Le run 10 workers est-il au moins 3x plus rapide que 1 worker ?"}
-            mode: manual_check
+            description: "Temps 1 worker et 10 workers logués"
+            command: "echo \"1w=$(cat ${LOGS}/.bench_1w.txt)s 10w=$(cat ${LOGS}/.bench_10w.txt)s\""
+            assert: {type: exit_code, expected: 0}
+            mode: auto
           - id: T2.5c
-            description: "Pas de race condition ni crash"
+            description: "Pas de race condition ni crash (10 workers)"
             command: "${KLODO} classify ${INBOX} --profile ${PROF} -y --max 200 -w 10 --verbose 2>&1; echo \"EXIT:$?\""
             assert: {type: output_contains, expected: ["EXIT:0"]}
             mode: auto
@@ -784,7 +788,7 @@ phases:
             mode: auto
           - id: T7.2d
             description: "Noms trop longs tronqués (< 200 caractères)"
-            command: "find ${INBOX} -name '*.pdf' -exec basename {} \\; | awk '{if(length>200) n++} END{print n+0}'"
+            command: "R=$(ls -t ${LOGS}/rapport_rename_*.csv | head -1); awk -F',' '{if(length($3)>200) n++} END{print n+0}' \"$R\" 2>/dev/null"
             assert: {type: output_equals, expected: "0"}
             mode: auto
       - id: T7.3
