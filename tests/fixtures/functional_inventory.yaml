@@ -1,0 +1,4131 @@
+version: '1.0'
+total: 1000
+description: Jeu de données fonctionnel — 1000 PDFs représentatifs
+path: /Volumes/ExtSSD/BIBLIO-TEST-FUNC
+stats:
+  01-SCIENCES: 298
+  02-INFORMATIQUE: 345
+  03-INGENIERIE: 78
+  04-SHS: 59
+  05-RELIGIONS: 30
+  06-MEDECINE: 29
+  07-LANGUES: 7
+  08-LOISIRS: 50
+  09-BUSINESS: 29
+  _MESSY: 75
+files:
+- name: Springer Geography.pdf
+  expected_category: 01-SCIENCES
+  section: 01-SCIENCES
+  subdir: 01-SCIENCES
+- name: ADVANCED TOPICS.pdf
+  expected_category: 01-SCIENCES
+  section: 01-SCIENCES
+  subdir: 01-SCIENCES
+- name: The Night Sky Companion - A Yearly Guide to Sky-Watching 2009 - Tammy Plotner.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: The Handy Astronomy Answer Book - Charles Liu.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: Planetary Influence on the Sun and the Earth and a Modern Book-burning - Nils-Axel
+    Mörner.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: From Dying Stars to the Birth of Life - Jerry L. Cranford.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE
+  section: 01-SCIENCES
+  subdir: BIOLOGIE
+- name: Atlas de Biologie végétale BCPST 1re et 2e années - Boutin.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE
+  section: 01-SCIENCES
+  subdir: BIOLOGIE
+- name: Planet Formation - Theory Observations and Experiments - Hubert Klahr.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE
+  section: 01-SCIENCES
+  subdir: BIOLOGIE
+- name: Anu Bourgeois · Pavel Skums.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Biotechnologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Biotechnologie
+- name: Bio-informatique moléculaire Bokos-Z1 - Pavel A. Pevzner.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Biotechnologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Biotechnologie
+- name: Computational Methods in Systems Biology - Jérôme Feret.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Biotechnologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Biotechnologie
+- name: Endocrine Disrupters - Hazard Testing and Assessment Methods - Peter Matthiessen.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Ecologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Ecologie
+- name: Why Evolution is True - Jerry A. Coyne.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Ecologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Ecologie
+- name: Al Jahiz et Darwinisme.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Ecologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Ecologie
+- name: Modular evolution - Lucio Vinicius.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Genetique
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Genetique
+- name: Encyclopedia of evolutionary biology - Richard M Kliman.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Genetique
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Genetique
+- name: Sex Itself - The Search for Male and Female in the Human Genome - Sarah S.
+    Richardson.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Genetique
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Genetique
+- name: encyclopédie des sciences.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Neurosciences
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Neurosciences
+- name: Dunod - La Science Par le Petit Bout de la Lorgnette.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Neurosciences
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Neurosciences
+- name: Intangible Life - Functorial Connections in Relational Biology - A.H. Louie.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Neurosciences
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Neurosciences
+- name: Water Treatment Low Cost Alternatives to Carbon Adsorbents.pdf
+  expected_category: 01-SCIENCES/CHIMIE
+  section: 01-SCIENCES
+  subdir: CHIMIE
+- name: Multicomponent Copolymer Brushes Architecture.pdf
+  expected_category: 01-SCIENCES/CHIMIE
+  section: 01-SCIENCES
+  subdir: CHIMIE
+- name: Homomolecular Exchange on Solid Surfaces Protein Structural Changes.pdf
+  expected_category: 01-SCIENCES/CHIMIE
+  section: 01-SCIENCES
+  subdir: CHIMIE
+- name: Adsorption of Polymers at Colloid Surfaces.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: The Chemistry of Explosives.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Organic Chemistry - William Brown.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Adsorption Equilibria Multicomponent Adsorption Modeling.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Kinetic Studies in Zwitterionic Micellar Solutions.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Mineral Surfaces Infrared Reflection Spectroscopy of Adsorbed Molecules.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Colloidal Aggregation Processes.pdf
+  expected_category: 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  section: 01-SCIENCES
+  subdir: CHIMIE/03-Nanotechnologie
+- name: Drug Delivery Hydrogel Nanoparticles.pdf
+  expected_category: 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  section: 01-SCIENCES
+  subdir: CHIMIE/03-Nanotechnologie
+- name: Nanotechnology.pdf
+  expected_category: 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  section: 01-SCIENCES
+  subdir: CHIMIE/03-Nanotechnologie
+- name: advances-in-systems-science-proceedings-jerzy-swiatek318 ThoseBooks.pdf
+  expected_category: 01-SCIENCES/EPISTEMOLOGIE
+  section: 01-SCIENCES
+  subdir: EPISTEMOLOGIE
+- name: Franz-Josef Kahlen.pdf
+  expected_category: 01-SCIENCES/EPISTEMOLOGIE
+  section: 01-SCIENCES
+  subdir: EPISTEMOLOGIE
+- name: The Sage Handbook of Human Geography.pdf
+  expected_category: 01-SCIENCES/EPISTEMOLOGIE
+  section: 01-SCIENCES
+  subdir: EPISTEMOLOGIE
+- name: Linear Algebra with Python Theory and Applications - Makoto Tsukada.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/01-Algebre
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/01-Algebre
+- name: Field Guide to (2).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/01-Algebre
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/01-Algebre
+- name: Numerical Linear Algebra Theory and Applications - Larisa Beilina.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/01-Algebre
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/01-Algebre
+- name: COMPUTATION AND NEURAL SYSTEMS SERIES.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/02-Analyse
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/02-Analyse
+- name: The Illustrated Guide to Technical Analysis Signals and Phrases - Constance
+    Brown.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/02-Analyse
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/02-Analyse
+- name: Springer Proceedings in Mathematics & Statistics (3).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/02-Analyse
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/02-Analyse
+- name: G´eom´etrie Diff´erentielle.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/03-Geometrie-Topologie
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/03-Geometrie-Topologie
+- name: Fractals in Soil Science - Philippe Baveye.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/03-Geometrie-Topologie
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/03-Geometrie-Topologie
+- name: Interactions on Digital Tablets in the Context of 3D Geometry Learning - David
+    Bertolo.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/03-Geometrie-Topologie
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/03-Geometrie-Topologie
+- name: dunod statistique descriptive ed 2000.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Business Statistics Demystified - Steven Kemp.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Think Stats Probability and Sta Book4You - Allen B. Downey.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Logique Informatique Et Paradoxes - J P Delahaye.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/05-Logique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/05-Logique
+- name: Questions de raisonnement logique et numérique - Pour sentra.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/05-Logique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/05-Logique
+- name: Logic as a Tool - Valentin Goranko.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/05-Logique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/05-Logique
+- name: Arithmetic Geometry and Number Theory - Lin Weng.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/06-Theorie-des-Nombres
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/06-Theorie-des-Nombres
+- name: Auxiliary Polynomials in Number Theory - David Masser.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/06-Theorie-des-Nombres
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/06-Theorie-des-Nombres
+- name: Algebra and Number Theory - A Selection of Highlights - Benjamin Fine.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/06-Theorie-des-Nombres
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/06-Theorie-des-Nombres
+- name: Advances in Intelligent Systems and Computing (7).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/07-Calcul-Numerique
+- name: méthodes numériques.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/07-Calcul-Numerique
+- name: M cid 19 ethodes d'analyse num cid 19 erique.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/07-Calcul-Numerique
+- name: ANALYSE FONCTIONNELLE ET.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Jonathan M. Kane.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Mathematiques Analyse en 30 fiches.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Proceedings of the Canadian Society for History.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/09-Histoire-Philosophie-Maths
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/09-Histoire-Philosophie-Maths
+- name: Physics - Nick England.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE
+  section: 01-SCIENCES
+  subdir: PHYSIQUE
+- name: Lecture Notes in Geosystems Mathematics.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE
+  section: 01-SCIENCES
+  subdir: PHYSIQUE
+- name: Physique et outils mathematiques.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE
+  section: 01-SCIENCES
+  subdir: PHYSIQUE
+- name: Friction at the Atomic Level - Atomistic Approaches in Tribology - Motohisa
+    Hirano.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Fejoz 2013 stabilite.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Statistical Mechanics of Lattice Systems - A Concrete Mathematical Introduction
+    - Sacha Friedli.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Computational Electromagnetism - Cetraro Italy 2014 - Houssem Haddar.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Electrical Fluctuations in Small Systems.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Physique des plasmas - Jean-Marcel Rax.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Thermophoresis of Particles.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/03-Thermodynamique
+- name: Physique de la conversion d énergie.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/03-Thermodynamique
+- name: Ultracondensed Matter by Dynamic Compression - W. J. Nellis.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/03-Thermodynamique
+- name: Introduction to Micro- and Nanooptics - Juumlrgen Author Jahns.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/04-Optique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/04-Optique
+- name: Kinko Tsuji E ditor.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/04-Optique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/04-Optique
+- name: Powder Diffraction - Theory and Practice - Robert E. Dinnebier.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/04-Optique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/04-Optique
+- name: Discrete Gauge Theory - Robert Oeckl.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Victor M. Galitsky Boris M. Karnakov Vladimir I.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Jean-Marc Ginoux - Pour en finir avec le mythe d'Albert d'Einstein.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Recognizing Outstanding Ph.D. Research.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Springer Theses.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Mars - The Mystery Unfolds - Peter John Cattermole.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: La fusion nucleaire.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/07-Physique-Nucleaire
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/07-Physique-Nucleaire
+- name: La fusion dans tous ses etats.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/07-Physique-Nucleaire
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/07-Physique-Nucleaire
+- name: Direct Nuclear Reactions - Norman K. Glendenning.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/07-Physique-Nucleaire
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/07-Physique-Nucleaire
+- name: Global Formulations of Lagrangian and Hamiltonian Dynamics on Manifolds -
+    Taeyoung Lee.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: SAT Math Prep Course - Jeff Kolby.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Astrophysics for Physicists - Arnab Rai Choudhuri.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: String Theory - Joseph Polchinski.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Fractal Geometry Complex Dimensions and Zeta Functions.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Discrete Geometry and Algebraic Combinatorics - Alexander Barg.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Electroanalytical Chemistry - A Series of Advances - Allen J. Bard.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: EURO Advanced Tutorials on Operational Research.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Saas-Fee Advanced Course.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: M-EA-DER-JMF-05.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Une introduction aux motifs motifs - Yves André.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Algebraic Patching - Moshe Jarden.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: theoretical-modeling-of-vibrational-martin-thomas ThoseBooks.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: A Scenario Tree-Based Decomposition for Solving Multistage Stochastic Programs
+    - Debora Mahlke.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Interfacial Forces Classification.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Backward Stochastic Differential Equations - From Linear to Fully Nonlinear
+    Theory - Jianfeng Zhang.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Cours Algèbre linéaire & géométrie affine élémentaires - R. Boillaud professeur
+    de mathématiques en CPGE.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: The Practice of Statistics - Daren Starnes.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: UNIverSITy.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Dark Matter And Dark Energy.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Mathematics and Visualization.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Logic Computation Hierarchies.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/05-Logique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/05-Logique
+- name: A-la-Pursuite-de-Pi.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Introduction-a-l-analyse-numerique.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/07-Calcul-Numerique
+- name: Springer Proceedings in Mathematics & Statistics (6).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Quarks Nuclei and Stars - Memorial Volume Dedicated to Gerald E. Brown - Jeremy
+    W. Holt.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/07-Physique-Nucleaire
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/07-Physique-Nucleaire
+- name: One Hundred Years of General Relativity - From Genesis and Empirical Foundations
+    to Gravitational Waves Cosmology and Quantum Gravity - Wei-Tou Ni.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Topology and Field Theories - Stephan Stolz.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: THE PRINCIPLES OF NEWTONIAN.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: M-EA-ENS-JMF-04.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Fundamentals of Classical Statistical Thermodynamics - Denis James Evans.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Modélisation et sta Book4You - Carlo Gaetan.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: M-EA-ENT-JMF-11.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Analysis in Positive Characteristic - Anatoly N. Kochubei.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Advances in Intelligent Systems and Computing (4).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/07-Calcul-Numerique
+- name: Basic Statistics - Tenko Raykov and George A. Marcoulides.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Heteroskedasticity.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Clay Modeling of Heavy Metal Adsorption.pdf
+  expected_category: 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  section: 01-SCIENCES
+  subdir: CHIMIE/03-Nanotechnologie
+- name: Reflection Spectroscopy of Monolayers at Fluid Fluid Interfaces.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Polymer Reference Book - Thomas Roy Crompton.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Proble`mes de Mathe´matiques (6) (2).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Modelling the Upper Atmosphere of Gas-Giant Exoplanets Irradiated by Low-Mass
+    Stars - Joshua Chadney.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: B0000DXZNB Fantais.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Basic Math for Nursing and Allied Health - Lynn M. Egler.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Mécanique Quantique.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Amorphous Silica Surface Physico Chemistry.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Handbook of Normal Frames and Coordinates - Bozhidar Z. Iliev.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: M-EA-LIM-JMF-03.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: New A-Level Physics for OCR A Year 1 & AS Student Book with Online Edition
+    - Tony Aldridge.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: histoire de l'analyse.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: De Sitter Invariant Special Relativity - Mu-Lin Yan.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Bourbaki. Elements de Mathematique - Topologie Generale Ch. 1-4 bis (2).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Einstein et Poincare Sur les - Jean-Paul Auffray.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Darwin et le darwinisme.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Genetique
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Genetique
+- name: Polymer Nanoparticles.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Quantum Systems in Physics Chemistry and Biology - Advances in Concepts and
+    Applications - Alia Tadjer.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Atlantis Transactions in Geometry.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Eddington's Search for a Fundamental Theory - A Key to the Universe - C. W.
+    Kilmister.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Théories Spectrales Chapitres 1-2 Eléments De Mathématique N Bourbaki 3540353305
+    (2).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Pitfalls and Errors of HPLC in Pictures - Veronika R. Meyer.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Topics in Complex Analysis and Operator Theory - Third Winter School in Complex
+    Analysis and Operator Theory February 2-5 2010 Universidad Politécnica de Valencia
+    Valencia Spain....pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Studies in Fuzziness and Soft Computing.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Actuarial Mathematics for Life Contingent Risks - David C. M. Dickson.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: M-PT-GRO-JMF-03.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Biological Cells Dielectrophoresis.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Biotechnologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Biotechnologie
+- name: Facets of Combinatorial Optimization - Festschrift for Martin Grötschel -
+    Michael Jünger.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Plans d'expérience constructions et analyses statistiques - Walter Tinsson.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Matrices - Theory and Applications - Denis Serre.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: An R Companion to Applied Regression - John Fox.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Lewis Base Catalysis in Organic Synthesis - Edwin Vedejs and Scott E. Denmark.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Geophysical Monograph Series (2).pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Refinement Monoids Equidecomposability Types and Boolean Inverse Semigroups
+    - Friedrich Wehrung.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: L-univers elegant.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Enriching Game content with Physics-based Realism.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: potential-game-theory-applications-quang-duy-la ThoseBooks.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Geometry and Topology of Submanifolds and Currents - Weiping Li.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Les nom - G�rald Tenenbaum.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: A Student's Manual for A First Course in General Relativity - Robert B. Scott.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Quantum Kinetic Theory - Michael Bonitz.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Mini manuel de biologie animale.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE
+  section: 01-SCIENCES
+  subdir: BIOLOGIE
+- name: Quantum Theory and Statistical Thermodynamics - Principles and Worked Examples
+    - Peter Hertel.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Twelve Landmarks of Twentieth-Century Analysis - D. Choimet.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Restricted Parameter Space Estimation Problems - Admissibility and Minimaxity
+    Properties - Constance van Eeden.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Le m - Robert Bauval.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: Copper-Mediated Cross-Coupling Reactions - Gwilherm Evano.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: THE MATHEMATICS OF.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Shock Waves in Conservation Laws with Physical Viscosity - Tai-Ping Liu.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: géométrie et calcul différentiel sur les variétés-pham (2).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Heavy Metal Ions Bile Salt Aggregate Reactions.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Geometry from a Differentiable Viewpoint - John McCleary.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Electrostatique et magnétostatique.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Emulsion Flocculation Mechanisms.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Unique Reactivity of Ultrafine Mo Based Oxide Particles.pdf
+  expected_category: 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  section: 01-SCIENCES
+  subdir: CHIMIE/03-Nanotechnologie
+- name: RØgression.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Electrode Surfaces Cyclic Voltammetry.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Comprendre linformatique quantique - Olivier Ezratty.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Chemistry for Today General Organic and Biochemistry - Spencer L. Seager.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Ethanol and Education - Alcohol as a Theme for Teaching Chemistry - Roger
+    Barth.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Manhattan Distance.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Free and Interacting Quantum Fields - Ioan Merches.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Analyse.matricielle.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Stochastic Partial Differential Equations - Sergey V. Lototsky.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Quantum Black Holes - Xavier Calmet.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Spin Dynamics in Confined Magnetic Structures II - Burkard Hillebrands.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: A Concrete Approach to Classical Analysis - Marian Muresan.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Intersection Local Times Loop Soups and Permanental Wick Powers - Yves Le
+    Jan.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Quantum Computing Explained - David McMahon.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Springer Series in Computational Mathematics.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Mathematics for Game Developers - Christopher. Tremblay.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Theory of Complex Functions - Reinhold Remmert.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Statistical Physics - An Entropic Approach - Ian Ford.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/03-Thermodynamique
+- name: Trigonometry.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Applied and Numerical Harmonic Analysis (2).pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Graduate Texts in Physics (2).pdf
+  expected_category: 01-SCIENCES/PHYSIQUE
+  section: 01-SCIENCES
+  subdir: PHYSIQUE
+- name: Chambert-Loir A. Algebre corporelle book4me.org.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Chain Statistics in Polymer Solutions Intrinsic Viscosity and Structure Factor.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: géométrie élémentaire-gramain.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Stochastic Analysis and Related Topics - A Festschrift in Honor of Rodrigo
+    Bañuelos - Fabrice Baudoin.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Cinetique enzymatique - EDP Sciences.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Mathématiq - Jean-Pierre Marco.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Planets Stars and Stellar Systems Volume 3 - Linda M. French.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: Introduction to Mathematical Physics - Methods & Concepts - Chun Wa Wong.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Gravity and Gravitation - Derivations Equations and Applications - Ron Kurtus.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: M-EA-DER-JMF-18.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Classical Statistical Mechanics with Nested Sampling - Robert John Nicholas
+    Baldock.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: SPRINGER BRIEFS IN OPERATIONS RESEARCH.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: nepenthes-iosmacos-enterprise-xiaohui-li ThoseBooks.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Ecologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Ecologie
+- name: Contact Angle Measurements on Oxide and Related Surfaces.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: S382 Book 1 An Introduction to Astrophysics and Cosmology.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/06-Astrophysique-Cosmologie
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/06-Astrophysique-Cosmologie
+- name: Surfactant Free Emulsions.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Applied and Computational Matrix Analysis - MAT-TRIAD Coimbra Portugal September
+    2015 Selected Revised Contributions - Natália Bebiano.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Electrocatalysis of Inorganic Reactions Bimetallic Surfaces.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Reviews in Modern Astronomy.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: Topics in Classical Analysis and Applications in Honor of Daniel Waterman
+    - Laura De Carli.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Stainless Steel Surfaces Adsorption and Fouling.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Stark Spectroscopy at Metal Surfaces.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE
+  section: 01-SCIENCES
+  subdir: PHYSIQUE
+- name: L'intégration dans les groupes topo - André Weil.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: intoduction à l'analyse numérique matricielle et à l'optimisation-ciarlet.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Projets MDI.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Equations-Et-Systemes-Differentiels.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Introductory Chemistry An Atoms First Approach - Dr Michelle Driessen.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Les Phénomènes électromagnétiques - Paul Lorrain.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Chapitre 8 Sciences Physiques - BTS - The Boss.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: An introduction to mathematical cryptography - Jeffrey Hoffstein.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Optimization Methods Theory and Applications - Honglei Xu.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Student Voice in Mathematics Classrooms Around the World - Berinderjeet Kaur.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Julie Miller.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: David Hernandez et Yves Laszlo.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Polysaccharide Applications in Mineral Processing.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Diffusion Limited Adsorption Kinetics of Polymer Layers Adsorbed at the Solid
+    Liquid Interface.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Mathématiques ECS 1re année Le compagnon.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Differential Equations - An Introduction with Mathematica® - Clay C. Ross.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Giulio Ventura.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Les maths en tête - Algèbre probabilités 3e édition Xavier Gourdon z-library.sk
+    1lib.sk z-lib.sk.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: M-EA-INT-JMF-11.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: SPRINGER BRIEFS IN MOLECULAR SCIENCE.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: The Principles of Thermodynamics - N.D. Hari Dass.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/03-Thermodynamique
+- name: Pearson Advanced Chemistry Series.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Aerosols Atmospheric Natural and Anthropogenic Particles.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Real Analysis and Foundations.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Analyse fonctionnelle elementaire - Willem M.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Applications of Domino Transformations in Organic Synthesis - Daniel Adu-Ampratwum.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: Conformal Field Theory Automorphic Forms and Related Topics - Winfried Kohnen.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Analyse numérique et équations différentielles-Demailly.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Math for Civil Service Tests - Jessika Sobanski.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Electroweak Theory - E. A. Paschos.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Stability of Line Solitons for the KP-II Equation in $ mathbb R ^2$ - Tetsu
+    Mizumachi.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Introduction aux methodes nu - Franck Jedrzejewski.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/07-Calcul-Numerique
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/07-Calcul-Numerique
+- name: Recent Developments in Representation Theory - Alex Martsinkovsky.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: dunod 50 cles pour comprendre les maths.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: analyse numérique et optimisation-allaire.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Orbitales frontières Manuel pratique - EDP Sciences.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Tracts in Mathematics 25 Tracts in Mathematics.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Conformal Methods in General Relativity - Valiente Kroon.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: N E Cambridge.pdf
+  expected_category: 01-SCIENCES/CHIMIE/01-Chimie-Organique
+  section: 01-SCIENCES
+  subdir: CHIMIE/01-Chimie-Organique
+- name: The Manufacture of Chemicals by Electrolysis - Electrochemistry - Arthur J.
+    Hale.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Transitions de phase et groupe de renormalisatio.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/03-Thermodynamique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/03-Thermodynamique
+- name: Aspects of WIMP Dark Matter Searches at Colliders and Other Probes - Enrico
+    Morgante.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Spectral Atlas for Amateur Astronomers - A Guide to the Spectra of Astronomical
+    Objects and Terrestrial Light Sources - Richard Walker.pdf
+  expected_category: 01-SCIENCES/ASTRONOMIE
+  section: 01-SCIENCES
+  subdir: ASTRONOMIE
+- name: Fine Ultrafine Mineral Particles Separation Hydrophobic Agglomeration.pdf
+  expected_category: 01-SCIENCES/CHIMIE/03-Nanotechnologie
+  section: 01-SCIENCES
+  subdir: CHIMIE/03-Nanotechnologie
+- name: smf gazette 83 11-27.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: M-EA-GRO-JMF-11.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Les Ondelettes en 1989 Sémi - Pierre G. Lemarie.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Statistical Modeling for Degradation Data - Ding-Geng Din Chen.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Statistics For Dummies - Deborah J. Rumsey.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Geometric and Cohomological Methods in Group Theory - Martin R. Bridson.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Elliptic Curves - A Computational Approach - Susanne Schmitt.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Applications of Quantum Dynamics in Chemistry - Fabien Gatti.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: graphs-algorithms-and-optimization-william-kocay7748 ThoseBooks.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Advanced Courses in Mathematics CRM Barcelona.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Bacterial Suspensions Light Scattering and Electric Light Scattering.pdf
+  expected_category: 01-SCIENCES/BIOLOGIE/Biotechnologie
+  section: 01-SCIENCES
+  subdir: BIOLOGIE/Biotechnologie
+- name: M-EA-REE-JMF-12.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: krimodz - Fonctions analysables et preuve constructive de la conjecture de
+    Dulac.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: CODING THEORY.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Finite Volumes for Complex Applications VIII - Hyperbolic Elliptic and Parabolic
+    Problems - Clément Cancès.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Foundations.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: From Quantum to Cosmos - Fundamental Physics Research in Space - Slava G.
+    Turyshev.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Statistical Inference Based on Divergence Measures - Leandro Pardo.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: A Sampling of New Applications.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: From Groups to Geometry and Back - Vaughn Climenhaga.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: MATHEMATICSTEXTBOOKSFORSCIENCEANDENGINEERING.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: accélération de la convergence en analyse numérique.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Soil Surfaces and Similar Substances Heavy Metal Ion Adsorption.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Static Green's Functions in Anisotropic Media - Pan.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/02-Electromagnetisme-Electronique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/02-Electromagnetisme-Electronique
+- name: Albert Einstein la vie et l'oeuvre - subtil est le Seigneur - Abraham Pais.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Micelles Chemical Kinetics.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: géométrie et calcul différentiel sur les variétés-pham.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Handbook of Spectroscopy - G¿nter Gauglitz.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Bubbles Interaction with Solid Surfaces.pdf
+  expected_category: 01-SCIENCES/CHIMIE/02-Chimie-Physique
+  section: 01-SCIENCES
+  subdir: CHIMIE/02-Chimie-Physique
+- name: Theoretical and Computational Developments in Modern Density Functional Theory
+    - Amlan. Roy.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/01-Mecanique
+- name: Dynamics and Analytic Number Theory - Dzmitry Badziahin Alexander Gorodnik
+    Norbert Peyerimhoff.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Handbook of Uncertainty Quantification - Roger Ghanem.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/04-Probabilites-Statistiques
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/04-Probabilites-Statistiques
+- name: Lee Smolin - La révolution inachevée d'Einstein.pdf
+  expected_category: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+  section: 01-SCIENCES
+  subdir: PHYSIQUE/05-Relativite-Quantique
+- name: Leçons sur la théorie des espaces - Élie Cartan.pdf
+  expected_category: 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+  section: 01-SCIENCES
+  subdir: MATHEMATIQUES/08-Mathematiques-Generales
+- name: Getting Started with Ubuntu 14.04 - The Ubuntu Manual Team.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Service Design Patterns Fundamental Design Solutions for SOAP WSDL and RESTful
+    Web Services - Robert Daigneau.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: SPRINGER BRIEFS IN COMPUTER SCIENCE (12).pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Honglei Xu · Song Wang.pdf
+  expected_category: 02-INFORMATIQUE/02-Algorithmes-Structures
+  section: 02-INFORMATIQUE
+  subdir: 02-Algorithmes-Structures
+- name: The Data Compression Book ISBN 1558514341 - Mark Nelson.pdf
+  expected_category: 02-INFORMATIQUE/02-Algorithmes-Structures
+  section: 02-INFORMATIQUE
+  subdir: 02-Algorithmes-Structures
+- name: Understanding Compression - Colt McAnlis et Aleks Haecky.pdf
+  expected_category: 02-INFORMATIQUE/02-Algorithmes-Structures
+  section: 02-INFORMATIQUE
+  subdir: 02-Algorithmes-Structures
+- name: LNCS 8197 - Computational Logistics - Dario Pacino.pdf
+  expected_category: 02-INFORMATIQUE
+  section: 02-INFORMATIQUE
+  subdir: 02-INFORMATIQUE
+- name: Euro-Par 2016 Parallel Processing Workshops Euro-Par 2016 International Workshops
+    Grenoble France August 24-26 2016 Revised Selected Papers 1st ed. 2017 Edition.pdf
+  expected_category: 02-INFORMATIQUE
+  section: 02-INFORMATIQUE
+  subdir: 02-INFORMATIQUE
+- name: LNCS 8805 - Euro-Par 2014 Parallel Processing Workshops - Luís Lopes.pdf
+  expected_category: 02-INFORMATIQUE
+  section: 02-INFORMATIQUE
+  subdir: 02-INFORMATIQUE
+- name: B. Chapman F. Desprez G R. Joubert A. Lichnews Book4You.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation
+- name: Essential Java Script for Web Professionals - Dan Barrett.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: jMonkeyEngine 3 0.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: download8DED0D2AAEFAF3482059CE82FEF4B2C6.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: bio-inspired-computing-ndash-theories-maoguo-gong ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/C-Cpp-CSharp
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/C-Cpp-CSharp
+- name: LNCS 8599 - Genetic Programming - Miguel Nicolau.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/C-Cpp-CSharp
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/C-Cpp-CSharp
+- name: Financial Modeling Using C++ + CD - Chandan. Sengupta.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/C-Cpp-CSharp
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/C-Cpp-CSharp
+- name: Springer Natural Hazards.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Java
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Java
+- name: Nonlinear Optics in the Filamentation Regime - Carsten Brée.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Java
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Java
+- name: SPRINGER BRIEFS IN CRIMINOLOGY.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Java
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Java
+- name: computational-methods-for-bioinformatics-jason-kinser ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Python
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Python
+- name: Software Engineering Aspects of Continuous Development and New Paradigms of
+    Software Production and Deployment - Jean-Michel Bruel.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: the-art-of-linux-kernel-design-lixiang-yang ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: Introduction to Combinatorial Testing - Kuhn.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: ARTIFICIAL.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML
+- name: Intelligent Systems Reference Library (8).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML
+- name: Mathematics for Industry (4).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML
+- name: Smart Innovation Systems and Technologies (2).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Deep-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Deep-Learning
+- name: Introduction to Neural Computing.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Deep-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Deep-Learning
+- name: ISRL 49 - Handbook on Neural Information Processing - Monica Bianchini.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Deep-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Deep-Learning
+- name: Giuseppe Nicosia · Panos Pardalos.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Studies in Computational Intelligence (9).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Practical Machine.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Elisabeth Métais · Farid Meziane.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/NLP
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/NLP
+- name: Series Editors Ying Ding Indiana University.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/NLP
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/NLP
+- name: Machine Translation with Minimal Reliance on Parallel Resources.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/NLP
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/NLP
+- name: LNCS 8693 - Computer Vision - ECCV 2014 - David Fleet.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Vision-par-Ordinateur
+- name: Computer Vision And Applications - Jahne et Haussecker.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Vision-par-Ordinateur
+- name: Traitementd'images.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Vision-par-Ordinateur
+- name: Zhaoxia Guo.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science
+- name: Introductory Relational Database Design for Business with Microsoft Access
+    - Jonathan Eckstein.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science
+- name: Best Practices in Data Cleaning A Complete Guide to Everything You Need to
+    Do Before and after Collecting Your Data - Jason W. Author Osborne (2).pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science
+- name: Advanced Information and Knowledge Processing.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Apache Hive Cookbook - Hanish Bansal.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Web Crawli Book4You - Dr. Zakir Laliwala.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: A Step-by-step Guide to SPSS for Sport and Exercise Studies - Nikos Ntoumanis.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: visualize-this-the-flowingdata-nathan-yau ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: Python Data Science Handbook - Jake VanderPlas.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: BOOKS FOR PROFESSIONALS - PROFESSIONALS®.pdf
+  expected_category: 02-INFORMATIQUE/07-Bases-de-Donnees
+  section: 02-INFORMATIQUE
+  subdir: 07-Bases-de-Donnees
+- name: Guntis Arnicans · Vineta Arnicane.pdf
+  expected_category: 02-INFORMATIQUE/07-Bases-de-Donnees
+  section: 02-INFORMATIQUE
+  subdir: 07-Bases-de-Donnees
+- name: digital-preservation-metadata-angela-dappert ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/07-Bases-de-Donnees
+  section: 02-INFORMATIQUE
+  subdir: 07-Bases-de-Donnees
+- name: Game Theory for Networks 7th International EAI Conference GameNets 2017 Knoxville
+    TN USA May 9 2017 Proceedings.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: the-book-of-pf-a-no-nonsense-guide-peter-n-m-hansteen ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Telematics Communication Technologies and Vehicular Networks December 2009
+    ATTiCA.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: High Performance Computing on Vector Systems 2010 - Michael M. Resch.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS
+- name: survey of Operating.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/Linux-Unix
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/Linux-Unix
+- name: Linux Web Server Development A Step-by-Step Guide for Ubuntu Fedora and other
+    Linux Distributions - Christos Karayiannis.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/Linux-Unix
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/Linux-Unix
+- name: operating-system-concepts-with-abraham-silberschatz ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/Linux-Unix
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/Linux-Unix
+- name: database-systems-a-pragmatic-approach-elvis-foster-2 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/MacOS-iOS
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/MacOS-iOS
+- name: database-systems-a-pragmatic-approach-elvis-foster ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/MacOS-iOS
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/MacOS-iOS
+- name: Windows.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/Windows
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/Windows
+- name: exam-98-349-mta-windows-operating-microsoft-official-academic-course ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/Windows
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/Windows
+- name: Windows Internals Sixth Edition Part 2 eBook - Mark Russinovich.pdf
+  expected_category: 02-INFORMATIQUE/09-Systemes-OS/Windows
+  section: 02-INFORMATIQUE
+  subdir: 09-Systemes-OS/Windows
+- name: AN INTRODUCTION TO.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: Progress on Cryptography - 25 Years of Cryptography in China - Kefei Chen.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: Hacked Again - Scott N. Schober.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: ansible-for-devops-everything-david-johnson ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/11-Cloud-DevOps
+  section: 02-INFORMATIQUE
+  subdir: 11-Cloud-DevOps
+- name: devops-dbas-and-dbaas-managing-michael-s-cuppett ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/11-Cloud-DevOps
+  section: 02-INFORMATIQUE
+  subdir: 11-Cloud-DevOps
+- name: Mobile Cloud Computing - Meikang Qiu Keke Gai.pdf
+  expected_category: 02-INFORMATIQUE/11-Cloud-DevOps
+  section: 02-INFORMATIQUE
+  subdir: 11-Cloud-DevOps
+- name: Jiafu Wan · Iztok Humar.pdf
+  expected_category: 02-INFORMATIQUE/12-IoT-Embarque
+  section: 02-INFORMATIQUE
+  subdir: 12-IoT-Embarque
+- name: Embedded-Linux-Systems-with-the-Yocto-Project-Rudolf-J-Streif ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/12-IoT-Embarque
+  section: 02-INFORMATIQUE
+  subdir: 12-IoT-Embarque
+- name: Seyed Shahrestani.pdf
+  expected_category: 02-INFORMATIQUE/12-IoT-Embarque
+  section: 02-INFORMATIQUE
+  subdir: 12-IoT-Embarque
+- name: Mostly Codeless Game Development - Robert Ciesla.pdf
+  expected_category: 02-INFORMATIQUE/13-Infographie-3D
+  section: 02-INFORMATIQUE
+  subdir: 13-Infographie-3D
+- name: Rimon Elias.pdf
+  expected_category: 02-INFORMATIQUE/13-Infographie-3D
+  section: 02-INFORMATIQUE
+  subdir: 13-Infographie-3D
+- name: Foundation Flash Cartoon Animation - Barry Kelly.pdf
+  expected_category: 02-INFORMATIQUE/13-Infographie-3D
+  section: 02-INFORMATIQUE
+  subdir: 13-Infographie-3D
+- name: dunod Lean UX.pdf
+  expected_category: 02-INFORMATIQUE/14-Web
+  section: 02-INFORMATIQUE
+  subdir: 14-Web
+- name: LNCS 9073 - New Horizons in Design Science Broadening the Research Agenda
+    - Brian Donnellan.pdf
+  expected_category: 02-INFORMATIQUE/14-Web
+  section: 02-INFORMATIQUE
+  subdir: 14-Web
+- name: Prototyping for Designers - Developing the Best Digital and Physical Products
+    - Kathryn McElroy.pdf
+  expected_category: 02-INFORMATIQUE/14-Web
+  section: 02-INFORMATIQUE
+  subdir: 14-Web
+- name: Principles of Mobile Computing and Communications - Mazliza Othman.pdf
+  expected_category: 02-INFORMATIQUE/15-Mobile
+  section: 02-INFORMATIQUE
+  subdir: 15-Mobile
+- name: Yong Dou · Haixiang Lin.pdf
+  expected_category: 02-INFORMATIQUE/16-Conferences
+  section: 02-INFORMATIQUE
+  subdir: 16-Conferences
+- name: Katrien Verbert.pdf
+  expected_category: 02-INFORMATIQUE/16-Conferences
+  section: 02-INFORMATIQUE
+  subdir: 16-Conferences
+- name: Jiang Xie · Zhangxin Chen.pdf
+  expected_category: 02-INFORMATIQUE/16-Conferences
+  section: 02-INFORMATIQUE
+  subdir: 16-Conferences
+- name: behavioural-models-from-modelling-matthias-kunze ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Machine Learning for Healthcare Technologies - David A. Clifton.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: “The Missing Manual series is simply the most intelligent and usable series
+    of guidebooks…”.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: SPRINGER BRIEFS IN (5).pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Big Data For Dummies® - Judith Hurwitz.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: New Perspectives in Statistical Modeling and Data Analysis - Proceedings of
+    the 7th Conference of the Classification and Data Analysis Group of the Italian
+    Statistical Society C....pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: An Introduction to PHP for Scientists and Engineers - Beyond JavaScript -
+    David R. Brooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: ALGORITHMES GENETIQUES.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Advances in Wireless Mobile Networks and Applications - WiMoA 2011 and ICCSEA
+    2011 Communications in Computer and Information Science 154 - Salah S. Al-Majeed.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: The Complete Guide to DAZ.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: adobe-illustrator-cc-classroom-brian-wood ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: ASP.NET MVC 4 Recipes - John Ciliberti.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: LiyiZhang YunshanSun XiaoqinZhang YuBai.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: tableau-dashboard-cookbook-jen-stirrup ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: Windows Server 2016 Cookbook - Jordan Krause.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: professional-heroku-programming-chris-kemp952 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: object-oriented-analysis-and-design-raul-sidnei-wazlawick ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: MACHINE-TO-MACHINE.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Lhotka_1019-1FRONT.fm - Susan Stevens.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Javascript - Best Practices to Programming Code With Javascript - Charlie
+    Masterson.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Learning Algorithms Through Programming and Puzzle Solving - Alexander S.
+    Kulikov.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Microsoft Azure.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: solutions-manual-to-accompany-mokhtar-s-bazaraa ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: computability-and-complexity-essays-adam-day ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Multi Threading - George Duckett.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: System Design Interview - An Insiders Guide Volume 2 - Alex Xu.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: Java Performance - Charlie Hunt Binu John.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: model-building-in-mathematical-h-paul-williams110 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: For your convenience Apress has placed some of the front (6).pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Beginning Ubuntu Linux - Raggi.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: programming-in-objective-c-6th-stephen-g-kochan ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Rand Morimoto Ph.D. MCITP - http avaxhome.ws blogs igor_lv.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Programming PHP.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Sencha Touch in Action - Jesus Garcia.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: ExcEl® VBA 24-Hour TrAinEr.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: LNCS 8338 - Ada 2012 Rationale - John Barnes.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Bootstrap for ASP NET MVC.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: The official ABAP reference.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: data-mining-for-business-analytics-galit-shmueli ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Learning OpenCV 3 Computer Visi - Joe Minichino.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: CompTIA® Network+ Guide to Networks - Jill West.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Antonio Kolossa.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Apress - Beginning CouchDB December 2009 ATTiCA.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: OpenGL ES 2 for Android - Kevin Brothaler.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Probabilistic Graphi Book4You - Daphne Koller.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: BOOKS FOR PROFESSIONALS - PROFESSIONALS® THE EXPERT'S VOICE® IN OPEN SOURCE.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: B072MK858X EBOK - Unknown.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Joomla! 1. 5 Template Design - Tessa Blakeley Silver.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Foundation ASP.NET for Flash - Ryan. Moore.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Wireless Mobile Communication and Healthcare 6th International Conference
+    MobiHealth 2016 Milan Italy November 14-16 2016 Proceedings 1st ed. 2017 Edition.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: TECHNOLOGY IN ACTION™.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: mastering-jboss-drools-6-for-developers-mauricio-salatino ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Professional Flash Mobile Development - Richard Wagner.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Programming Language Pragmatics - Michael L. Scott.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Information Retrieval Evaluation.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science
+- name: Microsoft Azure Enterprise.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Ubuntu Unleashed - Matthew Helmke.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Multimedia Technology IV - Farag.pdf
+  expected_category: 02-INFORMATIQUE/13-Infographie-3D
+  section: 02-INFORMATIQUE
+  subdir: 13-Infographie-3D
+- name: Professional-Visual-Studio-2013-Bruce-Johnson ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: using-mac-os-x-mavericks-1st-ed-kevin-wilson ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: docker-the-complete-introduction-david-larson ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Introduction to Network Simulator NS2 1st Edition.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Architecting and Deploying DB2 with BLU Acceleration - IBM.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: practical-net-for-financial-markets-vivek-shetty2120 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Programming Grails - Burt Beckwith.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Dimitris Karagiannis.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Getting Started with SpriteKit - Jorge Jordan.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: 137 hackapps FC.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: mining.dvi.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Windows 8 For Tablets For Dummies - Andy Rathbone.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Programming PyTorch for Deep Learning Creating and Deploying Deep Learning
+    Applications - Ian Pointer.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Ruby Performance Optimization - Alexander Dymo.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Introduction to OpenCV.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Pattern Classification And Learning Th Book4You - Lugosi G.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: George Azzopardi.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Game Data Analysis.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Windows PowerShell in Action - Bruce Payette.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Jan Kratochvíl · Mirka Miller.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: SQL The Complete Beginner's Guide - Step - Step Instructions The Black Book
+    - Byron Francis.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: javascript-html-muhelos-manipuliert-marco-emrich ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: wireless-hacking-how-to-hack-wireless-lu-xi7372 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: The Hatchbox Trunk Saver Medium.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Arc - Kim-Loan Thai VEQUE Véronique ZNATY Simon.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: La cryptographie Sommaire - user.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: Easy Windows 10 - Mark Edward Soper.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: aws-development-essentials-prabhakaran-kuppusamy ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: javascript-unlocked-dmitry-sheiko ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Oscar Luaces · José A. Gámez.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Advances in Information Security.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science
+- name: MCSD Visual Basic 6 Exams - New Riders.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Software-Evolution-and-Maintenance-Priyadarshi-Tripathy ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: Front Matter.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Pro Data Visualization using R and JavaScript - Tom Barker.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: Learning AWS.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Game design - Bob Bates.pdf
+  expected_category: 02-INFORMATIQUE/13-Infographie-3D
+  section: 02-INFORMATIQUE
+  subdir: 13-Infographie-3D
+- name: didacticiel-Processing complet pour ES.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: SQL Server ® 2012 High-Performance T-SQL Using Window Functions - Itzik Ben-Gan.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: 7230.book Page i Monday November 27 2006 11 15 AM.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Ubuntu Unleashed Edition 2015 - Matthew Helmke.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: adobe-coldfusion-9-web-application-ben-forta ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: IFIP AICT (10).pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: IBM Cognos.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: Real-world Flash Game Development - How to Follow Best Practices and Keep
+    Your Sanity - Christopher Griffith.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: AISC 313 - Image Processing &amp Communications Challenges 6 - Ryszard S.
+    Choraś.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Vision-par-Ordinateur
+- name: Expert-Oracle-Application-Express-Doug-Gault ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: best-new-programming-book-learn-faisal-nazeer ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: George Bebis et al. Eds.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Lin Zhang · Xiao Song.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Linux and Solaris Recipes for Oracle DBAs - Darl Kuhn.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: yii-application-development-cookbook-andrew-bogdanov ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Creating a Presentation in PowerPoint Visual QuickProject - tom Negrino.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Cisco Networks - Chris Carthern.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Hackez Google Android ed1 v1.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Test Driven.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Distributed Version Control with Git Mastering the Git command line - Third
+    Edition - Lars Vogel.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Robot Learning from Human Teachers.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Feature extract Book4You - Mark S. Nixon.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: type-inheritance-and-relational-c-j-date ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Refactoring with Microsoft.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Ngoc-Thanh Nguyen.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Training Error Rate.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: FuzzyLogicAlgorithmsTechniquesITO12.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Speaking JavaScript - Dr. Axel Rauschmayer.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Character Rigging.pdf
+  expected_category: 02-INFORMATIQUE/13-Infographie-3D
+  section: 02-INFORMATIQUE
+  subdir: 13-Infographie-3D
+- name: ReLU Activation Function.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: learn-cakephp-with-unit-testing-radharadhya-dasa ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Server.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: B01E3ZSSUQ EBOK - Unknown.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Cryptography Information Theory and Error-Correction - A Handbook for the
+    21st Century - Aiden A. Bruen.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: The Craft of Model-Based Testing - Paul C. Jorgensen.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: Javascript Ultimate Beginners Guide - Leonardo Gorman.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: and Communications Technologies (6).pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Professional PHP6 - Ed Lecky-Thompson.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: r-packages-1st-edition-hadley-wickham ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: mastering-matplotlib-duncan-m-mcgreggor ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Studies in Computational Intelligence (23).pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Wicked Cool Java Code Bits Open-Source Libraries and Project Ideas Paperback
+    - Brian Eubanks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Tadimety.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Designing and Developing.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Bringing together the digital and physical worlds.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Face Book4You - Edited by Kresimir Delac and Mislav Grgic.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: The art of computer programming I - Donald E. Knuth.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Coastal Research Library.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science
+- name: The Principles of Deep Learning Theory - Daniel A. Roberts.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Lego Mindstorms EV3 Essentials - Abid H. Mujtaba.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: disaster-recovery-using-vmware-abhilash-gb ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: A Quick Start - wall-e.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Learning iPhone Programming.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Knowledge Representation for Health Care HEC 2016 International Joint Workshop
+    KR4HCProHealth 2016 Munich Germany September 2 2016 Revised Selected Papers 1st
+    ed. 2017 Edition.pdf
+  expected_category: 02-INFORMATIQUE/16-Conferences
+  section: 02-INFORMATIQUE
+  subdir: 16-Conferences
+- name: Xcode® 4 Unleashed - Fritz Anderson.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Instant R Starter.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: docker-in-practice-1st-edition-ian-miell ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: MCTS Self-Paced Training Kit Exam 70-652 Configuring Windows Server Virtualization
+    eBook - Nelson Ruest.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Mobile.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Hands-on Exercise 2 Spark MLlib Clustering (2).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Oracle Application Express 4.0 with Ext JS - Mark Lancaster.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: axure-rp-prototyping-cookbook-john-henry-krahenbuhl ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Cryptography - An Introduction - Nigel Paul Smart.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: Initialization Of Neural Network Parameters.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: software-networks-virtualization-guy-pujolle ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Real-Time Rendering Third Edition - Tomas Akenine-Möller.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Developers this book belongs.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Modelling Non-Stationary Economic Time Series - Simon P. Burke.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Artificial Neural Networks New Research - Author Unknown.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: troubleshooting-oracle-performance-christian-antognini ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/07-Bases-de-Donnees
+  section: 02-INFORMATIQUE
+  subdir: 07-Bases-de-Donnees
+- name: B0752WR8J8 EBOK - Unknown.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: office-2016-simplified-1st-edition-elaine-marmel5770 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Maintaining Your Mac A Joe On Tech Guide 1.0 - Joe Kissell.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Studies in Computational Intelligence - 4 8=8AB 0B.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Betsy Bruce.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Azure AI Services at Scale for Cloud Mobile and Edge Building Intelligent
+    Apps with Azure Cognitive Services and Machine - Simon Bisson.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: L'identification biométrique - Ayse Ceyhan.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: adobe-illustrator-cc-classroom-brian-wood ThoseBooks 2.pdf
+  expected_category: 02-INFORMATIQUE/14-Web
+  section: 02-INFORMATIQUE
+  subdir: 14-Web
+- name: CISM COURSES AND LECTURES.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: human-behavior-understanding-5th-hyun-soo-park487 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: set-functions-games-and-capacities-michel-grabisch ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: fluent-python-clear-concise-and-luciano-ramalho ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: generative adversarial networks.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Scala for Machine Learning.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: making-java-groovy-1st-edition-ken-kousen ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Android Recipes - A Problem-Solution Approach for Android 5.0 - Dave Smith.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: twilio-cookbook-second-edition-roger-stringer ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: from-hacking-to-report-writing-robert-svensson ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/10-Securite-Crypto
+  section: 02-INFORMATIQUE
+  subdir: 10-Securite-Crypto
+- name: Building Machine Learning Powered Applications Going From Idea to Product
+    - Emmanuel Ameisen.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Learn_Objective__C_on_the_Mac 13-39-58 - Joseph Crawford.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: DOM Scripting - Jeremy Keith.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Advances in Computer Vision and Pattern Recognition (8).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: ElasticSearch.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Andreas Luszczak.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: If you want to automate your SharePoint 2010 environment.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: OpenCV Computer Vision with.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Portlets in Action - Ashish Sarin.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: C All-in-One Desk Reference for Dummies - Dan Gookin.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Advances in Computer Vision and Pattern Recognition (4).pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Pentaho for Big Data Analytics.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: BOOKS FOR PROFESSIONALS - PROFESSIONALS (2).pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: New Programmer's Survival Manual - Josh Carter.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Learn HTML5 and JavaScript for Android - Gavin Williams.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: JIRA 4 Essentials.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Programming Google App Engine with Python - Dan Sanderson.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Angular 2 Cookbook - Discover Over 70 Recipes that Provide the Solutions You
+    Need to Know to Face Every Challenge in Angular 2 Head on - Matt Frisbie.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Making Embedded Systems.pdf
+  expected_category: 02-INFORMATIQUE/12-IoT-Embarque
+  section: 02-INFORMATIQUE
+  subdir: 12-IoT-Embarque
+- name: Programming Kotlin - Samuel.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Programming Microsoft ASP NET 4 eBook - Dino Esposito.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: The Art of Unix Programming - Eric S. Raymond.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: C++ - C++ and Hacking for Dummies. a Smart Way to Learn C Plus Plus and Beginners
+    Guide to Computer Hacking C++ Programming C++ for Beginners Hacking How to Hack
+    Hacking Exposed....pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Statistical Learning Theory - Vladimir N. Vapnik.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: pro-aspnet-web-api-security-securing-badrinarayanan-lakshmiraghavan ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: ccna-security-210-260-portable-bob-vachon ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Project - Homework Just Added June 16 2015.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Graph-Based Representations in Pattern Recognition - Pasquale Foggia.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Vision-par-Ordinateur
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Vision-par-Ordinateur
+- name: digital-signal-processing-with-maurice-charbit ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Arch log et mat.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Implementing VMware.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: DNA Computing and Molecular Programming - Robert Brijder.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: c-plus-plus-how-to-program-7th-paul-deitel1821 ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: ZongWooGeem.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Inside OUT - Paul Robichaux.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: JavaFX A Beginners Guide - J.F. DiMarzio.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Object Thinking - David. West.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Introduction To 3D Game Programming With Directx 9.0 - Frank Luna.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: distributed-source-coding-theory-shuang-wang ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: blender-compositing-and-post-processing-mythravarun-vepakomma ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Les-bases-du-hacking.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: PostgreSQL Up and Running w it.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: unsupervised-learning-with-r-erik-rodriguez-pacheco ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: professional-sitecore-8-development-phil-wicklund ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Sparrow iOS Game Framework.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: docs slides Lecture17.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Practical Machine Learning.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Computer Communications and Networks (6).pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: c-plus-plus-game-development-cookbook-druhin-mukherjee ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: web-development-with-mongodb-and-mithun-satheesh ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Team Geek - Brian W. Fitzpatrick and Ben Collins-Sussman.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Mathematical Tools.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: deeplearningforpublic-150114193938-conversion-gate01.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Youdens J Statistic.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Visualisation
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Visualisation
+- name: Software Engineering for Game Developers - John P. Flynt.pdf
+  expected_category: 02-INFORMATIQUE/04-Genie-Logiciel
+  section: 02-INFORMATIQUE
+  subdir: 04-Genie-Logiciel
+- name: Monographs in Computer Science.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: Hacking Exposed 7 Network Security Secrets et Solutions Seventh Edition Network
+    Security Secrets and Solutions - Stuart McClure et Joel Scambray et George Kurtz.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: forcecom-development-blueprints-stephen-moss ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Optimizing Windows 7 Pocket Consultant ebook - William R. Stanek.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: STUDFUZZ 290 - Fuzziness and Foundations of Exact and Inexact Sciences - Kofi
+    Kissi Dompere.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: OS X Server 5.0 Essentials - Apple Pro Training Series Using and Supporting
+    OS X Server on El Capitan - Arek Dreyer.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: 3 4 Hands-on Exercise Install Stand-Alone Spark on your computer.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Universite´ Paris 7 Master 2 - 2008 2009 (2).pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: recent-advances-in-computational-stefka-fidanova ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/02-Algorithmes-Structures
+  section: 02-INFORMATIQUE
+  subdir: 02-Algorithmes-Structures
+- name: Logic-Based Artificial Intelligence 2000th Edition.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Node.js 6.x Blueprints - Fernando Monteiro.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Wiley Series in Agent Technology Volume 3 Mobile Agents in Networking and
+    Distributed Computing - Jiannong Author Cao.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: Statistical Computing in C++ and R - Eubank.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: microsoft-excel-2013-complete-steven-m-freund ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: extending-saltstack-joseph-hall ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Hands-On Machine Learning with - Aurelien Geron.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Front-end Architecture.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: GPU Pro3 Advanced Rendering Tech Book4You - Wolfgang Engel.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Drupal.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: programming-concepts-in-c-plus-robert-burns ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Mastering Apache Spark Gain exper book4you.org - Mike Frampton.pdf
+  expected_category: 02-INFORMATIQUE/06-Data-Science/Big-Data
+  section: 02-INFORMATIQUE
+  subdir: 06-Data-Science/Big-Data
+- name: Model Identifiability.pdf
+  expected_category: 02-INFORMATIQUE/05-IA-ML/Machine-Learning
+  section: 02-INFORMATIQUE
+  subdir: 05-IA-ML/Machine-Learning
+- name: Mastering Kali Linux Wireless.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: freebsd-mastery-zfs-michael-w-lucas ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/01-Fondamentaux-CS
+  section: 02-INFORMATIQUE
+  subdir: 01-Fondamentaux-CS
+- name: VoIP Voice and Fax Signal Processing - Sivannarayana.pdf
+  expected_category: 02-INFORMATIQUE/08-Reseaux-Telecom
+  section: 02-INFORMATIQUE
+  subdir: 08-Reseaux-Telecom
+- name: flask-framework-cookbook-shalabh-aggarwal ThoseBooks.pdf
+  expected_category: 02-INFORMATIQUE/03-Langages-Programmation/Autres
+  section: 02-INFORMATIQUE
+  subdir: 03-Langages-Programmation/Autres
+- name: Braess.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: P.S. GHOSHDASTIDAR.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Numerical Computation of Internal and External Flows - Charles Hirsch (3).pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Branko Kovačević · Milan Milosavljević.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Hacking Raspberry Pi Book4You - Timothy L. Warner.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Les capteurs - 62 exercices et problèmes corrigés.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Automatique - Systèmes linéaires non linéaires temps continu temps discret
+    représentation d'état - 2e édition - Granjon.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Beginning-Design-for-3D-Printing-Joe-Micallef ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Thermal Management of Telecommunications Equipment - l. Yeh R. Chu.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Connected Vehicle Systems.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Network Reliability - Sanjay K. Chaturvedi.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Images et Contours actifs - JJR.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Applications of Digital Signal Processing to Audio And Acoustics - Mark Kahrs.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Mireya Fernández-Chimeno.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Communications Engineering Essentials for Computer Scientists and Electrical
+    Engineers - Mao-Ching Author Chiu.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Principles of Heat Transfer - Frank Kreith.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: dunod electronique appliquee aux hautes frequences 2ed.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: atlas book skeleton.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Computational Fluid Dynamics 2010 - Proceedings of the Sixth International
+    Conference on Computational Fluid Dynamics ICCFD6 St Petersburg Russia on July
+    12-16 2010 - Alexander ... (3).pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: observateurs.dvi - Rotella.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Numerical Methods for Time-Resolved Quantum Nanoelectronics - Joseph Weston.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Innovative Solutions in Fluid-Particle Systems and Renewable Energy Management
+    - Katia Tannous.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Making Things See - Greg Borenstein.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: raspberry-pi-projects-1st-edition-andrew-robinson ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: SDL 2017 Model-Driven Engineering for Future Internet 18th International SDL
+    Forum Budapest Hungary October 911 2017 Proceedings.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Development and Application of the Finite Element Method based on MATLAB -
+    Herbert Baaser.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Communications and Control Engineering.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Fundamentals of Thermodynamics - Claus Borgnakke (2).pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Springer Theses.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: L'impression 3d - Mathilde Berchon.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Engineering and Chemical Thermodynamics - Milo D. Koretsky.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: CRC Handbook of Modern Telecommunications Second Edition - Patricia A. Morreale.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Hervé Fanet - Micro et nano-electronique Bases physique composants circuits
+    - Ebook.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Understanding Complex Systems.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Exercices et problemes d-electricite generale.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Wei Zhang.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: An Introduction to Distributed Optical Fibre Sensors - Arthur H. Hartog.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: digital design-third edition-1.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Principes des circuits electriques.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Fuzzy Systems Engineering.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: 3d-printing-third-edition-christopher-barnatt2863 ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Fiber-Optic Fabry-Perot Sensors - An Introduction - Yun-Jiang Rao.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Building a Home Security System with Arduino - Jorge R. Castro.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Front Matter - Frédéric Héliodore.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Signaling in.pdf
+  expected_category: 03-INGENIERIE/TELECOMMUNICATIONS
+  section: 03-INGENIERIE
+  subdir: TELECOMMUNICATIONS
+- name: Time-Frequency Signal Analysis with Applications - Stankovic.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Modeling and Simulation in Science.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: My Numbers My Friends - Popular Lectures on Number Theory - Paulo Ribenboim.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Practical Arduino Engineering book4me.org - Harold Timmis.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: fuzzy-control-estimation-and-fault-magdi-s-mahmoud6861 ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: intelligent-renewable-energy-systems-gerasimos-rigatos ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: advances-in-signal-processing-sabu-m-thampi3919 ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Material Forming Processes.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Formulaire de mecanique Pieces de constructions.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Digital Signal Processing Signals Systems and Filters - Andreas. Antoniou.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: TEChnOlOGY In ACTIOn™ (2).pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: 34993p.dvi - Lajos Hanzo.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: 10 Cool LEGO Mindstorms Dark Side bookos-z1.org - Kevin Clague.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: DIGITAL SIGNAL - owen.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: SPRINGER BRIEFS IN (7).pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: SIMULINK Environment and Target Hardware - H. Mendel.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Ionic and Electrochemical Equilibria - Michel Soustelle.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: BeagleBone Robotic Projects - Second Edition - Dr. Richard Grimmett.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Precis-d-Electricite-L-essentiel-du-cours-exercices-corriges.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Syngress Mario Ferrari Giulio Ferrari Kevin Cl bookos-z1.org.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: David A. Yuen Long Wang Xuebin Chi Lennart Joh Book4You.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: raspberry-pi-hacks-tips-tools-ruth-suehle ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: SpringerSerieson.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Robots en classe - Formation en électronique - JDN.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: applied-multidimensional-systems-nirmal-k-bose373 ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Traite Electronique V1 S 01 A I ocr.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Dispersed Air Flotation Theory.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Raspberry Pi 3 2016 Raspberry Pi 3 User Guide Raspberry Pi Raspberry Pi 2
+    Raspberry Pi Programming Raspberry Pi Projects - Ted Lebowski.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: Le son multicanal.pdf
+  expected_category: 03-INGENIERIE/TRAITEMENT-SIGNAL
+  section: 03-INGENIERIE
+  subdir: TRAITEMENT-SIGNAL
+- name: Minimally Processed Refrigerated Fruits and Vegetables - Fatih Yildiz.pdf
+  expected_category: 03-INGENIERIE
+  section: 03-INGENIERIE
+  subdir: 03-INGENIERIE
+- name: Advances in Intelligent Systems and Computing (58).pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: iPAQ For Dummies 1st Edition.pdf
+  expected_category: 03-INGENIERIE/ELECTRONIQUE
+  section: 03-INGENIERIE
+  subdir: ELECTRONIQUE
+- name: algorithm-engineering-selected-lasse-kliemann ThoseBooks.pdf
+  expected_category: 03-INGENIERIE/ROBOTIQUE
+  section: 03-INGENIERIE
+  subdir: ROBOTIQUE
+- name: Cyber Crime Investigations Bridging the Gaps Between Security Professionals
+    Law Enforcement and Prosecutors - Patricia Lupien.pdf
+  expected_category: 04-SHS/DROIT
+  section: 04-SHS
+  subdir: DROIT
+- name: Adán Nieto Martín.pdf
+  expected_category: 04-SHS/DROIT
+  section: 04-SHS
+  subdir: DROIT
+- name: Cybersecurity Law.pdf
+  expected_category: 04-SHS/DROIT
+  section: 04-SHS
+  subdir: DROIT
+- name: Li Gan · Zhichao Yin.pdf
+  expected_category: 04-SHS/ECONOMIE
+  section: 04-SHS
+  subdir: ECONOMIE
+- name: Chap 6 - La fct cout.pdf
+  expected_category: 04-SHS/ECONOMIE
+  section: 04-SHS
+  subdir: ECONOMIE
+- name: web-and-internet-economics-12th-yang-cai ThoseBooks.pdf
+  expected_category: 04-SHS/ECONOMIE
+  section: 04-SHS
+  subdir: ECONOMIE
+- name: Gamification with Moodle - Natalie Denmeade.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: Optimizing the Process of Teaching English for Medical Purposes with the Use
+    of Mobile Applications A Memrise-based Case Study - Maria Chojnacka.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: E-Learning E-Education and Online Training - First International Conference
+    eLEOT 2014 Bethesda MD USA September 18-20 2014 Revised Selected Papers - Giovanni
+    Vincenti.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: University of Pittsburgh Press (12).pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: Hammu-rabi de Babylone 2003 - Dominique Charpin.pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: In Search of William Gascoigne - Seventeenth Century Astronomer - David Sellers.pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: LNCS 8003 - Language Culture Computation - Nachum Dershowitz and Ephraim Nissan
+    eds.pdf
+  expected_category: 04-SHS/LINGUISTIQUE
+  section: 04-SHS
+  subdir: LINGUISTIQUE
+- name: Minghui Dong.pdf
+  expected_category: 04-SHS/LINGUISTIQUE
+  section: 04-SHS
+  subdir: LINGUISTIQUE
+- name: Ruslan Mitkov Ed.pdf
+  expected_category: 04-SHS/LINGUISTIQUE
+  section: 04-SHS
+  subdir: LINGUISTIQUE
+- name: Handbook of Epistemic Logic.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: L espace physique entre mathématiques et philosophie - EDP Sciences.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Is Future Given - Ilya Prigogine.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Deep Learning How the Mind Over Book4You - Stellan Ohlsson.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: e-mail-and-behavioral-changes-fernando-lagrana ThoseBooks.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: Cognitive Unconscious and Human Rationality - Laura Macchi.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: Making Democracy Fun How Game Design Can Empower Citizens and Transform Politics
+    - Josh Author Lerner.pdf
+  expected_category: 04-SHS/SCIENCES-POLITIQUES
+  section: 04-SHS
+  subdir: SCIENCES-POLITIQUES
+- name: Routledge Companion to Intelligence Studies - Dover.pdf
+  expected_category: 04-SHS/SCIENCES-POLITIQUES
+  section: 04-SHS
+  subdir: SCIENCES-POLITIQUES
+- name: Socio Demographic Factors and Citizens Perception of E Government.pdf
+  expected_category: 04-SHS/SCIENCES-POLITIQUES
+  section: 04-SHS
+  subdir: SCIENCES-POLITIQUES
+- name: Evil Media - Matthew Fuller.pdf
+  expected_category: 04-SHS/SOCIOLOGIE
+  section: 04-SHS
+  subdir: SOCIOLOGIE
+- name: The Good Research Guide.pdf
+  expected_category: 04-SHS/SOCIOLOGIE
+  section: 04-SHS
+  subdir: SOCIOLOGIE
+- name: simulating-prehistoric-and-ancient-juan-a-barcelo ThoseBooks.pdf
+  expected_category: 04-SHS/SOCIOLOGIE
+  section: 04-SHS
+  subdir: SOCIOLOGIE
+- name: CommentDevenirUnMaleDominant.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: Formal Languages in Logic - A Philosophical and Cognitive Analysis - Catarina
+    Dutilh Novaes.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Logique moderne Fascicule II Logique des propositions et des prédicats tables
+    de vérité et axiomatisation - Jean-Blaise Grize.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Applications of Differential Geometry to Econometrics - Paul Marriott.pdf
+  expected_category: 04-SHS/ECONOMIE
+  section: 04-SHS
+  subdir: ECONOMIE
+- name: Studies in Applied Philosophy.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Web and Internet.pdf
+  expected_category: 04-SHS/ECONOMIE
+  section: 04-SHS
+  subdir: ECONOMIE
+- name: Thing Knowledge - A Philosophy of Scientific Instruments - Davis Baird.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Meta-communication for Reflective Online Conversations - Yuzer.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: Shadows Of The Mind A Search For The Missing Science Of Consciousness - Roger
+    Penrose.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: what-goes-up-gravity-and-scientific-peter-kosso9740 ThoseBooks.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: L'INFLUENCE DES COMMUNAUTÉS DANS L'HISTOIRE DE LA PENSÉE DE L'ESPAGNE MUSULMANE.pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: theory-of-knowledge-structures-mark-burgin ThoseBooks.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: L'Islam au siècle des Lumières.pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: The Hand an Organ of the Mind - What the Manual Tells the Mental - Zdravko
+    Radman.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: University of Pittsburgh Press (5).pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: Elections Voting Rules and Paradoxical Outcomes - William V. Gehrlein.pdf
+  expected_category: 04-SHS/ECONOMIE
+  section: 04-SHS
+  subdir: ECONOMIE
+- name: Cognitive Systems Monographs (2).pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: Public Libraries and the Internet - John Carlo Bertot.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: La logique de la science - Peirce Charles Sanders.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Universal Logic - Ross Brady.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Science History - A Traveler's Guide - Mary Virginia Orna.pdf
+  expected_category: 04-SHS/HISTOIRE
+  section: 04-SHS
+  subdir: HISTOIRE
+- name: Hidden Dimensions in the Professional Development of Mathematics Teachers
+    - Bettina Roesken.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: ENCYCLOPEDIA OF.pdf
+  expected_category: 04-SHS/DROIT
+  section: 04-SHS
+  subdir: DROIT
+- name: Methaphysics of Healing - Avicenna Ibn Sina.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Advances in Intelligent Systems and Computing (9).pdf
+  expected_category: 04-SHS/SOCIOLOGIE
+  section: 04-SHS
+  subdir: SOCIOLOGIE
+- name: Nature as Event - The Lure of the Possible - Didier Debaise.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Handbook of Deontic Logic and Normative Systems.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: designing-for-behavior-change-stephen-wendel ThoseBooks.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: Mathematics and Visualization.pdf
+  expected_category: 04-SHS/PSYCHOLOGIE
+  section: 04-SHS
+  subdir: PSYCHOLOGIE
+- name: Le goût du vrai - Etienne Klein.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: moodle-course-design-best-practices-susan-smith-nash ThoseBooks.pdf
+  expected_category: 04-SHS/EDUCATION
+  section: 04-SHS
+  subdir: EDUCATION
+- name: Essays in the Philosophy of Chemistry - Eric R. Scerri.pdf
+  expected_category: 04-SHS/PHILOSOPHIE
+  section: 04-SHS
+  subdir: PHILOSOPHIE
+- name: Deckard Cain - Diablo III Book of Cain - 2011.pdf
+  expected_category: 05-RELIGIONS
+  section: 05-RELIGIONS
+  subdir: 05-RELIGIONS
+- name: البربر الذاكرة و الهوية Les Berbères Mémoire et identité - Gabriel Camps.pdf
+  expected_category: 05-RELIGIONS
+  section: 05-RELIGIONS
+  subdir: 05-RELIGIONS
+- name: LyX Configuration Manual - LyX Team.pdf
+  expected_category: 05-RELIGIONS
+  section: 05-RELIGIONS
+  subdir: 05-RELIGIONS
+- name: Les Dieux Vikings. Les plus belles pages de l'Edda de Snorri Sturluson.pdf
+  expected_category: 05-RELIGIONS/AUTRES-RELIGIONS
+  section: 05-RELIGIONS
+  subdir: AUTRES-RELIGIONS
+- name: Le-Miracle-Linguistique.pdf
+  expected_category: 05-RELIGIONS/AUTRES-RELIGIONS
+  section: 05-RELIGIONS
+  subdir: AUTRES-RELIGIONS
+- name: ITA-TexSpi-NS15.pdf
+  expected_category: 05-RELIGIONS/AUTRES-RELIGIONS
+  section: 05-RELIGIONS
+  subdir: AUTRES-RELIGIONS
+- name: Human-Computer Interaction Series (2).pdf
+  expected_category: 05-RELIGIONS/CHRISTIANISME
+  section: 05-RELIGIONS
+  subdir: CHRISTIANISME
+- name: Human-Computer Interaction Series (10).pdf
+  expected_category: 05-RELIGIONS/CHRISTIANISME
+  section: 05-RELIGIONS
+  subdir: CHRISTIANISME
+- name: Comment Jésus est devenu Dieu.pdf
+  expected_category: 05-RELIGIONS/CHRISTIANISME
+  section: 05-RELIGIONS
+  subdir: CHRISTIANISME
+- name: La notion dadab chez Ibn Qutayba Etude générique et éclairage comparatiste
+    - Amel Guellati.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Le mérite de la science des Anciens - Ibn Rajeb al-Hambali.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: LA PENSÉE RELIGIEUSE DES MOZARABES FACE À L'ISLAM.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Time Astronomy and Calendars in the Jewish Tradition - Stern.pdf
+  expected_category: 05-RELIGIONS/JUDAISME
+  section: 05-RELIGIONS
+  subdir: JUDAISME
+- name: Les Grands Courants de la mystique juive - Gershom Scholem.pdf
+  expected_category: 05-RELIGIONS/JUDAISME
+  section: 05-RELIGIONS
+  subdir: JUDAISME
+- name: THE MYSTICAL QABALAH - Parush.pdf
+  expected_category: 05-RELIGIONS/JUDAISME
+  section: 05-RELIGIONS
+  subdir: JUDAISME
+- name: Islams Quantum Question Reconciling Muslim Tradition and Modern Science -
+    Nidhal Guessoum.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Comprendre l'islam - Frithjof Schuon.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: DieuBibleEtoiles - MauroBiglino.pdf
+  expected_category: 05-RELIGIONS/CHRISTIANISME
+  section: 05-RELIGIONS
+  subdir: CHRISTIANISME
+- name: Les-Merveilles-du-Quran-tome-1.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Al-Munqid Min Addalâl - ERREUR ET DÉLIVRANCE - Al-Ghazâli.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: HALAL DEVELOPMENT TRENDS OPPORTUNITIES AND CHALLENGES - Heri Pratikto & Ahmad
+    Taufiq.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Le coran la Bible et l'Orient anci - Mondher Sfar.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: L'islam politique et croyance - Maxime Rodinson.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: La Profession de Foi Al Aquidah Al Wassitiyah De Ahmad Ibn Taymiyah - Ahmad
+    Ibn Taymiyah.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: FarhatOthman - TabousIslam03.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: cyber-physical-systems-design-christian-berger ThoseBooks.pdf
+  expected_category: 05-RELIGIONS/CHRISTIANISME
+  section: 05-RELIGIONS
+  subdir: CHRISTIANISME
+- name: Le coran la Bible et lOrient ancien - Mondher Sfar.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: La transmission ecrite du Coran - Francois Deroche.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Dieu Allah moi et les autres - Salim Bachi.pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Maisonneuve & Larose (2).pdf
+  expected_category: 05-RELIGIONS/ISLAM
+  section: 05-RELIGIONS
+  subdir: ISLAM
+- name: Compendium of Terminology and Nomenclature of Properties in.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Éditions du Toucan - éditeur indépendant.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Tests génétiques.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Series ISSN 2162-7258.pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: Implementation of E Health Project in Slovenia An International Perspective
+    Key Challenges and Ways Forward.pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: information-and-communication-markus-helfert ThoseBooks.pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: VISUAL TRACKING IN.pdf
+  expected_category: 06-MEDECINE/Chirurgie
+  section: 06-MEDECINE
+  subdir: Chirurgie
+- name: Dental Applications of Surface and Colloid Science.pdf
+  expected_category: 06-MEDECINE/Chirurgie
+  section: 06-MEDECINE
+  subdir: Chirurgie
+- name: Membranes for Hemodialysis.pdf
+  expected_category: 06-MEDECINE/Chirurgie
+  section: 06-MEDECINE
+  subdir: Chirurgie
+- name: Drug Delivery Polyelectrolyte Multilayers.pdf
+  expected_category: 06-MEDECINE/Pharmacologie
+  section: 06-MEDECINE
+  subdir: Pharmacologie
+- name: Drug Delivery Interfacial Aspects.pdf
+  expected_category: 06-MEDECINE/Pharmacologie
+  section: 06-MEDECINE
+  subdir: Pharmacologie
+- name: Enabling Precision Medicine - The Role of Genetics in Clinical Drug Development
+    Proceedings of a Workshop - National Academies of Sciences.pdf
+  expected_category: 06-MEDECINE/Pharmacologie
+  section: 06-MEDECINE
+  subdir: Pharmacologie
+- name: Epidémies vrais dangers et fausses alertes - Didier Raoult.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Micellar Drugs.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: José Manuel Ferrández Vicente (2).pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: Applied Demography and Public Health in the 21st Century - M. Nazrul Hoque.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Advanced Wireless Networks - Savo Glisic.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: The Digital Patient - C. D. Combs.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Health United States 2016 with Chartbook on Long-Term Trends in Health - National
+    Center for Health Statistics.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Acceptance of E Health - Healthcare Professionals in Developing Countries
+    Case of Morocco.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Informatique m dicale e Sant.pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: Nanoparticles Magnetic Resonance Imaging Contrast Agents.pdf
+  expected_category: 06-MEDECINE/Pharmacologie
+  section: 06-MEDECINE
+  subdir: Pharmacologie
+- name: ehealth-360-international-summit-kostas-giokas ThoseBooks.pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: Le livre noir des allergies Pollens aliments cosmétiques.pdf
+  expected_category: 06-MEDECINE/Pharmacologie
+  section: 06-MEDECINE
+  subdir: Pharmacologie
+- name: HUMANCOMPUTER INTERACTION.pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: Mathematics and Visualization (2).pdf
+  expected_category: 06-MEDECINE/Anatomie
+  section: 06-MEDECINE
+  subdir: Anatomie
+- name: "Health Industrialization - \x104 8=8AB 0B.pdf"
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: Drug Delivery Intravenous Protein Adsorption.pdf
+  expected_category: 06-MEDECINE/Pharmacologie
+  section: 06-MEDECINE
+  subdir: Pharmacologie
+- name: Pour en finir avec Pasteur - Eric Ancelet.pdf
+  expected_category: 06-MEDECINE
+  section: 06-MEDECINE
+  subdir: 06-MEDECINE
+- name: user-centered-computer-aided-language-panayiotis-zaphiris ThoseBooks.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: The Oxford Book of Modern Science Writing - Richard Dawkins.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: Writing for Interaction - Newman Lior.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: basic-english-grammar-for-english-anne-seaton8703 ThoseBooks.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: Basic English Grammar Book 2 - Howard Sargeant.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: Academic Podcasting and Mobile Assisted - Luis Fernando Sánchez Durán.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: Minimum competence in scientific English - Sue Blattes.pdf
+  expected_category: 07-LANGUES/ANGLAIS
+  section: 07-LANGUES
+  subdir: ANGLAIS
+- name: Quantifying and Understanding Plant Nitrogen Uptake for Systems Modeling -
+    Liwang Ma.pdf
+  expected_category: 08-LOISIRS
+  section: 08-LOISIRS
+  subdir: 08-LOISIRS
+- name: Amitava Rakshit · Harikesh Bahadur Singh.pdf
+  expected_category: 08-LOISIRS
+  section: 08-LOISIRS
+  subdir: 08-LOISIRS
+- name: Toyoki Kozai · Kazuhiro Fujiwara.pdf
+  expected_category: 08-LOISIRS
+  section: 08-LOISIRS
+  subdir: 08-LOISIRS
+- name: Painter X Cerativity.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Learn How To Draw.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Artificial General Intelligence - Tom Everitt.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Bicarbonate Un concentré d astuces pour votre santé votre beauté et votre
+    maison Ed.pdf
+  expected_category: 08-LOISIRS/CUISINE
+  section: 08-LOISIRS
+  subdir: CUISINE
+- name: Cooking Cosmos - Unraveling the Mysteries of the Universe - Asis Kumar Chaudhuri.pdf
+  expected_category: 08-LOISIRS/CUISINE
+  section: 08-LOISIRS
+  subdir: CUISINE
+- name: Laits animaux et végétaux Un concentré de bienfaits pour votre santé votre
+    beauté et votre maison Ed.pdf
+  expected_category: 08-LOISIRS/CUISINE
+  section: 08-LOISIRS
+  subdir: CUISINE
+- name: Computational Fluid Dynamics 2010 - Proceedings of the Sixth International
+    Conference on Computational Fluid Dynamics ICCFD6 St Petersburg Russia on July
+    12-16 2010 - Alexander ... (11).pdf
+  expected_category: 08-LOISIRS/DESSIN/Techniques-Materiaux
+  section: 08-LOISIRS
+  subdir: DESSIN/Techniques-Materiaux
+- name: Zoo Publishing Ltd - Elements - Digital Painting Tutorial Series - Volume
+    1 2007.pdf
+  expected_category: 08-LOISIRS/DESSIN/Techniques-Materiaux
+  section: 08-LOISIRS
+  subdir: DESSIN/Techniques-Materiaux
+- name: Zoo Publishing Ltd - Elements - Digital Painting Tutorial Series - Volume
+    1 2007 (2).pdf
+  expected_category: 08-LOISIRS/DESSIN/Techniques-Materiaux
+  section: 08-LOISIRS
+  subdir: DESSIN/Techniques-Materiaux
+- name: S entraîner aux échecs 100 tests pour gagner Ed.pdf
+  expected_category: 08-LOISIRS/ECHECS
+  section: 08-LOISIRS
+  subdir: ECHECS
+- name: Yasser Seirawan - Tactiques gagnantes aux echecs.pdf
+  expected_category: 08-LOISIRS/ECHECS
+  section: 08-LOISIRS
+  subdir: ECHECS
+- name: La Strategie Moderne aux echecs T2.pdf
+  expected_category: 08-LOISIRS/ECHECS
+  section: 08-LOISIRS
+  subdir: ECHECS
+- name: Jeux de culture générale Ed.pdf
+  expected_category: 08-LOISIRS/JEUX-VIDEO
+  section: 08-LOISIRS
+  subdir: JEUX-VIDEO
+- name: Final Fantasy The 4 Heroes of Light Official Strategy Guide.pdf
+  expected_category: 08-LOISIRS/JEUX-VIDEO
+  section: 08-LOISIRS
+  subdir: JEUX-VIDEO
+- name: Final Fantasy III Bradygames Official Strategy Guide.pdf
+  expected_category: 08-LOISIRS/JEUX-VIDEO
+  section: 08-LOISIRS
+  subdir: JEUX-VIDEO
+- name: Cœur de cristal.pdf
+  expected_category: 08-LOISIRS/LITTERATURE
+  section: 08-LOISIRS
+  subdir: LITTERATURE
+- name: Noir Urbanisms - Dystopic Images of the Modern City - Gyan Prakash.pdf
+  expected_category: 08-LOISIRS/LITTERATURE
+  section: 08-LOISIRS
+  subdir: LITTERATURE
+- name: Nicolas Allard Lunivers impitoyable de game of Thrones.pdf
+  expected_category: 08-LOISIRS/LITTERATURE
+  section: 08-LOISIRS
+  subdir: LITTERATURE
+- name: Instant MuseScore.pdf
+  expected_category: 08-LOISIRS/MUSIQUE
+  section: 08-LOISIRS
+  subdir: MUSIQUE
+- name: Mathematics and Computation in Music - Octavio A. Agustín-Aquino.pdf
+  expected_category: 08-LOISIRS/MUSIQUE
+  section: 08-LOISIRS
+  subdir: MUSIQUE
+- name: J Petit Manuel Harmonie Vol 2.pdf
+  expected_category: 08-LOISIRS/MUSIQUE
+  section: 08-LOISIRS
+  subdir: MUSIQUE
+- name: Photografier Astres.pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: Partenaire du numéro (12).pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: photographie au reflex numerique pour les nuls.pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: The Science of the Perfect Swing - Peter Dewhurst.pdf
+  expected_category: 08-LOISIRS/SPORT-FITNESS
+  section: 08-LOISIRS
+  subdir: SPORT-FITNESS
+- name: Advances in Intelligent Systems and Computing.pdf
+  expected_category: 08-LOISIRS/SPORT-FITNESS
+  section: 08-LOISIRS
+  subdir: SPORT-FITNESS
+- name: Le Fana de L'Aviation 2009-02 471.pdf
+  expected_category: 08-LOISIRS/SPORT-FITNESS
+  section: 08-LOISIRS
+  subdir: SPORT-FITNESS
+- name: Wendon Blake - Portrait Drawing.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Figure drawing basics.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: The Complete Guide to Digital Painting Vol. N 2.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: 50 Robots to Draw and Paint Create Fantastic Robot Characters for Comic Books
+    Computer Games and Graphic Novels (2).pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: RELATED.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Game Art Complete All-in-One Learn Maya 3ds Max ZBrush and Photoshop Winning
+    Techniques All in One - Andrew Gahan.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Anatomy for Fantasy Artists An Illustrators Guide to Creating Action Figures
+    and Fantastical Forms.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Giovanni Civardi - Drawing Portraits Faces And Figures.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Web Application Architecture Principles Protocols and Practices - Leon Shklar.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Draw Hoses with Sam Savitt.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Poser et entretenir Parquets et Sols stratifies.pdf
+  expected_category: 08-LOISIRS
+  section: 08-LOISIRS
+  subdir: 08-LOISIRS
+- name: Greg Parker.pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: initiation photo.pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: Photo de paysage chap08.pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: On Drawing Trees and Nature - A Classic Victorian Manual - J. D. Harding.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Building beautiful boxes with your band saw - Lois Keener Ventura.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: 8 1 paper-types-and-terms (2).pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: 6. 5 Things You Must Avoid (2).pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: how to create.pdf
+  expected_category: 08-LOISIRS/ART
+  section: 08-LOISIRS
+  subdir: ART
+- name: Partenaire du numéro (7).pdf
+  expected_category: 08-LOISIRS/PHOTOGRAPHIE
+  section: 08-LOISIRS
+  subdir: PHOTOGRAPHIE
+- name: BOOKS FOR PROFESSIONALS - PROFESSIONALS® (15).pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: Computerized Accounting with Quickbooks 2014.pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: Novel Methods in Computational Finance - Matthias Ehrhardt.pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: citrixr-xenmobiletm-mobile-device-akash-phoenix ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Mohammad S. Obaidat (2).pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Social Networks and Information Dissemination for Disaster Risk Management.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Social Media.pdf
+  expected_category: 09-BUSINESS/MARKETING
+  section: 09-BUSINESS
+  subdir: MARKETING
+- name: Xueqi Cheng · Weiying Ma.pdf
+  expected_category: 09-BUSINESS/MARKETING
+  section: 09-BUSINESS
+  subdir: MARKETING
+- name: e-commerce-and-web-technologies-heiner-stuckenschmidt ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MARKETING
+  section: 09-BUSINESS
+  subdir: MARKETING
+- name: LNBIP 169 - Exploring Services Science - Mehdi Snene and Michel Leonard eds.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: microsoft-dynamics-crm-2013-marketing-alok-singh ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MARKETING
+  section: 09-BUSINESS
+  subdir: MARKETING
+- name: Theodor Borangiu.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Quicken 2010 For Dummies - Stephen L. Nelson.pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: using-microsoft-excel-and-access-glenn-owen ThoseBooks.pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: IBM DB2 11 for z OS Technical Overview - IBM.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Microsoft SQL Server.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Managing DB2 for z OS Utilities with DB2 Tools Solution Packs - IBM.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: quality-in-business-process-modeling-john-krogstie ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Quantitative Techniques in.pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: Quantitative Methods for Business Decisions - Jon Curwin.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: learning-airwatch-mark-dunkerley ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Steven Mann - Steven Mann Chuck Rivel Ray Barley Jim Pletscher Aneel Ismaily.pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: digital-asset-management-content-elizabeth-keathley ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: Finance computationnelle (2).pdf
+  expected_category: 09-BUSINESS/FINANCE
+  section: 09-BUSINESS
+  subdir: FINANCE
+- name: Management.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: RMAN Recipes for Oracle Database 12c - Darl Kuhn.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: activiti-5x-business-process-management-dr-zakir-laliwala ThoseBooks.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: IBM Rational ClearCase 7 0.pdf
+  expected_category: 09-BUSINESS/MANAGEMENT
+  section: 09-BUSINESS
+  subdir: MANAGEMENT
+- name: E Commerce.pdf
+  expected_category: 09-BUSINESS/MARKETING
+  section: 09-BUSINESS
+  subdir: MARKETING
+- name: ALGEBRE GEOMETRIQUE.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Wireless Multimedia.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 338491 Print.indd - 0009172.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Support MoocOSE9.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: dunod cybersecurite.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Function.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: jpt4_286164855.ps - lts-asurapdf.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Grabcut.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Beginning Game.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 333410 Print.indd - 0009172.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Theorie-des-Cordes.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-EA-INT-JMF-01.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Pencil Sketching.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Learning Flex.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Beginning Ubuntu.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: AdaBoost.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Graph Theory.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 428328 Print.indd - 0002624.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: E TEX MQ-livre Apres-publi-anglaise Francais-chapitres-separes mq-francais-2-ed.dvi.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Naofumi Homma.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Envoi+1+M1+2013.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Building Impressive.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Ivica Crnkovic.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Introducing (4).pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Mechanics and.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Nanocrystal Powders.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Fernando Koch.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Magdalena Ortiz.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Hadley Wickham.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: cest mathelogique.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Max Norm.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-EA-MAT-JMF-03.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: ModelisationSolides.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Sauveur Boukris.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 01 041741 ffirs.qxp 2 2 08 12 09 AM Page iii.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: hw6 assignment2.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Foams Conductivity.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-EA-GRO-JMF-10.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-CO-VAR-JMF-PC.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 01 786856 ffirs.qxp 11 17 06 11 09 PM Page i.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Silvio Ranise.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-EA-LIM-JMF-02.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 323363 Print.indd - 0002624.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: NimbusSanL-Bold.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: L'Intelligence.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Katsumi Inoue.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Bitcoin Essentials.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: THERMODYNAMICS.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: AIC.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-EA-COM-JMF-02.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: S382 Eratta.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: MATHEMATICAL MODELS.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Informatik aktuell.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: penetration.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: NLP2010a.pptx.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: SQL.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: fibration-virtuelle.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: ch arithmetique.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: INEQUALITIES.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Hyperplane.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Making (2).pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Mainboard-v18.sch.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Professional.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Verzani-SimpleR.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Windows Server.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-EA-POL-JMF-01.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: CLUSTERING.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: 428968 Print.indd - 0009172.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Tree-based Methods.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Physically.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: CEDtout.dvi.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: C911X_C000.fm Page i Wednesday April 11 2007 10 52 AM.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: M-PT-POL-JMF-05.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Support MoocOSE19.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test
+- name: Groupes-Finis.pdf
+  expected_category: _UNKNOWN
+  section: _MESSY
+  subdir: rename_test

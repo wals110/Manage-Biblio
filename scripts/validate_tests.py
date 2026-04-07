@@ -16,8 +16,8 @@ except ImportError:
 
 # ── Paths ──────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
-TESTS_YAML = SCRIPT_DIR / "tests.yaml"
-PROJECT_ROOT = SCRIPT_DIR.parent.parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+TESTS_YAML = PROJECT_ROOT / "tests" / "functional" / "tests.yaml"
 
 # ── Colors ─────────────────────────────────────────────────
 CO = sys.stdout.isatty()

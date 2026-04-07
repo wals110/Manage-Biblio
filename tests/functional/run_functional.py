@@ -36,18 +36,18 @@ def ylw(t): return _c("33", t)
 def cyn(t): return _c("36", t)
 def bld(t): return _c("1", t)
 def dim(t): return _c("2", t)
-def sfmt(s): return {"pass": grn("✓ PASS"), "fail": red("✗ FAIL"), "skip": ylw("\u2298 SKIP")}.get(s, s)
-def hline(): print(f"  {chr(9472) * W}")
-def dline(): print(f"  {chr(9552) * W}")
+def sfmt(s): return {"pass": grn("✓ PASS"), "fail": red("✗ FAIL"), "skip": ylw("⊘ SKIP")}.get(s, s)
+def hline(): print(f"  {'─' * W}")
+def dline(): print(f"  {'═' * W}")
 def banner(text): dline(); print(f"  {bld(text)}"); dline()
 def dotfill(left, right, width=54):
     raw = re.sub(r'\033\[[0-9;]*m', '', left)
     dots = max(2, width - len(raw))
-    return f"{left} {chr(183) * dots} {right}"
+    return f"{left} {'·' * dots} {right}"
 
 # ── Variables ──────────────────────────────────────────────────────────────
 
-def resolve_vars(variables, overrides):
+def resolve_vars(variables: dict, overrides: dict) -> dict:
     r = dict(variables); r.update(overrides)
     for _ in range(10):
         changed = False
@@ -60,11 +60,11 @@ def resolve_vars(variables, overrides):
         if bad: raise ValueError(f"Unresolved in {k}: {', '.join(bad)}")
     return r
 
-def sub(text, v):
+def sub(text: str, v: dict) -> str:
     if not isinstance(text, str): return text
     return re.sub(r"\$\{(\w+)\}", lambda m: v.get(m.group(1), m.group(0)), text)
 
-def sub_deep(obj, v):
+def sub_deep(obj, v: dict):
     if isinstance(obj, str): return sub(obj, v)
     if isinstance(obj, list): return [sub_deep(i, v) for i in obj]
     if isinstance(obj, dict): return {k: sub_deep(val, v) for k, val in obj.items()}
@@ -72,19 +72,21 @@ def sub_deep(obj, v):
 
 # ── Dependencies ───────────────────────────────────────────────────────────
 
-def resolve_deps(phases):
-    prov_map, req_map = {}, {}
+def resolve_deps(phases: list) -> tuple[dict, dict]:
+    prov_map: dict[str, str] = {}
+    req_map: dict[str, list[str]] = {}
     for ph in phases:
         for s in ph.get("series", []):
             sid = s["id"]
             for cap in s.get("provides", []): prov_map[cap] = sid
             req_map[sid] = s.get("requires", [])
-    graph = defaultdict(set)
+    graph: dict[str, set[str]] = defaultdict(set)
     for sid, reqs in req_map.items():
         for r in reqs:
             if r in prov_map: graph[sid].add(prov_map[r])
-    visited, in_stack = set(), set()
-    def dfs(node):
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    def dfs(node: str) -> str | None:
         if node in in_stack: return node
         if node in visited: return None
         visited.add(node); in_stack.add(node)
@@ -99,7 +101,7 @@ def resolve_deps(phases):
 
 # ── Execution ──────────────────────────────────────────────────────────────
 
-def run_cmd(cmd, timeout=TO):
+def run_cmd(cmd: str, timeout: int = TO) -> tuple[int, str, str, float]:
     t0 = time.monotonic()
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=PR)
@@ -107,12 +109,12 @@ def run_cmd(cmd, timeout=TO):
     except subprocess.TimeoutExpired:
         return -1, "", f"TIMEOUT after {timeout}s", (time.monotonic() - t0) * 1000
 
-def run_cmds(cmds, label):
+def run_cmds(cmds: list[str], label: str) -> bool:
     for cmd in cmds:
         print(f"  {dim('$')} {dim(cmd)}")
         code, _, stderr, _ = run_cmd(cmd)
         if code != 0:
-            print(f"  {red(chr(10007))} {label}: exit {code}")
+            print(f"  {red('✗')} {label}: exit {code}")
             if stderr.strip():
                 for line in stderr.strip().split("\n")[:3]:
                     print(f"    {dim(line)}")
@@ -121,7 +123,8 @@ def run_cmds(cmds, label):
 
 # ── Assertions ─────────────────────────────────────────────────────────────
 
-def evaluate(assertion, exit_code, stdout, stderr, duration_ms, interactive):
+def evaluate(assertion: dict, exit_code: int, stdout: str, stderr: str,
+             duration_ms: float, interactive: bool) -> tuple[str, str]:
     atype = assertion.get("type", "exit_code")
 
     if atype == "output_equals":
@@ -153,14 +156,15 @@ def evaluate(assertion, exit_code, stdout, stderr, duration_ms, interactive):
         try:
             with open(fp) as fh: count = sum(1 for _ in fh)
         except FileNotFoundError: return "fail", f"File not found: {fp}"
-        ops = {">": count > value, "<": count < value, ">=": count >= value, "<=": count <= value, "==": count == value}
+        ops = {">": count > value, "<": count < value, ">=": count >= value,
+               "<=": count <= value, "==": count == value}
         return ("pass", f"{count} {op} {value}") if ops.get(op) else ("fail", f"{count} not {op} {value}")
 
     if atype == "manual_check":
         if not interactive: return "skip", "Manual (auto mode)"
-        print(f"\n  {chr(9474)}  {cyn('Manual:')} {assertion.get('prompt', '?')}")
+        print(f"\n  │  {cyn('Manual:')} {assertion.get('prompt', '?')}")
         while True:
-            ans = input(f"  {chr(9474)}  [{grn('P')}]ass / [{red('F')}]ail / [{ylw('S')}]kip ? ").strip().lower()
+            ans = input(f"  │  [{grn('P')}]ass / [{red('F')}]ail / [{ylw('S')}]kip ? ").strip().lower()
             if ans in ("p", ""): return "pass", "User confirmed"
             if ans == "f": return "fail", "User rejected"
             if ans == "s": return "skip", "User skipped"
@@ -173,11 +177,11 @@ def evaluate(assertion, exit_code, stdout, stderr, duration_ms, interactive):
 
 # ── Reports ────────────────────────────────────────────────────────────────
 
-def write_json(report, path):
+def write_json(report: dict, path: str):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
 
-def write_md(report, path):
+def write_md(report: dict, path: str):
     s = report["summary"]; dur = report["duration_seconds"]; m, sc = divmod(int(dur), 60)
     lines = [
         f"# Rapport de tests fonctionnels — {report['project']}",
@@ -185,7 +189,7 @@ def write_md(report, path):
         "## Resume", "| Total | Pass | Fail | Skip |", "|-------|------|------|------|",
         f"| {s['total']} | {s['pass']} | {s['fail']} | {s['skip']} |", "",
     ]
-    failures = []
+    failures: list[dict] = []
     for ph in report["phases"]:
         lines.append(f"## {ph['name']}")
         for sr in ph["series"]:
@@ -236,7 +240,7 @@ def main():
             print(f"{red('ERROR')}: No previous report found in {RD}"); sys.exit(1)
         with open(reports[0], encoding="utf-8") as f:
             prev = json.load(f)
-        rerun_ids = []
+        rerun_ids: list[str] = []
         for ph in prev.get("phases", []):
             for sr in ph.get("series", []):
                 if sr.get("status") in ("fail", "skip"):
@@ -249,7 +253,7 @@ def main():
         args.series = rerun_ids
 
     # Variables
-    overrides = {}
+    overrides: dict[str, str] = {}
     for v in args.var:
         if "=" not in v: print(f"{red('ERROR')}: Bad --var: {v}"); sys.exit(1)
         k, val = v.split("=", 1); overrides[k] = val
@@ -258,6 +262,7 @@ def main():
 
     phases = sub_deep(data.get("phases", []), variables)
     session = sub_deep(data.get("session", {}), variables)
+    custom = sub_deep(data.get("custom", []) or [], variables)
     try: req_map, prov_map = resolve_deps(phases)
     except ValueError as e: print(f"{red('ERROR')}: {e}"); sys.exit(1)
 
@@ -332,8 +337,11 @@ def main():
 
     # ── EXECUTION ──────────────────────────────────────────────────────
     t0 = time.monotonic()
-    rpt_phases = []; sm = {"total": 0, "pass": 0, "fail": 0, "skip": 0}
-    caps = set(); failed = set(); auto_close = False
+    rpt_phases: list[dict] = []
+    sm: dict[str, int] = {"total": 0, "pass": 0, "fail": 0, "skip": 0}
+    caps: set[str] = set()
+    failed: set[str] = set()
+    auto_close = False
 
     # Session pre_run
     pre_cmds = session.get("pre_run", [])
@@ -341,27 +349,28 @@ def main():
         print(f"  {dim('Session pre_run...')}")
         if not run_cmds(pre_cmds, "session.pre_run"):
             print(f"\n  {red('ABORT')}: session.pre_run failed."); sys.exit(1)
-        print(f"  {grn(chr(10003))} Session ready\n")
+        print(f"  {grn('✓')} Session ready\n")
 
     for pi, ph in enumerate(phases):
         if pf and pi not in pf: continue
         pname = ph.get("name", f"Phase {pi}"); ppri = ph.get("priority", "moyenne")
-        ph_rpt = {"id": ph.get("id", f"phase_{pi}"), "name": pname, "series": []}
+        ph_rpt: dict = {"id": ph.get("id", f"phase_{pi}"), "name": pname, "series": []}
         hline(); print(f"  {cyn(f'Phase {pi} — {pname}')} [{ppri}]"); hline()
 
         if ph.get("pre_run"):
             print(f"\n  {dim('Phase pre_run:')}")
             if not run_cmds(ph["pre_run"], "phase.pre_run"):
-                print(f"  {ylw(chr(8856) + ' SKIP')}: phase pre_run failed")
+                print(f"  {ylw('⊘ SKIP')}: phase pre_run failed")
                 for s in ph.get("series", []):
                     for _ in s.get("checks", []): sm["total"] += 1; sm["skip"] += 1
+                rpt_phases.append(ph_rpt)
                 continue
 
         for s in ph.get("series", []):
             sid = s["id"]; sname = s.get("name", sid)
             if sf and sid not in sf: continue
             if prf and ppri not in prf: continue
-            sr = {"id": sid, "name": sname, "status": "pass", "duration_ms": 0, "checks": []}
+            sr: dict = {"id": sid, "name": sname, "status": "pass", "duration_ms": 0, "checks": []}
             print(f"\n  ┌─ {bld(sid)} — {sname}")
 
             # Check requires
@@ -370,7 +379,7 @@ def main():
             missing = [r for r in reqs if r not in caps and r in prov_map]
             if unmet or missing:
                 reason = unmet or missing
-                print(f"  │  {ylw(chr(8856) + ' SKIP')}: unmet dependency {reason}")
+                print(f"  │  {ylw('⊘ SKIP')}: unmet dependency {reason}")
                 sr["status"] = "skip"
                 for ck in s.get("checks", []):
                     sm["total"] += 1; sm["skip"] += 1
@@ -385,7 +394,7 @@ def main():
             # Series pre_run
             if s.get("pre_run"):
                 if not run_cmds(s["pre_run"], f"{sid}.pre_run"):
-                    print(f"  │  {ylw(chr(8856) + ' SKIP')}: pre_run failed")
+                    print(f"  │  {ylw('⊘ SKIP')}: pre_run failed")
                     sr["status"] = "skip"
                     for ck in s.get("checks", []):
                         sm["total"] += 1; sm["skip"] += 1
@@ -394,15 +403,26 @@ def main():
                     print(f"  └─ {bld(sid)}: {sfmt('skip')}")
                     ph_rpt["series"].append(sr); failed.add(sid); continue
 
-            # Setup — capture output for checks that reference ${SETUP_OUTPUT}
+            # Setup — capture output for checks that reference setup logs
+            series_timeout = s.get("timeout", TO)
             setup_output_file = os.path.join(PR, "logs", f".setup_output_{sid}.txt")
             if s.get("setup"):
-                all_output = []
+                all_output: list[str] = []
                 for cmd in s["setup"]:
-                    print(f"  │  {dim('setup: $')} {dim(cmd[:100])}")
-                    _, stdout, stderr, _ = run_cmd(cmd)
+                    print(f"  │  {dim('setup: $')} {dim(cmd[:100])}", flush=True)
+                    t_setup = time.monotonic()
+                    code, stdout, stderr, ms = run_cmd(cmd, timeout=series_timeout)
+                    elapsed = time.monotonic() - t_setup
+                    if code != 0:
+                        print(f"  │  {red('✗')} setup exit {code} ({elapsed:.0f}s)")
+                        if stderr.strip():
+                            for line in stderr.strip().split("\n")[:3]:
+                                print(f"  │    {dim(line)}")
+                    else:
+                        print(f"  │  {grn('✓')} setup done ({elapsed:.0f}s)")
                     all_output.append(stdout)
                     all_output.append(stderr)
+                os.makedirs(os.path.dirname(setup_output_file), exist_ok=True)
                 with open(setup_output_file, "w", encoding="utf-8") as f:
                     f.write("\n".join(all_output))
 
@@ -413,12 +433,12 @@ def main():
                 chk_mode = ck.get("mode", "auto"); cmd = ck.get("command", "")
                 assertion = ck.get("assert", {"type": "exit_code", "expected": 0})
                 sm["total"] += 1
-                cr = {"id": cid, "description": desc, "status": "skip",
-                      "command": cmd, "output": "", "duration_ms": 0}
+                cr: dict = {"id": cid, "description": desc, "status": "skip",
+                            "command": cmd, "output": "", "duration_ms": 0}
 
                 if chk_mode == "manual_check" and not args.interactive:
                     sm["skip"] += 1; cr["detail"] = "Manual (auto mode)"
-                    print(f"  │  {dotfill(f'[{cid}] {desc}', ylw(chr(8856) + ' SKIP (manual)'))}")
+                    print(f"  │  {dotfill(f'[{cid}] {desc}', ylw('⊘ SKIP (manual)'))}")
                     sr["checks"].append(cr); continue
 
                 ec, stdout, stderr, ms = run_cmd(cmd)
@@ -427,19 +447,20 @@ def main():
                 cr["status"] = status
                 if status == "fail":
                     cr["error"] = detail
-                    cr["expected"] = str(assertion.get("expected", assertion.get("pattern", assertion.get("seconds", "?"))))
+                    cr["expected"] = str(assertion.get("expected",
+                                         assertion.get("pattern", assertion.get("seconds", "?"))))
                 else:
                     cr["detail"] = detail
                 sm[status] += 1
 
                 if status == "pass":
-                    print(f"  │  {dotfill(f'[{cid}] {desc}', grn(chr(10003) + ' PASS'))}")
+                    print(f"  │  {dotfill(f'[{cid}] {desc}', grn('✓ PASS'))}")
                 elif status == "fail":
-                    print(f"  │  {dotfill(f'[{cid}] {desc}', red(chr(10007) + ' FAIL'))}")
+                    print(f"  │  {dotfill(f'[{cid}] {desc}', red('✗ FAIL'))}")
                     print(f"  │          {dim(detail)}")
                     has_fail = True
                 else:
-                    print(f"  │  {dotfill(f'[{cid}] {desc}', ylw(chr(8856) + ' SKIP'))}")
+                    print(f"  │  {dotfill(f'[{cid}] {desc}', ylw('⊘ SKIP'))}")
                 sr["checks"].append(cr)
 
             # Series post_run
@@ -448,6 +469,11 @@ def main():
             sr["duration_ms"] = (time.monotonic() - st) * 1000
             if has_fail:
                 sr["status"] = "fail"; failed.add(sid)
+            elif any(c["status"] == "skip" for c in sr["checks"]) and not any(c["status"] == "fail" for c in sr["checks"]):
+                has_pass = any(c["status"] == "pass" for c in sr["checks"])
+                sr["status"] = "pass" if has_pass else "skip"
+                if sr["status"] == "pass":
+                    for cap in s.get("provides", []): caps.add(cap)
             else:
                 sr["status"] = "pass"
                 for cap in s.get("provides", []): caps.add(cap)
@@ -472,25 +498,33 @@ def main():
                 if gh:
                     if sr["status"] == "pass":
                         if auto_close:
-                            subprocess.run(f'gh issue close {gh} --repo wals110/Manage-Biblio --comment "PASS: {sname} ({pc}/{tc_s})"',
-                                           shell=True, capture_output=True, cwd=PR)
+                            subprocess.run(
+                                f'gh issue close {gh} --repo wals110/Manage-Biblio '
+                                f'--comment "PASS: {sname} ({pc}/{tc_s})"',
+                                shell=True, capture_output=True, cwd=PR)
                             print(f"  Issue #{gh} → auto-closed")
                         else:
                             ans = input(f"  Issue #{gh} → Fermer ? [Y/N/A] ").strip().lower()
                             if ans in ("y", ""):
-                                subprocess.run(f'gh issue close {gh} --repo wals110/Manage-Biblio --comment "PASS: {sname} ({pc}/{tc_s})"',
-                                               shell=True, capture_output=True, cwd=PR)
+                                subprocess.run(
+                                    f'gh issue close {gh} --repo wals110/Manage-Biblio '
+                                    f'--comment "PASS: {sname} ({pc}/{tc_s})"',
+                                    shell=True, capture_output=True, cwd=PR)
                             elif ans == "a":
                                 auto_close = True
-                                subprocess.run(f'gh issue close {gh} --repo wals110/Manage-Biblio --comment "PASS: {sname} ({pc}/{tc_s})"',
-                                               shell=True, capture_output=True, cwd=PR)
+                                subprocess.run(
+                                    f'gh issue close {gh} --repo wals110/Manage-Biblio '
+                                    f'--comment "PASS: {sname} ({pc}/{tc_s})"',
+                                    shell=True, capture_output=True, cwd=PR)
                     elif sr["status"] == "fail":
                         ans = input(f"  Issue #{gh} → Poster erreur ? [Y/N] ").strip().lower()
                         if ans in ("y", ""):
                             fd = [c for c in sr["checks"] if c["status"] == "fail"]
-                            body = f"FAIL: {sname}\\n" + "\\n".join(f"- {c['id']}: {c.get('error','?')}" for c in fd)
-                            subprocess.run(f'gh issue comment {gh} --repo wals110/Manage-Biblio --body "{body}"',
-                                           shell=True, capture_output=True, cwd=PR)
+                            body = f"FAIL: {sname}\\n" + "\\n".join(
+                                f"- {c['id']}: {c.get('error', '?')}" for c in fd)
+                            subprocess.run(
+                                f'gh issue comment {gh} --repo wals110/Manage-Biblio --body "{body}"',
+                                shell=True, capture_output=True, cwd=PR)
                 ans = input(f"  Continuer ? [Y]es / [S]kip / [Q]uit ? ").strip().lower()
                 if ans in ("q", "quit"):
                     print(f"\n  {ylw('Quit.')}"); break
@@ -527,5 +561,6 @@ def main():
     print(f"    {dim(mp)}")
     print()
     sys.exit(1 if sm["fail"] > 0 else 0)
+
 
 if __name__ == "__main__": main()

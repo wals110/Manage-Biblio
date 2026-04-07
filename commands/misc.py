@@ -141,13 +141,21 @@ def cmd_clean(args, profile) -> None:
     target = args.target
 
     targets = {
-        "classify": ["progress.json"],
-        "rename": ["progress_rename.json"],
-        "progress": ["progress.json", "progress_rename.json"],
+        "classify": ["progress*.json"],
+        "rename": ["progress_rename*.json"],
+        "progress": ["progress*.json", "progress_rename*.json"],
         "isbn": ["isbn_cache.json"],
-        "logs": [os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv")],
+        "logs": [os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv"),
+                 os.path.join(PROJECT_ROOT, "logs", "log_*.csv"),
+                 os.path.join(PROJECT_ROOT, "logs", "refine_*.csv"),
+                 os.path.join(PROJECT_ROOT, "logs", ".setup_output_*.txt"),
+                 os.path.join(PROJECT_ROOT, "logs", ".bench_*.txt")],
         "all": ["progress.json", "progress_rename.json", "isbn_cache.json",
-                os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv")],
+                os.path.join(PROJECT_ROOT, "logs", "rapport_*.csv"),
+                os.path.join(PROJECT_ROOT, "logs", "log_*.csv"),
+                os.path.join(PROJECT_ROOT, "logs", "refine_*.csv"),
+                os.path.join(PROJECT_ROOT, "logs", ".setup_output_*.txt"),
+                os.path.join(PROJECT_ROOT, "logs", ".bench_*.txt")],
     }
 
     if target not in targets:
