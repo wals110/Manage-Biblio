@@ -21,20 +21,37 @@ def get_latest_report() -> dict | None:
 
 
 def get_all_reports() -> list[dict]:
-    """Return all functional test reports sorted by date descending."""
+    """Return all functional test reports sorted by date descending.
+
+    Supports both new structure (run_*/report.json) and old (report_*.json).
+    """
     reports_dir = get_project_root() / "tests" / "functional" / "reports"
     if not reports_dir.exists():
         return []
 
-    report_files = sorted(reports_dir.glob("report_*.json"), reverse=True)
     results: list[dict] = []
-    for f in report_files:
+
+    # New structure: run_*/report.json
+    for run_dir in sorted(reports_dir.glob("run_*"), reverse=True):
+        report_file = run_dir / "report.json"
+        if report_file.exists():
+            try:
+                report_data = json.loads(report_file.read_text(encoding="utf-8"))
+                report_data["_filename"] = run_dir.name
+                report_data["_run_dir"] = str(run_dir)
+                results.append(report_data)
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    # Old structure: report_*.json (backward compat)
+    for f in sorted(reports_dir.glob("report_*.json"), reverse=True):
         try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            data["_filename"] = f.name
-            results.append(data)
+            report_data = json.loads(f.read_text(encoding="utf-8"))
+            report_data["_filename"] = f.name
+            results.append(report_data)
         except (json.JSONDecodeError, OSError):
             continue
+
     return results
 
 

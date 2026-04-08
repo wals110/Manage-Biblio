@@ -233,7 +233,14 @@ def main():
 
     # --rerun-failures: find latest report, extract FAIL + SKIP series
     if args.rerun_failures:
-        reports = sorted(G.glob(os.path.join(RD, "report_*.json")), reverse=True)
+        # Find latest report: check "latest" symlink or scan run_* dirs
+        latest_link = os.path.join(RD, "latest", "report.json")
+        run_dirs = sorted(G.glob(os.path.join(RD, "run_*", "report.json")), reverse=True)
+        # Also check old-style flat reports for backward compat
+        old_reports = sorted(G.glob(os.path.join(RD, "report_*.json")), reverse=True)
+        reports = run_dirs + old_reports
+        if os.path.exists(latest_link):
+            reports.insert(0, latest_link)
         if not reports:
             print(f"{red('ERROR')}: No previous report found in {RD}"); sys.exit(1)
         with open(reports[0], encoding="utf-8") as f:
@@ -533,13 +540,19 @@ def main():
         print(f"\n  {dim('Session post_run...')}")
         run_cmds(post_cmds, "session.post_run")
 
-    # Reports
+    # Reports — organized in per-run directories
     dur = time.monotonic() - t0; ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     report = {"project": data.get("project", "?"), "run_at": datetime.now().isoformat(),
               "duration_seconds": round(dur), "variables": variables, "summary": sm, "phases": rpt_phases}
-    os.makedirs(RD, exist_ok=True)
-    jp = os.path.join(RD, f"report_{ts}.json"); mp = os.path.join(RD, f"report_{ts}.md")
+    run_dir = os.path.join(RD, f"run_{ts}")
+    os.makedirs(run_dir, exist_ok=True)
+    jp = os.path.join(run_dir, "report.json"); mp = os.path.join(run_dir, "report.md")
     write_json(report, jp); write_md(report, mp)
+    # Update "latest" symlink
+    latest = os.path.join(RD, "latest")
+    if os.path.islink(latest):
+        os.remove(latest)
+    os.symlink(f"run_{ts}", latest)
 
     # Append summary to history.json (long-term tracking)
     if args.no_history:
@@ -565,7 +578,7 @@ def main():
             "pass": sm["pass"], "fail": sm["fail"], "skip": sm["skip"], "total": sm["total"],
             "rate": round(sm["pass"] / sm["total"] * 100, 1) if sm["total"] else 0,
             "duration": round(dur),
-            "report": f"report_{ts}.json",
+            "report": f"run_{ts}",
             "run_type": run_type,
         })
         with open(history_path, "w", encoding="utf-8") as f:
