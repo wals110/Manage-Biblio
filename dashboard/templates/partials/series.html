@@ -82,12 +82,29 @@
             <span class="status-dot dot-{{ check.status }}"></span>
             <span class="check-id">{{ check.id }}</span>
             <span class="check-desc">{{ check.description }}</span>
-            {% if check.status == 'skip' %}
+            {% if check.status == 'skip' and ('Manual' in (check.detail or '') or check.mode == 'manual_check') %}
+            {# Manual check widget #}
+            <span class="manual-widget" id="widget-{{ check.id }}">
+                {% if check.prompt %}
+                <div class="manual-prompt">{{ check.prompt }}</div>
+                {% endif %}
+                <button class="btn btn-sm btn-pass"
+                        hx-post="/api/validate-check?run_id={{ current_run_id }}&check_id={{ check.id }}&status=pass"
+                        hx-target="#widget-{{ check.id }}"
+                        hx-swap="innerHTML">
+                    &#10003; Oui
+                </button>
+                <button class="btn btn-sm btn-fail-action"
+                        hx-post="/api/validate-check?run_id={{ current_run_id }}&check_id={{ check.id }}&status=fail"
+                        hx-target="#widget-{{ check.id }}"
+                        hx-swap="innerHTML">
+                    &#10007; Non
+                </button>
+            </span>
+            {% elif check.status == 'skip' %}
             <span class="skip-reason">
-                {% if 'Manual' in (check.detail or '') %}⊘ manual
-                {% elif 'Unmet' in (check.detail or '') %}⊘ dependency
+                {% if 'Unmet' in (check.detail or '') %}⊘ dependency
                 {% elif 'pre_run' in (check.detail or '') %}⊘ pre_run
-                {% elif check.status == 'not_run' %}— non exécuté
                 {% else %}⊘ skip
                 {% endif %}
             </span>

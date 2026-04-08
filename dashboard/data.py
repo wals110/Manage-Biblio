@@ -401,9 +401,24 @@ def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict |
                 "description": ts.get("description", ""),
                 "github_issue": ts.get("github_issue"),
             }
+            # Build check info from yaml (mode, prompt)
+            yaml_checks = {}
+            for ck in ts.get("checks", []):
+                yaml_checks[ck.get("id", "")] = {
+                    "mode": ck.get("mode", "auto"),
+                    "prompt": ck.get("assert", {}).get("prompt", ""),
+                }
+
             if sid in report_series:
                 entry = dict(report_series[sid])
                 entry.update({k: v for k, v in yaml_info.items() if k not in entry})
+                # Enrich checks with mode/prompt from yaml
+                for ck in entry.get("checks", []):
+                    yc = yaml_checks.get(ck.get("id", ""), {})
+                    if "mode" not in ck:
+                        ck["mode"] = yc.get("mode", "auto")
+                    if "prompt" not in ck:
+                        ck["prompt"] = yc.get("prompt", "")
                 merged_series.append(entry)
             else:
                 # Series not in report — show as not_run

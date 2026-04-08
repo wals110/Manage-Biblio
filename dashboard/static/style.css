@@ -772,8 +772,8 @@ th {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 24px;
+    padding: 24px;
+    margin-bottom: 48px;
 }
 
 .admin-buttons {
@@ -803,14 +803,23 @@ th {
 }
 
 .admin-stats {
-    margin-bottom: 24px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 48px;
+}
+
+.admin-stats .section-title {
+    margin-bottom: 16px;
 }
 
 .admin-runs {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 20px;
+    padding: 24px;
+    margin-bottom: 32px;
 }
 
 .run-label {
@@ -859,6 +868,52 @@ th {
 
 .check-not_run {
     opacity: 0.4;
+}
+
+.manual-widget {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.manual-prompt {
+    width: 100%;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-style: italic;
+    margin-bottom: 4px;
+    padding: 4px 8px;
+    background: rgba(251, 191, 36, 0.06);
+    border-left: 2px solid var(--yellow);
+    border-radius: 0 4px 4px 0;
+}
+
+.btn-pass {
+    background: rgba(74, 222, 128, 0.15) !important;
+    color: var(--green) !important;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.btn-pass:hover {
+    background: rgba(74, 222, 128, 0.3) !important;
+}
+
+.btn-fail-action {
+    background: rgba(248, 113, 113, 0.15) !important;
+    color: var(--red) !important;
+    border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.btn-fail-action:hover {
+    background: rgba(248, 113, 113, 0.3) !important;
+}
+
+.manual-validated {
+    font-size: 0.8rem;
+    font-weight: 600;
 }
 
 .skip-reason {

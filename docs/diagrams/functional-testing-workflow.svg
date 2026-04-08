@@ -1,0 +1,252 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4ade80"/>
+    </marker>
+    <marker id="arr-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="600" y="32" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700">Workflow Tests Fonctionnels — Klodo</text>
+  <text x="600" y="52" text-anchor="middle" fill="#64748b" font-size="12">De la création du cahier à la release</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  ROW 1 : Skills (Génération)                   -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <text x="30" y="85" fill="#a78bfa" font-size="11" font-weight="600" opacity="0.6">GÉNÉRATION</text>
+
+  <!-- Skill 1 -->
+  <rect x="30" y="95" width="200" height="80" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="130" y="118" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Skill 1</text>
+  <text x="130" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">functional-test-plan</text>
+  <text x="130" y="152" text-anchor="middle" fill="#64748b" font-size="10">Analyse projet → YAML + MD</text>
+  <text x="130" y="166" text-anchor="middle" fill="#64748b" font-size="9">Lit inventaire + tree.yaml</text>
+
+  <!-- Arrow Skill 1 → Validateur -->
+  <line x1="230" y1="135" x2="280" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Validateur -->
+  <rect x="285" y="95" width="180" height="80" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="375" y="118" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Validateur</text>
+  <text x="375" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">validate_tests.py</text>
+  <text x="375" y="152" text-anchor="middle" fill="#64748b" font-size="10">10 règles, auto-fix</text>
+  <text x="375" y="166" text-anchor="middle" fill="#64748b" font-size="9">grep-c, -y, clean, paths</text>
+
+  <!-- Arrow Validateur → Skill 2 -->
+  <line x1="465" y1="135" x2="515" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Skill 2 -->
+  <rect x="520" y="95" width="200" height="80" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="620" y="118" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Skill 2</text>
+  <text x="620" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">functional-test-runner</text>
+  <text x="620" y="152" text-anchor="middle" fill="#64748b" font-size="10">Génère run_functional.py</text>
+  <text x="620" y="166" text-anchor="middle" fill="#64748b" font-size="9">9 assertions, box-drawing</text>
+
+  <!-- Arrow Skill 2 → Skill 3 -->
+  <line x1="720" y1="135" x2="770" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Skill 3 -->
+  <rect x="775" y="95" width="200" height="80" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="875" y="118" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Skill 3</text>
+  <text x="875" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">test-issues-sync</text>
+  <text x="875" y="152" text-anchor="middle" fill="#64748b" font-size="10">GitHub Project + Issues</text>
+  <text x="875" y="166" text-anchor="middle" fill="#64748b" font-size="9">Create / Update / Close</text>
+
+  <!-- Skill 4 (orchestrateur) au dessus -->
+  <rect x="1000" y="95" width="170" height="80" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <text x="1085" y="118" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Skill 4</text>
+  <text x="1085" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">functional-testing</text>
+  <text x="1085" y="152" text-anchor="middle" fill="#64748b" font-size="10">Orchestrateur</text>
+  <text x="1085" y="166" text-anchor="middle" fill="#64748b" font-size="9">Détecte état → route</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  ROW 2 : Fichiers générés                      -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <text x="30" y="210" fill="#38bdf8" font-size="11" font-weight="600" opacity="0.6">FICHIERS</text>
+
+  <!-- tests.yaml -->
+  <rect x="50" y="220" width="150" height="50" rx="6" fill="#16213e" stroke="#334155"/>
+  <text x="125" y="240" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">tests.yaml</text>
+  <text x="125" y="255" text-anchor="middle" fill="#64748b" font-size="9">Source de vérité</text>
+
+  <!-- Arrow down from Skill 1 -->
+  <line x1="130" y1="175" x2="125" y2="220" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- CAHIER.md -->
+  <rect x="220" y="220" width="150" height="50" rx="6" fill="#16213e" stroke="#334155"/>
+  <text x="295" y="240" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">CAHIER.md</text>
+  <text x="295" y="255" text-anchor="middle" fill="#64748b" font-size="9">Vue Markdown</text>
+
+  <!-- run_functional.py -->
+  <rect x="440" y="220" width="170" height="50" rx="6" fill="#16213e" stroke="#334155"/>
+  <text x="525" y="240" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">run_functional.py</text>
+  <text x="525" y="255" text-anchor="middle" fill="#64748b" font-size="9">Runner exécutable</text>
+
+  <!-- Arrow down from Skill 2 -->
+  <line x1="620" y1="175" x2="525" y2="220" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- inventory.yaml -->
+  <rect x="640" y="220" width="160" height="50" rx="6" fill="#16213e" stroke="#334155"/>
+  <text x="720" y="240" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">inventory.yaml</text>
+  <text x="720" y="255" text-anchor="middle" fill="#64748b" font-size="9">1000 PDFs sélectionnés</text>
+
+  <!-- GitHub Issues -->
+  <rect x="850" y="220" width="150" height="50" rx="6" fill="#16213e" stroke="#334155"/>
+  <text x="925" y="240" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">GitHub Issues</text>
+  <text x="925" y="255" text-anchor="middle" fill="#64748b" font-size="9">40 issues + Project board</text>
+
+  <!-- Arrow down from Skill 3 -->
+  <line x1="875" y1="175" x2="925" y2="220" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  ROW 3 : Exécution                             -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <text x="30" y="315" fill="#4ade80" font-size="11" font-weight="600" opacity="0.6">EXÉCUTION</text>
+
+  <!-- Runner box -->
+  <rect x="30" y="325" width="760" height="200" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="50" y="348" fill="#4ade80" font-size="14" font-weight="700">Runner (run_functional.py)</text>
+
+  <!-- Session pre_run -->
+  <rect x="50" y="360" width="140" height="40" rx="4" fill="#0a1628" stroke="#334155"/>
+  <text x="120" y="377" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="600">session.pre_run</text>
+  <text x="120" y="392" text-anchor="middle" fill="#64748b" font-size="9">flatten + clean</text>
+
+  <!-- Arrow -->
+  <line x1="190" y1="380" x2="210" y2="380" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- Phase loop -->
+  <rect x="215" y="355" width="380" height="155" rx="6" fill="#0a1628" stroke="#334155"/>
+  <text x="230" y="375" fill="#38bdf8" font-size="11" font-weight="600">Pour chaque phase :</text>
+
+  <!-- Series loop -->
+  <rect x="235" y="385" width="340" height="110" rx="4" fill="#0f172a" stroke="#334155"/>
+  <text x="250" y="402" fill="#e2e8f0" font-size="10" font-weight="600">Pour chaque série :</text>
+
+  <!-- Steps -->
+  <text x="255" y="420" fill="#64748b" font-size="9">1. Créer logs/phase_N/T0.1/ + marker .running</text>
+  <text x="255" y="434" fill="#64748b" font-size="9">2. Vérifier requires → SKIP si dépendance manquante</text>
+  <text x="255" y="448" fill="#64748b" font-size="9">3. Exécuter pre_run + setup (capture stdout)</text>
+  <text x="255" y="462" fill="#64748b" font-size="9">4. Évaluer chaque check (9 types d'assertion)</text>
+  <text x="255" y="476" fill="#64748b" font-size="9">5. Déplacer logs → structure phase/série</text>
+  <text x="255" y="490" fill="#64748b" font-size="9">6. Si ALL PASS → enregistrer provides</text>
+
+  <!-- Output boxes -->
+  <rect x="620" y="340" width="155" height="50" rx="4" fill="#0a1628" stroke="#4ade80" stroke-width="1"/>
+  <text x="697" y="360" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">report.json</text>
+  <text x="697" y="375" text-anchor="middle" fill="#64748b" font-size="9">+ report.md</text>
+
+  <rect x="620" y="400" width="155" height="50" rx="4" fill="#0a1628" stroke="#38bdf8" stroke-width="1"/>
+  <text x="697" y="420" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">DuckDB</text>
+  <text x="697" y="435" text-anchor="middle" fill="#64748b" font-size="9">runs + series + checks</text>
+
+  <rect x="620" y="460" width="155" height="50" rx="4" fill="#0a1628" stroke="#a78bfa" stroke-width="1"/>
+  <text x="697" y="480" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="600">Logs structurés</text>
+  <text x="697" y="495" text-anchor="middle" fill="#64748b" font-size="9">phase_N/T0.1/*.csv</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  ROW 4 : Dashboard                             -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <text x="30" y="560" fill="#f87171" font-size="11" font-weight="600" opacity="0.6">VISUALISATION</text>
+
+  <!-- Dashboard box -->
+  <rect x="30" y="570" width="760" height="130" rx="10" fill="#1e293b" stroke="#f87171" stroke-width="1.5"/>
+  <text x="50" y="593" fill="#f87171" font-size="14" font-weight="700">Dashboard (FastAPI + HTMX + Chart.js)</text>
+  <text x="50" y="608" fill="#64748b" font-size="10">./klodo.sh dashboard → http://localhost:8080</text>
+
+  <!-- Pages -->
+  <rect x="50" y="618" width="90" height="32" rx="4" fill="#0a1628" stroke="#4ade80" stroke-width="1"/>
+  <text x="95" y="638" text-anchor="middle" fill="#4ade80" font-size="10">Overview</text>
+
+  <rect x="150" y="618" width="70" height="32" rx="4" fill="#0a1628" stroke="#38bdf8" stroke-width="1"/>
+  <text x="185" y="638" text-anchor="middle" fill="#38bdf8" font-size="10">Tests</text>
+
+  <rect x="230" y="618" width="80" height="32" rx="4" fill="#0a1628" stroke="#a78bfa" stroke-width="1"/>
+  <text x="270" y="638" text-anchor="middle" fill="#a78bfa" font-size="10">Rapports</text>
+
+  <rect x="320" y="618" width="85" height="32" rx="4" fill="#0a1628" stroke="#fbbf24" stroke-width="1"/>
+  <text x="362" y="638" text-anchor="middle" fill="#fbbf24" font-size="10">Comparer</text>
+
+  <rect x="415" y="618" width="85" height="32" rx="4" fill="#0a1628" stroke="#4ade80" stroke-width="1"/>
+  <text x="457" y="638" text-anchor="middle" fill="#4ade80" font-size="10">Métriques</text>
+
+  <rect x="510" y="618" width="85" height="32" rx="4" fill="#0a1628" stroke="#38bdf8" stroke-width="1"/>
+  <text x="552" y="638" text-anchor="middle" fill="#38bdf8" font-size="10">Historique</text>
+
+  <rect x="605" y="618" width="85" height="32" rx="4" fill="#0a1628" stroke="#a78bfa" stroke-width="1"/>
+  <text x="647" y="638" text-anchor="middle" fill="#a78bfa" font-size="10">Suggestions</text>
+
+  <rect x="700" y="618" width="70" height="32" rx="4" fill="#0a1628" stroke="#f87171" stroke-width="1"/>
+  <text x="735" y="638" text-anchor="middle" fill="#f87171" font-size="10">Admin</text>
+
+  <!-- Features -->
+  <text x="50" y="672" fill="#64748b" font-size="9">Run/Stop temps réel • Checkboxes sélection • Sélecteur de run (label + git) • CSV viewer • Diff régressions • Chart.js • DuckDB queries • Clean tools</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  ROW 5 : GitHub + Release                      -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <text x="830" y="560" fill="#fbbf24" font-size="11" font-weight="600" opacity="0.6">INTÉGRATION</text>
+
+  <!-- GitHub sync -->
+  <rect x="830" y="570" width="340" height="80" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="1000" y="595" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">GitHub Sync</text>
+  <text x="1000" y="612" text-anchor="middle" fill="#64748b" font-size="10">PASS → ferme issue + commentaire rapport</text>
+  <text x="1000" y="626" text-anchor="middle" fill="#64748b" font-size="10">FAIL → commente l'erreur, laisse ouvert</text>
+  <text x="1000" y="640" text-anchor="middle" fill="#64748b" font-size="10">Project board : Todo → Pass / Fail / Skipped</text>
+
+  <!-- Release Gate -->
+  <rect x="830" y="665" width="340" height="60" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="1000" y="688" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">Release Gate</text>
+  <text x="1000" y="705" text-anchor="middle" fill="#64748b" font-size="10">Toutes issues fermées ? → READY / BLOCKED</text>
+  <text x="1000" y="718" text-anchor="middle" fill="#64748b" font-size="10">CI release.yml vérifie avant tag v*</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  ROW 6 : Itération                             -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <rect x="30" y="740" width="1140" height="70" rx="8" fill="#16213e" stroke="#334155"/>
+  <text x="600" y="765" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Itération suivante</text>
+  <text x="600" y="785" text-anchor="middle" fill="#64748b" font-size="11">Code change → relancer les tests (--label "après-refactor") → comparer avec baseline dans DuckDB → fixer les régressions → sync issues → release</text>
+  <text x="600" y="800" text-anchor="middle" fill="#a78bfa" font-size="10" font-style="italic">Le mode update du Skill 1 (pas encore implémenté) ajoutera les tests manquants sans toucher aux existants</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--  Connecting arrows                             -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <!-- tests.yaml → Runner -->
+  <line x1="125" y1="270" x2="125" y2="325" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+
+  <!-- Runner outputs → Dashboard -->
+  <line x1="697" y1="510" x2="697" y2="570" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Runner → GitHub -->
+  <line x1="790" y1="450" x2="830" y2="580" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arr)"/>
+
+  <!-- Dashboard → GitHub (close issues) -->
+  <line x1="790" y1="640" x2="830" y2="610" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Release Gate → Iteration -->
+  <line x1="1000" y1="725" x2="1000" y2="740" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- Legend -->
+  <rect x="30" y="825" width="1140" height="55" rx="6" fill="#0a1628" stroke="#334155"/>
+  <text x="50" y="845" fill="#64748b" font-size="10" font-weight="600">Légende :</text>
+  <rect x="120" y="837" width="12" height="12" rx="2" fill="#a78bfa"/>
+  <text x="138" y="848" fill="#64748b" font-size="10">Skills Claude Code</text>
+  <rect x="260" y="837" width="12" height="12" rx="2" fill="#4ade80"/>
+  <text x="278" y="848" fill="#64748b" font-size="10">Exécution</text>
+  <rect x="360" y="837" width="12" height="12" rx="2" fill="#38bdf8"/>
+  <text x="378" y="848" fill="#64748b" font-size="10">Fichiers</text>
+  <rect x="440" y="837" width="12" height="12" rx="2" fill="#fbbf24"/>
+  <text x="458" y="848" fill="#64748b" font-size="10">Validation</text>
+  <rect x="540" y="837" width="12" height="12" rx="2" fill="#f87171"/>
+  <text x="558" y="848" fill="#64748b" font-size="10">Dashboard</text>
+  <text x="50" y="868" fill="#64748b" font-size="9">Fichiers gitignored : results.db, reports/, logs/ — Fichiers versionnés : tests.yaml, CAHIER.md, run_functional.py, db.py, history.json, inventory.yaml</text>
+</svg>

@@ -64,6 +64,7 @@ async def tests_page(
             "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
             "available_runs": available_runs,
             "selected_run": run or "",
+            "current_run_id": report.get("_run_id", run or "") if report else "",
         },
     )
 
@@ -461,6 +462,30 @@ async def close_issue(
             "issue": {"number": number, "state": "closed"},
         },
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Manual Validation
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/validate-check")
+async def validate_check_api(run_id: str, check_id: str, status: str):
+    """Validate a manual check from the dashboard (pass/fail)."""
+    from fastapi.responses import HTMLResponse
+    import sys
+    func_dir = str(data.get_project_root() / "tests" / "functional")
+    if func_dir not in sys.path:
+        sys.path.insert(0, func_dir)
+    from db import validate_check
+    success = validate_check(run_id, check_id, status)
+    # Return updated widget HTML
+    icon = "✓" if status == "pass" else "✗"
+    color = "green" if status == "pass" else "red"
+    validated_at = __import__("datetime").datetime.now().strftime("%d/%m %H:%M")
+    html = f'''<span class="manual-validated text-{color}">
+        {icon} Valid&eacute; ({status.upper()}) le {validated_at}
+    </span>'''
+    return HTMLResponse(html)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

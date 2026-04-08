@@ -96,6 +96,16 @@ def get_connection() -> duckdb.DuckDBPyConnection:
             PRIMARY KEY (run_id, check_id)
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS manual_validations (
+            run_id TEXT,
+            check_id TEXT,
+            status TEXT,
+            validated_by TEXT,
+            validated_at TEXT,
+            PRIMARY KEY (run_id, check_id)
+        )
+    """)
     return con
 
 
@@ -275,6 +285,40 @@ def get_failing_series(min_fails: int = 2) -> list[dict]:
     """, [min_fails]).fetchall()
     con.close()
     return [{"series_id": r[0], "name": r[1], "total_runs": r[2], "fail_count": r[3], "pass_count": r[4]} for r in result]
+
+
+def validate_check(run_id: str, check_id: str, status: str) -> bool:
+    """Record a manual validation for a check (pass/fail)."""
+    con = get_connection()
+    try:
+        con.execute("""
+            INSERT OR REPLACE INTO manual_validations (run_id, check_id, status, validated_by, validated_at)
+            VALUES (?, ?, ?, 'dashboard', ?)
+        """, [run_id, check_id, status, datetime.now().isoformat()])
+        # Also update the check_results table
+        con.execute("""
+            UPDATE check_results SET status = ? WHERE run_id = ? AND check_id = ?
+        """, [status, run_id, check_id])
+        con.close()
+        return True
+    except Exception:
+        con.close()
+        return False
+
+
+def get_manual_validations(run_id: str) -> dict[str, dict]:
+    """Get all manual validations for a run. Returns {check_id: {status, validated_at}}."""
+    con = get_connection()
+    try:
+        rows = con.execute("""
+            SELECT check_id, status, validated_at
+            FROM manual_validations WHERE run_id = ?
+        """, [run_id]).fetchall()
+        con.close()
+        return {r[0]: {"status": r[1], "validated_at": r[2]} for r in rows}
+    except Exception:
+        con.close()
+        return {}
 
 
 def query_csv(csv_pattern: str, sql: str | None = None) -> list[dict]:

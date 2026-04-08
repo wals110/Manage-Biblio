@@ -340,7 +340,6 @@ function updateSeriesStatus(seriesId, completed, checks) {
         if (row) {
             const dot = row.querySelector('.series-summary > .status-dot');
             if (dot) dot.className = 'status-dot dot-running';
-            row.classList.add('expanded');
         }
     }
 }
