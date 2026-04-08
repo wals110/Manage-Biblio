@@ -1,0 +1,301 @@
+"""Klodo Dashboard — FastAPI application."""
+
+import os
+import subprocess
+
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from dashboard import data
+
+app = FastAPI(title="Klodo Dashboard")
+app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
+templates = Jinja2Templates(directory="dashboard/templates")
+
+
+@app.get("/")
+async def overview(request: Request):
+    """Overview page with KPIs, heatmap, and release gate."""
+    report = data.get_latest_report()
+    tests = data.get_tests_yaml()
+    issues = data.get_open_issues()
+    return templates.TemplateResponse(
+        request,
+        "overview.html",
+        {"report": report, "tests": tests, "issues": issues,
+         "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY"))},
+    )
+
+
+@app.get("/tests")
+async def tests_page(
+    request: Request,
+    phase: str | None = None,
+    status: str | None = None,
+):
+    """Tests page — list, expand, run tests."""
+    phase_int = int(phase) if phase and phase.isdigit() else None
+    status_val = status if status else None
+    report = data.get_latest_report()
+    tests = data.get_tests_yaml()
+    merged = data.get_merged_test_view(report, tests)
+    return templates.TemplateResponse(
+        request,
+        "tests.html",
+        {
+            "report": merged,
+            "tests": tests,
+            "phase": phase_int,
+            "status": status_val,
+            "active": "tests",
+            "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+        },
+    )
+
+
+# Track running process for stop functionality
+_running_process: subprocess.Popen | None = None
+
+
+@app.post("/api/stop")
+async def stop_test():
+    """Stop the currently running test process."""
+    global _running_process
+    if _running_process and _running_process.poll() is None:
+        _running_process.terminate()
+        try:
+            _running_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _running_process.kill()
+        _running_process = None
+        return {"status": "stopped"}
+    return {"status": "not_running"}
+
+
+@app.post("/api/run")
+async def run_test(
+    request: Request,
+    series: str | None = None,
+    phase: int | None = None,
+    all: bool = False,
+    failures: bool = False,
+):
+    """Run functional tests and return updated HTML."""
+    global _running_process
+
+    cmd = ["uv", "run", "python", "tests/functional/run_functional.py"]
+    if series:
+        cmd += ["--series", series]
+    elif phase is not None:
+        cmd += ["--phase", str(phase)]
+    elif failures:
+        cmd.append("--rerun-failures")
+    # else: run all (no extra args)
+
+    _running_process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(data.get_project_root()),
+    )
+    # Wait in a non-blocking loop so other requests (like /api/stop) can be processed
+    import asyncio
+    while _running_process and _running_process.poll() is None:
+        await asyncio.sleep(0.5)
+    _running_process = None
+
+    # Reload data and return updated HTML
+    report = data.get_latest_report()
+    tests_yaml = data.get_tests_yaml()
+    merged = data.get_merged_test_view(report, tests_yaml)
+
+    if series and merged:
+        # Return just the updated series partial
+        for rp in merged.get("phases", []):
+            for s in rp.get("series", []):
+                if s["id"] == series:
+                    return templates.TemplateResponse(
+                        request,
+                        "partials/series.html",
+                        {"series": s, "tests": tests_yaml},
+                    )
+
+    # Full re-render — redirect to tests page (HTMX will follow)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/tests", status_code=303)
+
+
+@app.get("/rapports")
+async def rapports_page(
+    request: Request,
+    type: str = "classify",
+    file: str | None = None,
+    test: str | None = None,
+    search: str | None = None,
+    status: str | None = None,
+    section: str | None = None,
+    sort: str | None = None,
+    order: str = "asc",
+    page: int = 1,
+):
+    """Rapports page — CSV viewer with filters, search, pagination."""
+    tests_yaml = data.get_tests_yaml()
+    csv_files = data.get_csv_files(type, tests_yaml)
+    available_tests = data.get_available_tests(csv_files)
+
+    # Filter by test if specified
+    if test:
+        csv_files_filtered = [f for f in csv_files if f.get("test_id") == test]
+    else:
+        csv_files_filtered = csv_files
+
+    # Use selected file or most recent from filtered list
+    selected_file = file or (csv_files_filtered[0]["path"] if csv_files_filtered else None)
+
+    headers: list[str] = []
+    rows: list[dict] = []
+    stats: dict = {}
+    statuses: list[str] = []
+    sections: list[str] = []
+    total_pages = 1
+    total_rows = 0
+
+    associated_test = None
+
+    if selected_file:
+        headers, rows = data.load_csv(selected_file)
+        stats = data.compute_csv_stats(rows, type)
+        statuses = data.get_csv_statuses(rows, type)
+        sections = data.get_csv_sections(rows)
+
+        # Find associated test series
+        tests_yaml = data.get_tests_yaml()
+        associated_test = data.find_test_for_report(
+            os.path.basename(selected_file), tests_yaml
+        )
+
+        # Apply filters
+        if search:
+            rows = [r for r in rows if search.lower() in str(r).lower()]
+        if status:
+            status_key = "action" if type == "rename" else "status"
+            rows = [r for r in rows if r.get(status_key, "") == status]
+        if section:
+            rows = [r for r in rows if r.get("destination", "").startswith(section)]
+
+        # Sort
+        if sort and sort in headers:
+            reverse = order == "desc"
+            rows.sort(key=lambda r: r.get(sort, ""), reverse=reverse)
+
+        # Paginate
+        per_page = 50
+        total_rows = len(rows)
+        total_pages = max(1, (total_rows + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        rows = rows[(page - 1) * per_page : page * per_page]
+
+    return templates.TemplateResponse(
+        request,
+        "rapports.html",
+        {
+            "active": "rapports",
+            "report_type": type,
+            "csv_files": csv_files,
+            "available_tests": available_tests,
+            "test_filter": test or "",
+            "selected_file": selected_file or "",
+            "headers": headers,
+            "rows": rows,
+            "stats": stats,
+            "statuses": statuses,
+            "sections": sections,
+            "search": search or "",
+            "status_filter": status or "",
+            "section_filter": section or "",
+            "sort": sort or "",
+            "order": order,
+            "page": page,
+            "total_pages": total_pages,
+            "total_rows": total_rows,
+            "associated_test": associated_test,
+        },
+    )
+
+
+@app.get("/comparer")
+async def comparer_page(
+    request: Request,
+    type: str = "classify",
+    test: str | None = None,
+    file_a: str | None = None,
+    file_b: str | None = None,
+    filter: str | None = None,
+):
+    """Comparer page — diff between two reports."""
+    tests_yaml = data.get_tests_yaml()
+    csv_files = data.get_csv_files(type, tests_yaml)
+    available_tests = data.get_available_tests(csv_files)
+
+    # Filter by test if specified
+    if test:
+        csv_files_filtered = [f for f in csv_files if f.get("test_id") == test]
+    else:
+        csv_files_filtered = csv_files
+
+    diff = None
+    test_a = test_b = None
+
+    if file_a and file_b:
+        _, rows_a = data.load_csv(file_a)
+        _, rows_b = data.load_csv(file_b)
+        key_col = "ancien_nom" if type == "rename" else "fichier"
+        diff = data.diff_reports(rows_a, rows_b, key_col)
+
+        test_a = data.find_test_for_report(os.path.basename(file_a), tests_yaml)
+        test_b = data.find_test_for_report(os.path.basename(file_b), tests_yaml)
+
+    return templates.TemplateResponse(
+        request,
+        "comparer.html",
+        {
+            "active": "comparer",
+            "report_type": type,
+            "csv_files": csv_files,
+            "csv_files_filtered": csv_files_filtered,
+            "available_tests": available_tests,
+            "test_filter": test or "",
+            "file_a": file_a or "",
+            "file_b": file_b or "",
+            "diff": diff,
+            "test_a": test_a,
+            "test_b": test_b,
+            "filter": filter or "all",
+        },
+    )
+
+
+@app.post("/api/issue/close")
+async def close_issue(
+    request: Request,
+    number: int,
+    comment: str = "PASS — test validé",
+):
+    """Close a GitHub issue and return updated badge."""
+    subprocess.run(
+        ["gh", "issue", "close", str(number), "--comment", comment],
+        capture_output=True,
+        text=True,
+        cwd=str(data.get_project_root()),
+        timeout=15,
+    )
+    return templates.TemplateResponse(
+        request,
+        "partials/issue_badge.html",
+        {
+            "issue_num": number,
+            "issue": {"number": number, "state": "closed"},
+        },
+    )

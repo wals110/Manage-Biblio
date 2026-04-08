@@ -196,6 +196,12 @@ def _build_parser():
     p_init.add_argument('--target', required=True,
                         help='Chemin de la bibliothèque cible')
 
+    # ── dashboard ──
+    p_dashboard = subparsers.add_parser(
+        'dashboard', help='Dashboard tests fonctionnels')
+    p_dashboard.add_argument('--port', type=int, default=8080,
+                             help='Port (défaut: 8080)')
+
     return parser
 
 
@@ -210,6 +216,10 @@ def main():
         sys.exit(0)
 
     # Commandes sans profil
+    if args.command == 'dashboard':
+        import uvicorn
+        uvicorn.run("dashboard.app:app", host="127.0.0.1", port=args.port)
+        return
     if args.command == 'profiles':
         cmd_profiles(args)
         return

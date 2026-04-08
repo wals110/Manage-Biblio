@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% set active = "tests" %}
+{% block title %}Tests{% endblock %}
+
+{% block content %}
+{% if not api_key_set %}
+<div class="alert alert-warn">
+    &#9888; <strong>SILICONFLOW_API_KEY</strong> non d&eacute;finie &mdash; les tests classify/process seront SKIP.
+    <code>export SILICONFLOW_API_KEY=votre-cl&eacute;</code>
+</div>
+{% endif %}
+<h1 class="page-title">Tests &mdash; Ex&eacute;cution</h1>
+<p class="page-subtitle">
+    {% if report %}
+    Dernier rapport : {{ report.run_at[:19] | replace("T", " ") }}
+    &mdash; {{ report.summary.pass }}/{{ report.summary.total }} PASS
+    {% else %}
+    Aucun rapport disponible
+    {% endif %}
+</p>
+
+<!-- Filters -->
+<div class="filters-bar">
+    <form method="get" action="/tests" class="filters-form">
+        <select name="phase" class="filter-select" onchange="this.form.submit()">
+            <option value="">Toutes les phases</option>
+            {% if tests and tests.phases %}
+            {% for p in tests.phases %}
+            <option value="{{ loop.index0 }}" {% if phase is not none and phase == loop.index0 %}selected{% endif %}>
+                Phase {{ loop.index0 }} &mdash; {{ p.name }}
+            </option>
+            {% endfor %}
+            {% endif %}
+        </select>
+        <select name="status" class="filter-select" onchange="this.form.submit()">
+            <option value="" {% if not status %}selected{% endif %}>Tous les statuts</option>
+            <option value="pass" {% if status == 'pass' %}selected{% endif %}>PASS</option>
+            <option value="fail" {% if status == 'fail' %}selected{% endif %}>FAIL</option>
+            <option value="skip" {% if status == 'skip' %}selected{% endif %}>SKIP</option>
+        </select>
+    </form>
+</div>
+
+<!-- Action buttons -->
+<div class="actions-bar">
+    <button class="btn btn-primary" id="btn-run-all"
+            onclick="runAll(this, '/api/run?all=true')">
+        &#9654; Lancer tous les tests
+    </button>
+    <button class="btn" id="btn-run-failures"
+            onclick="runAll(this, '/api/run?failures=true')">
+        &#9654; Relancer les &eacute;checs
+    </button>
+    <button class="btn btn-stop-disabled" id="btn-stop"
+            onclick="stopRun()" disabled>
+        &#9632; Stop
+    </button>
+    <span id="run-spinner" class="spinner htmx-indicator"></span>
+</div>
+
+{% if report %}
+<div id="test-phases">
+{% for rp in report.phases %}
+{% set phase_idx = loop.index0 %}
+{# Apply phase filter #}
+{% if phase is none or phase == phase_idx %}
+
+{# Count pass/total for this phase #}
+{% set ns = namespace(pass_count=0, total=0, has_fail=false) %}
+{% for s in rp.series %}
+    {% if s.status == 'pass' %}{% set ns.pass_count = ns.pass_count + 1 %}{% endif %}
+    {% if s.status == 'fail' %}{% set ns.has_fail = true %}{% endif %}
+    {% set ns.total = ns.total + 1 %}
+{% endfor %}
+
+{# Find priority from tests.yaml #}
+{% set priority = '' %}
+{% if tests and tests.phases %}
+{% for tp in tests.phases %}
+{% if tp.id == rp.id %}{% set priority = tp.priority %}{% endif %}
+{% endfor %}
+{% endif %}
+
+<div class="phase-accordion">
+    <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <div class="phase-header-left">
+            <span class="phase-chevron">&#9660;</span>
+            <span class="phase-name">Phase {{ phase_idx }} &mdash; {{ rp.name }}</span>
+            {% if priority %}
+            <span class="badge {% if priority == 'obligatoire' %}fail{% elif priority == 'haute' %}pass{% elif priority == 'moyenne' %}skip{% else %}manual{% endif %}">
+                {{ priority }}
+            </span>
+            {% endif %}
+        </div>
+        <div class="phase-header-right">
+            <span class="phase-pass-count {% if ns.has_fail %}text-red{% else %}text-green{% endif %}">
+                {{ ns.pass_count }}/{{ ns.total }} PASS
+            </span>
+            <button class="btn btn-run btn-sm"
+                    onclick="event.stopPropagation(); runAll(this, '/api/run?phase={{ phase_idx }}')">
+                &#9654; Phase
+            </button>
+            <button class="btn btn-stop-disabled btn-sm btn-phase-stop"
+                    onclick="event.stopPropagation(); stopRun()" disabled>
+                &#9632;
+            </button>
+        </div>
+    </div>
+    <div class="phase-body">
+        {% for series in rp.series %}
+        {# Apply status filter #}
+        {% if not status or series.status == status %}
+        {% include "partials/series.html" %}
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+</div>
+
+{% else %}
+<!-- No data state -->
+<div class="no-data">
+    <p>Aucun rapport de test trouv&eacute;.</p>
+    <p class="text-muted">Lancez les tests fonctionnels pour g&eacute;n&eacute;rer un rapport :</p>
+    <p><code>uv run python tests/functional/run_functional.py</code></p>
+</div>
+{% endif %}
+
+<script>
+function runAll(btn, url) {
+    const isPhase = url.includes('phase=');
+    const scope = isPhase ? btn.closest('.phase-accordion') : document.getElementById('test-phases');
+    if (!scope) return;
+
+    // Reset all dots to blue pulsing, stats to "..."
+    scope.querySelectorAll('.status-dot').forEach(d => {
+        d.className = 'status-dot dot-running';
+    });
+    scope.querySelectorAll('.series-stats span').forEach(s => {
+        s.textContent = '...';
+        s.className = 'text-muted';
+    });
+    scope.querySelectorAll('.phase-pass-count').forEach(s => {
+        s.textContent = '...';
+        s.className = 'phase-pass-count text-muted';
+    });
+
+    // Disable run buttons, show stop button
+    document.querySelectorAll('.btn-run, .btn-primary, #btn-run-failures').forEach(b => {
+        b.style.pointerEvents = 'none';
+        b.style.opacity = '0.4';
+    });
+    btn.innerHTML = '⏳ Exécution...';
+    // Activate global stop button
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.disabled = false;
+    stopBtn.className = 'btn btn-stop';
+
+    // Activate phase stop button if running a phase
+    if (isPhase) {
+        const phaseStop = btn.closest('.phase-header-right').querySelector('.btn-phase-stop');
+        if (phaseStop) {
+            phaseStop.disabled = false;
+            phaseStop.className = 'btn btn-stop btn-sm btn-phase-stop';
+        }
+    }
+    // Activate all phase stop buttons if running all
+    if (!isPhase) {
+        document.querySelectorAll('.btn-phase-stop').forEach(b => {
+            b.disabled = false;
+            b.className = 'btn btn-stop btn-sm btn-phase-stop';
+        });
+    }
+
+    // POST then reload
+    fetch(url, {method: 'POST'}).then(() => {
+        window.location.reload();
+    }).catch(() => {
+        window.location.reload();
+    });
+}
+
+function stopRun() {
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.innerHTML = '⏳ Arrêt...';
+    stopBtn.style.pointerEvents = 'none';
+
+    fetch('/api/stop', {method: 'POST'}).then(() => {
+        // Wait a moment for process to terminate, then reload
+        setTimeout(() => window.location.reload(), 1000);
+    }).catch(() => {
+        window.location.reload();
+    });
+}
+</script>
+{% endblock %}
