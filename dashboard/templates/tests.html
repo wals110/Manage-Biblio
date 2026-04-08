@@ -26,8 +26,8 @@
             <option value="">Dernier run</option>
             {% for r in available_runs %}
             <option value="{{ r.id }}" {% if selected_run == r.id %}selected{% endif %}>
-                {{ r.date[:16] | replace("T", " ") }} — {{ r.pass }}/{{ r.total }}
-                {% if r.run_type != 'full' %}({{ r.run_type | replace('series_', '') | replace('phase_', 'P') }}){% endif %}
+                {{ r.label or r.id }} — {{ r.pass }}/{{ r.total }}
+                {% if r.git_branch %}[{{ r.git_branch }}{% if r.git_commit %}@{{ r.git_commit }}{% endif %}]{% endif %}
             </option>
             {% endfor %}
         </select>
@@ -53,7 +53,7 @@
 <!-- Action buttons -->
 <div class="actions-bar">
     <button class="btn btn-primary" id="btn-run-all"
-            onclick="runAll(this, buildRunUrl('/api/run?all=true'))">
+            onclick="checkAll(); runAll(this, buildRunUrl('/api/run?all=true'))">
         &#9654; Tous
     </button>
     <button class="btn" id="btn-run-selection"
@@ -165,6 +165,11 @@ function togglePhaseCheckboxes(phaseCheckbox, phaseIdx) {
     const phase = phaseCheckbox.closest('.phase-accordion');
     const boxes = phase.querySelectorAll('.series-checkbox');
     boxes.forEach(b => b.checked = phaseCheckbox.checked);
+    updateSelectionCount();
+}
+
+function checkAll() {
+    document.querySelectorAll('.series-checkbox, .phase-checkbox').forEach(b => b.checked = true);
     updateSelectionCount();
 }
 

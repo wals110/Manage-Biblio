@@ -3,10 +3,53 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
 import duckdb
+
+# ── Random run name generator ─────────────────────────────────────────────
+ADJECTIVES = [
+    "cosmic", "atomic", "turbo", "quantum", "electric", "stellar", "galactic",
+    "sonic", "hyper", "mega", "ultra", "super", "ninja", "pixel", "cyber",
+    "neo", "retro", "funky", "groovy", "epic", "wild", "zen", "swift",
+    "bold", "clever", "fierce", "noble", "vivid", "crispy", "frosty",
+]
+NOUNS = [
+    "courgette", "koala", "panda", "phoenix", "dragon", "falcon", "panther",
+    "tornado", "volcano", "glacier", "asteroid", "nebula", "quasar", "pulsar",
+    "simpson", "gandalf", "yoda", "totoro", "pikachu", "hobbit", "naruto",
+    "interstellar", "odyssey", "matrix", "inception", "avatar", "dune",
+    "cappuccino", "espresso", "tiramisu", "wasabi", "ramen", "sushi",
+    "titanium", "plutonium", "kryptonite", "adamantium", "vibranium",
+]
+
+
+def generate_run_name() -> str:
+    """Generate a random memorable run name like 'cosmic-koala' or 'turbo-tiramisu'."""
+    return f"{random.choice(ADJECTIVES)}-{random.choice(NOUNS)}"
+
+
+def get_git_info() -> dict[str, str]:
+    """Get current git branch and short commit hash."""
+    info = {"branch": "", "commit": ""}
+    try:
+        info["branch"] = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+    except Exception:
+        pass
+    try:
+        info["commit"] = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+    except Exception:
+        pass
+    return info
 
 DB_PATH = Path(__file__).parent / "results.db"
 
@@ -17,6 +60,7 @@ def get_connection() -> duckdb.DuckDBPyConnection:
     con.execute("""
         CREATE TABLE IF NOT EXISTS runs (
             id TEXT PRIMARY KEY,
+            label TEXT,
             date TEXT,
             duration INTEGER,
             total INTEGER,
@@ -24,7 +68,9 @@ def get_connection() -> duckdb.DuckDBPyConnection:
             fail INTEGER,
             skip INTEGER,
             rate REAL,
-            run_type TEXT
+            run_type TEXT,
+            git_branch TEXT,
+            git_commit TEXT
         )
     """)
     con.execute("""
@@ -53,19 +99,28 @@ def get_connection() -> duckdb.DuckDBPyConnection:
     return con
 
 
-def insert_run(report: dict, run_id: str, run_type: str = "full"):
+def insert_run(report: dict, run_id: str, run_type: str = "full",
+               label: str | None = None):
     """Insert a complete run with all series and checks."""
     con = get_connection()
     sm = report.get("summary", {})
     total = sm.get("total", 0)
     pass_count = sm.get("pass", 0)
 
+    # Auto-generate label if not provided
+    if not label:
+        label = generate_run_name()
+
+    # Auto-detect git info
+    git = get_git_info()
+
     # Insert run
     con.execute("""
-        INSERT OR REPLACE INTO runs (id, date, duration, total, pass, fail, skip, rate, run_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO runs (id, label, date, duration, total, pass, fail, skip, rate, run_type, git_branch, git_commit)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         run_id,
+        label,
         report.get("run_at", ""),
         report.get("duration_seconds", 0),
         total,
@@ -74,6 +129,8 @@ def insert_run(report: dict, run_id: str, run_type: str = "full"):
         sm.get("skip", 0),
         round(pass_count / total * 100, 1) if total else 0.0,
         run_type,
+        git.get("branch", ""),
+        git.get("commit", ""),
     ])
 
     # Insert series and checks
@@ -104,11 +161,11 @@ def get_runs(limit: int = 50) -> list[dict]:
     """Get recent runs sorted by date desc."""
     con = get_connection()
     result = con.execute("""
-        SELECT id, date, duration, total, pass, fail, skip, rate, run_type
+        SELECT id, label, date, duration, total, pass, fail, skip, rate, run_type, git_branch, git_commit
         FROM runs ORDER BY date DESC LIMIT ?
     """, [limit]).fetchall()
     con.close()
-    cols = ["id", "date", "duration", "total", "pass", "fail", "skip", "rate", "run_type"]
+    cols = ["id", "label", "date", "duration", "total", "pass", "fail", "skip", "rate", "run_type", "git_branch", "git_commit"]
     return [dict(zip(cols, row)) for row in result]
 
 

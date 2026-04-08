@@ -223,7 +223,9 @@ def main():
     parser.add_argument("--rerun-failures", action="store_true",
                         help="Rerun only FAIL and SKIP series from the latest report")
     parser.add_argument("--no-history", action="store_true",
-                        help="Do not append results to history.json")
+                        help="Do not save results to DuckDB")
+    parser.add_argument("--label", default=None,
+                        help="Custom label for this run (default: random name)")
     args = parser.parse_args()
 
     if not os.path.exists(TY):
@@ -569,9 +571,10 @@ def main():
             run_type = "full"
 
         try:
-            from db import insert_run
-            insert_run(report, f"run_{ts}", run_type)
-            print(f"  {dim(f'Historique : sauvegardé dans results.db (run_{ts})')}")
+            from db import insert_run, generate_run_name
+            label = args.label or generate_run_name()
+            insert_run(report, f"run_{ts}", run_type, label=label)
+            print(f"  {dim(f'Historique : {label} (run_{ts})')}")
         except Exception as e:
             print(f"  {ylw(f'Historique : erreur DuckDB — {e}')}")
 
