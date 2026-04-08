@@ -22,6 +22,15 @@
 <!-- Filters -->
 <div class="filters-bar">
     <form method="get" action="/tests" class="filters-form">
+        <select name="run" class="filter-select" onchange="this.form.submit()">
+            <option value="">Dernier run</option>
+            {% for r in available_runs %}
+            <option value="{{ r.id }}" {% if selected_run == r.id %}selected{% endif %}>
+                {{ r.date[:16] | replace("T", " ") }} — {{ r.pass }}/{{ r.total }}
+                {% if r.run_type != 'full' %}({{ r.run_type | replace('series_', '') | replace('phase_', 'P') }}){% endif %}
+            </option>
+            {% endfor %}
+        </select>
         <select name="phase" class="filter-select" onchange="this.form.submit()">
             <option value="">Toutes les phases</option>
             {% if tests and tests.phases %}

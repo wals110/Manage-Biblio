@@ -112,6 +112,69 @@ def get_runs(limit: int = 50) -> list[dict]:
     return [dict(zip(cols, row)) for row in result]
 
 
+def get_run_detail(run_id: str) -> dict | None:
+    """Get a full run with series and checks, structured like a report JSON."""
+    con = get_connection()
+
+    # Get run info
+    run = con.execute("SELECT * FROM runs WHERE id = ?", [run_id]).fetchone()
+    if not run:
+        con.close()
+        return None
+
+    cols = ["id", "date", "duration", "total", "pass", "fail", "skip", "rate", "run_type"]
+    run_dict = dict(zip(cols, run))
+
+    # Get series grouped by phase
+    series_rows = con.execute("""
+        SELECT series_id, name, status, duration_ms, phase_id
+        FROM series_results WHERE run_id = ? ORDER BY phase_id, series_id
+    """, [run_id]).fetchall()
+
+    # Get checks
+    check_rows = con.execute("""
+        SELECT check_id, series_id, description, status, error, duration_ms
+        FROM check_results WHERE run_id = ? ORDER BY check_id
+    """, [run_id]).fetchall()
+
+    con.close()
+
+    # Build checks by series
+    checks_by_series: dict[str, list[dict]] = {}
+    for cr in check_rows:
+        sid = cr[1]
+        if sid not in checks_by_series:
+            checks_by_series[sid] = []
+        checks_by_series[sid].append({
+            "id": cr[0], "description": cr[2], "status": cr[3],
+            "error": cr[4], "duration_ms": cr[5],
+        })
+
+    # Build phases with series
+    phases: dict[str, dict] = {}
+    for sr in series_rows:
+        phase_id = sr[4] or "unknown"
+        if phase_id not in phases:
+            phases[phase_id] = {"id": phase_id, "name": phase_id, "series": []}
+        phases[phase_id]["series"].append({
+            "id": sr[0], "name": sr[1], "status": sr[2],
+            "duration_ms": sr[3], "checks": checks_by_series.get(sr[0], []),
+        })
+
+    return {
+        "run_at": run_dict["date"],
+        "duration_seconds": run_dict["duration"],
+        "summary": {
+            "total": run_dict["total"], "pass": run_dict["pass"],
+            "fail": run_dict["fail"], "skip": run_dict["skip"],
+        },
+        "phases": list(phases.values()),
+        "_run_id": run_dict["id"],
+        "_run_type": run_dict["run_type"],
+        "_rate": run_dict["rate"],
+    }
+
+
 def get_series_history(series_id: str, limit: int = 20) -> list[dict]:
     """Get history of a specific series across runs."""
     con = get_connection()

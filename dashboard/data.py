@@ -729,6 +729,40 @@ def get_all_test_logs() -> dict[str, dict[str, list[dict]]]:
     return result
 
 
+def get_run_from_db(run_id: str | None = None) -> dict | None:
+    """Load a specific run from DuckDB, or the latest if run_id is None.
+
+    Returns a report-like dict with phases/series/checks.
+    """
+    import sys
+    func_dir = str(get_project_root() / "tests" / "functional")
+    if func_dir not in sys.path:
+        sys.path.insert(0, func_dir)
+    try:
+        from db import get_run_detail, get_runs
+        if run_id is None:
+            runs = get_runs(limit=1)
+            if not runs:
+                return None
+            run_id = runs[0]["id"]
+        return get_run_detail(run_id)
+    except Exception:
+        return None
+
+
+def get_available_runs() -> list[dict]:
+    """Get list of available runs from DuckDB for the run selector."""
+    import sys
+    func_dir = str(get_project_root() / "tests" / "functional")
+    if func_dir not in sys.path:
+        sys.path.insert(0, func_dir)
+    try:
+        from db import get_runs
+        return get_runs(limit=50)
+    except Exception:
+        return []
+
+
 def get_suggestions() -> list[dict]:
     """Return suggestions from logs/suggestions.yaml, or empty list."""
     path = get_project_root() / "logs" / "suggestions.yaml"

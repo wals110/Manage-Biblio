@@ -35,23 +35,35 @@ async def tests_page(
     request: Request,
     phase: str | None = None,
     status: str | None = None,
+    run: str | None = None,
 ):
     """Tests page — list, expand, run tests."""
     phase_int = int(phase) if phase and phase.isdigit() else None
     status_val = status if status else None
-    report = data.get_latest_report()
-    tests = data.get_tests_yaml()
-    merged = data.get_merged_test_view(report, tests)
+    tests_yaml = data.get_tests_yaml()
+    available_runs = data.get_available_runs()
+
+    # Load specific run from DuckDB, or latest
+    db_report = data.get_run_from_db(run)
+    if db_report:
+        # Enrich with setup/description from tests.yaml
+        report = data.get_merged_test_view(db_report, tests_yaml)
+    else:
+        # Fallback: read from JSON files
+        report = data.get_merged_test_view(data.get_latest_report(), tests_yaml)
+
     return templates.TemplateResponse(
         request,
         "tests.html",
         {
-            "report": merged,
-            "tests": tests,
+            "report": report,
+            "tests": tests_yaml,
             "phase": phase_int,
             "status": status_val,
             "active": "tests",
             "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+            "available_runs": available_runs,
+            "selected_run": run or "",
         },
     )
 
