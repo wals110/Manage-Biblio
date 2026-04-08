@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% set active = "historique" %}
+{% block title %}Historique{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Historique</h1>
+<p class="page-subtitle">&Eacute;volution des r&eacute;sultats de tests fonctionnels au fil du temps</p>
+
+
+{% if not history %}
+<div class="no-data">
+    <p>Aucun historique</p>
+    <p>Lancez des tests fonctionnels pour voir l'&eacute;volution ici.</p>
+</div>
+{% else %}
+
+<!-- ── KPI summary (latest run) ── -->
+{% set latest = history[-1] %}
+<div class="kpi-row">
+    <div class="kpi-card green">
+        <div class="kpi-label">Dernier taux</div>
+        <div class="kpi-value">{{ latest.rate }}%</div>
+    </div>
+    <div class="kpi-card blue">
+        <div class="kpi-label">Nombre de runs</div>
+        <div class="kpi-value">{{ history|length }}</div>
+    </div>
+    <div class="kpi-card purple">
+        <div class="kpi-label">Derni&egrave;re dur&eacute;e</div>
+        <div class="kpi-value">{{ (latest.duration / 60)|round(1) }}m</div>
+    </div>
+    {% if history|length > 1 %}
+    {% set prev = history[-2] %}
+    {% set delta = latest.pass - prev.pass %}
+    <div class="kpi-card {% if delta >= 0 %}green{% else %}red{% endif %}">
+        <div class="kpi-label">Delta pass</div>
+        <div class="kpi-value">{% if delta > 0 %}+{% endif %}{{ delta }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ── Timeline Table ── -->
+<div class="mt-2">
+    <h2 class="section-title">Timeline</h2>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Pass</th>
+                    <th>Fail</th>
+                    <th>Skip</th>
+                    <th>Total</th>
+                    <th>Taux</th>
+                    <th>Dur&eacute;e</th>
+                    <th>&Delta;</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in history|reverse %}
+                <tr{% if loop.index == 1 %} class="history-latest-row"{% endif %}>
+                    <td>{{ run.date }}</td>
+                    <td class="text-green">{{ run.pass }}</td>
+                    <td class="text-red">{{ run.fail }}</td>
+                    <td class="text-yellow">{{ run.skip }}</td>
+                    <td>{{ run.total }}</td>
+                    <td>
+                        <span class="badge {% if run.rate >= 90 %}pass{% elif run.rate >= 70 %}skip{% else %}fail{% endif %}">
+                            {{ run.rate }}%
+                        </span>
+                    </td>
+                    <td class="text-muted">{{ (run.duration / 60)|round(1) }}m</td>
+                    <td>
+                        {% set idx = history|length - loop.index %}
+                        {% if idx > 0 %}
+                            {% set prev_run = history[idx - 1] %}
+                            {% set d = run.pass - prev_run.pass %}
+                            {% if d > 0 %}
+                                <span class="text-green">+{{ d }} &uarr;</span>
+                            {% elif d < 0 %}
+                                <span class="text-red">{{ d }} &darr;</span>
+                            {% else %}
+                                <span class="text-muted">=</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/tests" class="btn btn-sm">Voir</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- TODO: Graphiques par série à implémenter dans une prochaine itération -->
+
+{% endif %}
+{% endblock %}

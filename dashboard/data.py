@@ -458,6 +458,226 @@ def get_available_tests(csv_files: list[dict]) -> list[dict]:
     return tests
 
 
+def compute_classification_metrics(csv_path: str) -> dict:
+    """Compute classification quality metrics from a classify CSV.
+
+    Returns: {total, classified, not_classified, errors, rate, avg_confidence,
+              cost, by_section: {section: count}, top_themes: [(theme, count)]}
+    """
+    _, rows = load_csv(csv_path)
+    total = len(rows)
+    if total == 0:
+        return {
+            "total": 0, "classified": 0, "not_classified": 0, "errors": 0,
+            "rate": 0.0, "avg_confidence": 0.0, "cost": 0.0,
+            "by_section": {}, "top_themes": [], "suggestions": 0,
+        }
+
+    classified = sum(1 for r in rows if r.get("status") == "classifié")
+    not_classified = sum(1 for r in rows if r.get("status") == "non_classifié")
+    errors = sum(1 for r in rows if r.get("status") == "erreur")
+    suggestions = sum(1 for r in rows if r.get("status") == "suggestion")
+    rate = round(classified / total * 100, 1) if total else 0.0
+
+    confidences: list[float] = []
+    for r in rows:
+        try:
+            val = float(r.get("confiance", 0))
+            if val > 0:
+                confidences.append(val)
+        except (ValueError, TypeError):
+            pass
+    avg_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
+
+    # Estimate API cost: ~$0.0003 per LLM call (SiliconFlow pricing)
+    llm_calls = sum(1 for r in rows if r.get("mot_cle", "").startswith("llm"))
+    cost = round(llm_calls * 0.0003, 4)
+
+    # By section (top-level folder)
+    by_section: dict[str, int] = {}
+    for r in rows:
+        dest = r.get("destination", "")
+        if dest:
+            section = dest.split("/")[0]
+            if section:
+                by_section[section] = by_section.get(section, 0) + 1
+
+    # Top themes
+    theme_counts: dict[str, int] = {}
+    for r in rows:
+        theme = r.get("theme_detecte", "").strip()
+        if theme:
+            theme_counts[theme] = theme_counts.get(theme, 0) + 1
+    top_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "total": total,
+        "classified": classified,
+        "not_classified": not_classified,
+        "errors": errors,
+        "suggestions": suggestions,
+        "rate": rate,
+        "avg_confidence": avg_confidence,
+        "cost": cost,
+        "by_section": dict(sorted(by_section.items())),
+        "top_themes": top_themes,
+    }
+
+
+def compute_rename_metrics(csv_path: str) -> dict:
+    """Compute rename quality metrics from a rename CSV.
+
+    Returns: {total, renamed, unchanged, errors, llm_used, rate}
+    """
+    _, rows = load_csv(csv_path)
+    total = len(rows)
+    if total == 0:
+        return {"total": 0, "renamed": 0, "unchanged": 0, "errors": 0, "llm_used": 0, "rate": 0.0}
+
+    renamed = sum(1 for r in rows if r.get("action") == "RENOMME")
+    unchanged = sum(1 for r in rows if r.get("action") == "INCHANGE")
+    errors = sum(1 for r in rows if r.get("action") == "ECHEC")
+    llm_used = sum(1 for r in rows if r.get("source", "").lower() in ("llm", "llm_vision", "vision"))
+    rate = round(renamed / total * 100, 1) if total else 0.0
+
+    return {
+        "total": total,
+        "renamed": renamed,
+        "unchanged": unchanged,
+        "errors": errors,
+        "llm_used": llm_used,
+        "rate": rate,
+    }
+
+
+def find_problematic_files(all_reports: list[dict]) -> list[dict]:
+    """Find files that fail/skip across multiple test runs.
+
+    Returns: [{name, problem, confidence, recurrence: "N/M runs"}]
+    """
+    if not all_reports:
+        return []
+
+    # Track failures per file across reports
+    file_issues: dict[str, list[dict]] = {}
+    total_runs = len(all_reports)
+
+    for report in all_reports:
+        for phase in report.get("phases", []):
+            for series in phase.get("series", []):
+                for check in series.get("checks", []):
+                    status = check.get("status", "")
+                    if status in ("fail", "skip"):
+                        name = check.get("description", check.get("id", ""))
+                        if name not in file_issues:
+                            file_issues[name] = []
+                        file_issues[name].append({
+                            "status": status,
+                            "error": check.get("error", ""),
+                            "series": series.get("name", ""),
+                        })
+
+    # Build result — only files failing in more than one report
+    results: list[dict] = []
+    for name, issues in sorted(file_issues.items(), key=lambda x: len(x[1]), reverse=True):
+        count = len(issues)
+        if count < 1:
+            continue
+        latest = issues[0]
+        results.append({
+            "name": name,
+            "problem": latest.get("error", latest.get("status", "")).strip()[:120],
+            "series": latest.get("series", ""),
+            "recurrence": f"{count}/{total_runs}",
+        })
+
+    return results[:30]
+
+
+def get_history_data() -> list[dict]:
+    """Load history from history.json (long-term) + report_*.json (recent).
+
+    Returns list of {date, date_short, pass, fail, skip, total, rate, duration, filename}
+    sorted by date ascending (oldest first for charts).
+    Deduplicates by date — history.json entries are supplemented by report_*.json.
+    """
+    seen_dates: set[str] = set()
+    results: list[dict] = []
+
+    def _parse_date(run_at: str) -> tuple[str, str]:
+        try:
+            dt = datetime.fromisoformat(run_at)
+            return dt.strftime("%Y-%m-%d %H:%M"), dt.strftime("%m/%d %H:%M")
+        except (ValueError, TypeError):
+            return run_at, run_at
+
+    # 1. Load history.json (long-term archive)
+    history_path = get_project_root() / "tests" / "functional" / "history.json"
+    if history_path.exists():
+        try:
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            for entry in history:
+                date_str, date_short = _parse_date(entry.get("date", ""))
+                if date_str in seen_dates:
+                    continue
+                seen_dates.add(date_str)
+                results.append({
+                    "date": date_str,
+                    "date_short": date_short,
+                    "pass": entry.get("pass", 0),
+                    "fail": entry.get("fail", 0),
+                    "skip": entry.get("skip", 0),
+                    "total": entry.get("total", 0),
+                    "rate": entry.get("rate", 0),
+                    "duration": entry.get("duration", 0),
+                    "filename": entry.get("report", ""),
+                    "run_type": entry.get("run_type", "unknown"),
+                })
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # 2. Load report_*.json (recent, may not be in history.json yet)
+    for report in get_all_reports():
+        summary = report.get("summary", {})
+        run_at = report.get("run_at", "")
+        date_str, date_short = _parse_date(run_at)
+        if date_str in seen_dates:
+            continue
+        seen_dates.add(date_str)
+        total = summary.get("total", 0)
+        pass_count = summary.get("pass", 0)
+        results.append({
+            "date": date_str,
+            "date_short": date_short,
+            "pass": pass_count,
+            "fail": summary.get("fail", 0),
+            "skip": summary.get("skip", 0),
+            "total": total,
+            "rate": round(pass_count / total * 100, 1) if total > 0 else 0.0,
+            "duration": report.get("duration_seconds", 0),
+            "filename": report.get("_filename", ""),
+            "run_type": "unknown",
+        })
+
+    # Sort oldest first for charts
+    results.sort(key=lambda r: r["date"])
+    return results
+
+
+def get_suggestions() -> list[dict]:
+    """Return suggestions from logs/suggestions.yaml, or empty list."""
+    path = get_project_root() / "logs" / "suggestions.yaml"
+    if not path.exists():
+        return []
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return []
+        return data
+    except (yaml.YAMLError, OSError):
+        return []
+
+
 def find_test_for_report(csv_filename: str, tests_yaml: dict | None) -> dict | None:
     """Find which test series produced a given CSV report.
 

@@ -222,6 +222,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show plan only")
     parser.add_argument("--rerun-failures", action="store_true",
                         help="Rerun only FAIL and SKIP series from the latest report")
+    parser.add_argument("--no-history", action="store_true",
+                        help="Do not append results to history.json")
     args = parser.parse_args()
 
     if not os.path.exists(TY):
@@ -511,6 +513,36 @@ def main():
     os.makedirs(RD, exist_ok=True)
     jp = os.path.join(RD, f"report_{ts}.json"); mp = os.path.join(RD, f"report_{ts}.md")
     write_json(report, jp); write_md(report, mp)
+
+    # Append summary to history.json (long-term tracking)
+    if args.no_history:
+        print(f"  {dim('Historique : désactivé (--no-history)')}")
+    else:
+        history_path = os.path.join(SD, "history.json")
+        try:
+            history = json.loads(open(history_path, encoding="utf-8").read()) if os.path.exists(history_path) else []
+        except (json.JSONDecodeError, OSError):
+            history = []
+        # Determine run type
+        if args.series:
+            run_type = f"series_{','.join(args.series)}"
+        elif args.phase:
+            run_type = f"phase_{'_'.join(str(p) for p in args.phase)}"
+        elif args.rerun_failures:
+            run_type = "rerun_failures"
+        else:
+            run_type = "full"
+
+        history.append({
+            "date": report["run_at"],
+            "pass": sm["pass"], "fail": sm["fail"], "skip": sm["skip"], "total": sm["total"],
+            "rate": round(sm["pass"] / sm["total"] * 100, 1) if sm["total"] else 0,
+            "duration": round(dur),
+            "report": f"report_{ts}.json",
+            "run_type": run_type,
+        })
+        with open(history_path, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
 
     # Summary
     m, sc = divmod(int(dur), 60)

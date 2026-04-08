@@ -33,3 +33,4 @@ notes/
 # Claude
 .claude/
 tests/functional/reports/
+.superpowers/

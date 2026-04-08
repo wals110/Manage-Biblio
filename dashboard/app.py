@@ -80,11 +80,14 @@ async def run_test(
     phase: int | None = None,
     all: bool = False,
     failures: bool = False,
+    no_history: bool = False,
 ):
     """Run functional tests and return updated HTML."""
     global _running_process
 
     cmd = ["uv", "run", "python", "tests/functional/run_functional.py"]
+    if no_history:
+        cmd.append("--no-history")
     if series:
         cmd += ["--series", series]
     elif phase is not None:
@@ -273,6 +276,81 @@ async def comparer_page(
             "test_a": test_a,
             "test_b": test_b,
             "filter": filter or "all",
+        },
+    )
+
+
+@app.get("/historique")
+async def historique_page(request: Request, run_type: str = "all"):
+    """Historique page — evolution charts and timeline."""
+    history = data.get_history_data()
+    run_types = sorted({h.get("run_type", "unknown") for h in history})
+    if run_type != "all":
+        history = [h for h in history if h.get("run_type", "unknown") == run_type]
+    return templates.TemplateResponse(
+        request,
+        "historique.html",
+        {
+            "active": "historique",
+            "history": history,
+            "run_type": run_type,
+            "run_types": run_types,
+        },
+    )
+
+
+@app.get("/metriques")
+async def metriques_page(
+    request: Request,
+    classify_file: str | None = None,
+    rename_file: str | None = None,
+):
+    """Metriques page — quality metrics with Chart.js charts."""
+    tests_yaml = data.get_tests_yaml()
+    classify_files = data.get_csv_files("classify", tests_yaml)
+    rename_files = data.get_csv_files("rename", tests_yaml)
+
+    classify_metrics = None
+    rename_metrics = None
+
+    if classify_files:
+        selected = classify_file or classify_files[0]["path"]
+        classify_metrics = data.compute_classification_metrics(selected)
+
+    if rename_files:
+        selected = rename_file or rename_files[0]["path"]
+        rename_metrics = data.compute_rename_metrics(selected)
+
+    problematic = data.find_problematic_files(data.get_all_reports())
+
+    return templates.TemplateResponse(
+        request,
+        "metriques.html",
+        {
+            "active": "metriques",
+            "classify_files": classify_files,
+            "rename_files": rename_files,
+            "classify_metrics": classify_metrics,
+            "rename_metrics": rename_metrics,
+            "problematic": problematic,
+            "selected_classify": classify_file or (classify_files[0]["path"] if classify_files else ""),
+            "selected_rename": rename_file or (rename_files[0]["path"] if rename_files else ""),
+        },
+    )
+
+
+@app.get("/suggestions")
+async def suggestions_page(request: Request):
+    """Suggestions page — read-only viewer."""
+    suggestions = data.get_suggestions()
+    total_files = sum(len(s.get("files", [])) for s in suggestions)
+    return templates.TemplateResponse(
+        request,
+        "suggestions.html",
+        {
+            "active": "suggestions",
+            "suggestions": suggestions,
+            "total_files": total_files,
         },
     )
 
