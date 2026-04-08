@@ -11,11 +11,11 @@
 {% endif %}
 <h1 class="page-title">Tests &mdash; Ex&eacute;cution</h1>
 <p class="page-subtitle">
-    {% if report %}
+    {% if report and report.run_at is defined and report.run_at %}
     Dernier rapport : {{ report.run_at[:19] | replace("T", " ") }}
     &mdash; {{ report.summary.pass }}/{{ report.summary.total }} PASS
     {% else %}
-    Aucun rapport disponible
+    Aucun rapport disponible — lancez les tests pour commencer
     {% endif %}
 </p>
 
@@ -45,15 +45,22 @@
 <div class="actions-bar">
     <button class="btn btn-primary" id="btn-run-all"
             onclick="runAll(this, buildRunUrl('/api/run?all=true'))">
-        &#9654; Lancer tous les tests
+        &#9654; Tous
+    </button>
+    <button class="btn" id="btn-run-selection"
+            onclick="runSelection(this)" disabled>
+        &#9654; S&eacute;lection (<span id="selection-count">0</span>)
     </button>
     <button class="btn" id="btn-run-failures"
             onclick="runAll(this, buildRunUrl('/api/run?failures=true'))">
-        &#9654; Relancer les &eacute;checs
+        &#9654; &Eacute;checs
     </button>
     <button class="btn btn-stop-disabled" id="btn-stop"
             onclick="stopRun()" disabled>
         &#9632; Stop
+    </button>
+    <button class="btn btn-sm" onclick="toggleAllCheckboxes()" title="Tout cocher/d&eacute;cocher">
+        &#9745;
     </button>
     <span id="run-spinner" class="spinner htmx-indicator"></span>
     <label class="history-toggle" title="D&eacute;cocher pour ne pas historiser ce run">
@@ -88,6 +95,9 @@
 <div class="phase-accordion">
     <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
         <div class="phase-header-left">
+            <input type="checkbox" class="phase-checkbox"
+                   onclick="event.stopPropagation(); togglePhaseCheckboxes(this, {{ phase_idx }})"
+                   data-phase="{{ phase_idx }}">
             <span class="phase-chevron">&#9660;</span>
             <span class="phase-name">Phase {{ phase_idx }} &mdash; {{ rp.name }}</span>
             {% if priority %}
@@ -133,6 +143,40 @@
 {% endif %}
 
 <script>
+function updateSelectionCount() {
+    const checked = document.querySelectorAll('.series-checkbox:checked');
+    const count = checked.length;
+    document.getElementById('selection-count').textContent = count;
+    const btn = document.getElementById('btn-run-selection');
+    btn.disabled = count === 0;
+    btn.style.opacity = count === 0 ? '0.4' : '1';
+}
+
+function togglePhaseCheckboxes(phaseCheckbox, phaseIdx) {
+    const phase = phaseCheckbox.closest('.phase-accordion');
+    const boxes = phase.querySelectorAll('.series-checkbox');
+    boxes.forEach(b => b.checked = phaseCheckbox.checked);
+    updateSelectionCount();
+}
+
+function toggleAllCheckboxes() {
+    const boxes = document.querySelectorAll('.series-checkbox');
+    const allChecked = Array.from(boxes).every(b => b.checked);
+    boxes.forEach(b => b.checked = !allChecked);
+    updateSelectionCount();
+}
+
+function runSelection(btn) {
+    const checked = document.querySelectorAll('.series-checkbox:checked');
+    if (checked.length === 0) return;
+    const series = Array.from(checked).map(c => c.value).join(',');
+    const url = buildRunUrl('/api/run?series=' + series);
+    console.log('[dashboard] Selection URL:', url);
+    console.log('[dashboard] Series:', series);
+    console.log('[dashboard] Checked:', checked.length);
+    runAll(btn, url);
+}
+
 function buildRunUrl(baseUrl) {
     const historyChecked = document.getElementById('history-toggle').checked;
     return historyChecked ? baseUrl : baseUrl + '&no_history=true';
@@ -143,16 +187,30 @@ function runAll(btn, url) {
     const scope = isPhase ? btn.closest('.phase-accordion') : document.getElementById('test-phases');
     if (!scope) return;
 
-    // Reset all dots to blue pulsing, stats to "..."
+    // Reset dots to grey, highlight first one as running
     scope.querySelectorAll('.status-dot').forEach(d => {
-        d.className = 'status-dot dot-running';
+        d.className = 'status-dot dot-not_run';
     });
+    const firstDot = scope.querySelector('.series-summary > .status-dot');
+    if (firstDot) firstDot.className = 'status-dot dot-running';
+
+    // Start polling for real current series
+    const runPollInterval = setInterval(() => {
+        fetch('/api/status').then(r => r.json()).then(s => {
+            if (s.current_series) {
+                updateSeriesStatus(s.current_series, s.completed, s.checks);
+            }
+            if (!s.running) {
+                clearInterval(runPollInterval);
+            }
+        });
+    }, 2000);
     scope.querySelectorAll('.series-stats span').forEach(s => {
         s.textContent = '...';
         s.className = 'text-muted';
     });
     scope.querySelectorAll('.phase-pass-count').forEach(s => {
-        s.textContent = '...';
+        s.textContent = '⏳';
         s.className = 'phase-pass-count text-muted';
     });
 
@@ -183,10 +241,18 @@ function runAll(btn, url) {
         });
     }
 
+    // Save checkbox state before reload
+    function saveCheckboxes() {
+        const checked = Array.from(document.querySelectorAll('.series-checkbox:checked')).map(c => c.value);
+        sessionStorage.setItem('checkedSeries', JSON.stringify(checked));
+    }
+
     // POST then reload
     fetch(url, {method: 'POST'}).then(() => {
+        saveCheckboxes();
         window.location.reload();
     }).catch(() => {
+        saveCheckboxes();
         window.location.reload();
     });
 }
@@ -203,5 +269,93 @@ function stopRun() {
         window.location.reload();
     });
 }
+
+// Restore checkboxes from sessionStorage
+const savedChecks = sessionStorage.getItem('checkedSeries');
+if (savedChecks) {
+    const checked = JSON.parse(savedChecks);
+    checked.forEach(id => {
+        const cb = document.querySelector(`.series-checkbox[value="${id}"]`);
+        if (cb) cb.checked = true;
+    });
+    // Also check parent phase checkboxes if all series in phase are checked
+    document.querySelectorAll('.phase-checkbox').forEach(pcb => {
+        const phase = pcb.closest('.phase-accordion');
+        if (phase) {
+            const all = phase.querySelectorAll('.series-checkbox');
+            const allChecked = Array.from(all).every(b => b.checked);
+            pcb.checked = allChecked;
+        }
+    });
+    updateSelectionCount();
+}
+
+// On page load, check if a test is already running
+function updateSeriesStatus(seriesId, completed, checks) {
+    // Update completed series with their final color
+    if (completed) {
+        for (const [sid, status] of Object.entries(completed)) {
+            const safeId = sid.replace('.', '-');
+            const row = document.getElementById('series-' + safeId);
+            if (row) {
+                const dot = row.querySelector('.series-summary > .status-dot');
+                if (dot) dot.className = 'status-dot dot-' + status;
+            }
+        }
+    }
+    // Update completed checks with their color
+    if (checks) {
+        for (const [cid, status] of Object.entries(checks)) {
+            // Find check dot by matching check-id text
+            document.querySelectorAll('.check-id').forEach(el => {
+                if (el.textContent.trim() === cid) {
+                    const checkDot = el.parentElement.querySelector('.status-dot');
+                    if (checkDot) checkDot.className = 'status-dot dot-' + status;
+                }
+            });
+        }
+    }
+    // Reset current running dot (remove previous blue)
+    document.querySelectorAll('.dot-running').forEach(d => {
+        d.className = 'status-dot dot-not_run';
+    });
+    // Highlight current series in blue
+    if (seriesId) {
+        const safeId = seriesId.replace('.', '-');
+        const row = document.getElementById('series-' + safeId);
+        if (row) {
+            const dot = row.querySelector('.series-summary > .status-dot');
+            if (dot) dot.className = 'status-dot dot-running';
+            row.classList.add('expanded');
+        }
+    }
+}
+
+fetch('/api/status').then(r => r.json()).then(data => {
+    if (data.running) {
+        // Disable buttons
+        document.querySelectorAll('.btn-run, .btn-primary, #btn-run-failures, #btn-run-selection').forEach(b => {
+            b.style.pointerEvents = 'none';
+            b.style.opacity = '0.4';
+        });
+        const stopBtn = document.getElementById('btn-stop');
+        if (stopBtn) { stopBtn.disabled = false; stopBtn.className = 'btn btn-stop'; }
+
+        // Show current series
+        updateSeriesStatus(data.current_series, data.completed, data.checks);
+
+        // Poll for updates
+        const pollInterval = setInterval(() => {
+            fetch('/api/status').then(r => r.json()).then(s => {
+                if (!s.running) {
+                    clearInterval(pollInterval);
+                    window.location.reload();
+                } else {
+                    updateSeriesStatus(s.current_series, s.completed, s.checks);
+                }
+            });
+        }, 2000);
+    }
+});
 </script>
 {% endblock %}

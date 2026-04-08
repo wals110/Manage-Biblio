@@ -11,7 +11,7 @@
 {% endif %}
 <h1 class="page-title">Overview</h1>
 <p class="page-subtitle">
-    {% if report %}
+    {% if report and report.run_at is defined and report.run_at %}
     Dernier rapport : {{ report.run_at[:19] | replace("T", " ") }}
     {% else %}
     Aucun rapport disponible

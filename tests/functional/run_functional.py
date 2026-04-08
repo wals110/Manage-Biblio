@@ -384,6 +384,14 @@ def main():
             st = time.monotonic()
             logs_before = set(G.glob(os.path.join(PR, "logs", "*")))
 
+            # Create structured log directory early (signals which test is running)
+            phase_id = ph.get("id", f"phase_{pi}")
+            series_log_dir = os.path.join(SD, "logs", phase_id, sid)
+            os.makedirs(series_log_dir, exist_ok=True)
+            # Write a marker file so the dashboard knows this test is running
+            with open(os.path.join(series_log_dir, ".running"), "w") as f:
+                f.write(sid)
+
             # Series pre_run
             if s.get("pre_run"):
                 if not run_cmds(s["pre_run"], f"{sid}.pre_run"):
@@ -457,8 +465,27 @@ def main():
             # Capture new log files produced during this series
             logs_after = set(G.glob(os.path.join(PR, "logs", "*")))
             new_logs = sorted(logs_after - logs_before)
+
+            # Move logs to structured directory (already created above)
+            # Remove running marker
+            running_marker = os.path.join(series_log_dir, ".running")
+            if os.path.exists(running_marker):
+                os.remove(running_marker)
+
             if new_logs:
-                sr["logs"] = [os.path.relpath(f, PR) for f in new_logs]
+                import shutil
+                structured_logs = []
+                for lf in new_logs:
+                    dest = os.path.join(series_log_dir, os.path.basename(lf))
+                    shutil.move(lf, dest)
+                    structured_logs.append(os.path.relpath(dest, PR))
+                sr["logs"] = structured_logs
+
+            # Move setup output to structured dir
+            if os.path.exists(setup_output_file):
+                import shutil
+                shutil.move(setup_output_file, os.path.join(series_log_dir, ".setup_output.txt"))
+
             ph_rpt["series"].append(sr)
 
             pc = sum(1 for c in sr["checks"] if c["status"] == "pass")

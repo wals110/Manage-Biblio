@@ -8,8 +8,10 @@
 {% endfor %}
 {% endif %}
 
-<div class="series-row series-{{ series.status }}" id="series-{{ series.id | replace('.', '-') }}">
+<div class="series-row series-{{ series.status }}{% if series.status == 'fail' %} expanded{% endif %}" id="series-{{ series.id | replace('.', '-') }}">
     <div class="series-summary" onclick="this.parentElement.classList.toggle('expanded')">
+        <input type="checkbox" class="series-checkbox" value="{{ series.id }}"
+               onclick="event.stopPropagation(); updateSelectionCount()">
         <span class="status-dot dot-{{ series.status }}"></span>
         <span class="series-id">{{ series.id }}</span>
         <span class="series-name">{{ series.name }}</span>
@@ -110,5 +112,17 @@
             {% endif %}
         </div>
         {% endfor %}
+
+        {% if series.logs %}
+        <div class="series-logs">
+            <div class="cmd-label">Logs associ&eacute;s :</div>
+            {% for log in series.logs %}
+            <div class="log-file">
+                <span class="log-icon">📄</span>
+                <a href="/rapports?file={{ log }}" class="log-link">{{ log | replace('tests/functional/logs/', '') }}</a>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
 </div>

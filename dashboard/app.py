@@ -1,7 +1,9 @@
 """Klodo Dashboard — FastAPI application."""
 
 import os
+import re
 import subprocess
+import threading
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -54,8 +56,59 @@ async def tests_page(
     )
 
 
-# Track running process for stop functionality
+# Track running process and current series
 _running_process: subprocess.Popen | None = None
+_current_series: str | None = None
+_run_output_lines: list[str] = []
+
+
+_completed_series: dict[str, str] = {}  # series_id → status (pass/fail/skip)
+_completed_checks: dict[str, str] = {}  # check_id → status (pass/fail/skip)
+
+
+def _monitor_output():
+    """Read subprocess stdout in background to track current series and checks."""
+    global _current_series
+    if _running_process and _running_process.stdout:
+        while True:
+            line = _running_process.stdout.readline()
+            if not line:
+                break
+            _run_output_lines.append(line)
+            # Detect series start: T0.1 (not T0.1a)
+            m = re.search(r'(T\d+\.\d+)', line)
+            if m:
+                sid = m.group(1)
+                if not re.search(r'T\d+\.\d+[a-z]', line):
+                    _current_series = sid
+                    print(f"[monitor] Current series: {sid}")
+            # Detect check result: "[T0.1a] ... ✓ PASS" or "✗ FAIL" or "⊘ SKIP"
+            cm = re.search(r'\[(T\d+\.\d+[a-z])\].*?(PASS|FAIL|SKIP)', line, re.IGNORECASE)
+            if cm:
+                cid = cm.group(1)
+                status = cm.group(2).lower()
+                _completed_checks[cid] = status
+            # Detect series result: "└─ T0.1: ✓ PASS"
+            if '└' in line:
+                m2 = re.search(r'(T\d+\.\d+).*?(PASS|FAIL|SKIP)', line, re.IGNORECASE)
+                if m2:
+                    sid = m2.group(1)
+                    status = m2.group(2).lower()
+                    _completed_series[sid] = status
+                    print(f"[monitor] Completed: {sid} → {status}")
+
+
+@app.get("/api/status")
+async def run_status():
+    """Check if a test is currently running, and which one."""
+    from fastapi.responses import JSONResponse
+    running = _running_process is not None and _running_process.poll() is None
+    return JSONResponse({
+        "running": running,
+        "current_series": _current_series if running else None,
+        "completed": dict(_completed_series) if running else {},
+        "checks": dict(_completed_checks) if running else {},
+    })
 
 
 @app.post("/api/stop")
@@ -89,25 +142,44 @@ async def run_test(
     if no_history:
         cmd.append("--no-history")
     if series:
-        cmd += ["--series", series]
+        # Support comma-separated series: "T0.1,T0.2,T1.1"
+        series_list = [s.strip() for s in series.split(",") if s.strip()]
+        cmd += ["--series"] + series_list
+        print(f"[dashboard] Running series: {series_list}")
     elif phase is not None:
         cmd += ["--phase", str(phase)]
     elif failures:
         cmd.append("--rerun-failures")
     # else: run all (no extra args)
 
+    global _current_series
+    _current_series = None
+    _run_output_lines.clear()
+    _completed_series.clear()
+    _completed_checks.clear()
+
+    print(f"[dashboard] CMD: {' '.join(cmd)}")
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     _running_process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
         cwd=str(data.get_project_root()),
+        env=env,
     )
+
+    # Start background thread to monitor stdout for current series
+    monitor_thread = threading.Thread(target=_monitor_output, daemon=True)
+    monitor_thread.start()
+
     # Wait in a non-blocking loop so other requests (like /api/stop) can be processed
     import asyncio
     while _running_process and _running_process.poll() is None:
         await asyncio.sleep(0.5)
     _running_process = None
+    _current_series = None
 
     # Reload data and return updated HTML
     report = data.get_latest_report()
@@ -125,9 +197,9 @@ async def run_test(
                         {"series": s, "tests": tests_yaml},
                     )
 
-    # Full re-render — redirect to tests page (HTMX will follow)
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/tests", status_code=303)
+    # Return simple JSON — the client JS will reload the page
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"status": "done"})
 
 
 @app.get("/rapports")

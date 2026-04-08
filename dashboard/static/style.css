@@ -707,8 +707,7 @@ th {
     padding: 0 16px 8px 42px;
 }
 
-.series-row.expanded .series-details,
-.series-fail .series-details {
+.series-row.expanded .series-details {
     display: block;
 }
 
@@ -736,6 +735,52 @@ th {
     opacity: 1 !important;
     pointer-events: auto !important;
     cursor: pointer;
+}
+
+.series-logs {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.log-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 0.75rem;
+}
+
+.log-icon {
+    font-size: 0.7rem;
+}
+
+.log-link {
+    color: var(--blue);
+    text-decoration: none;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.log-link:hover {
+    text-decoration: underline;
+}
+
+.phase-checkbox {
+    accent-color: var(--blue);
+    cursor: pointer;
+    margin-right: 6px;
+    width: 16px;
+    height: 16px;
+}
+
+.series-checkbox {
+    accent-color: var(--blue);
+    cursor: pointer;
+    margin-right: 4px;
+    width: 14px;
+    height: 14px;
 }
 
 .history-toggle {

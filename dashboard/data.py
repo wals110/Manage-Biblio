@@ -429,7 +429,7 @@ def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict |
                 elif st in ("skip", "not_run"):
                     summary["skip"] += 1
 
-    result = dict(report) if report else {"duration_seconds": 0}
+    result = dict(report) if report else {"duration_seconds": 0, "run_at": ""}
     result["summary"] = summary
     result["phases"] = merged_phases
     if report:
@@ -662,6 +662,49 @@ def get_history_data() -> list[dict]:
     # Sort oldest first for charts
     results.sort(key=lambda r: r["date"])
     return results
+
+
+def get_series_logs(phase_id: str, series_id: str) -> list[dict]:
+    """Get log files for a specific series from the structured logs directory.
+
+    Returns list of {name, path, type} where type is 'csv', 'setup_output', 'bench'.
+    """
+    series_dir = get_project_root() / "tests" / "functional" / "logs" / phase_id / series_id
+    if not series_dir.exists():
+        return []
+
+    results: list[dict] = []
+    for f in sorted(series_dir.iterdir()):
+        if f.is_file():
+            ftype = "setup_output" if f.name.startswith(".setup") else "bench" if f.name.startswith(".bench") else "csv"
+            results.append({
+                "name": f.name,
+                "path": str(f),
+                "type": ftype,
+                "size": f.stat().st_size,
+            })
+    return results
+
+
+def get_all_test_logs() -> dict[str, dict[str, list[dict]]]:
+    """Get all structured test logs organized by phase/series.
+
+    Returns {phase_id: {series_id: [log files]}}
+    """
+    logs_root = get_project_root() / "tests" / "functional" / "logs"
+    if not logs_root.exists():
+        return {}
+
+    result: dict[str, dict[str, list[dict]]] = {}
+    for phase_dir in sorted(logs_root.iterdir()):
+        if phase_dir.is_dir() and phase_dir.name.startswith("phase_"):
+            phase_logs: dict[str, list[dict]] = {}
+            for series_dir in sorted(phase_dir.iterdir()):
+                if series_dir.is_dir():
+                    phase_logs[series_dir.name] = get_series_logs(phase_dir.name, series_dir.name)
+            if phase_logs:
+                result[phase_dir.name] = phase_logs
+    return result
 
 
 def get_suggestions() -> list[dict]:

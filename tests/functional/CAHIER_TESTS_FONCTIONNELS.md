@@ -1,616 +1,582 @@
 # Cahier de tests fonctionnels — Klodo v1.0.0-dev
 
-> **Fichier généré depuis `tests/functional/tests.yaml`** — ne pas éditer manuellement.
+> **Fichier généré automatiquement** depuis `tests/functional/tests.yaml`.
+> Ne pas modifier manuellement — utiliser le YAML comme source de vérité.
+>
+> Généré le : 2026-04-06T14:00:00+02:00
+
+---
 
 ## Prérequis
 
 **Environnement de test :**
-- Copie de la bibliothèque sur un volume dédié (ex. `/Volumes/ExtSSD/BIBLIO-TEST`)
+- Copie de la bibliothèque sur SSD externe (`/Volumes/ExtSSD/BIBLIO-TEST-FUNC`)
 - Structure identique à la production : 9 sections + `_A-TRIER` + `_INBOX`
-- Profil de test pointant vers cette copie (modifier `profile.yaml` temporairement)
+- Profil de test (`test`) pointant vers cette copie
 - Clé API SiliconFlow configurée dans `SILICONFLOW_API_KEY`
+- Python 3.13 via `uv`, `poppler` installé (`brew install poppler`)
 
 **Script de remise à zéro :**
 ```bash
 # Dry-run : voir ce qui serait déplacé
-./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST
+./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC
 
 # Déplacer tout vers _INBOX
-./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST --execute
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
 
 # Variante : ne remettre que 500 fichiers (tests rapides)
-./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST --max 500 --execute
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --max 500 --execute
 ```
 
-**Après chaque série de tests :**
-- Relancer `flatten_to_inbox.sh --execute` pour repartir de zéro
-- Supprimer les caches : `./klodo.sh clean all --profile test --execute`
+**Variables :**
 
-> **Note :** Pour toutes les commandes suivantes, ajouter `--profile test` pour utiliser le profil de test.
+| Variable | Valeur |
+|----------|--------|
+| `BIBLIO_TEST` | `/Volumes/ExtSSD/BIBLIO-TEST-FUNC` |
+| `INBOX` | `${BIBLIO_TEST}/_INBOX` |
+| `A_TRIER` | `${BIBLIO_TEST}/_A-TRIER` |
+| `PROF` | `test` |
+| `KLODO` | `./klodo.sh` |
 
 ---
 
-## Phase 0 — Vérifications préalables
+## Grille récapitulative
 
-**Priorité : obligatoire** | **Durée estimée : 5 min**
+| Phase | Nom | Séries | Checks | Priorité | Durée estimée |
+|-------|-----|--------|--------|----------|---------------|
+| 0 | Prérequis et smoke tests | 3 | 14 | Obligatoire | 5 min |
+| 1 | Renommage | 5 | 13 | Obligatoire | 15 min |
+| 2 | Classification LLM | 5 | 14 | Obligatoire | 20 min |
+| 3 | Raffinement | 4 | 8 | Haute | 10 min |
+| 4 | Pipeline complet (process) | 4 | 10 | Obligatoire | 20 min |
+| 5 | Commandes utilitaires | 3 | 9 | Moyenne | 5 min |
+| 6 | Sécurité et cas limites | 6 | 13 | Haute | 5 min |
+| 7 | Performance et stabilité | 3 | 7 | Basse | 30 min |
+| 8 | Qualité de classification | 4 | 13 | Haute | 15 min |
+| 9 | Reclassification et enrichissement | 3 | 8 | Moyenne | 15 min |
+| 10 | Benchmark et stabilité | 4 | 14 | Basse | 45 min |
+| **Total** | | **44** | **123** | | **~185 min** |
 
-### T0.1 — Intégrité de l'arborescence
-Après `flatten_to_inbox.sh`, vérifier que l'arborescence est vide mais intacte.
+**Automatisation :** 105 checks auto (85%) + 18 checks manuels (15%)
+
+---
+
+## Checklist rapide (~30 min)
+
+Pour une validation rapide, lancer ces commandes dans l'ordre :
+
 ```bash
-./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST --execute
+# 1. Vérifier l'environnement
+test -d /Volumes/ExtSSD/BIBLIO-TEST-FUNC && echo "SSD OK"
+
+# 2. Remettre à zéro
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
+
+# 3. Smoke test
+./klodo.sh --version
+./klodo.sh profiles
+
+# 4. Rename rapide (20 fichiers)
+./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 20 --execute --verbose
+
+# 5. Classify rapide (30 fichiers)
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
+./klodo.sh classify -y /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 30 --workers 5 --execute --verbose
+
+# 6. Pipeline complet (50 fichiers)
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
+./klodo.sh process -y /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 50 --workers 5 --execute --verbose
+
+# 7. Sécurité
+./klodo.sh classify -y /Volumes/ExtSSD/BIBLIO-TEST-FUNC --profile test 2>&1 | grep SÉCURITÉ
+```
+
+---
+
+## Phase 0 — Prérequis et smoke tests
+
+### T0.1 — Environnement de test
+
+Vérifie que le SSD de test est monté, le profil configuré, et les dépendances installées.
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T0.1a | Le volume SSD de test est monté | `OK` affiché |
+| T0.1b | Le dossier `_INBOX` existe | `OK` affiché |
+| T0.1c | Le profil `test` est listé par `profiles` | Exactement 1 occurrence trouvée |
+| T0.1d | La variable `SILICONFLOW_API_KEY` est définie | `OK` affiché |
+| T0.1e | Python 3.13 est disponible via `uv` | Version 3.13 détectée |
+| T0.1f | `pdftoppm` (poppler) est installé | `OK` affiché |
+
+### T0.2 — Smoke test CLI
+
+Vérifie que le CLI se lance et répond aux commandes de base.
+
+```bash
+./klodo.sh --version
+./klodo.sh
+./klodo.sh profiles
+./klodo.sh classify --profile inexistant /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T0.1a | `find BIBLIO-TEST -name "*.pdf" -not -path "*/_INBOX/*" \| wc -l` | Résultat = 0 (aucun PDF hors _INBOX) |
-| T0.1b | `ls BIBLIO-TEST/02-INFORMATIQUE/05-IA-ML/` | Les sous-dossiers existent (Deep-Learning, Machine-Learning, NLP, Vision-par-Ordinateur) |
-| T0.1c | `find BIBLIO-TEST/_INBOX -name "*.pdf" \| wc -l` | Résultat = nombre total de PDFs de la copie |
+| T0.2a | `--version` affiche la version | Contient `klodo` et `1.0.0` |
+| T0.2b | Sans argument, affiche toutes les sous-commandes | Contient `process`, `classify`, `rename`, `refine`, `clean`, `profiles` |
+| T0.2c | `profiles` liste au moins le profil `default` | Contient `default` |
+| T0.2d | Profil inexistant échoue proprement | Contient `introuvable` |
 
-### T0.2 — Créer le profil de test
+### T0.3 — Script de remise à zéro
+
+Après remise à zéro complète, vérifie que tous les PDFs sont dans `_INBOX` et l'arborescence est intacte.
+
 ```bash
-./klodo.sh init test --target /Volumes/ExtSSD/BIBLIO-TEST
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T0.2a | `ls profiles/test/` | Montre profile.yaml, tree.yaml, theme_mapping.yaml, categories.yaml |
-| T0.2b | `grep target profiles/test/profile.yaml` | Contient `target: /Volumes/ExtSSD/BIBLIO-TEST` |
-| T0.2c | `./klodo.sh profiles` | Le profil `test` apparaît à côté de `default` |
-
-### T0.3 — Smoke tests
-
-| # | Vérification | Attendu |
-|---|-------------|---------|
-| T0.3a | `./klodo.sh classify --help` | L'aide s'affiche sans erreur |
-| T0.3b | `echo $SILICONFLOW_API_KEY` | La variable est définie (non vide) |
-| T0.3c | `./klodo.sh classify _INBOX --profile test --max 1 --verbose` | Le profil test est chargé, pas d'erreur de config |
+| T0.3a | Aucun PDF hors `_INBOX` après flatten | Compteur = 0 |
+| T0.3b | `_INBOX` contient des PDFs | Compteur > 0 |
+| T0.3c | L'arborescence `01-SCIENCES` est préservée (vide mais intacte) | Contient `MATHEMATIQUES`, `PHYSIQUE` |
+| T0.3d | Flatten en dry-run ne déplace rien | Affiche `Relancer avec --execute` |
 
 ---
 
 ## Phase 1 — Renommage (`rename`)
 
-**Priorité : haute** | **Durée estimée : 20 min**
-
 ### T1.1 — Dry-run sur un petit lot
+
 ```bash
-./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 20 --verbose
+./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 20 --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T1.1a | Le rapport CSV est généré dans `logs/` | Fichier `rapport_rename_*.csv` créé |
-| T1.1b | Aucun fichier n'est renommé (pas de `--execute`) | Les noms sur disque sont inchangés |
-| T1.1c | Le rapport contient des lignes de résultat | `wc -l` sur le CSV (hors header) > 0 |
-| T1.1d | Colonnes `ancien_nom`, `nouveau_nom`, `action` présentes | Ouvrir le CSV et vérifier le header |
+| T1.1a | Un rapport CSV rename est généré dans `logs/` | Fichier `rapport_rename_*.csv` créé |
+| T1.1b | Le rapport contient des lignes (hors header) | Plus de 0 lignes de données |
+| T1.1c | Aucun fichier n'a été renommé | Aucun fichier plus récent que le rapport |
+| T1.1d | Le CSV contient les colonnes `fichier` et `nouveau_nom` | Colonnes présentes dans le header |
 
 ### T1.2 — Renommage effectif (sans LLM)
+
 ```bash
-./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 50 --execute --verbose
+./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 50 --execute --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T1.2a | Les fichiers avec noms "junk" (hash MD5, IDs numériques) sont renommés | Noms propres "Titre - Auteur.pdf" ou "Titre.pdf" |
-| T1.2b | Les fichiers déjà propres gardent leur nom | Status `INCHANGE` dans le rapport |
-| T1.2c | Pas de doublon créé | Aucun fichier avec suffixe `(2)` ou `(3)` |
-| T1.2d | Le log de renommage est créé | Fichier `log_renommage_*.csv` avec statuts OK |
+| T1.2a | Le rapport indique des fichiers renommés | Le mot `renomm` apparaît dans le CSV |
+| T1.2b | Les noms renommés sont propres | Vérifier visuellement que les noms sont du type `Titre - Auteur.pdf`, pas des hash MD5 |
+| T1.2c | Pas de fichier perdu après renommage | Le compteur de PDFs dans `_INBOX` est >= 50 |
 
-### T1.3 — Renommage avec LLM Vision (fallback)
+### T1.3 — Rename avec LLM Vision
+
 ```bash
-./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 20 --llm --pages 2 --execute --verbose
+./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --llm --pages 2 --max 10 --execute --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T1.3a | Les fichiers que le renommage classique n'a pas pu traiter sont envoyés au LLM | Log contient "LLM Vision" pour ces fichiers |
-| T1.3b | Le LLM retourne un titre/auteur exploitable | Vérifier visuellement que les noms renommés par LLM sont plus intelligents que les originaux |
-| T1.3c | `--pages 2` envoie bien 2 pages au LLM | Log mentionne "2 pages" |
-| T1.3d | Pas d'erreur API fatale | 0 ECHEC dans le rapport, pas de crash |
+| T1.3a | Le mode LLM Vision est affiché dans les logs | Contient `LLM Vision` |
+| T1.3b | Des fichiers ont été renommés via LLM | Référence à `llm` ou `vision` dans le rapport |
+| T1.3c | Qualité des noms LLM | Vérifier visuellement que les noms générés sont intelligents et descriptifs |
 
-### T1.4 — Renommage LLM en mode force
+### T1.4 — Rename --force
+
 ```bash
-./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 10 --llm --force --pages 3 --verbose
+./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 20 --force --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T1.4a | `--force` ré-analyse même les fichiers au nom propre | Tous les 10 fichiers passent par le LLM (0 INCHANGE) |
-| T1.4b | `--pages 3` envoie 3 pages | Log confirme "3 pages" |
+| T1.4a | Aucun fichier ignoré comme `déjà propre` | Le mot `propre` n'apparaît pas dans le rapport |
 
 ### T1.5 — Idempotence du renommage
-Relancer le renommage sur le même lot déjà traité :
+
+Relancer le renommage sur des fichiers déjà propres : aucun ne devrait être modifié.
+
 ```bash
-./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 50 --execute --verbose
+# Après T1.2 :
+./klodo.sh rename /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 50 --execute --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T1.5a | Les fichiers déjà renommés ne sont pas re-renommés | Status `INCHANGE` pour tous |
-| T1.5b | Le rapport montre 0 fichiers effectivement renommés | 0 OK dans le log de renommage |
+| T1.5a | Fichiers déjà renommés ont status INCHANGE | Le mot `INCHANGE` apparaît dans le rapport |
+| T1.5b | 0 fichiers effectivement renommés au 2e passage | Aucune ligne OK dans le log de renommage |
 
 ---
 
-## Phase 2 — Classification (`classify`)
+## Phase 2 — Classification LLM (`classify`)
 
-**Priorité : haute** | **Durée estimée : 30 min**
+### T2.1 — Classify dry-run
 
-### T2.1 — Dry-run classification
 ```bash
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 100 --verbose
+./klodo.sh classify -y /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 30 --workers 5 --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T2.1a | Rapport CSV généré avec colonnes `destination`, `score`, `mot_cle`, `theme_detecte` | Fichier dans `logs/` |
-| T2.1b | Aucun fichier déplacé (pas de `--execute`) | Fichiers toujours dans `_INBOX` |
-| T2.1c | Le résumé affiche le breakdown par status | Compteurs classifié / non_classifié / erreur |
-| T2.1d | Le top thèmes détectés est cohérent | Les thèmes correspondent aux titres |
+| T2.1a | Un rapport CSV classify est généré | Fichier `rapport_classify_*.csv` créé |
+| T2.1b | Le rapport contient des résultats `classifié` | Le mot `classifié` apparaît dans le CSV |
+| T2.1c | Aucun fichier copié en dry-run | 0 PDFs hors `_INBOX` |
+| T2.1d | Un checkpoint est créé | Fichier `progress.json` existe dans le cache |
+| T2.1e | Le résumé affiche les statistiques | Contient `classifié` et `fichiers` |
 
-### T2.2 — Classification effective (petit lot)
+### T2.2 — Classify --execute (copie vers cible)
+
 ```bash
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 100 -w 10 --execute --verbose
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
+./klodo.sh classify -y /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test --max 30 --workers 5 --execute --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T2.2a | Les fichiers classifiés sont copiés dans les bons sous-dossiers | `ls` dans les dossiers cible montre les PDFs |
-| T2.2b | Les fichiers classifiés sont supprimés de `_INBOX` | Le nombre de PDFs dans _INBOX a diminué |
-| T2.2c | Les non-classifiés vont dans `_A-TRIER` | `ls _A-TRIER` contient les fallbacks |
-| T2.2d | La sécurité inbox fonctionne | Le total PDFs (inbox + classifiés + a-trier) est cohérent |
-| T2.2e | Le checkpoint est créé | Fichier `progress*.json` dans le cache du profil |
+| T2.2a | Des fichiers sont copiés dans l'arborescence (hors `_A-TRIER`) | Compteur > 0 |
+| T2.2b | Les fichiers classifiés sont retirés de l'inbox | Le log mentionne `supprimé` |
+| T2.2c | Les non-classifiés sont dans `_A-TRIER` | Compteur >= 0 dans `_A-TRIER` |
+| T2.2d | Les fichiers sont dans des dossiers cohérents | Vérifier visuellement `01-SCIENCES` et `02-INFORMATIQUE` |
 
-### T2.3 — Cascade de classification (4 niveaux)
-Repérer dans le rapport CSV des fichiers classifiés par chaque niveau :
+### T2.3 — Checkpoint et reprise
 
-| # | Niveau | Comment vérifier | Indice dans le rapport |
-|---|--------|-----------------|----------------------|
-| T2.3a | Theme Mapping | `mot_cle` contient un thème connu | `score` élevé, pas d'appel LLM |
-| T2.3b | Keyword Classifier | `mot_cle` contient un mot-clé du YAML | `score` entre 0.5-0.9 |
-| T2.3c | LLM Mapper | Fichier sans mot-clé évident mais classifié | Log mentionne "LLM Mapper" |
-| T2.3d | Suggestion | Thème inconnu → suggestion | Vérifier logs/suggestions.yaml |
-
-### T2.4 — Classification avec Vision
 ```bash
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 30 --vision --pages 2 -w 5 --verbose
+# Premier run : 10 fichiers
+./klodo.sh classify -y ... --max 10
+# Deuxième run : reprend
+./klodo.sh classify -y ... --max 20
+# Avec --reset : repart de zéro
+./klodo.sh classify -y ... --max 5 --reset
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T2.4a | Les fichiers non résolus par texte passent en Vision | Log contient "escalade vision" |
-| T2.4b | La Vision améliore le taux de classification | Plus de `classifié` qu'en T2.2 |
-| T2.4c | Le coût API est raisonnable | Résumé affiche coût < $0.02 pour 30 fichiers |
+| T2.3a | Le checkpoint contient 10 résultats après le premier run | ~10 entrées dans le JSON |
+| T2.3b | Le deuxième run affiche `Reprise` | Le mot `Reprise` apparaît 1 fois |
+| T2.3c | Avec `--reset`, pas de reprise | Le mot `Reprise` n'apparaît pas |
 
-### T2.5 — Multi-workers
+### T2.4 — Classify --retry-errors
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T2.4a | Le retry génère un rapport | Le mot `Rapport` apparaît dans la sortie |
+
+### T2.5 — Classify avec escalade vision
+
 ```bash
-# Comparer 1 worker vs 10 workers sur 200 fichiers
-time ./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 200 -w 1 --verbose
-# (reset checkpoint entre les deux)
-time ./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 200 -w 10 --verbose
+./klodo.sh classify -y ... --max 10 --vision --pages 2 --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T2.5a | Les résultats sont identiques avec 1 et 10 workers | Mêmes destinations |
-| T2.5b | 10 workers est significativement plus rapide | Au moins 3x plus rapide |
-| T2.5c | Pas de race condition ou crash | Aucune erreur de thread, exit code 0 |
+| T2.5a | Le mode vision escalade est affiché | Contient `Vision` et `escalade` |
 
 ---
 
-## Phase 3 — Pipeline complet (`process`)
+## Phase 3 — Raffinement (`refine`)
 
-**Priorité : haute** | **Durée estimée : 45 min**
+### T3.1 — Refine dry-run
 
-### T3.1 — Pipeline sans renommage
-```bash
-./klodo.sh process /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --no-rename --max 100 -w 10 --execute --verbose
-```
-
-| # | Vérification | Attendu |
-|---|-------------|---------|
-| T3.1a | Le renommage est sauté | Pas de rapport rename |
-| T3.1b | La classification s'exécute | Rapport CSV de classification créé |
-| T3.1c | Les fichiers sont copiés/déplacés | Moins de fichiers dans `_INBOX` |
-
-### T3.2 — Pipeline complet (rename + classify + refine)
-```bash
-# Remettre à zéro d'abord
-./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST --max 200 --execute
-./klodo.sh clean all --profile test --execute
-
-./klodo.sh process /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --llm --pages 2 -w 10 --max 200 --execute --verbose
-```
-
-| # | Vérification | Attendu |
-|---|-------------|---------|
-| T3.2a | Le renommage s'exécute en premier | Rapport rename créé |
-| T3.2b | La classification suit | Rapport classify créé |
-| T3.2c | Le refine est lancé à la fin | Log "raffinement" visible |
-| T3.2d | Les fichiers passent par les 3 étapes | Vérifier noms propres + bons dossiers |
-| T3.2e | Le résumé final est cohérent | Nombres de fichiers corrects |
-
-### T3.3 — Pipeline stress test (grand volume)
-```bash
-# Remettre tout à plat
-./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST --execute
-./klodo.sh clean all --profile test --execute
-
-# Lancer sur les ~18000 fichiers
-./klodo.sh process /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test -w 10 --execute --verbose
-```
-
-| # | Vérification | Attendu |
-|---|-------------|---------|
-| T3.3a | Le process ne crash pas sur 18000+ fichiers | Terminaison propre |
-| T3.3b | Taux de classification > 90% | Vérifier résumé final |
-| T3.3c | Temps raisonnable | < 1h sans LLM, < 4h avec Vision |
-| T3.3d | La mémoire reste stable | Pas de fuite (vérifier `htop`) |
-| T3.3e | Les erreurs sont loguées proprement | 0 Traceback dans les logs |
-
----
-
-## Phase 4 — Raffinement (`refine`)
-
-**Priorité : moyenne** | **Durée estimée : 20 min**
-
-### T4.1 — Refine après classification
-Après un `classify --execute`, lancer le refine :
 ```bash
 ./klodo.sh refine --profile test --verbose
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T4.1a | Le scan détecte les fichiers dans des dossiers parents | Ex: dans `02-INFORMATIQUE` au lieu de `05-IA-ML/Deep-Learning` |
-| T4.1b | Les règles YAML matchent les bons fichiers | `mot_cle` correspond aux règles de `refinement.yaml` |
-| T4.1c | Le matching implicite fonctionne | "Python Tutorial.pdf" → `03-Langages-Programmation/Python` |
-| T4.1d | Le rapport CSV de refine est généré | `logs/rapport_refine_*.csv` existe |
+| T3.1a | Un rapport CSV refine est généré | Fichier `refine_*.csv` créé |
+| T3.1b | Le rapport contient des propositions | Plus de 0 lignes |
+| T3.1c | Aucun fichier déplacé en dry-run | Le mot `déplacé` n'apparaît pas |
 
-### T4.2 — Refine avec LLM fallback
-```bash
-./klodo.sh refine --profile test --llm --max 50 --execute --verbose
-```
+### T3.2 — Refine --execute
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T4.2a | Les fichiers non résolus par YAML/implicite passent au LLM | Log "LLM fallback" visible |
-| T4.2b | Les déplacements sont effectués | Fichiers bougés vers les sous-dossiers |
-| T4.2c | `--max 50` limite les appels LLM | Au plus 50 appels API |
-| T4.2d | Les fichiers `_AUCUN` restent en place | Pas de déplacement si LLM dit `_AUCUN` |
+| T3.2a | Le raffinement génère un rapport | Le mot `Rapport` apparaît |
+| T3.2b | Les fichiers maths sont dans les bons sous-dossiers | Vérifier `Algebre`, `Analyse`, etc. |
 
-### T4.3 — Refine avec escalade Vision
-```bash
-./klodo.sh refine --profile test --llm --vision --max 20 --execute --verbose
-```
+### T3.3 — Refine avec LLM fallback
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T4.3a | Quand le LLM texte échoue, la Vision prend le relais | Log "escalade vision" visible |
-| T4.3b | La Vision améliore le taux de raffinement | Plus de fichiers déplacés qu'en T4.2 |
+| T3.3a | Le LLM refine est actif | Contient `LLM` |
+| T3.3b | Des appels LLM ont été effectués | Le mot `appels` apparaît |
+
+### T3.4 — Refine idempotence
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T3.4a | Le deuxième run n'a rien à raffiner | Contient `bien classé` |
 
 ---
 
-## Phase 5 — Checkpoint et reprise
+## Phase 4 — Pipeline complet (`process`)
 
-**Priorité : haute** | **Durée estimée : 15 min**
-
-### T5.1 — Interruption et reprise
-```bash
-# Lancer une classification longue
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test -w 10 --execute --verbose &
-PID=$!
-
-# Attendre 30 secondes puis interrompre
-sleep 30 && kill $PID
-
-# Reprendre
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test -w 10 --execute --verbose
-```
+### T4.1 — Process dry-run
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T5.1a | Le checkpoint est sauvegardé | `progress*.json` dans le cache du profil |
-| T5.1b | La reprise ne retraite pas les fichiers déjà faits | Log "reprise depuis checkpoint" |
-| T5.1c | Le résultat final est identique | Mêmes destinations qu'un run sans interruption |
+| T4.1a | Le pipeline affiche les étapes | Contient `Renommage`, `Classification`, `Pipeline` |
+| T4.1b | Un rapport `process` est généré | Fichier `rapport_process_*.csv` créé |
+| T4.1c | Aucun fichier copié en dry-run | 0 PDFs hors `_INBOX` |
 
-### T5.2 — Reset du checkpoint
-```bash
-./klodo.sh classify _INBOX --profile test --max 50 --execute
-./klodo.sh classify _INBOX --profile test --max 50 --reset --verbose
-```
+### T4.2 — Process --execute (pipeline complet)
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T5.2a | `--reset` supprime le checkpoint et relance | Exit code 0, traitement repart de zéro |
-| T5.2b | Tous les fichiers sont retraités | Pas seulement les nouveaux |
+| T4.2a | Les 4 étapes sont exécutées | Contient `Renommage`, `Classification`, `Copie`, `Raffinement`, `Pipeline terminé` |
+| T4.2b | Des fichiers sont dans l'arborescence | Compteur > 0 hors `_INBOX` |
+| T4.2c | L'inbox a été vidée des fichiers traités | Compteur réduit |
+| T4.2d | Un rapport rename ET un rapport process existent | 2 fichiers CSV |
 
-### T5.3 — Retry des erreurs
-```bash
-./klodo.sh classify _INBOX --profile test --retry-errors --execute --verbose
-```
+### T4.3 — Process --no-rename
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T5.3a | Seuls les fichiers en erreur sont retraités | Les `classifié` et `non_classifié` ne bougent pas |
-| T5.3b | Les erreurs transientes sont résolues | Certains passent de `erreur_api` à `classifié` |
+| T4.3a | Le pipeline indique que rename est désactivé | Contient `--no-rename` |
+| T4.3b | Aucun rapport rename n'est généré | 0 fichier `rapport_rename_*.csv` |
+
+### T4.4 — Process avec LLM Vision
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T4.4a | Le mode LLM Vision est affiché | Contient `LLM Vision` |
 
 ---
 
-## Phase 6 — Suggestions de nouveaux dossiers
+## Phase 5 — Commandes utilitaires
 
-**Priorité : moyenne** | **Durée estimée : 15 min**
-
-### T6.1 — Générer des suggestions
-Classifier un lot qui contient des thèmes atypiques :
-```bash
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 500 -w 10 --verbose
-```
+### T5.1 — clean — Nettoyage du cache
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T6.1a | Des suggestions apparaissent dans le résumé | "N suggestions de nouveaux dossiers" |
-| T6.1b | Le fichier `logs/suggestions.yaml` est créé | Contient des entrées avec `theme`, `folder`, `reason` |
+| T5.1a | `clean progress` en dry-run affiche les fichiers | Contient `DRY-RUN` |
+| T5.1b | `clean progress --execute` supprime le checkpoint | Contient `supprimé` |
+| T5.1c | `clean isbn --execute` supprime le cache ISBN | Contient `supprimé` |
+| T5.1d | `clean logs --execute` supprime les rapports CSV | Contient `supprimé` |
+| T5.1e | `clean` sur un cache déjà vide | Contient `Rien à nettoyer` |
 
-### T6.2 — Review des suggestions
-```bash
-./klodo.sh suggest --profile test
-```
-
-| # | Vérification | Attendu |
-|---|-------------|---------|
-| T6.2a | Les suggestions sont listées avec thème, dossier, raison | Tableau formaté affiché |
-| T6.2b | Les fichiers concernés sont mentionnés | Nom du PDF associé à chaque suggestion |
-
-### T6.3 — Appliquer les suggestions
-```bash
-./klodo.sh suggest --profile test --apply --execute
-```
+### T5.2 — init — Création de profil
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T6.3a | Les nouveaux dossiers sont créés sur disque | `ls` confirme leur présence |
-| T6.3b | `tree.yaml` est mis à jour | Nouvelle entrée dans le fichier |
-| T6.3c | `theme_mapping.yaml` est enrichi | Nouveau mapping thème → dossier |
-| T6.3d | Les fichiers concernés sont reclassifiés | Déplacés vers le nouveau dossier |
+| T5.2a | `init` crée un nouveau profil | Contient `Profil` et `créé` |
+| T5.2b | Le profil contient les fichiers YAML | Contient `profile.yaml` et `tree.yaml` |
+| T5.2c | `init` sur un profil existant échoue | Contient `existe déjà` |
+
+### T5.3 — suggest — Suggestions de dossiers
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T5.3a | Sans suggestions, affiche un message clair | Contient `Aucune suggestion` |
 
 ---
 
-## Phase 7 — Sécurité et cas limites
+## Phase 6 — Sécurité et cas limites
 
-**Priorité : haute** | **Durée estimée : 15 min**
-
-### T7.1 — Protection inbox = target
-Essayer de classifier la bibliothèque sur elle-même :
-```bash
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST --profile test --execute
-```
+### T6.1 — Protection inbox/target
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T7.1a | L'outil refuse de s'exécuter | Message d'erreur, exit code 1 |
-| T7.1b | Aucun fichier n'est touché | Zéro modification sur le disque |
+| T6.1a | `classify` sur target directement est refusé | Contient `SÉCURITÉ` |
+| T6.1b | `process` sur target directement est refusé | Contient `SÉCURITÉ` |
 
-### T7.2 — Fichiers avec noms problématiques
-Créer manuellement dans `_INBOX` des fichiers aux noms difficiles :
-```bash
-touch "_INBOX/fichier avec  espaces   multiples.pdf"
-touch "_INBOX/.fichier_caché.pdf"
-touch "_INBOX/fichier.pdf.pdf"
-touch "_INBOX/ALLCAPS_TITRE_LIVRE.pdf"
-```
-
-| # | Action | Attendu |
-|---|--------|---------|
-| T7.2a | `./klodo.sh rename _INBOX --profile test --max 10 --verbose` | Noms assainis sans crash, exit code 0 |
-| T7.2b | `./klodo.sh classify _INBOX --profile test --max 10 --verbose` | Noms sanitisés dans les prompts LLM, pas d'erreur `.format()` |
-| T7.2c | Le fichier caché (`.fichier`) est ignoré ou traité proprement | Pas de crash |
-| T7.2d | Le nom trop long est tronqué | Nom résultant < 200 caractères |
-
-### T7.3 — Fichiers PDF corrompus
-```bash
-# Créer un faux PDF (fichier texte avec extension .pdf)
-echo "ceci n'est pas un pdf" > _INBOX/faux_document.pdf
-```
+### T6.2 — Dossier inexistant
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T7.3a | `./klodo.sh rename _INBOX --profile test --max 5 --verbose` | Status `erreur_extraction`, pas de crash |
-| T7.3b | `./klodo.sh classify _INBOX --profile test --max 5 --verbose` | Idem, erreur loguée proprement |
+| T6.2a | `classify` sur dossier inexistant échoue | Contient `introuvable` |
+| T6.2b | `rename` sur dossier inexistant échoue | Contient `introuvable` |
+| T6.2c | `process` sur dossier inexistant échoue | Contient `introuvable` |
 
-### T7.4 — Pas de clé API
-```bash
-unset SILICONFLOW_API_KEY
-./klodo.sh classify /Volumes/ExtSSD/BIBLIO-TEST/_INBOX --profile test --max 5 --verbose
-```
+### T6.3 — API key manquante
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T7.4a | Message d'erreur clair mentionnant l'API | "SILICONFLOW_API_KEY non défini" ou équivalent |
-| T7.4b | Pas de crash avec traceback | Message lisible, pas de Traceback Python |
+| T6.3a | `rename --llm` sans API key affiche une erreur | Contient `clé API` |
+| T6.3b | `refine --llm` sans API key affiche une erreur | Contient `clé API` |
 
-### T7.5 — Dossier source vide
-```bash
-mkdir -p /tmp/empty_inbox
-./klodo.sh classify /tmp/empty_inbox --profile test --verbose
-```
+### T6.4 — Fichiers problématiques
+
+Créer dans `_INBOX` des fichiers aux noms difficiles : espaces multiples, noms très longs, fichiers cachés.
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T7.5a | Message "aucun fichier trouvé" | Terminaison propre, pas d'erreur |
-| T7.5b | Pas de division par zéro dans le résumé | Résumé correct sans ZeroDivisionError |
+| T6.4a | `rename` gère les espaces multiples sans crash | Pas de `Traceback` ni `Error` |
+| T6.4b | Les noms très longs sont tronqués | Plus long nom < 200 caractères |
 
-### T7.6 — Dossier source inexistant
-```bash
-./klodo.sh classify /chemin/qui/nexiste/pas --profile test --verbose
-```
+### T6.5 — Dossier source vide
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T7.6a | Message d'erreur clair | "Dossier introuvable" |
-| T7.6b | Exit code non-zéro | `echo $?` = 1 |
+| T6.5a | `classify` sur dossier vide termine proprement | Exit code 0 |
+| T6.5b | Pas de division par zéro dans le résumé | Aucun `ZeroDivision` dans la sortie |
 
-### T7.7 — Profil inexistant
-```bash
-./klodo.sh classify _INBOX --profile profil-fantome --verbose
-```
+### T6.6 — Fichiers PDF corrompus
 
-| # | Vérification | Attendu |
-|---|-------------|---------|
-| T7.7a | Message d'erreur clair | "Profil 'profil-fantome' introuvable" ou équivalent |
-| T7.7b | Exit code non-zéro | `echo $?` = 1 |
-
-### T7.8 — Init avec un nom déjà pris
-```bash
-./klodo.sh init default --target /tmp/autre
-```
+Un faux PDF (fichier texte avec extension `.pdf`) ne doit pas crasher le pipeline.
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T7.8a | Refus ou avertissement | Ne pas écraser le profil existant sans confirmation |
+| T6.6a | `rename` gère le PDF corrompu sans crash | Exit code 0 |
+| T6.6b | `classify` gère le PDF corrompu sans crash | Exit code 0 |
 
 ---
 
-## Phase 8 — Qualité de classification (validation manuelle)
+## Phase 7 — Performance et stabilité
 
-**Priorité : haute** | **Durée estimée : 30 min**
+### T7.1 — Traitement en volume (500 fichiers)
 
-### T8.1 — Échantillon de 50 fichiers
-Après un `process --execute` sur un lot de 200+ fichiers, vérifier manuellement :
 ```bash
-# Extraire un échantillon aléatoire du rapport
-shuf -n 50 logs/rapport_classify_*.csv | head -50
+./klodo.sh process -y ... --max 500 --workers 10 --execute --verbose
 ```
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T7.1a | Le pipeline se termine sans crash | `Pipeline terminé` apparaît 1 fois |
+| T7.1b | Temps de traitement raisonnable | Moins de 30 minutes |
+| T7.1c | Taux de classification acceptable | Supérieur à 80% |
+
+### T7.2 — Concurrence (20 workers)
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T7.2a | 20 workers se terminent | Le mot `Rapport` apparaît |
+| T7.2b | Le checkpoint est cohérent | JSON se charge, contient des entrées |
+
+### T7.3 — Flatten en volume
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T7.3a | Tous les PDFs sont dans `_INBOX` | 0 PDF hors `_INBOX` |
+| T7.3b | Le nombre total est préservé | Compteur > 0 |
+
+---
+
+## Phase 8 — Qualité de classification
+
+### T8.1 — Cascade de classification (4 niveaux)
+
+Vérifie que les 4 niveaux du pipeline sont tous utilisés dans les résultats : Theme Mapping → Keyword Classifier → LLM Mapper → Suggestions.
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T8.1a | Theme Mapping utilisé (score élevé, gratuit) | `theme_mapping` dans le rapport |
+| T8.1b | Keyword Classifier utilisé (mots-clés YAML) | `keyword` dans le rapport |
+| T8.1c | LLM Mapper utilisé (résolution thèmes inconnus) | `llm` dans le rapport |
+| T8.1d | Suggestions de nouveaux dossiers générées | Vérifier dans le résumé ou `logs/suggestions.yaml` |
+
+### T8.2 — Échantillon qualité (50 fichiers)
+
+Vérification manuelle de la qualité sur un échantillon après un `process --execute`.
 
 | # | Critère | Attendu |
 |---|---------|---------|
-| T8.1a | Taux de bonne classification | > 85% des fichiers sont dans le bon dossier |
-| T8.1b | Pas de confusion entre sections majeures | Un livre de maths n'est pas dans 08-LOISIRS |
-| T8.1c | Les sous-dossiers sont pertinents | "Deep Learning with Python" → `05-IA-ML/Deep-Learning`, pas juste `05-IA-ML` |
-| T8.1d | Les `_A-TRIER` sont légitimes | Vrais cas ambigus, pas des erreurs évidentes |
+| T8.2a | Taux de bonne classification > 85% | Plus de 85% dans le bon dossier |
+| T8.2b | Pas de confusion entre sections majeures | Aucun livre de maths dans `08-LOISIRS`, aucun roman dans `01-SCIENCES` |
+| T8.2c | Sous-dossiers pertinents | Deep Learning → `05-IA-ML`, pas juste `02-INFORMATIQUE` racine |
+| T8.2d | Les `_A-TRIER` sont de vrais cas ambigus | Pas des erreurs évidentes |
 
-### T8.2 — Vérification par section
-Pour chaque section majeure, vérifier un fichier type :
+### T8.3 — Vérification par section
 
-| Section | Fichier type à vérifier | Doit être dans |
-|---------|------------------------|----------------|
-| 01-SCIENCES | "Quantum Mechanics - Griffiths.pdf" | PHYSIQUE |
-| 02-INFORMATIQUE | "Introduction to Algorithms - Cormen.pdf" | 02-Algorithmes |
-| 02-INFORMATIQUE | "Learning Python - Mark Lutz.pdf" | 03-Langages-Programmation/Python |
-| 03-INGENIERIE | "Digital Signal Processing.pdf" | TRAITEMENT-SIGNAL |
-| 04-SHS | "Le Capital - Karl Marx.pdf" | ECONOMIE |
-| 05-RELIGIONS | "Le Coran.pdf" | ISLAM |
-| 06-MEDECINE | "Gray's Anatomy.pdf" | Anatomie |
-| 08-LOISIRS | "Bobby Fischer Teaches Chess.pdf" | ECHECS |
-| 09-BUSINESS | "The Intelligent Investor.pdf" | FINANCE |
+| # | Critère | Attendu |
+|---|---------|---------|
+| T8.3a | Fichiers types dans les bonnes sections | Quantum Mechanics → PHYSIQUE, Algorithms → 02-Algorithmes, Python Tutorial → Python, Le Capital → ECONOMIE, Le Coran → ISLAM, Gray's Anatomy → Anatomie, Bobby Fischer → ECHECS, Intelligent Investor → FINANCE |
 
-### T8.3 — Faux positifs connus
-Vérifier que les pièges documentés dans CLAUDE.md sont gérés :
+### T8.4 — Faux positifs connus
+
+Vérifie que les pièges documentés (mots-clés ambigus) sont bien gérés.
 
 | # | Piège | Attendu |
 |---|-------|---------|
-| T8.3a | "Albert Einstein" ne matche pas "bert" (NLP) | Pas dans 05-IA-ML/NLP (0 fichier) |
-| T8.3b | "Christopher Columbus" ne matche pas "christ" (religion) | Pas dans 05-RELIGIONS (0 fichier) |
-| T8.3c | "Linux Bible" ne matche pas "bible" (religion) | Reste dans 02-INFORMATIQUE (0 dans RELIGIONS) |
-| T8.3d | "Blaise Pascal" (philosophe) ne matche pas "Pascal" (langage) | Dans 04-SHS, pas dans 02-INFORMATIQUE |
+| T8.4a | `Albert Einstein` ne matche pas `bert` (NLP) | 0 Einstein dans `05-IA-ML` |
+| T8.4b | `Christopher Columbus` ne matche pas `christ` (religion) | 0 Columbus/Christopher dans `05-RELIGIONS` |
+| T8.4c | `Linux Bible` ne matche pas `bible` (religion) | 0 Linux dans `05-RELIGIONS` |
+| T8.4d | `Blaise Pascal` (philosophe) ne matche pas `Pascal` (langage) | 0 Blaise Pascal dans `02-INFORMATIQUE` |
 
 ---
 
 ## Phase 9 — Reclassification et enrichissement
 
-**Priorité : moyenne** | **Durée estimée : 10 min**
+### T9.1 — Suggestions workflow complet
 
-### T9.1 — Reclassify après enrichissement du mapping
+Générer, reviewer et appliquer les suggestions de nouveaux dossiers.
+
 ```bash
-# 1. Lancer une classification
-./klodo.sh classify _INBOX --profile test --max 200 -w 10 --execute
-
-# 2. Ajouter manuellement des entrées dans theme_mapping.yaml
-
-# 3. Relancer avec --reclassify
-./klodo.sh classify _INBOX --profile test --reclassify --execute
+./klodo.sh classify -y ... --max 500 -w 10 --execute --verbose
+./klodo.sh suggest --profile test
+./klodo.sh suggest --profile test --apply --execute
 ```
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T9.1a | Les fichiers dont le thème matche le nouveau mapping sont reclassifiés | Déplacés vers le bon dossier |
-| T9.1b | Pas d'appel LLM supplémentaire | Le re-mapping est gratuit (YAML seul) |
+| T9.1a | Suggestions mentionnées dans le résumé | Le mot `suggestion` ou `inconnu` apparaît |
+| T9.1b | `suggest` liste les suggestions en attente | Exit code 0 |
+| T9.1c | `suggest --apply --execute` crée les dossiers | Exit code 0 |
+| T9.1d | Nouveaux dossiers créés et fichiers reclassifiés | Vérifier tree.yaml et theme_mapping.yaml mis à jour |
 
-### T9.2 — Auto-apprentissage du LLM Mapper
-```bash
-./klodo.sh classify _INBOX --profile test --max 100 -w 10 --execute --verbose
-# Observer theme_mapping.yaml
-```
+### T9.2 — Reclassify après enrichissement
+
+`--reclassify` re-mappe les thèmes sans appel LLM (pure YAML).
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T9.2a | Les thèmes résolus par le LLM sont ajoutés à `theme_mapping.yaml` | Nouvelles entrées dans le fichier |
-| T9.2b | Au prochain run, ces thèmes sont résolus instantanément | Pas d'appel LLM pour ces thèmes |
+| T9.2a | Reclassify fonctionne | Le mot `Rapport` apparaît |
+| T9.2b | Des fichiers sont re-mappés vers de meilleurs dossiers | Vérifier le rapport |
+
+### T9.3 — Auto-apprentissage du LLM Mapper
+
+Les thèmes résolus par le LLM sont persistés dans `theme_mapping.yaml`.
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T9.3a | `theme_mapping.yaml` a été enrichi | Le fichier a plus de lignes qu'avant |
+| T9.3b | Résolution instantanée au prochain run | Pas d'appel LLM pour les mêmes thèmes |
 
 ---
 
-## Phase 10 — Performance et stabilité
+## Phase 10 — Benchmark et stabilité
 
-**Priorité : basse** | **Durée estimée : 20 min**
+### T10.1 — Benchmark workers (1 vs 10)
 
-### T10.1 — Mesurer les temps
-```bash
-# Renommage seul (sans LLM)
-time ./klodo.sh rename _INBOX --profile test --max 500
-
-# Classification seule (10 workers)
-time ./klodo.sh classify _INBOX --profile test --max 500 -w 10
-
-# Pipeline complet avec LLM
-time ./klodo.sh process _INBOX --profile test --llm --pages 1 -w 10 --max 500
-```
+Compare les performances avec 1 worker vs 10 workers sur 50 fichiers.
 
 | # | Mesure | Attendu |
 |---|--------|---------|
-| T10.1a | Renommage 500 fichiers (sans LLM) | < 60 secondes |
-| T10.1b | Classification 500 fichiers (10 workers) | < 5 minutes (dépend de l'API) |
-| T10.1c | Pipeline complet 500 fichiers avec LLM | < 15 minutes |
+| T10.1a | Ratio de vitesse 10w / 1w | Au moins 2x plus rapide |
+| T10.1b | Temps logués | Les deux temps sont enregistrés |
 
-### T10.2 — Stabilité réseau (erreurs API)
-```bash
-# Provoquer des erreurs avec délai 0 et 20 workers
-./klodo.sh classify _INBOX --profile test --max 50 --delay 0 -w 20 --verbose
-```
+### T10.2 — Benchmark par étape
+
+| # | Mesure | Attendu |
+|---|--------|---------|
+| T10.2a | Renommage 500 fichiers (sans LLM) | < 60 secondes |
+| T10.2b | Classification 500 fichiers (10 workers) | < 5 minutes |
+| T10.2c | Pipeline complet 500 fichiers avec LLM | < 15 minutes |
+
+### T10.3 — Stabilité réseau (erreurs API)
+
+Provoquer des erreurs réseau avec `--delay 0` et 20 workers simultanés.
 
 | # | Vérification | Attendu |
 |---|-------------|---------|
-| T10.2a | Les erreurs 429 (rate limit) sont retry avec backoff | Log "retry" visible |
-| T10.2b | Les erreurs 500 ne crashent pas | Status `erreur_api` dans le rapport |
-| T10.2c | Le traitement continue après les erreurs | Les autres fichiers sont traités |
-| T10.2d | Max erreurs consécutives arrête proprement | Si > 10 erreurs d'affilée, arrêt avec message clair |
+| T10.3a | Erreurs 429 retry avec backoff | Traces de retry dans les logs |
+| T10.3b | Erreurs 500 ne crashent pas le process | `erreur_api` dans le rapport, pas de crash |
+| T10.3c | Le traitement continue après les erreurs | Plus de 0 lignes dans le rapport |
+| T10.3d | Max erreurs consécutives arrête proprement | Message d'arrêt dans les logs |
 
----
+### T10.4 — Stress test (volume complet ~18 000 fichiers)
 
-## Grille récapitulative
+Pipeline sur le volume complet de la bibliothèque de test.
 
-| Phase | Séries | Priorité | Durée estimée |
-|-------|--------|----------|---------------|
-| 0 — Prérequis | 3 | Obligatoire | 5 min |
-| 1 — Renommage | 5 | Haute | 20 min |
-| 2 — Classification | 5 | Haute | 30 min |
-| 3 — Pipeline complet | 3 | Haute | 45 min |
-| 4 — Raffinement | 3 | Moyenne | 20 min |
-| 5 — Checkpoint/reprise | 3 | Haute | 15 min |
-| 6 — Suggestions | 3 | Moyenne | 15 min |
-| 7 — Sécurité/limites | 8 | Haute | 15 min |
-| 8 — Qualité manuelle | 3 | Haute | 30 min |
-| 9 — Reclassification | 2 | Moyenne | 10 min |
-| 10 — Performance | 2 | Basse | 20 min |
-| **Total** | **40** | | **~3h30** |
+```bash
+echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
+./klodo.sh process -y /Volumes/ExtSSD/BIBLIO-TEST-FUNC/_INBOX --profile test -w 10 --execute --verbose
+```
 
----
-
-## Checklist rapide (mini-run)
-
-Pour un test rapide en 30 minutes, exécuter dans l'ordre :
-
-1. `./scripts/flatten_to_inbox.sh BIBLIO-TEST --max 200 --execute`
-2. `./klodo.sh rename _INBOX --profile test --max 50 --execute --verbose` → vérifier rapport
-3. `./klodo.sh classify _INBOX --profile test --max 100 -w 10 --execute --verbose` → vérifier destinations
-4. `./klodo.sh refine --profile test --verbose` → vérifier raffinement
-5. `./klodo.sh suggest --profile test` → vérifier suggestions
-6. Vérifier 10 fichiers manuellement dans l'arborescence
-7. `./scripts/flatten_to_inbox.sh BIBLIO-TEST --execute` → remettre à zéro
+| # | Critère | Attendu |
+|---|---------|---------|
+| T10.4a | Terminaison propre | `Pipeline terminé` apparaît |
+| T10.4b | Taux de classification > 90% | Vérifier dans le résumé |
+| T10.4c | Temps raisonnable | < 1 heure (sans LLM rename) |
+| T10.4d | Pas de Traceback non catchée | 0 Traceback dans `klodo.log` |
+| T10.4e | Mémoire stable (pas de fuite) | Vérifier via `htop` |
