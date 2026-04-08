@@ -554,15 +554,10 @@ def main():
         os.remove(latest)
     os.symlink(f"run_{ts}", latest)
 
-    # Append summary to history.json (long-term tracking)
+    # Save to DuckDB (long-term tracking)
     if args.no_history:
         print(f"  {dim('Historique : désactivé (--no-history)')}")
     else:
-        history_path = os.path.join(SD, "history.json")
-        try:
-            history = json.loads(open(history_path, encoding="utf-8").read()) if os.path.exists(history_path) else []
-        except (json.JSONDecodeError, OSError):
-            history = []
         # Determine run type
         if args.series:
             run_type = f"series_{','.join(args.series)}"
@@ -573,16 +568,12 @@ def main():
         else:
             run_type = "full"
 
-        history.append({
-            "date": report["run_at"],
-            "pass": sm["pass"], "fail": sm["fail"], "skip": sm["skip"], "total": sm["total"],
-            "rate": round(sm["pass"] / sm["total"] * 100, 1) if sm["total"] else 0,
-            "duration": round(dur),
-            "report": f"run_{ts}",
-            "run_type": run_type,
-        })
-        with open(history_path, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
+        try:
+            from db import insert_run
+            insert_run(report, f"run_{ts}", run_type)
+            print(f"  {dim(f'Historique : sauvegardé dans results.db (run_{ts})')}")
+        except Exception as e:
+            print(f"  {ylw(f'Historique : erreur DuckDB — {e}')}")
 
     # Summary
     m, sc = divmod(int(dur), 60)

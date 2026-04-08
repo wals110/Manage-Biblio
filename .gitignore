@@ -34,4 +34,5 @@ notes/
 .claude/
 tests/functional/reports/
 tests/functional/logs/
+tests/functional/results.db
 .superpowers/

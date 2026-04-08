@@ -612,11 +612,10 @@ def find_problematic_files(all_reports: list[dict]) -> list[dict]:
 
 
 def get_history_data() -> list[dict]:
-    """Load history from history.json (long-term) + report_*.json (recent).
+    """Load history from DuckDB (primary) + report_*.json (fallback).
 
-    Returns list of {date, date_short, pass, fail, skip, total, rate, duration, filename}
+    Returns list of {date, date_short, pass, fail, skip, total, rate, duration, filename, run_type}
     sorted by date ascending (oldest first for charts).
-    Deduplicates by date — history.json entries are supplemented by report_*.json.
     """
     seen_dates: set[str] = set()
     results: list[dict] = []
@@ -628,29 +627,35 @@ def get_history_data() -> list[dict]:
         except (ValueError, TypeError):
             return run_at, run_at
 
-    # 1. Load history.json (long-term archive)
-    history_path = get_project_root() / "tests" / "functional" / "history.json"
-    if history_path.exists():
+    # 1. Load from DuckDB (primary source)
+    db_path = get_project_root() / "tests" / "functional" / "results.db"
+    if db_path.exists():
         try:
-            history = json.loads(history_path.read_text(encoding="utf-8"))
-            for entry in history:
-                date_str, date_short = _parse_date(entry.get("date", ""))
+            import duckdb
+            con = duckdb.connect(str(db_path), read_only=True)
+            rows = con.execute("""
+                SELECT id, date, duration, total, pass, fail, skip, rate, run_type
+                FROM runs ORDER BY date ASC
+            """).fetchall()
+            con.close()
+            for row in rows:
+                date_str, date_short = _parse_date(row[1])
                 if date_str in seen_dates:
                     continue
                 seen_dates.add(date_str)
                 results.append({
                     "date": date_str,
                     "date_short": date_short,
-                    "pass": entry.get("pass", 0),
-                    "fail": entry.get("fail", 0),
-                    "skip": entry.get("skip", 0),
-                    "total": entry.get("total", 0),
-                    "rate": entry.get("rate", 0),
-                    "duration": entry.get("duration", 0),
-                    "filename": entry.get("report", ""),
-                    "run_type": entry.get("run_type", "unknown"),
+                    "pass": row[4],
+                    "fail": row[5],
+                    "skip": row[6],
+                    "total": row[3],
+                    "rate": row[7],
+                    "duration": row[2],
+                    "filename": row[0],
+                    "run_type": row[8] or "unknown",
                 })
-        except (json.JSONDecodeError, OSError):
+        except Exception:
             pass
 
     # 2. Load report_*.json (recent, may not be in history.json yet)
