@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% set active = "admin" %}
+{% block title %}Admin{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Administration</h1>
+<p class="page-subtitle">Maintenance des donn&eacute;es de test</p>
+
+<!-- ── Quick Actions ── -->
+<div class="admin-actions">
+    <h2 class="section-title">Actions rapides</h2>
+    <div class="admin-buttons">
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-logs', 'Supprimer tous les logs ?')">
+            &#128465; Clean logs
+        </button>
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-reports', 'Supprimer tous les rapports ?')">
+            &#128465; Clean rapports
+        </button>
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-db', 'Vider la base DuckDB ?')">
+            &#128465; Clean DB
+        </button>
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-progress', 'Supprimer les checkpoints ?')">
+            &#128465; Clean progress
+        </button>
+        <button class="btn btn-danger-full" onclick="adminAction('/api/admin/clean-all', 'TOUT supprimer (logs + rapports + DB + progress) ?')">
+            &#9888; Clean ALL
+        </button>
+    </div>
+</div>
+
+<!-- ── Stats ── -->
+<div class="admin-stats">
+    <div class="kpi-row">
+        <div class="kpi-card">
+            <div class="kpi-label">Logs Klodo</div>
+            <div class="kpi-value">{{ stats.logs_count }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Logs tests</div>
+            <div class="kpi-value">{{ stats.test_logs_count }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Rapports</div>
+            <div class="kpi-value">{{ stats.reports_count }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Runs en DB</div>
+            <div class="kpi-value">{{ stats.db_runs }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Taille DB</div>
+            <div class="kpi-value">{{ stats.db_size }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Runs List ── -->
+<div class="admin-runs">
+    <h2 class="section-title">Runs enregistr&eacute;s</h2>
+    {% if runs %}
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Label</th>
+                    <th>Date</th>
+                    <th>Pass</th>
+                    <th>Fail</th>
+                    <th>Skip</th>
+                    <th>Taux</th>
+                    <th>Type</th>
+                    <th>Branche</th>
+                    <th>Commit</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in runs %}
+                <tr id="run-row-{{ r.id }}">
+                    <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}"></td>
+                    <td class="run-label">{{ r.label or r.id }}</td>
+                    <td class="text-muted">{{ r.date[:16] | replace("T", " ") }}</td>
+                    <td class="text-green">{{ r.pass }}</td>
+                    <td class="text-red">{{ r.fail }}</td>
+                    <td class="text-yellow">{{ r.skip }}</td>
+                    <td>
+                        <span class="badge {% if r.rate >= 90 %}pass{% elif r.rate >= 70 %}skip{% else %}fail{% endif %}">
+                            {{ r.rate }}%
+                        </span>
+                    </td>
+                    <td class="text-muted">{{ r.run_type | replace('series_', '') | replace('phase_', 'P') }}</td>
+                    <td class="text-blue">{{ r.git_branch or '' }}</td>
+                    <td class="text-muted" style="font-family:monospace;font-size:0.75rem;">{{ r.git_commit or '' }}</td>
+                    <td>
+                        <a href="/tests?run={{ r.id }}" class="btn btn-sm">Voir</a>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRun('{{ r.id }}')">&#128465;</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="admin-bulk" style="margin-top:12px;">
+        <button class="btn btn-sm" onclick="toggleRunCheckboxes()">&#9745; Tout cocher</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteSelectedRuns()">Supprimer la s&eacute;lection</button>
+    </div>
+    {% else %}
+    <div class="no-data">
+        <p>Aucun run enregistr&eacute; dans la base.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function adminAction(url, confirmMsg) {
+    if (!confirm(confirmMsg)) return;
+    fetch(url, {method: 'POST'}).then(r => r.json()).then(data => {
+        alert(data.message || 'Done');
+        window.location.reload();
+    });
+}
+
+function deleteRun(runId) {
+    if (!confirm('Supprimer le run ' + runId + ' ?')) return;
+    fetch('/api/admin/delete-run?id=' + runId, {method: 'POST'}).then(r => r.json()).then(data => {
+        document.getElementById('run-row-' + runId)?.remove();
+    });
+}
+
+function toggleRunCheckboxes() {
+    const boxes = document.querySelectorAll('.run-checkbox');
+    const allChecked = Array.from(boxes).every(b => b.checked);
+    boxes.forEach(b => b.checked = !allChecked);
+}
+
+function deleteSelectedRuns() {
+    const checked = Array.from(document.querySelectorAll('.run-checkbox:checked')).map(c => c.value);
+    if (checked.length === 0) return;
+    if (!confirm('Supprimer ' + checked.length + ' run(s) ?')) return;
+    Promise.all(checked.map(id =>
+        fetch('/api/admin/delete-run?id=' + id, {method: 'POST'})
+    )).then(() => window.location.reload());
+}
+</script>
+{% endblock %}

@@ -461,3 +461,159 @@ async def close_issue(
             "issue": {"number": number, "state": "closed"},
         },
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Admin
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _get_admin_stats() -> dict:
+    """Compute admin stats."""
+    import glob as G
+    root = data.get_project_root()
+    logs_count = len(list((root / "logs").glob("*"))) if (root / "logs").exists() else 0
+    test_logs = root / "tests" / "functional" / "logs"
+    test_logs_count = sum(1 for _ in test_logs.rglob("*") if _.is_file()) if test_logs.exists() else 0
+    reports_dir = root / "tests" / "functional" / "reports"
+    reports_count = len(list(reports_dir.glob("run_*"))) if reports_dir.exists() else 0
+    db_path = root / "tests" / "functional" / "results.db"
+    db_runs = 0
+    db_size = "0 KB"
+    if db_path.exists():
+        db_size = f"{db_path.stat().st_size / 1024:.1f} KB"
+        try:
+            import duckdb
+            con = duckdb.connect(str(db_path), read_only=True)
+            db_runs = con.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+            con.close()
+        except Exception:
+            pass
+    return {
+        "logs_count": logs_count,
+        "test_logs_count": test_logs_count,
+        "reports_count": reports_count,
+        "db_runs": db_runs,
+        "db_size": db_size,
+    }
+
+
+@app.get("/admin")
+async def admin_page(request: Request):
+    """Admin page — maintenance tools."""
+    stats = _get_admin_stats()
+    runs = data.get_available_runs()
+    return templates.TemplateResponse(request, "admin.html", {
+        "active": "admin", "stats": stats, "runs": runs,
+    })
+
+
+@app.post("/api/admin/clean-logs")
+async def clean_logs():
+    """Delete all files in logs/."""
+    from fastapi.responses import JSONResponse
+    import shutil
+    logs_dir = data.get_project_root() / "logs"
+    count = 0
+    if logs_dir.exists():
+        for f in logs_dir.iterdir():
+            if f.is_file():
+                f.unlink()
+                count += 1
+    return JSONResponse({"message": f"{count} fichiers supprimés dans logs/"})
+
+
+@app.post("/api/admin/clean-reports")
+async def clean_reports():
+    """Delete all reports."""
+    from fastapi.responses import JSONResponse
+    import shutil
+    reports_dir = data.get_project_root() / "tests" / "functional" / "reports"
+    count = 0
+    if reports_dir.exists():
+        for d in reports_dir.iterdir():
+            if d.is_dir() and d.name.startswith("run_"):
+                shutil.rmtree(d)
+                count += 1
+        # Remove latest symlink
+        latest = reports_dir / "latest"
+        if latest.is_symlink():
+            latest.unlink()
+    return JSONResponse({"message": f"{count} rapports supprimés"})
+
+
+@app.post("/api/admin/clean-db")
+async def clean_db():
+    """Delete the DuckDB database."""
+    from fastapi.responses import JSONResponse
+    db_path = data.get_project_root() / "tests" / "functional" / "results.db"
+    if db_path.exists():
+        db_path.unlink()
+        return JSONResponse({"message": "Base DuckDB supprimée"})
+    return JSONResponse({"message": "Pas de base à supprimer"})
+
+
+@app.post("/api/admin/clean-progress")
+async def clean_progress():
+    """Delete progress/checkpoint files."""
+    from fastapi.responses import JSONResponse
+    cache_dir = data.get_project_root() / "profiles" / "test" / ".cache"
+    count = 0
+    if cache_dir.exists():
+        for f in cache_dir.glob("progress*.json"):
+            f.unlink()
+            count += 1
+    return JSONResponse({"message": f"{count} fichiers progress supprimés"})
+
+
+@app.post("/api/admin/clean-all")
+async def clean_all():
+    """Clean everything: logs + reports + DB + progress + test logs."""
+    from fastapi.responses import JSONResponse
+    import shutil
+    root = data.get_project_root()
+    count = 0
+    # Logs
+    for f in (root / "logs").iterdir() if (root / "logs").exists() else []:
+        if f.is_file(): f.unlink(); count += 1
+    # Test logs
+    test_logs = root / "tests" / "functional" / "logs"
+    if test_logs.exists():
+        shutil.rmtree(test_logs); test_logs.mkdir(); count += 1
+    # Reports
+    reports = root / "tests" / "functional" / "reports"
+    if reports.exists():
+        shutil.rmtree(reports); reports.mkdir(); count += 1
+    # DB
+    db = root / "tests" / "functional" / "results.db"
+    if db.exists(): db.unlink(); count += 1
+    # History
+    h = root / "tests" / "functional" / "history.json"
+    if h.exists(): h.unlink(); count += 1
+    # Progress
+    cache = root / "profiles" / "test" / ".cache"
+    if cache.exists():
+        for f in cache.glob("progress*.json"): f.unlink(); count += 1
+    return JSONResponse({"message": f"Tout nettoyé ({count} éléments)"})
+
+
+@app.post("/api/admin/delete-run")
+async def delete_run(id: str):
+    """Delete a specific run from DuckDB."""
+    from fastapi.responses import JSONResponse
+    db_path = data.get_project_root() / "tests" / "functional" / "results.db"
+    if db_path.exists():
+        try:
+            import duckdb
+            con = duckdb.connect(str(db_path))
+            con.execute("DELETE FROM check_results WHERE run_id = ?", [id])
+            con.execute("DELETE FROM series_results WHERE run_id = ?", [id])
+            con.execute("DELETE FROM runs WHERE id = ?", [id])
+            con.close()
+        except Exception as e:
+            return JSONResponse({"message": f"Erreur: {e}"})
+    # Also delete report directory
+    import shutil
+    report_dir = data.get_project_root() / "tests" / "functional" / "reports" / id
+    if report_dir.exists():
+        shutil.rmtree(report_dir)
+    return JSONResponse({"message": f"Run {id} supprimé"})

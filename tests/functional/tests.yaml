@@ -414,12 +414,10 @@ phases:
       mode: auto
     - id: T2.1b
       description: Le rapport contient des résultats classifiés
-      command: grep -c 'classifié' $(ls -t ${LOGS}/rapport_classify_*.csv | head -1)
-        ; true
+      command: "COUNT=$(grep -c 'classifié' $(ls -t ${LOGS}/rapport_classify_*.csv | head -1) 2>/dev/null; true); echo $COUNT; test $COUNT -gt 0"
       assert:
-        type: output_contains
-        expected:
-        - '0'
+        type: exit_code
+        expected: 0
       mode: auto
     - id: T2.1c
       description: Aucun fichier n'a été copié (dry-run)
