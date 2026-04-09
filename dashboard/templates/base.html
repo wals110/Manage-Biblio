@@ -43,6 +43,13 @@ function copyCmd(btn, text) {
     });
 }
 
+function validateCheck(runId, checkId, status) {
+    fetch('/api/validate-check?run_id=' + runId + '&check_id=' + checkId + '&status=' + status, {method: 'POST'})
+    .then(function() {
+        window.location.reload();
+    });
+}
+
 function activateStops(btn) {
     // Activate the phase stop button and global stop button
     var phase = btn.closest('.phase-accordion');

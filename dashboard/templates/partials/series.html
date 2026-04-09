@@ -82,22 +82,23 @@
             <span class="status-dot dot-{{ check.status }}"></span>
             <span class="check-id">{{ check.id }}</span>
             <span class="check-desc">{{ check.description }}</span>
-            {% if check.status == 'skip' and ('Manual' in (check.detail or '') or check.mode == 'manual_check') %}
-            {# Manual check widget #}
-            <span class="manual-widget" id="widget-{{ check.id }}">
+            {% if check.mode == 'manual_check' and check.status in ('pass', 'fail') %}
+            {# Already validated manual check #}
+            <span class="manual-validated manual-validated-{{ check.status }}">
+                {% if check.status == 'pass' %}&#10003;{% else %}&#10007;{% endif %} Validation manuelle
+            </span>
+            {% elif check.status == 'skip' and ('Manual' in (check.detail or '') or check.mode == 'manual_check') %}
+            {# Manual check widget — pending validation #}
+            <span class="manual-widget" id="widget-{{ check.id | replace('.', '-') }}">
                 {% if check.prompt %}
                 <div class="manual-prompt">{{ check.prompt }}</div>
                 {% endif %}
                 <button class="btn btn-sm btn-pass"
-                        hx-post="/api/validate-check?run_id={{ current_run_id }}&check_id={{ check.id }}&status=pass"
-                        hx-target="#widget-{{ check.id }}"
-                        hx-swap="innerHTML">
+                        onclick="validateCheck('{{ current_run_id }}', '{{ check.id }}', 'pass')">
                     &#10003; Oui
                 </button>
                 <button class="btn btn-sm btn-fail-action"
-                        hx-post="/api/validate-check?run_id={{ current_run_id }}&check_id={{ check.id }}&status=fail"
-                        hx-target="#widget-{{ check.id }}"
-                        hx-swap="innerHTML">
+                        onclick="validateCheck('{{ current_run_id }}', '{{ check.id }}', 'fail')">
                     &#10007; Non
                 </button>
             </span>

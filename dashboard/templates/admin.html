@@ -30,6 +30,7 @@
 
 <!-- ── Stats ── -->
 <div class="admin-stats">
+    <h2 class="section-title">&Eacute;tat du syst&egrave;me</h2>
     <div class="kpi-row">
         <div class="kpi-card">
             <div class="kpi-label">Logs Klodo</div>
@@ -86,10 +87,10 @@
                     <td class="text-yellow">{{ r.skip }}</td>
                     <td>
                         <span class="badge {% if r.rate >= 90 %}pass{% elif r.rate >= 70 %}skip{% else %}fail{% endif %}">
-                            {{ r.rate }}%
+                            {{ r.rate | round(1) }}%
                         </span>
                     </td>
-                    <td class="text-muted">{{ r.run_type | replace('series_', '') | replace('phase_', 'P') }}</td>
+                    <td class="text-muted" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.run_type }}">{{ r.run_type | replace('series_', '') | replace('phase_', 'P') | truncate(15) }}</td>
                     <td class="text-blue">{{ r.git_branch or '' }}</td>
                     <td class="text-muted" style="font-family:monospace;font-size:0.75rem;">{{ r.git_commit or '' }}</td>
                     <td>

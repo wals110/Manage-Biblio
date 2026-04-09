@@ -891,6 +891,24 @@ th {
     border-radius: 0 4px 4px 0;
 }
 
+.manual-validated {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 4px;
+}
+.manual-validated-pass {
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--purple);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+}
+.manual-validated-fail {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
 .btn-pass {
     background: rgba(74, 222, 128, 0.15) !important;
     color: var(--green) !important;

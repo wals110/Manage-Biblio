@@ -355,6 +355,95 @@ def diff_reports(rows_a: list[dict], rows_b: list[dict], key_col: str) -> dict:
     }
 
 
+def enrich_with_yaml(report: dict, tests_yaml: dict | None) -> dict:
+    """Enrich a DuckDB report with setup/pre_run/mode/prompt from tests.yaml.
+
+    Unlike get_merged_test_view, this does NOT re-merge with other reports.
+    It preserves the exact statuses from DuckDB.
+    """
+    if not tests_yaml or not tests_yaml.get("phases"):
+        return report
+
+    # Build yaml lookup
+    yaml_series: dict[str, dict] = {}
+    yaml_checks: dict[str, dict] = {}
+    for tp in tests_yaml.get("phases", []):
+        for ts in tp.get("series", []):
+            sid = ts.get("id", "")
+            yaml_series[sid] = {
+                "setup": ts.get("setup", []),
+                "pre_run": ts.get("pre_run", []),
+                "description": ts.get("description", ""),
+                "github_issue": ts.get("github_issue"),
+            }
+            for ck in ts.get("checks", []):
+                yaml_checks[ck.get("id", "")] = {
+                    "mode": ck.get("mode", "auto"),
+                    "prompt": ck.get("assert", {}).get("prompt", ""),
+                    "command": ck.get("command", ""),
+                }
+
+    # Enrich phases/series/checks
+    for ph in report.get("phases", []):
+        # Update phase name from yaml
+        for tp in tests_yaml.get("phases", []):
+            if tp.get("id") == ph.get("id"):
+                ph["name"] = tp.get("name", ph.get("name", ""))
+                break
+
+        for sr in ph.get("series", []):
+            sid = sr.get("id", "")
+            ys = yaml_series.get(sid, {})
+            for k, v in ys.items():
+                if k not in sr or not sr[k]:
+                    sr[k] = v
+
+            for ck in sr.get("checks", []):
+                yc = yaml_checks.get(ck.get("id", ""), {})
+                if "mode" not in ck:
+                    ck["mode"] = yc.get("mode", "auto")
+                if "prompt" not in ck:
+                    ck["prompt"] = yc.get("prompt", "")
+                if "command" not in ck or not ck["command"]:
+                    ck["command"] = yc.get("command", "")
+
+    return report
+
+
+def apply_db_statuses(merged: dict, db_report: dict):
+    """Override check/series statuses in merged view with DuckDB values.
+
+    This preserves manual validations that were stored in DuckDB
+    but would be overwritten by the merge with JSON reports.
+    """
+    # Build lookup from DuckDB data
+    db_checks: dict[str, str] = {}
+    db_series: dict[str, str] = {}
+    for ph in db_report.get("phases", []):
+        for sr in ph.get("series", []):
+            db_series[sr.get("id", "")] = sr.get("status", "")
+            for ck in sr.get("checks", []):
+                db_checks[ck.get("id", "")] = ck.get("status", "")
+
+    # Apply to merged view
+    for ph in merged.get("phases", []):
+        for sr in ph.get("series", []):
+            sid = sr.get("id", "")
+            if sid in db_series:
+                for ck in sr.get("checks", []):
+                    cid = ck.get("id", "")
+                    if cid in db_checks:
+                        ck["status"] = db_checks[cid]
+                # Recalculate series status
+                statuses = [ck.get("status", "") for ck in sr.get("checks", [])]
+                if all(s == "pass" for s in statuses):
+                    sr["status"] = "pass"
+                elif any(s == "fail" for s in statuses):
+                    sr["status"] = "fail"
+                elif any(s == "skip" or s == "not_run" for s in statuses):
+                    sr["status"] = "skip"
+
+
 def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict | None:
     """Merge tests.yaml definitions with the best result from ALL reports.
 

@@ -46,8 +46,10 @@ async def tests_page(
     # Load specific run from DuckDB, or latest
     db_report = data.get_run_from_db(run)
     if db_report:
-        # Enrich with setup/description from tests.yaml
+        # Merge with tests.yaml: keep DuckDB statuses, add missing series as not_run
         report = data.get_merged_test_view(db_report, tests_yaml)
+        # Override checks with DuckDB values (preserves manual validations)
+        data.apply_db_statuses(report, db_report)
     else:
         # Fallback: read from JSON files
         report = data.get_merged_test_view(data.get_latest_report(), tests_yaml)
