@@ -707,81 +707,89 @@ def get_run_csv_files(run_id: str | None = None) -> dict[str, list[str]]:
     return result
 
 
-def compute_aggregated_metrics(csv_paths: list[str], metric_func) -> dict | None:
-    """Aggregate metrics from multiple CSV files by concatenating rows."""
-    all_rows = []
-    for path in csv_paths:
-        _, rows = load_csv(path)
-        all_rows.extend(rows)
-    if not all_rows:
-        return None
-    # Write to a temporary merged file and compute metrics
-    import tempfile, csv as csv_mod
-    if not all_rows:
-        return None
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8") as tmp:
-        writer = csv_mod.DictWriter(tmp, fieldnames=list(all_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(all_rows)
-        tmp_path = tmp.name
+def _duckdb_query(sql: str) -> list[tuple]:
+    """Execute a DuckDB SQL query and return raw rows."""
+    import duckdb
+    con = duckdb.connect()
     try:
-        return metric_func(tmp_path)
+        result = con.execute(sql)
+        return result.fetchall()
+    except Exception:
+        return []
     finally:
-        import os
-        os.unlink(tmp_path)
+        con.close()
 
 
-def compute_classification_metrics(csv_path: str) -> dict:
-    """Compute classification quality metrics from a classify CSV.
+def _csv_glob_to_list(paths: list[str]) -> str:
+    """Convert a list of CSV paths to a DuckDB read_csv_auto() argument."""
+    escaped = [p.replace("'", "''") for p in paths if Path(p).exists()]
+    if not escaped:
+        return ""
+    if len(escaped) == 1:
+        return f"'{escaped[0]}'"
+    return "[" + ", ".join(f"'{p}'" for p in escaped) + "]"
+
+
+def compute_aggregated_metrics(csv_paths: list[str], metric_func) -> dict | None:
+    """Aggregate metrics from multiple CSV files using DuckDB read_csv_auto()."""
+    src = _csv_glob_to_list(csv_paths)
+    if not src:
+        return None
+    return metric_func(src)
+
+
+def compute_classification_metrics(csv_source: str) -> dict:
+    """Compute classification quality metrics using DuckDB.
+
+    csv_source: a single path ('path.csv') or a list (['a.csv', 'b.csv'])
+    suitable for read_csv_auto().
 
     Returns: {total, classified, not_classified, errors, rate, avg_confidence,
-              cost, by_section: {section: count}, top_themes: [(theme, count)]}
+              cost, by_section, top_themes, suggestions}
     """
-    _, rows = load_csv(csv_path)
-    total = len(rows)
-    if total == 0:
+    # Main aggregates in one query
+    rows = _duckdb_query(f"""
+        SELECT
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE status = 'classifié') as classified,
+            COUNT(*) FILTER (WHERE status = 'non_classifié') as not_classified,
+            COUNT(*) FILTER (WHERE status LIKE 'erreur%') as errors,
+            COUNT(*) FILTER (WHERE status = 'suggestion') as suggestions,
+            COUNT(*) FILTER (WHERE mot_cle LIKE 'llm%' OR mot_cle LIKE 'LLM%') as llm_calls,
+            AVG(CASE WHEN TRY_CAST(confiance AS DOUBLE) > 0
+                 THEN TRY_CAST(confiance AS DOUBLE) END) as avg_conf
+        FROM read_csv_auto({csv_source}, header=true, ignore_errors=true)
+    """)
+
+    if not rows or not rows[0] or rows[0][0] == 0:
         return {
             "total": 0, "classified": 0, "not_classified": 0, "errors": 0,
             "rate": 0.0, "avg_confidence": 0.0, "cost": 0.0,
             "by_section": {}, "top_themes": [], "suggestions": 0,
         }
 
-    classified = sum(1 for r in rows if r.get("status") == "classifié")
-    not_classified = sum(1 for r in rows if r.get("status") == "non_classifié")
-    errors = sum(1 for r in rows if r.get("status") == "erreur")
-    suggestions = sum(1 for r in rows if r.get("status") == "suggestion")
+    total, classified, not_classified, errors, suggestions, llm_calls, avg_conf = rows[0]
     rate = round(classified / total * 100, 1) if total else 0.0
+    avg_confidence = round(avg_conf or 0.0, 2)
+    cost = round((llm_calls or 0) * 0.0003, 4)
 
-    confidences: list[float] = []
-    for r in rows:
-        try:
-            val = float(r.get("confiance", 0))
-            if val > 0:
-                confidences.append(val)
-        except (ValueError, TypeError):
-            pass
-    avg_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
-
-    # Estimate API cost: ~$0.0003 per LLM call (SiliconFlow pricing)
-    llm_calls = sum(1 for r in rows if r.get("mot_cle", "").startswith("llm"))
-    cost = round(llm_calls * 0.0003, 4)
-
-    # By section (top-level folder)
-    by_section: dict[str, int] = {}
-    for r in rows:
-        dest = r.get("destination", "")
-        if dest:
-            section = dest.split("/")[0]
-            if section:
-                by_section[section] = by_section.get(section, 0) + 1
+    # By section
+    section_rows = _duckdb_query(f"""
+        SELECT split_part(destination, '/', 1) as section, COUNT(*) as n
+        FROM read_csv_auto({csv_source}, header=true, ignore_errors=true)
+        WHERE destination IS NOT NULL AND destination != ''
+        GROUP BY 1 ORDER BY 1
+    """)
+    by_section = {r[0]: r[1] for r in section_rows if r[0]}
 
     # Top themes
-    theme_counts: dict[str, int] = {}
-    for r in rows:
-        theme = r.get("theme_detecte", "").strip()
-        if theme:
-            theme_counts[theme] = theme_counts.get(theme, 0) + 1
-    top_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    theme_rows = _duckdb_query(f"""
+        SELECT theme_detecte, COUNT(*) as n
+        FROM read_csv_auto({csv_source}, header=true, ignore_errors=true)
+        WHERE theme_detecte IS NOT NULL AND trim(theme_detecte) != ''
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 10
+    """)
+    top_themes = [(r[0], r[1]) for r in theme_rows]
 
     return {
         "total": total,
@@ -792,25 +800,31 @@ def compute_classification_metrics(csv_path: str) -> dict:
         "rate": rate,
         "avg_confidence": avg_confidence,
         "cost": cost,
-        "by_section": dict(sorted(by_section.items())),
+        "by_section": by_section,
         "top_themes": top_themes,
     }
 
 
-def compute_rename_metrics(csv_path: str) -> dict:
-    """Compute rename quality metrics from a rename CSV.
+def compute_rename_metrics(csv_source: str) -> dict:
+    """Compute rename quality metrics using DuckDB.
 
+    csv_source: a path or list suitable for read_csv_auto().
     Returns: {total, renamed, unchanged, errors, llm_used, rate}
     """
-    _, rows = load_csv(csv_path)
-    total = len(rows)
-    if total == 0:
+    rows = _duckdb_query(f"""
+        SELECT
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE action = 'RENOMME') as renamed,
+            COUNT(*) FILTER (WHERE action = 'INCHANGE') as unchanged,
+            COUNT(*) FILTER (WHERE action = 'ECHEC') as errors,
+            COUNT(*) FILTER (WHERE lower(source) IN ('llm', 'llm_vision', 'vision')) as llm_used
+        FROM read_csv_auto({csv_source}, header=true, ignore_errors=true)
+    """)
+
+    if not rows or not rows[0] or rows[0][0] == 0:
         return {"total": 0, "renamed": 0, "unchanged": 0, "errors": 0, "llm_used": 0, "rate": 0.0}
 
-    renamed = sum(1 for r in rows if r.get("action") == "RENOMME")
-    unchanged = sum(1 for r in rows if r.get("action") == "INCHANGE")
-    errors = sum(1 for r in rows if r.get("action") == "ECHEC")
-    llm_used = sum(1 for r in rows if r.get("source", "").lower() in ("llm", "llm_vision", "vision"))
+    total, renamed, unchanged, errors, llm_used = rows[0]
     rate = round(renamed / total * 100, 1) if total else 0.0
 
     return {
