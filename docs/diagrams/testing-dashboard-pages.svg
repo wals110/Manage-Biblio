@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 550" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="da" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="550" fill="#0f172a" rx="12"/>
+  <text x="500" y="30" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="700">Dashboard — 8 pages + API endpoints</text>
+
+  <!-- Row 1: Main pages -->
+  <g transform="translate(30, 55)">
+    <rect x="0" y="0" width="220" height="130" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="#38bdf8" opacity="0.15"/>
+    <rect x="0" y="20" width="220" height="8" fill="#1e293b"/>
+    <text x="110" y="20" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">Overview (GET /)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">KPIs : pass/fail/skip/taux</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Heatmap par phase</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Release gate (ready/blocked)</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Config LLM (provider, modele)</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">Run banner + issues GitHub</text>
+    <text x="15" y="123" fill="#64748b" font-size="9">Alerte API key manquante</text>
+  </g>
+
+  <g transform="translate(265, 55)">
+    <rect x="0" y="0" width="220" height="130" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="#4ade80" opacity="0.15"/>
+    <rect x="0" y="20" width="220" height="8" fill="#1e293b"/>
+    <text x="110" y="20" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">Tests (GET /tests)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Execution par phase/serie</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Monitoring temps reel (2s poll)</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Validation manuelle Oui/Non</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Checkboxes + selecteur de run</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">Expand state en sessionStorage</text>
+    <text x="15" y="123" fill="#64748b" font-size="9">Stop global + par phase</text>
+  </g>
+
+  <g transform="translate(500, 55)">
+    <rect x="0" y="0" width="220" height="130" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="#fbbf24" opacity="0.15"/>
+    <rect x="0" y="20" width="220" height="8" fill="#1e293b"/>
+    <text x="110" y="20" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Rapports (GET /rapports)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Viewer CSV interactif</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Filtres : type, test, status</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Recherche + tri colonnes</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Pagination (50 lignes/page)</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">KPIs par type de rapport</text>
+    <text x="15" y="123" fill="#64748b" font-size="9">Lien vers test associe</text>
+  </g>
+
+  <g transform="translate(735, 55)">
+    <rect x="0" y="0" width="230" height="130" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+    <rect x="0" y="0" width="230" height="28" rx="8" fill="#a78bfa" opacity="0.15"/>
+    <rect x="0" y="20" width="230" height="8" fill="#1e293b"/>
+    <text x="115" y="20" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Comparer (GET /comparer)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Run courant vs ancien run</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Diff check-by-check</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Ameliores / Regressions</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Filtre par series communes</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">Badges status ancien → nouveau</text>
+    <text x="15" y="123" fill="#64748b" font-size="9">Lignes colorees par delta</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g transform="translate(30, 210)">
+    <rect x="0" y="0" width="220" height="130" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="#38bdf8" opacity="0.15"/>
+    <rect x="0" y="20" width="220" height="8" fill="#1e293b"/>
+    <text x="110" y="20" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">Metriques (GET /metriques)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Lie a un run (selecteur)</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Classification : taux, confiance</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Renommage : taux, LLM usage</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Chart.js : doughnut + bar</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">DuckDB read_csv_auto()</text>
+    <text x="15" y="123" fill="#64748b" font-size="9">Cout API estime</text>
+  </g>
+
+  <g transform="translate(265, 210)">
+    <rect x="0" y="0" width="220" height="130" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="#94a3b8" opacity="0.1"/>
+    <rect x="0" y="20" width="220" height="8" fill="#1e293b"/>
+    <text x="110" y="20" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="700">Historique (GET /historique)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Timeline de tous les runs</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Evolution taux de reussite</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Delta entre runs adjacents</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Filtre par type de run</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">Lien "Voir" vers /tests?run=</text>
+  </g>
+
+  <g transform="translate(500, 210)">
+    <rect x="0" y="0" width="220" height="130" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="#94a3b8" opacity="0.1"/>
+    <rect x="0" y="20" width="220" height="8" fill="#1e293b"/>
+    <text x="110" y="20" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="700">Suggestions (GET /sugg.)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Dossiers proposes par LLM</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Fichiers concernes</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Raison de la suggestion</text>
+    <text x="15" y="93" fill="#64748b" font-size="9">Lecture seule</text>
+  </g>
+
+  <g transform="translate(735, 210)">
+    <rect x="0" y="0" width="230" height="130" rx="8" fill="#1e293b" stroke="#f87171" stroke-width="1.5"/>
+    <rect x="0" y="0" width="230" height="28" rx="8" fill="#f87171" opacity="0.15"/>
+    <rect x="0" y="20" width="230" height="8" fill="#1e293b"/>
+    <text x="115" y="20" text-anchor="middle" fill="#f87171" font-size="13" font-weight="700">Admin (GET /admin)</text>
+    <text x="15" y="48" fill="#e2e8f0" font-size="10">Cles API (.env save/delete)</text>
+    <text x="15" y="63" fill="#e2e8f0" font-size="10">Clean logs/rapports/DB/all</text>
+    <text x="15" y="78" fill="#e2e8f0" font-size="10">Stats systeme (tailles, nb)</text>
+    <text x="15" y="93" fill="#e2e8f0" font-size="10">Gestion runs (delete, bulk)</text>
+    <text x="15" y="108" fill="#64748b" font-size="9">Jamais commite (.env gitignored)</text>
+  </g>
+
+  <!-- API section -->
+  <rect x="30" y="370" width="935" height="160" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <text x="500" y="395" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">API Endpoints</text>
+
+  <g transform="translate(50, 410)">
+    <rect x="0" y="0" width="200" height="50" rx="6" fill="#4ade80" opacity="0.1" stroke="#4ade80" stroke-width="1"/>
+    <text x="100" y="18" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">POST /api/run</text>
+    <text x="100" y="35" text-anchor="middle" fill="#64748b" font-size="9">Lancer tests (phase, series, all)</text>
+    <text x="100" y="47" text-anchor="middle" fill="#64748b" font-size="8">subprocess + monitor thread</text>
+  </g>
+
+  <g transform="translate(265, 410)">
+    <rect x="0" y="0" width="200" height="50" rx="6" fill="#38bdf8" opacity="0.1" stroke="#38bdf8" stroke-width="1"/>
+    <text x="100" y="18" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">GET /api/status</text>
+    <text x="100" y="35" text-anchor="middle" fill="#64748b" font-size="9">Polling temps reel (2s)</text>
+    <text x="100" y="47" text-anchor="middle" fill="#64748b" font-size="8">running, current_series, checks</text>
+  </g>
+
+  <g transform="translate(480, 410)">
+    <rect x="0" y="0" width="200" height="50" rx="6" fill="#f87171" opacity="0.1" stroke="#f87171" stroke-width="1"/>
+    <text x="100" y="18" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">POST /api/stop</text>
+    <text x="100" y="35" text-anchor="middle" fill="#64748b" font-size="9">terminate() + kill()</text>
+  </g>
+
+  <g transform="translate(695, 410)">
+    <rect x="0" y="0" width="250" height="50" rx="6" fill="#a78bfa" opacity="0.1" stroke="#a78bfa" stroke-width="1"/>
+    <text x="125" y="18" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">POST /api/validate-check</text>
+    <text x="125" y="35" text-anchor="middle" fill="#64748b" font-size="9">Validation manuelle → DuckDB</text>
+  </g>
+
+  <g transform="translate(50, 475)">
+    <rect x="0" y="0" width="200" height="40" rx="6" fill="#fbbf24" opacity="0.1" stroke="#fbbf24" stroke-width="1"/>
+    <text x="100" y="16" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">POST /api/admin/*</text>
+    <text x="100" y="33" text-anchor="middle" fill="#64748b" font-size="9">clean, delete-run, save-api-key</text>
+  </g>
+
+  <g transform="translate(265, 475)">
+    <rect x="0" y="0" width="200" height="40" rx="6" fill="#64748b" opacity="0.2" stroke="#64748b" stroke-width="1"/>
+    <text x="100" y="16" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">POST /api/issue/close</text>
+    <text x="100" y="33" text-anchor="middle" fill="#64748b" font-size="9">gh issue close → badge update</text>
+  </g>
+</svg>

@@ -23,7 +23,7 @@
                     {% set ns_checks.skip_count = ns_checks.skip_count + 1 %}
                     {% if not ns_checks.skip_reason %}
                         {% if 'Manual' in (c.detail or '') %}{% set ns_checks.skip_reason = 'manual' %}
-                        {% elif 'Unmet' in (c.detail or '') %}{% set ns_checks.skip_reason = 'dependency' %}
+                        {% elif 'Unmet' in (c.detail or '') %}{% set ns_checks.skip_reason = c.detail | replace('Unmet requires: ', '') %}
                         {% elif 'pre_run' in (c.detail or '') %}{% set ns_checks.skip_reason = 'pre_run failed' %}
                         {% endif %}
                     {% endif %}
@@ -110,8 +110,9 @@
             </span>
             {% elif check.status == 'skip' %}
             <span class="skip-reason">
-                {% if 'Unmet' in (check.detail or '') %}⊘ dependency
-                {% elif 'pre_run' in (check.detail or '') %}⊘ pre_run
+                {% if 'Unmet' in (check.detail or '') %}⊘ {{ check.detail }}
+                {% elif 'pre_run' in (check.detail or '') %}⊘ pre_run failed
+                {% elif check.detail %}⊘ {{ check.detail }}
                 {% else %}⊘ skip
                 {% endif %}
             </span>

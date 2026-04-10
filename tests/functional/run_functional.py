@@ -21,6 +21,16 @@ except ImportError:
 # ── Paths ──────────────────────────────────────────────────────────────────
 SD = os.path.dirname(os.path.abspath(__file__))
 PR = os.path.dirname(os.path.dirname(SD))
+
+# ── Load .env if present ──────────────────────────────────────────────────
+_env_file = os.path.join(PR, ".env")
+if os.path.exists(_env_file):
+    with open(_env_file, encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
 TY = os.path.join(SD, "tests.yaml")
 RD = os.path.join(SD, "reports")
 TO = 600  # 10 minutes default timeout

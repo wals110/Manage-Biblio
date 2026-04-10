@@ -80,6 +80,14 @@
         <input type="checkbox" id="history-toggle" checked>
         <span>Historiser</span>
     </label>
+    <select id="profile-select" class="filter-select" style="width:auto;margin-left:8px;" title="Profil LLM"
+            onchange="updateProfileInCommands(this.value)">
+        {% for p in available_profiles %}
+        <option value="{{ p.name }}" {% if p.name == current_profile %}selected{% endif %}>
+            {{ p.label }}
+        </option>
+        {% endfor %}
+    </select>
 </div>
 
 {% if report %}
@@ -199,9 +207,36 @@ function runSelection(btn) {
     runAll(btn, url);
 }
 
+const _profileNames = [{% for p in available_profiles %}'{{ p.name }}'{% if not loop.last %}, {% endif %}{% endfor %}];
+let _currentProfile = '{{ current_profile }}';
+
+function updateProfileInCommands(newProfile) {
+    document.querySelectorAll('.cmd-text').forEach(el => {
+        el.textContent = el.textContent.replace(
+            '--profile ' + _currentProfile,
+            '--profile ' + newProfile
+        );
+    });
+    // Also update copy buttons
+    document.querySelectorAll('.btn-copy').forEach(btn => {
+        const onclick = btn.getAttribute('onclick');
+        if (onclick && onclick.includes('--profile ' + _currentProfile)) {
+            btn.setAttribute('onclick', onclick.replace(
+                '--profile ' + _currentProfile,
+                '--profile ' + newProfile
+            ));
+        }
+    });
+    _currentProfile = newProfile;
+}
+
 function buildRunUrl(baseUrl) {
+    let url = baseUrl;
     const historyChecked = document.getElementById('history-toggle').checked;
-    return historyChecked ? baseUrl : baseUrl + '&no_history=true';
+    if (!historyChecked) url += '&no_history=true';
+    const profile = document.getElementById('profile-select').value;
+    if (profile) url += '&profile=' + encodeURIComponent(profile);
+    return url;
 }
 
 function runAll(btn, url) {

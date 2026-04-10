@@ -53,7 +53,7 @@ phases:
       mode: auto
     - id: T0.1c
       description: Le profil de test existe et est valide
-      command: ${KLODO} profiles 2>&1 | grep -c '${PROF}' ; true
+      command: ${KLODO} profiles 2>&1 | grep -c "^  ${PROF} —" ; true
       assert:
         type: output_equals
         expected: '1'
@@ -135,8 +135,12 @@ phases:
     setup: []
     checks:
     - id: T0.4a
-      description: La clé API SiliconFlow est configurée
-      command: test -n "$SILICONFLOW_API_KEY" && echo 'OK' || echo 'MISSING'
+      description: Le LLM du profil est accessible
+      command: 'PROVIDER=$(grep "provider:" ${PROFILES}/${PROF}/profile.yaml | head
+        -1 | awk "{print \$2}"); if [ "$PROVIDER" = "ollama" ]; then curl -s http://localhost:11434/api/tags
+        > /dev/null 2>&1 && echo "OK" || echo "FAIL: Ollama non demarre (ollama serve)";
+        else test -n "$SILICONFLOW_API_KEY" && echo "OK" || echo "FAIL: SILICONFLOW_API_KEY
+        non definie"; fi'
       assert:
         type: output_equals
         expected: OK
@@ -785,6 +789,7 @@ phases:
     - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     - rm -f ${LOGS}/rapport_process_*.csv ${LOGS}/rapport_rename_*.csv ${LOGS}/refine_*.csv
+    - find ${INBOX} -name '*.pdf' | wc -l | tr -d ' ' > logs/.inbox_count_before_T4.2.txt
     post_run: []
     setup:
     - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 30 --workers 5 --execute
@@ -811,9 +816,10 @@ phases:
         expected: 0
       mode: auto
     - id: T4.2c
-      description: L'inbox a été vidée des fichiers classifiés
-      command: COUNT=$(find ${INBOX} -name '*.pdf' | wc -l | tr -d ' '); echo $COUNT;
-        test $COUNT -lt 998
+      description: L'inbox a été vidée des fichiers classifiés (moins de fichiers qu'avant)
+      command: BEFORE=$(cat logs/.inbox_count_before_T4.2.txt 2>/dev/null || echo 0);
+        AFTER=$(find ${INBOX} -name '*.pdf' | wc -l | tr -d ' '); echo "avant=$BEFORE
+        apres=$AFTER"; test $AFTER -lt $BEFORE
       assert:
         type: exit_code
         expected: 0
@@ -875,7 +881,7 @@ phases:
     post_run: []
     setup:
     - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 10 --llm --pages 2 --workers
-      3 --verbose 2>&1
+      3 --execute --verbose 2>&1
     checks:
     - id: T4.4a
       description: Le mode LLM Vision est affiché

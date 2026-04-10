@@ -87,6 +87,38 @@ def get_llm_config() -> dict | None:
     return None
 
 
+def get_available_profiles() -> list[dict]:
+    """List available test profiles with their LLM config.
+
+    Only includes profiles starting with 'test' (test, test-local, etc.)
+    """
+    profiles_dir = get_project_root() / "profiles"
+    results = []
+    for p in sorted(profiles_dir.iterdir()):
+        if not p.name.startswith("test"):
+            continue
+        profile_file = p / "profile.yaml"
+        if not profile_file.exists():
+            continue
+        try:
+            profile = yaml.safe_load(profile_file.read_text(encoding="utf-8"))
+            llm = profile.get("llm", {})
+            provider = llm.get("provider", "")
+            model = llm.get("model", "")
+            is_local = provider == "ollama" or "localhost" in llm.get("endpoint", "")
+            label = f"{'Local' if is_local else 'Cloud'} — {model.split('/')[-1]}"
+            results.append({
+                "name": p.name,
+                "label": label,
+                "provider": provider,
+                "model": model,
+                "is_local": is_local,
+            })
+        except (yaml.YAMLError, OSError):
+            continue
+    return results
+
+
 def get_open_issues() -> list[dict]:
     """Return open GitHub issues with the functional-test label."""
     try:

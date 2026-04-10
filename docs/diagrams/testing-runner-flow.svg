@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 950" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4ade80"/>
+    </marker>
+    <marker id="arr-r" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="950" fill="#0f172a" rx="12"/>
+  <text x="450" y="35" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Flux d'execution du runner</text>
+  <text x="450" y="55" text-anchor="middle" fill="#64748b" font-size="12">run_functional.py — de la commande au rapport</text>
+
+  <!-- Step 1: CLI -->
+  <rect x="250" y="75" width="400" height="50" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="450" y="98" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">1. Parse CLI</text>
+  <text x="450" y="115" text-anchor="middle" fill="#64748b" font-size="10">--phase --series --rerun-failures --label --dry-run</text>
+  <line x1="450" y1="125" x2="450" y2="145" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 2: Load + resolve -->
+  <rect x="250" y="148" width="400" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="450" y="171" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">2. Charge tests.yaml + resout variables</text>
+  <text x="450" y="188" text-anchor="middle" fill="#64748b" font-size="10">${BIBLIO_TEST} → /Volumes/ExtSSD/BIBLIO-TEST-FUNC</text>
+  <line x1="450" y1="198" x2="450" y2="218" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 3: Dependencies -->
+  <rect x="250" y="221" width="400" height="50" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="450" y="244" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">3. Resout dependances</text>
+  <text x="450" y="261" text-anchor="middle" fill="#64748b" font-size="10">provides/requires + detection cycles (DFS)</text>
+  <line x1="450" y1="271" x2="450" y2="291" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 4: Filters -->
+  <rect x="250" y="294" width="400" height="40" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+  <text x="450" y="319" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">4. Applique filtres (phase, series, priority)</text>
+  <line x1="450" y1="334" x2="450" y2="354" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 5: Session pre_run -->
+  <rect x="250" y="357" width="400" height="40" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="450" y="382" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">5. session.pre_run</text>
+  <text x="700" y="382" fill="#64748b" font-size="10">flatten + clean progress</text>
+  <line x1="450" y1="397" x2="450" y2="417" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 6: Phase loop -->
+  <rect x="100" y="420" width="700" height="330" rx="10" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="5,3" opacity="0.5"/>
+  <text x="120" y="440" fill="#38bdf8" font-size="12" font-weight="700" opacity="0.6">BOUCLE PHASES (0..10)</text>
+
+  <!-- Phase pre_run -->
+  <rect x="140" y="450" width="260" height="30" rx="6" fill="#1e293b" stroke="#38bdf8" stroke-width="1"/>
+  <text x="270" y="470" text-anchor="middle" fill="#38bdf8" font-size="11">phase.pre_run</text>
+
+  <!-- Series loop -->
+  <rect x="160" y="495" width="600" height="220" rx="8" fill="none" stroke="#4ade80" stroke-width="1" stroke-dasharray="5,3" opacity="0.5"/>
+  <text x="180" y="515" fill="#4ade80" font-size="11" font-weight="700" opacity="0.6">BOUCLE SERIES (T0.1..T0.4)</text>
+
+  <!-- Dependency check -->
+  <rect x="190" y="525" width="200" height="30" rx="6" fill="#1e293b" stroke="#fbbf24" stroke-width="1"/>
+  <text x="290" y="545" text-anchor="middle" fill="#fbbf24" font-size="10">requires satisfaits ?</text>
+
+  <!-- Skip path -->
+  <line x1="390" y1="540" x2="450" y2="540" stroke="#f87171" stroke-width="1.2" marker-end="url(#arr-r)"/>
+  <rect x="450" y="525" width="80" height="30" rx="6" fill="#f87171" opacity="0.15" stroke="#f87171" stroke-width="1"/>
+  <text x="490" y="545" text-anchor="middle" fill="#f87171" font-size="10" font-weight="600">SKIP</text>
+
+  <!-- Create log dir -->
+  <rect x="190" y="565" width="200" height="25" rx="6" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+  <text x="290" y="582" text-anchor="middle" fill="#94a3b8" font-size="10">Cree logs/phase_N/T*.*/</text>
+
+  <!-- Setup -->
+  <rect x="190" y="598" width="200" height="25" rx="6" fill="#1e293b" stroke="#4ade80" stroke-width="1"/>
+  <text x="290" y="615" text-anchor="middle" fill="#4ade80" font-size="10">series.setup → .setup_output.txt</text>
+
+  <!-- Check loop -->
+  <rect x="210" y="633" width="520" height="65" rx="6" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+  <text x="230" y="650" fill="#a78bfa" font-size="10" font-weight="600" opacity="0.6">BOUCLE CHECKS</text>
+  <rect x="230" y="658" width="140" height="28" rx="5" fill="#1e293b" stroke="#a78bfa" stroke-width="1"/>
+  <text x="300" y="677" text-anchor="middle" fill="#a78bfa" font-size="10">Execute command</text>
+  <line x1="370" y1="672" x2="400" y2="672" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+  <rect x="400" y="658" width="140" height="28" rx="5" fill="#1e293b" stroke="#a78bfa" stroke-width="1"/>
+  <text x="470" y="677" text-anchor="middle" fill="#a78bfa" font-size="10">Evalue assertion</text>
+  <line x1="540" y1="672" x2="570" y2="672" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+  <rect x="570" y="658" width="140" height="28" rx="5" fill="#1e293b" stroke="#a78bfa" stroke-width="1"/>
+  <text x="640" y="677" text-anchor="middle" fill="#a78bfa" font-size="10">PASS | FAIL | SKIP</text>
+
+  <!-- Deplace CSV -->
+  <rect x="440" y="565" width="290" height="25" rx="6" fill="#1e293b" stroke="#fbbf24" stroke-width="1"/>
+  <text x="585" y="582" text-anchor="middle" fill="#fbbf24" font-size="10">Deplace rapport_*.csv → logs/phase_N/T*.*/</text>
+
+  <!-- End of loops -->
+  <line x1="450" y1="750" x2="450" y2="775" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 7: Session post_run -->
+  <rect x="250" y="778" width="400" height="35" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="450" y="800" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">7. session.post_run</text>
+  <line x1="450" y1="813" x2="450" y2="833" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 8: Generate report -->
+  <rect x="150" y="836" width="280" height="50" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="290" y="858" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">8. Genere rapport</text>
+  <text x="290" y="876" text-anchor="middle" fill="#64748b" font-size="10">reports/run_*/report.json + .md</text>
+
+  <!-- Step 9: DuckDB insert -->
+  <rect x="470" y="836" width="280" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="610" y="858" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">9. Insere dans DuckDB</text>
+  <text x="610" y="876" text-anchor="middle" fill="#64748b" font-size="10">"cosmic-koala" + develop@a1b2c3d</text>
+
+  <!-- Final line -->
+  <line x1="350" y1="836" x2="350" y2="833" stroke="none"/>
+
+  <!-- Legend -->
+  <rect x="60" y="905" width="780" height="30" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <circle cx="90" cy="920" r="6" fill="#a78bfa" opacity="0.6"/>
+  <text x="105" y="924" fill="#64748b" font-size="10">Config</text>
+  <circle cx="170" cy="920" r="6" fill="#38bdf8" opacity="0.6"/>
+  <text x="185" y="924" fill="#64748b" font-size="10">Donnees</text>
+  <circle cx="250" cy="920" r="6" fill="#4ade80" opacity="0.6"/>
+  <text x="265" y="924" fill="#64748b" font-size="10">Execution</text>
+  <circle cx="340" cy="920" r="6" fill="#fbbf24" opacity="0.6"/>
+  <text x="355" y="924" fill="#64748b" font-size="10">Persistance</text>
+  <circle cx="440" cy="920" r="6" fill="#f87171" opacity="0.6"/>
+  <text x="455" y="924" fill="#64748b" font-size="10">Erreur/Skip</text>
+</svg>

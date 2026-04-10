@@ -73,6 +73,8 @@ async def tests_page(
             "available_runs": available_runs,
             "selected_run": run or "",
             "current_run_id": report.get("_run_id", run or "") if report else "",
+            "available_profiles": data.get_available_profiles(),
+            "current_profile": "test",
         },
     )
 
@@ -155,11 +157,14 @@ async def run_test(
     all: bool = False,
     failures: bool = False,
     no_history: bool = False,
+    profile: str | None = None,
 ):
     """Run functional tests and return updated HTML."""
     global _running_process
 
     cmd = ["uv", "run", "python", "tests/functional/run_functional.py"]
+    if profile and profile != "test":
+        cmd += ["--var", f"PROF={profile}"]
     if no_history:
         cmd.append("--no-history")
     if series:
@@ -168,7 +173,11 @@ async def run_test(
         cmd += ["--series"] + series_list
         print(f"[dashboard] Running series: {series_list}")
     elif phase is not None:
-        cmd += ["--phase", str(phase)]
+        # Always include phase 0 (prerequisites) to satisfy dependencies
+        if phase != 0:
+            cmd += ["--phase", "0", str(phase)]
+        else:
+            cmd += ["--phase", "0"]
     elif failures:
         cmd.append("--rerun-failures")
     # else: run all (no extra args)
@@ -182,6 +191,14 @@ async def run_test(
     print(f"[dashboard] CMD: {' '.join(cmd)}")
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    # Load .env into subprocess environment
+    env_file = data.get_project_root() / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                env.setdefault(k.strip(), v.strip())
     _running_process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,

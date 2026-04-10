@@ -252,7 +252,7 @@ def parse_vision_response(content: str) -> dict | None:
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
 
     if not json_match:
-        log.warning(f"  ⚠ Pas de JSON dans la réponse: {content[:100]}")
+        log.warning(f"  ⚠ Pas de JSON dans la réponse: {content[:500]}")
         return None
 
     try:

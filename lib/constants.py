@@ -6,10 +6,10 @@ utilisées dans plusieurs modules. Modifier ici plutôt que dans chaque fichier.
 """
 
 # ── HTTP / LLM ───────────────────────────────────────────────
-LLM_TIMEOUT = 30            # Timeout par défaut pour les appels LLM (secondes)
+LLM_TIMEOUT = 120           # Timeout par défaut pour les appels LLM (secondes) — 120s pour modeles locaux
 LLM_MAX_RETRIES = 3         # Nombre de tentatives avant abandon
 LLM_MAX_TOKENS = 150        # Tokens max par défaut pour les réponses LLM
-LLM_VISION_MAX_TOKENS = 300 # Tokens max pour l'analyse vision (réponses plus longues)
+LLM_VISION_MAX_TOKENS = 800 # Tokens max pour l'analyse vision (inclut le reasoning des modeles thinking)
 LLM_TEMPERATURE = 0.1       # Température par défaut (déterministe)
 LLM_RETRY_DELAY = 2         # Délai entre retries sur erreur (secondes)
 LLM_BACKOFF_MAX = 30        # Plafond du backoff exponentiel sur 429 (secondes)
