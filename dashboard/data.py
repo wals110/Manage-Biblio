@@ -66,6 +66,27 @@ def get_tests_yaml() -> dict | None:
         return None
 
 
+def get_llm_config() -> dict | None:
+    """Read LLM configuration from profile.yaml."""
+    for profile_name in ("test", "default"):
+        path = get_project_root() / "profiles" / profile_name / "profile.yaml"
+        if path.exists():
+            try:
+                profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+                llm = profile.get("llm", {})
+                defaults = profile.get("defaults", {})
+                return {
+                    "provider": llm.get("provider", ""),
+                    "model": llm.get("model", ""),
+                    "endpoint": llm.get("endpoint", ""),
+                    "cost_per_call": defaults.get("cost_per_call", 0),
+                    "profile": profile_name,
+                }
+            except (yaml.YAMLError, OSError):
+                continue
+    return None
+
+
 def get_open_issues() -> list[dict]:
     """Return open GitHub issues with the functional-test label."""
     try:
@@ -119,11 +140,13 @@ def _parse_csv_date(name: str) -> str:
 def get_csv_files(report_type: str, tests_yaml: dict | None = None) -> list[dict]:
     """List available CSV files for a given type, sorted newest first.
 
+    Scans both logs/ (live reports) and tests/functional/logs/ (archived by runner).
     Returns list of {name, path, date, size, test_id, test_name}.
     """
-    logs_dir = get_project_root() / "logs"
-    if not logs_dir.exists():
-        return []
+    root = get_project_root()
+    scan_dirs = [
+        root / "tests" / "functional" / "logs",
+    ]
 
     if tests_yaml is None:
         tests_yaml = get_tests_yaml()
@@ -137,21 +160,47 @@ def get_csv_files(report_type: str, tests_yaml: dict | None = None) -> list[dict
         patterns = [p]
 
     all_files = []
-    for pattern in patterns:
-        all_files.extend(logs_dir.glob(pattern))
-    files = sorted(all_files, reverse=True)
+    seen_paths: set[str] = set()
+    for scan_dir in scan_dirs:
+        if not scan_dir.exists():
+            continue
+        for pattern in patterns:
+            # Use rglob to find CSVs in subdirectories (phase_N/T*.*)
+            for f in scan_dir.rglob(pattern):
+                fpath = str(f)
+                if fpath not in seen_paths:
+                    seen_paths.add(fpath)
+                    all_files.append(f)
+
+    files = sorted(all_files, key=lambda f: f.name, reverse=True)
     results: list[dict] = []
     for f in files:
         stat = f.stat()
         test = find_test_for_report(f.name, tests_yaml)
+        # Derive test_id from parent directory if in structured logs (e.g. phase_2/T2.1/)
+        parent_test_id = None
+        parent_test_name = None
+        if f.parent.name.startswith("T") and not test:
+            parent_test_id = f.parent.name
+            # Look up series name from tests_yaml
+            if tests_yaml:
+                for phase in tests_yaml.get("phases", []):
+                    for series in phase.get("series", []):
+                        if series.get("id") == parent_test_id:
+                            parent_test_name = series.get("name", "")
+                            break
+                    if parent_test_name:
+                        break
         results.append({
             "name": f.name,
             "path": str(f),
             "date": _parse_csv_date(f.name),
             "size": stat.st_size,
-            "test_id": test["id"] if test else None,
-            "test_name": test["name"] if test else None,
+            "test_id": test["id"] if test else parent_test_id,
+            "test_name": test["name"] if test else parent_test_name,
         })
+    # Sort by test_id (numeric) then by date desc within each test
+    results.sort(key=lambda r: (_sort_test_id(r["test_id"] or ""), r["name"]))
     return results
 
 
@@ -179,7 +228,7 @@ def compute_csv_stats(rows: list[dict], report_type: str) -> dict:
     if report_type in ("classify", "process"):
         classified = sum(1 for r in rows if r.get("status") == "classifié")
         not_classified = sum(1 for r in rows if r.get("status") == "non_classifié")
-        errors = sum(1 for r in rows if r.get("status") == "erreur")
+        errors = sum(1 for r in rows if (r.get("status") or "").startswith("erreur"))
         confidences = []
         for r in rows:
             try:
@@ -444,6 +493,40 @@ def apply_db_statuses(merged: dict, db_report: dict):
                     sr["status"] = "skip"
 
 
+def _resolve_variables(text: str, variables: dict[str, str]) -> str:
+    """Replace ${VAR} placeholders with their values, handling chained refs."""
+    # Resolve variables themselves first (e.g. INBOX depends on BIBLIO_TEST)
+    resolved = dict(variables)
+    for _ in range(5):  # max depth
+        changed = False
+        for k, v in resolved.items():
+            new_v = v
+            for vk, vv in resolved.items():
+                new_v = new_v.replace(f"${{{vk}}}", vv)
+            if new_v != resolved[k]:
+                resolved[k] = new_v
+                changed = True
+        if not changed:
+            break
+    # Apply to text
+    for k, v in resolved.items():
+        text = text.replace(f"${{{k}}}", v)
+    return text
+
+
+def _resolve_in_series(series: dict, variables: dict[str, str]):
+    """Resolve variables in setup commands and check commands of a series."""
+    if not variables:
+        return
+    if "setup" in series:
+        series["setup"] = [_resolve_variables(c, variables) for c in series["setup"]]
+    if "pre_run" in series:
+        series["pre_run"] = [_resolve_variables(c, variables) for c in series["pre_run"]]
+    for check in series.get("checks", []):
+        if "command" in check and check["command"]:
+            check["command"] = _resolve_variables(check["command"], variables)
+
+
 def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict | None:
     """Merge tests.yaml definitions with the best result from ALL reports.
 
@@ -453,6 +536,8 @@ def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict |
     """
     if not tests_yaml or not tests_yaml.get("phases"):
         return report
+
+    variables = tests_yaml.get("variables", {})
 
     # Build lookup: series_id → best series result from ALL reports
     # Priority: pass > fail > skip > not_run
@@ -508,16 +593,17 @@ def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict |
                         ck["mode"] = yc.get("mode", "auto")
                     if "prompt" not in ck:
                         ck["prompt"] = yc.get("prompt", "")
+                _resolve_in_series(entry, variables)
                 merged_series.append(entry)
             else:
                 # Series not in report — show as not_run
-                merged_series.append({
+                not_run_entry = {
                     "id": sid,
                     "name": ts.get("name", ""),
                     "status": "not_run",
                     "duration_ms": 0,
-                    "setup": ts.get("setup", []),
-                    "pre_run": ts.get("pre_run", []),
+                    "setup": list(ts.get("setup", [])),
+                    "pre_run": list(ts.get("pre_run", [])),
                     "description": ts.get("description", ""),
                     "github_issue": ts.get("github_issue"),
                     "checks": [
@@ -529,7 +615,9 @@ def get_merged_test_view(report: dict | None, tests_yaml: dict | None) -> dict |
                         }
                         for ck in ts.get("checks", [])
                     ],
-                })
+                }
+                _resolve_in_series(not_run_entry, variables)
+                merged_series.append(not_run_entry)
         merged_phases.append({
             "id": phase_id,
             "name": tp.get("name", rp.get("name", "")),
@@ -577,6 +665,70 @@ def get_available_tests(csv_files: list[dict]) -> list[dict]:
     tests = [{"id": tid, "name": name} for tid, name in seen.items()]
     tests.sort(key=lambda t: _sort_test_id(t["id"]))
     return tests
+
+
+def get_run_csv_files(run_id: str | None = None) -> dict[str, list[str]]:
+    """Get CSV report files associated with a specific run.
+
+    Returns: {"classify": [paths], "rename": [paths], "process": [paths], "refine": [paths]}
+    """
+    root = get_project_root()
+    reports_dir = root / "tests" / "functional" / "reports"
+
+    # Find the report.json for this run
+    if run_id:
+        report_file = reports_dir / run_id / "report.json"
+    else:
+        latest = reports_dir / "latest" / "report.json"
+        report_file = latest if latest.exists() else None
+
+    result: dict[str, list[str]] = {"classify": [], "rename": [], "process": [], "refine": []}
+    if not report_file or not report_file.exists():
+        return result
+
+    try:
+        report = json.loads(report_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return result
+
+    for phase in report.get("phases", []):
+        for series in phase.get("series", []):
+            for log_path in series.get("logs", []):
+                full_path = str(root / log_path)
+                if "rapport_classify" in log_path:
+                    result["classify"].append(full_path)
+                elif "rapport_rename" in log_path:
+                    result["rename"].append(full_path)
+                elif "rapport_process" in log_path:
+                    result["process"].append(full_path)
+                elif "refine_" in log_path:
+                    result["refine"].append(full_path)
+
+    return result
+
+
+def compute_aggregated_metrics(csv_paths: list[str], metric_func) -> dict | None:
+    """Aggregate metrics from multiple CSV files by concatenating rows."""
+    all_rows = []
+    for path in csv_paths:
+        _, rows = load_csv(path)
+        all_rows.extend(rows)
+    if not all_rows:
+        return None
+    # Write to a temporary merged file and compute metrics
+    import tempfile, csv as csv_mod
+    if not all_rows:
+        return None
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8") as tmp:
+        writer = csv_mod.DictWriter(tmp, fieldnames=list(all_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(all_rows)
+        tmp_path = tmp.name
+    try:
+        return metric_func(tmp_path)
+    finally:
+        import os
+        os.unlink(tmp_path)
 
 
 def compute_classification_metrics(csv_path: str) -> dict:
@@ -931,3 +1083,83 @@ def find_test_for_report(csv_filename: str, tests_yaml: dict | None) -> dict | N
                 continue
 
     return None
+
+
+def compare_runs(
+    current: dict, old: dict, series_filter: str | None = None
+) -> dict:
+    """Compare two runs check-by-check.
+
+    Returns {
+        series: [{id, name, checks: [{id, desc, old_status, new_status, change}]}],
+        stats: {improved, regressed, unchanged, new, removed}
+    }
+    """
+    # Build check lookup: check_id → status for each run
+    def _build_check_map(run: dict) -> dict[str, dict]:
+        result = {}
+        for phase in run.get("phases", []):
+            for series in phase.get("series", []):
+                for check in series.get("checks", []):
+                    result[check["id"]] = {
+                        "status": check.get("status", "not_run"),
+                        "description": check.get("description", ""),
+                        "series_id": series["id"],
+                        "series_name": series.get("name", ""),
+                    }
+        return result
+
+    old_checks = _build_check_map(old)
+    new_checks = _build_check_map(current)
+
+    all_check_ids = sorted(set(old_checks) | set(new_checks))
+
+    # Group by series
+    series_map: dict[str, dict] = {}
+    stats = {"improved": 0, "regressed": 0, "unchanged": 0, "new": 0, "removed": 0}
+
+    for cid in all_check_ids:
+        old_ck = old_checks.get(cid)
+        new_ck = new_checks.get(cid)
+        sid = (new_ck or old_ck)["series_id"]
+        sname = (new_ck or old_ck)["series_name"]
+
+        if series_filter and sid != series_filter:
+            continue
+
+        if sid not in series_map:
+            series_map[sid] = {"id": sid, "name": sname, "checks": []}
+
+        old_st = old_ck["status"] if old_ck else None
+        new_st = new_ck["status"] if new_ck else None
+
+        # Determine change type
+        priority = {"pass": 3, "fail": 2, "skip": 1, "not_run": 0}
+        if old_st is None:
+            change = "new"
+            stats["new"] += 1
+        elif new_st is None:
+            change = "removed"
+            stats["removed"] += 1
+        elif old_st == new_st:
+            change = "unchanged"
+            stats["unchanged"] += 1
+        elif priority.get(new_st, 0) > priority.get(old_st, 0):
+            change = "improved"
+            stats["improved"] += 1
+        else:
+            change = "regressed"
+            stats["regressed"] += 1
+
+        series_map[sid]["checks"].append({
+            "id": cid,
+            "description": (new_ck or old_ck)["description"],
+            "old_status": old_st,
+            "new_status": new_st,
+            "change": change,
+        })
+
+    return {
+        "series": sorted(series_map.values(), key=lambda s: s["id"]),
+        "stats": stats,
+    }

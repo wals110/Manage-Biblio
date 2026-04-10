@@ -15,18 +15,24 @@ app = FastAPI(title="Klodo Dashboard")
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
 
+# Make project root available in all templates
+_project_root = str(data.get_project_root())
+templates.env.globals["project_root"] = _project_root
+
 
 @app.get("/")
 async def overview(request: Request):
     """Overview page with KPIs, heatmap, and release gate."""
-    report = data.get_latest_report()
+    report = data.get_run_from_db() or data.get_latest_report()
     tests = data.get_tests_yaml()
     issues = data.get_open_issues()
+    llm_config = data.get_llm_config()
     return templates.TemplateResponse(
         request,
         "overview.html",
         {"report": report, "tests": tests, "issues": issues,
-         "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY"))},
+         "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+         "llm_config": llm_config},
     )
 
 
@@ -318,51 +324,53 @@ async def rapports_page(
 @app.get("/comparer")
 async def comparer_page(
     request: Request,
-    type: str = "classify",
-    test: str | None = None,
-    file_a: str | None = None,
-    file_b: str | None = None,
-    filter: str | None = None,
+    old_run: str | None = None,
+    series_filter: str | None = None,
 ):
-    """Comparer page — diff between two reports."""
-    tests_yaml = data.get_tests_yaml()
-    csv_files = data.get_csv_files(type, tests_yaml)
-    available_tests = data.get_available_tests(csv_files)
+    """Comparer page — diff between current run and an older run."""
+    available_runs = data.get_available_runs()
 
-    # Filter by test if specified
-    if test:
-        csv_files_filtered = [f for f in csv_files if f.get("test_id") == test]
-    else:
-        csv_files_filtered = csv_files
+    # Current = most recent run
+    current_run = data.get_run_from_db() if available_runs else None
+    # Old = selected older run
+    old_run_data = data.get_run_from_db(old_run) if old_run else None
 
+    # Build comparison data
     diff = None
-    test_a = test_b = None
+    common_series: list[dict] = []
 
-    if file_a and file_b:
-        _, rows_a = data.load_csv(file_a)
-        _, rows_b = data.load_csv(file_b)
-        key_col = "ancien_nom" if type == "rename" else "fichier"
-        diff = data.diff_reports(rows_a, rows_b, key_col)
+    if current_run and old_run_data:
+        diff = data.compare_runs(current_run, old_run_data, series_filter)
+        # Find series in common
+        current_series_ids = {
+            s["id"] for p in current_run.get("phases", []) for s in p.get("series", [])
+        }
+        old_series_ids = {
+            s["id"] for p in old_run_data.get("phases", []) for s in p.get("series", [])
+        }
+        common_ids = current_series_ids & old_series_ids
+        # Build list with names
+        for p in current_run.get("phases", []):
+            for s in p.get("series", []):
+                if s["id"] in common_ids:
+                    common_series.append({"id": s["id"], "name": s.get("name", s["id"])})
+        common_series.sort(key=lambda x: x["id"])
 
-        test_a = data.find_test_for_report(os.path.basename(file_a), tests_yaml)
-        test_b = data.find_test_for_report(os.path.basename(file_b), tests_yaml)
+    # Exclude current run from "old runs" dropdown
+    old_runs = [r for r in available_runs if r.get("id") != (current_run or {}).get("_run_id")]
 
     return templates.TemplateResponse(
         request,
         "comparer.html",
         {
             "active": "comparer",
-            "report_type": type,
-            "csv_files": csv_files,
-            "csv_files_filtered": csv_files_filtered,
-            "available_tests": available_tests,
-            "test_filter": test or "",
-            "file_a": file_a or "",
-            "file_b": file_b or "",
+            "current_run": current_run,
+            "old_run_data": old_run_data,
+            "old_runs": old_runs,
+            "selected_old_run": old_run or "",
+            "common_series": common_series,
+            "series_filter": series_filter or "",
             "diff": diff,
-            "test_a": test_a,
-            "test_b": test_b,
-            "filter": filter or "all",
         },
     )
 
@@ -389,39 +397,46 @@ async def historique_page(request: Request, run_type: str = "all"):
 @app.get("/metriques")
 async def metriques_page(
     request: Request,
-    classify_file: str | None = None,
-    rename_file: str | None = None,
+    run: str | None = None,
 ):
-    """Metriques page — quality metrics with Chart.js charts."""
-    tests_yaml = data.get_tests_yaml()
-    classify_files = data.get_csv_files("classify", tests_yaml)
-    rename_files = data.get_csv_files("rename", tests_yaml)
+    """Metriques page — quality metrics for a specific run."""
+    available_runs = data.get_available_runs()
+
+    # Get CSV files for selected run (or latest)
+    run_csvs = data.get_run_csv_files(run)
+    selected_run = run or ""
+
+    # Find which run is actually loaded
+    current_run = data.get_run_from_db(run)
 
     classify_metrics = None
     rename_metrics = None
 
-    if classify_files:
-        selected = classify_file or classify_files[0]["path"]
-        classify_metrics = data.compute_classification_metrics(selected)
+    classify_paths = run_csvs.get("classify", []) + run_csvs.get("process", [])
+    rename_paths = run_csvs.get("rename", [])
 
-    if rename_files:
-        selected = rename_file or rename_files[0]["path"]
-        rename_metrics = data.compute_rename_metrics(selected)
+    if classify_paths:
+        classify_metrics = data.compute_aggregated_metrics(
+            classify_paths, data.compute_classification_metrics
+        )
 
-    problematic = data.find_problematic_files(data.get_all_reports())
+    if rename_paths:
+        rename_metrics = data.compute_aggregated_metrics(
+            rename_paths, data.compute_rename_metrics
+        )
 
     return templates.TemplateResponse(
         request,
         "metriques.html",
         {
             "active": "metriques",
-            "classify_files": classify_files,
-            "rename_files": rename_files,
             "classify_metrics": classify_metrics,
             "rename_metrics": rename_metrics,
-            "problematic": problematic,
-            "selected_classify": classify_file or (classify_files[0]["path"] if classify_files else ""),
-            "selected_rename": rename_file or (rename_files[0]["path"] if rename_files else ""),
+            "available_runs": available_runs,
+            "selected_run": selected_run,
+            "current_run": current_run,
+            "classify_count": len(classify_paths),
+            "rename_count": len(rename_paths),
         },
     )
 
@@ -494,6 +509,71 @@ async def validate_check_api(run_id: str, check_id: str, status: str):
 #  Admin
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _get_env_path():
+    """Return path to the project .env file."""
+    return data.get_project_root() / ".env"
+
+
+def _load_env_keys() -> dict[str, str]:
+    """Load key=value pairs from .env file."""
+    env_path = _get_env_path()
+    result = {}
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                result[k.strip()] = v.strip()
+    return result
+
+
+def _save_env_keys(keys: dict[str, str]):
+    """Save key=value pairs to .env file, preserving comments."""
+    env_path = _get_env_path()
+    existing_lines = []
+    if env_path.exists():
+        existing_lines = env_path.read_text().splitlines()
+    # Update existing keys, track which ones were updated
+    updated = set()
+    new_lines = []
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k, _, _ = stripped.partition("=")
+            k = k.strip()
+            if k in keys:
+                new_lines.append(f"{k}={keys[k]}")
+                updated.add(k)
+                continue
+        new_lines.append(line)
+    # Add new keys
+    for k, v in keys.items():
+        if k not in updated:
+            new_lines.append(f"{k}={v}")
+    env_path.write_text("\n".join(new_lines) + "\n")
+
+
+def _get_api_keys_status() -> list[dict]:
+    """Return status of known API keys."""
+    env_keys = _load_env_keys()
+    known = [
+        ("SILICONFLOW_API_KEY", "SiliconFlow (LLM Vision)"),
+    ]
+    result = []
+    for key_name, label in known:
+        env_val = env_keys.get(key_name, "")
+        runtime_val = os.environ.get(key_name, "")
+        val = env_val or runtime_val
+        result.append({
+            "name": key_name,
+            "label": label,
+            "set": bool(val),
+            "masked": f"{val[:8]}...{val[-4:]}" if val and len(val) > 12 else ("***" if val else ""),
+            "source": "env" if runtime_val and not env_val else ("file" if env_val else ""),
+        })
+    return result
+
+
 def _get_admin_stats() -> dict:
     """Compute admin stats."""
     import glob as G
@@ -529,9 +609,35 @@ async def admin_page(request: Request):
     """Admin page — maintenance tools."""
     stats = _get_admin_stats()
     runs = data.get_available_runs()
+    api_keys = _get_api_keys_status()
     return templates.TemplateResponse(request, "admin.html", {
-        "active": "admin", "stats": stats, "runs": runs,
+        "active": "admin", "stats": stats, "runs": runs, "api_keys": api_keys,
     })
+
+
+@app.post("/api/admin/save-api-key")
+async def save_api_key(key_name: str, key_value: str):
+    """Save an API key to .env and update runtime environment."""
+    from fastapi.responses import JSONResponse
+    allowed = {"SILICONFLOW_API_KEY"}
+    if key_name not in allowed:
+        return JSONResponse({"message": f"Clé inconnue: {key_name}"}, status_code=400)
+    _save_env_keys({key_name: key_value})
+    os.environ[key_name] = key_value
+    return JSONResponse({"message": f"{key_name} sauvegardée dans .env"})
+
+
+@app.post("/api/admin/delete-api-key")
+async def delete_api_key(key_name: str):
+    """Remove an API key from .env and runtime environment."""
+    from fastapi.responses import JSONResponse
+    env_path = _get_env_path()
+    if env_path.exists():
+        lines = env_path.read_text().splitlines()
+        lines = [l for l in lines if not l.strip().startswith(f"{key_name}=")]
+        env_path.write_text("\n".join(lines) + "\n")
+    os.environ.pop(key_name, None)
+    return JSONResponse({"message": f"{key_name} supprimée"})
 
 
 @app.post("/api/admin/clean-logs")

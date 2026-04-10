@@ -4,62 +4,54 @@
 
 {% block content %}
 <h1 class="page-title">Comparer</h1>
-<p class="page-subtitle">Diff entre deux rapports CSV</p>
+<p class="page-subtitle">Diff entre le run courant et un ancien run</p>
 
-{# ── Selector Row ── #}
+{# ── Run Selector ── #}
 <div class="diff-selector">
-    <div class="diff-selector-type" style="display:flex;gap:8px;">
-        <select class="filter-select" id="type-select" onchange="updateCompareType(this.value)">
-            <option value="all" {% if report_type == 'all' %}selected{% endif %}>Tous les types</option>
-            <option value="classify" {% if report_type == 'classify' %}selected{% endif %}>Classification</option>
-            <option value="rename" {% if report_type == 'rename' %}selected{% endif %}>Renommage</option>
-            <option value="refine" {% if report_type == 'refine' %}selected{% endif %}>Raffinement</option>
-            <option value="process" {% if report_type == 'process' %}selected{% endif %}>Process</option>
-        </select>
-        <select class="filter-select" id="test-filter" onchange="updateCompareTest(this.value)">
-            <option value="">Tous les tests</option>
-            {% for t in available_tests %}
-            <option value="{{ t.id }}" {% if test_filter == t.id %}selected{% endif %}>
-                {{ t.id }} — {{ t.name or 'Sans nom' }}
-            </option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="diff-selector-files">
-        <div class="diff-file-pick">
-            <label class="diff-label">Avant</label>
-            <select class="filter-select file-select" id="file-a-select">
-                <option value="">-- S&eacute;lectionner --</option>
-                {% for f in csv_files_filtered %}
-                <option value="{{ f.path }}" {% if f.path == file_a %}selected{% endif %}>
-                    {{ f.date }}{% if f.test_id %} ({{ f.test_id }}){% endif %} — {{ (f.size / 1024) | round(1) }} Ko
-                </option>
-                {% endfor %}
-            </select>
-            {% if test_a %}
-            <a href="/tests#{{ test_a.id }}" class="test-link-banner">
-                Produit par {{ test_a.id }}{% if test_a.name %} &mdash; {{ test_a.name }}{% endif %}
-            </a>
+    <div class="diff-runs">
+        <div class="diff-run-card">
+            <label class="diff-label">Run courant</label>
+            {% if current_run %}
+            <div class="diff-run-info">
+                <span class="run-banner-label">{{ current_run._label or current_run._run_id }}</span>
+                <span class="text-muted">{{ current_run.run_at[:19] | replace("T", " ") }}</span>
+                <span class="text-green">{{ current_run.summary.pass }}/{{ current_run.summary.total }}</span>
+                {% if current_run._git_branch %}
+                <span class="run-banner-git">{{ current_run._git_branch }}</span>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="text-muted">Aucun run disponible</div>
             {% endif %}
         </div>
-        <span class="diff-arrow">&rarr;</span>
-        <div class="diff-file-pick">
-            <label class="diff-label">Apr&egrave;s</label>
-            <select class="filter-select file-select" id="file-b-select">
-                <option value="">-- S&eacute;lectionner --</option>
-                {% for f in csv_files_filtered %}
-                <option value="{{ f.path }}" {% if f.path == file_b %}selected{% endif %}>
-                    {{ f.date }}{% if f.test_id %} ({{ f.test_id }}){% endif %} — {{ (f.size / 1024) | round(1) }} Ko
-                </option>
-                {% endfor %}
-            </select>
-            {% if test_b %}
-            <a href="/tests#{{ test_b.id }}" class="test-link-banner">
-                Produit par {{ test_b.id }}{% if test_b.name %} &mdash; {{ test_b.name }}{% endif %}
-            </a>
-            {% endif %}
+
+        <span class="diff-arrow-big">vs</span>
+
+        <div class="diff-run-card">
+            <label class="diff-label">Ancien run</label>
+            <form method="get" action="/comparer" id="compare-form">
+                <select name="old_run" class="filter-select" onchange="this.form.submit()">
+                    <option value="">-- Choisir un run --</option>
+                    {% for r in old_runs %}
+                    <option value="{{ r.id }}" {% if selected_old_run == r.id %}selected{% endif %}>
+                        {{ r.label or r.id }} &mdash; {{ r.date[:16] | replace("T", " ") }}
+                        ({{ r.pass }}/{{ r.total }})
+                        {% if r.git_branch %}[{{ r.git_branch }}]{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if common_series %}
+                <select name="series_filter" class="filter-select" style="margin-top:8px;" onchange="this.form.submit()">
+                    <option value="">Toutes les s&eacute;ries</option>
+                    {% for s in common_series %}
+                    <option value="{{ s.id }}" {% if series_filter == s.id %}selected{% endif %}>
+                        {{ s.id }} &mdash; {{ s.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </form>
         </div>
-        <button class="btn btn-primary" onclick="doCompare()">Comparer</button>
     </div>
 </div>
 
@@ -68,189 +60,92 @@
 {# ── Diff Stats ── #}
 <div class="kpi-row diff-stats">
     <div class="kpi-card green">
-        <div class="kpi-label">Nouveaux classifi&eacute;s</div>
-        <div class="kpi-value">+{{ diff.stats.new_count }}</div>
+        <div class="kpi-label">Am&eacute;lior&eacute;s</div>
+        <div class="kpi-value">+{{ diff.stats.improved }}</div>
     </div>
     <div class="kpi-card red">
         <div class="kpi-label">R&eacute;gressions</div>
-        <div class="kpi-value">-{{ diff.stats.regression_count }}</div>
+        <div class="kpi-value">{{ diff.stats.regressed }}</div>
     </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Inchang&eacute;s</div>
+        <div class="kpi-value">{{ diff.stats.unchanged }}</div>
+    </div>
+    {% if diff.stats.new > 0 %}
     <div class="kpi-card blue">
-        <div class="kpi-label">Destination chang&eacute;e</div>
-        <div class="kpi-value">{{ diff.stats.changed_count }}</div>
+        <div class="kpi-label">Nouveaux</div>
+        <div class="kpi-value">{{ diff.stats.new }}</div>
     </div>
-    <div class="kpi-card purple">
-        <div class="kpi-label">&Delta; Confiance moy.</div>
-        <div class="kpi-value">{{ '%+.2f' | format(diff.stats.delta_confidence) }}</div>
-    </div>
+    {% endif %}
 </div>
 
-{# ── Filter Pills ── #}
-{% set counts = {
-    'all': diff.stats.new_count + diff.stats.regression_count + diff.stats.changed_count + diff.stats.unchanged_count,
-    'new': diff.stats.new_count,
-    'regressions': diff.stats.regression_count,
-    'changed': diff.stats.changed_count,
-    'unchanged': diff.stats.unchanged_count
-} %}
-<div class="filter-pills">
-    <a href="#" class="filter-pill {% if filter == 'all' %}active{% endif %}"
-       onclick="setFilter('all'); return false;">Tout ({{ counts.all }})</a>
-    <a href="#" class="filter-pill pill-new {% if filter == 'new' %}active{% endif %}"
-       onclick="setFilter('new'); return false;">Nouveaux ({{ counts.new }})</a>
-    <a href="#" class="filter-pill pill-regression {% if filter == 'regressions' %}active{% endif %}"
-       onclick="setFilter('regressions'); return false;">R&eacute;gressions ({{ counts.regressions }})</a>
-    <a href="#" class="filter-pill pill-changed {% if filter == 'changed' %}active{% endif %}"
-       onclick="setFilter('changed'); return false;">Chang&eacute;s ({{ counts.changed }})</a>
-    <a href="#" class="filter-pill pill-unchanged {% if filter == 'unchanged' %}active{% endif %}"
-       onclick="setFilter('unchanged'); return false;">Inchang&eacute;s ({{ counts.unchanged }})</a>
-</div>
-
-{# ── Diff Table ── #}
-{% macro status_badge(row) %}
-    {% if row %}
-        {% set val = row.get('status', row.get('action', '')) %}
-        {% if val in ['classifié', 'RENOMME', 'déplacé', 'renommé'] %}
-        <span class="badge badge-pass">{{ val }}</span>
-        {% elif val in ['non_classifié', 'INCHANGE'] %}
-        <span class="badge badge-warn">{{ val }}</span>
-        {% elif val in ['erreur', 'ECHEC'] %}
-        <span class="badge badge-fail">{{ val }}</span>
-        {% else %}
-        <span class="badge badge-default">{{ val }}</span>
-        {% endif %}
-    {% else %}
-        <span class="badge badge-default">&mdash;</span>
-    {% endif %}
-{% endmacro %}
-
-{% macro dest_cell(row) %}
-    {% if row %}
-        {% set dest = row.get('destination', row.get('nouveau_nom', '')) %}
-        <span class="dest-path" title="{{ dest }}">{{ dest | truncate(50) }}</span>
-    {% else %}
-        <span class="text-muted">&mdash;</span>
-    {% endif %}
-{% endmacro %}
-
-{% set visible_rows = [] %}
-{% if filter == 'all' %}
-    {% set visible_rows = diff.new + diff.regressions + diff.changed + diff.unchanged %}
-{% elif filter == 'new' %}
-    {% set visible_rows = diff.new %}
-{% elif filter == 'regressions' %}
-    {% set visible_rows = diff.regressions %}
-{% elif filter == 'changed' %}
-    {% set visible_rows = diff.changed %}
-{% elif filter == 'unchanged' %}
-    {% set visible_rows = diff.unchanged %}
-{% endif %}
-
-{% if visible_rows %}
-<div class="table-wrapper">
-    <table class="data-table diff-table">
-        <thead>
-            <tr>
-                <th>Fichier</th>
-                <th>Status A</th>
-                <th></th>
-                <th>Status B</th>
-                <th>Destination A &rarr; B</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in visible_rows %}
-            {% set row_class = '' %}
-            {% if item in diff.new %}
-                {% set row_class = 'diff-row-new' %}
-            {% elif item in diff.regressions %}
-                {% set row_class = 'diff-row-regression' %}
-            {% elif item in diff.changed %}
-                {% set row_class = 'diff-row-changed' %}
-            {% endif %}
-            <tr class="{{ row_class }}">
-                <td><span class="filename-cell" title="{{ item.key }}">{{ item.key | truncate(60) }}</span></td>
-                <td>{{ status_badge(item.row_a) }}</td>
-                <td class="diff-arrow-cell">&rarr;</td>
-                <td>{{ status_badge(item.row_b) }}</td>
-                <td>
-                    {% if item.row_a and item.row_b %}
-                        {% set dest_a = item.row_a.get('destination', item.row_a.get('nouveau_nom', '')) %}
-                        {% set dest_b = item.row_b.get('destination', item.row_b.get('nouveau_nom', '')) %}
-                        {% if dest_a != dest_b %}
-                            <span class="dest-path text-muted" title="{{ dest_a }}">{{ dest_a | truncate(30) }}</span>
-                            <span class="diff-dest-arrow">&rarr;</span>
-                            <span class="dest-path" title="{{ dest_b }}">{{ dest_b | truncate(30) }}</span>
+{# ── Diff Table by Series ── #}
+{% for series in diff.series %}
+<div class="diff-series-block">
+    <h3 class="diff-series-title">{{ series.id }} &mdash; {{ series.name }}</h3>
+    <div class="table-wrapper">
+        <table class="data-table diff-table">
+            <thead>
+                <tr>
+                    <th>Check</th>
+                    <th>Description</th>
+                    <th>Ancien</th>
+                    <th></th>
+                    <th>Nouveau</th>
+                    <th>Changement</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ck in series.checks %}
+                <tr class="diff-row-{{ ck.change }}">
+                    <td class="text-muted" style="font-family:var(--mono);font-size:0.8rem;">{{ ck.id }}</td>
+                    <td>{{ ck.description }}</td>
+                    <td>
+                        {% if ck.old_status %}
+                        <span class="badge {{ ck.old_status }}">{{ ck.old_status | upper }}</span>
                         {% else %}
-                            {{ dest_cell(item.row_b) }}
+                        <span class="text-muted">&mdash;</span>
                         {% endif %}
-                    {% elif item.row_b %}
-                        {{ dest_cell(item.row_b) }}
-                    {% elif item.row_a %}
-                        <span class="dest-path text-muted">{{ dest_cell(item.row_a) }}</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                    </td>
+                    <td class="diff-arrow-cell">&rarr;</td>
+                    <td>
+                        {% if ck.new_status %}
+                        <span class="badge {{ ck.new_status }}">{{ ck.new_status | upper }}</span>
+                        {% else %}
+                        <span class="text-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ck.change == 'improved' %}
+                        <span class="diff-change diff-improved">&#9650; Am&eacute;lior&eacute;</span>
+                        {% elif ck.change == 'regressed' %}
+                        <span class="diff-change diff-regressed">&#9660; R&eacute;gression</span>
+                        {% elif ck.change == 'new' %}
+                        <span class="diff-change diff-new">Nouveau</span>
+                        {% elif ck.change == 'removed' %}
+                        <span class="diff-change diff-removed">Retir&eacute;</span>
+                        {% else %}
+                        <span class="text-muted">=</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
+{% endfor %}
+
+{% elif selected_old_run %}
+<div class="no-data">
+    <p>Aucune donn&eacute;e de comparaison trouv&eacute;e.</p>
+</div>
+
 {% else %}
 <div class="no-data">
-    <p>Aucune ligne pour ce filtre.</p>
+    <p>S&eacute;lectionnez un ancien run pour comparer</p>
+    <p class="text-muted">Le run courant sera compar&eacute; check par check avec l'ancien run choisi.</p>
 </div>
 {% endif %}
 
-{% elif not file_a or not file_b %}
-
-{# ── Empty State ── #}
-<div class="no-data">
-    <p>S&eacute;lectionnez deux rapports &agrave; comparer</p>
-    <p class="text-muted">Choisissez un rapport &laquo; Avant &raquo; et un rapport &laquo; Apr&egrave;s &raquo;, puis cliquez sur Comparer.</p>
-</div>
-
-{% endif %}
-
-<script>
-const compareState = {
-    type: '{{ report_type }}',
-    test: '{{ test_filter }}',
-    file_a: '{{ file_a }}',
-    file_b: '{{ file_b }}',
-    filter: '{{ filter }}',
-};
-
-function buildCompareUrl(overrides) {
-    const params = new URLSearchParams();
-    const s = {...compareState, ...overrides};
-    params.set('type', s.type);
-    if (s.test) params.set('test', s.test);
-    if (s.file_a) params.set('file_a', s.file_a);
-    if (s.file_b) params.set('file_b', s.file_b);
-    if (s.filter && s.filter !== 'all') params.set('filter', s.filter);
-    return '/comparer?' + params.toString();
-}
-
-function updateCompareType(type) {
-    window.location.href = buildCompareUrl({type: type, test: '', file_a: '', file_b: '', filter: 'all'});
-}
-
-function updateCompareTest(test) {
-    window.location.href = buildCompareUrl({test: test, file_a: '', file_b: '', filter: 'all'});
-}
-
-function doCompare() {
-    const fileA = document.getElementById('file-a-select').value;
-    const fileB = document.getElementById('file-b-select').value;
-    if (!fileA || !fileB) {
-        alert('Veuillez s\u00e9lectionner deux rapports.');
-        return;
-    }
-    window.location.href = buildCompareUrl({file_a: fileA, file_b: fileB, filter: 'all'});
-}
-
-function setFilter(f) {
-    window.location.href = buildCompareUrl({filter: f});
-}
-</script>
 {% endblock %}

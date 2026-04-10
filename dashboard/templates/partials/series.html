@@ -9,7 +9,7 @@
 {% endif %}
 
 <div class="series-row series-{{ series.status }}{% if series.status == 'fail' %} expanded{% endif %}" id="series-{{ series.id | replace('.', '-') }}">
-    <div class="series-summary" onclick="this.parentElement.classList.toggle('expanded')">
+    <div class="series-summary" onclick="toggleExpand(this.parentElement)">
         <input type="checkbox" class="series-checkbox" value="{{ series.id }}"
                onclick="event.stopPropagation(); updateSelectionCount()">
         <span class="status-dot dot-{{ series.status }}"></span>
@@ -83,9 +83,15 @@
             <span class="check-id">{{ check.id }}</span>
             <span class="check-desc">{{ check.description }}</span>
             {% if check.mode == 'manual_check' and check.status in ('pass', 'fail') %}
-            {# Already validated manual check #}
-            <span class="manual-validated manual-validated-{{ check.status }}">
-                {% if check.status == 'pass' %}&#10003;{% else %}&#10007;{% endif %} Validation manuelle
+            {# Already validated manual check — with option to change #}
+            <span class="manual-widget" id="widget-{{ check.id | replace('.', '-') }}">
+                <span class="manual-validated manual-validated-{{ check.status }}">
+                    {% if check.status == 'pass' %}&#10003;{% else %}&#10007;{% endif %} Validation manuelle
+                </span>
+                <button class="btn btn-sm btn-revise"
+                        onclick="this.parentElement.innerHTML = reviseWidget('{{ current_run_id }}', '{{ check.id }}')">
+                    Modifier
+                </button>
             </span>
             {% elif check.status == 'skip' and ('Manual' in (check.detail or '') or check.mode == 'manual_check') %}
             {# Manual check widget — pending validation #}
@@ -136,8 +142,15 @@
             <div class="cmd-label">Logs associ&eacute;s :</div>
             {% for log in series.logs %}
             <div class="log-file">
+                {% set log_name = log | replace('tests/functional/logs/', '') %}
+                {% if 'rapport_' in log or 'refine_' in log %}
+                <span class="log-icon">📊</span>
+                {% set log_type = 'rename' if 'rename' in log else ('classify' if 'classify' in log else ('refine' if 'refine' in log else ('process' if 'process' in log else 'classify'))) %}
+                <a href="/rapports?type={{ log_type }}&file={{ project_root }}/{{ log }}" class="log-link">{{ log_name }}</a>
+                {% else %}
                 <span class="log-icon">📄</span>
-                <a href="/rapports?file={{ log }}" class="log-link">{{ log | replace('tests/functional/logs/', '') }}</a>
+                <span class="text-muted">{{ log_name }}</span>
+                {% endif %}
             </div>
             {% endfor %}
         </div>

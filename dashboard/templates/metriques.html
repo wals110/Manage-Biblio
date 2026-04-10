@@ -6,34 +6,35 @@
 <h1 class="page-title">M&eacute;triques</h1>
 <p class="page-subtitle">Indicateurs qualit&eacute; de classification et renommage</p>
 
-<!-- ── Report Selector ── -->
+<!-- ── Run Selector ── -->
 <div class="metrics-selector">
     <form method="get" action="/metriques" class="filters-form">
-        <label class="diff-label" for="classify_file">Rapport classification</label>
-        <select name="classify_file" id="classify_file" class="filter-select file-select" onchange="this.form.submit()">
-            {% if not classify_files %}
-            <option>Aucun rapport</option>
-            {% endif %}
-            {% for f in classify_files %}
-            <option value="{{ f.path }}" {% if f.path == selected_classify %}selected{% endif %}>
-                {{ f.date }} {% if f.test_name %}&mdash; {{ f.test_name }}{% endif %}
-            </option>
-            {% endfor %}
-        </select>
-
-        <label class="diff-label" for="rename_file">Rapport renommage</label>
-        <select name="rename_file" id="rename_file" class="filter-select file-select" onchange="this.form.submit()">
-            {% if not rename_files %}
-            <option>Aucun rapport</option>
-            {% endif %}
-            {% for f in rename_files %}
-            <option value="{{ f.path }}" {% if f.path == selected_rename %}selected{% endif %}>
-                {{ f.date }} {% if f.test_name %}&mdash; {{ f.test_name }}{% endif %}
+        <select name="run" class="filter-select" onchange="this.form.submit()">
+            <option value="">Dernier run</option>
+            {% for r in available_runs %}
+            <option value="{{ r.id }}" {% if selected_run == r.id %}selected{% endif %}>
+                {{ r.label or r.id }} &mdash; {{ r.date[:16] | replace("T", " ") }}
+                ({{ r.pass }}/{{ r.total }})
+                {% if r.git_branch %}[{{ r.git_branch }}]{% endif %}
             </option>
             {% endfor %}
         </select>
     </form>
 </div>
+
+{% if current_run %}
+<div class="run-banner">
+    <span class="run-banner-label">{{ current_run._label or 'Run' }}</span>
+    <span class="run-banner-date">{{ current_run.run_at[:19] | replace("T", " ") }}</span>
+    <span class="run-banner-stats">{{ current_run.summary.pass }}/{{ current_run.summary.total }} PASS</span>
+    {% if current_run._git_branch %}
+    <span class="run-banner-git">{{ current_run._git_branch }}{% if current_run._git_commit %}@{{ current_run._git_commit }}{% endif %}</span>
+    {% endif %}
+    <span class="text-muted" style="font-size:0.8rem;">
+        {{ classify_count }} rapport(s) classify &middot; {{ rename_count }} rapport(s) rename
+    </span>
+</div>
+{% endif %}
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- ── Classification Section ── -->
@@ -92,8 +93,8 @@
 
     {% else %}
     <div class="no-data">
-        <p>Aucune donn&eacute;e de classification disponible.</p>
-        <p class="text-muted">Lancez <code>./klodo.sh classify</code> pour g&eacute;n&eacute;rer un rapport.</p>
+        <p>Aucune donn&eacute;e de classification dans ce run.</p>
+        <p class="text-muted">Ce run ne contient pas de tests de classification (phases 2-3).</p>
     </div>
     {% endif %}
 </div>
@@ -140,52 +141,11 @@
 
     {% else %}
     <div class="no-data">
-        <p>Aucune donn&eacute;e de renommage disponible.</p>
-        <p class="text-muted">Lancez <code>./klodo.sh rename</code> pour g&eacute;n&eacute;rer un rapport.</p>
+        <p>Aucune donn&eacute;e de renommage dans ce run.</p>
+        <p class="text-muted">Ce run ne contient pas de tests de renommage (phase 1).</p>
     </div>
     {% endif %}
 </div>
-
-<!-- ══════════════════════════════════════════════════════════════ -->
-<!-- ── Fichiers Problematiques ── -->
-<!-- TODO: À implémenter — croiser les rapports CSV pour trouver les PDFs récurrents en erreur -->
-<!--
-<div class="metrics-section metrics-section-red">
-    <h2 class="metrics-section-title">Fichiers probl&eacute;matiques</h2>
-
-    {% if problematic %}
-    <div class="table-wrapper">
-        <table class="data-table problematic-table">
-            <thead>
-                <tr>
-                    <th>Fichier</th>
-                    <th>Probl&egrave;me</th>
-                    <th>Confiance</th>
-                    <th>R&eacute;currence</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in problematic %}
-                <tr>
-                    <td class="filename-cell">{{ p.name[:80] }}</td>
-                    <td>{{ p.problem }}</td>
-                    <td class="text-muted">{{ p.series }}</td>
-                    <td>
-                        <span class="badge">{{ p.recurrence }}</span>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div class="no-data">
-        <p>Aucun fichier probl&eacute;matique d&eacute;tect&eacute;.</p>
-        <p class="text-muted">Les checks &eacute;chouant dans plusieurs runs appara&icirc;tront ici.</p>
-    </div>
-    {% endif %}
-</div>
--->
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- ── Chart.js Scripts ── -->

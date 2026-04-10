@@ -10,14 +10,18 @@
 </div>
 {% endif %}
 <h1 class="page-title">Tests &mdash; Ex&eacute;cution</h1>
-<p class="page-subtitle">
-    {% if report and report.run_at is defined and report.run_at %}
-    Dernier rapport : {{ report.run_at[:19] | replace("T", " ") }}
-    &mdash; {{ report.summary.pass }}/{{ report.summary.total }} PASS
-    {% else %}
-    Aucun rapport disponible — lancez les tests pour commencer
+{% if report and report.run_at is defined and report.run_at %}
+<div class="run-banner">
+    <span class="run-banner-label">{{ report._label or 'Run' }}</span>
+    <span class="run-banner-date">{{ report.run_at[:19] | replace("T", " ") }}</span>
+    <span class="run-banner-stats">{{ report.summary.pass }}/{{ report.summary.total }} PASS</span>
+    {% if report._git_branch %}
+    <span class="run-banner-git">{{ report._git_branch }}{% if report._git_commit %}@{{ report._git_commit }}{% endif %}</span>
     {% endif %}
-</p>
+</div>
+{% else %}
+<p class="page-subtitle">Aucun rapport disponible &mdash; lancez les tests pour commencer</p>
+{% endif %}
 
 <!-- Filters -->
 <div class="filters-bar">
@@ -68,8 +72,8 @@
             onclick="stopRun()" disabled>
         &#9632; Stop
     </button>
-    <button class="btn btn-sm" onclick="toggleAllCheckboxes()" title="Tout cocher/d&eacute;cocher">
-        &#9745;
+    <button class="btn btn-sm btn-toggle-all" onclick="toggleAllCheckboxes()" title="Tout cocher/d&eacute;cocher">
+        Tout s&eacute;lectionner
     </button>
     <span id="run-spinner" class="spinner htmx-indicator"></span>
     <label class="history-toggle" title="D&eacute;cocher pour ne pas historiser ce run">
@@ -176,7 +180,11 @@ function checkAll() {
 function toggleAllCheckboxes() {
     const boxes = document.querySelectorAll('.series-checkbox');
     const allChecked = Array.from(boxes).every(b => b.checked);
-    boxes.forEach(b => b.checked = !allChecked);
+    const newState = !allChecked;
+    boxes.forEach(b => b.checked = newState);
+    document.querySelectorAll('.phase-checkbox').forEach(b => b.checked = newState);
+    const btn = document.querySelector('.btn-toggle-all');
+    if (btn) btn.textContent = newState ? 'Tout désélectionner' : 'Tout sélectionner';
     updateSelectionCount();
 }
 
@@ -224,7 +232,7 @@ function runAll(btn, url) {
         s.className = 'text-muted';
     });
     scope.querySelectorAll('.phase-pass-count').forEach(s => {
-        s.textContent = '⏳';
+        s.textContent = '...';
         s.className = 'phase-pass-count text-muted';
     });
 
@@ -233,7 +241,7 @@ function runAll(btn, url) {
         b.style.pointerEvents = 'none';
         b.style.opacity = '0.4';
     });
-    btn.innerHTML = '⏳ Exécution...';
+    btn.innerHTML = 'Exécution...';
     // Activate global stop button
     const stopBtn = document.getElementById('btn-stop');
     stopBtn.disabled = false;
@@ -273,7 +281,7 @@ function runAll(btn, url) {
 
 function stopRun() {
     const stopBtn = document.getElementById('btn-stop');
-    stopBtn.innerHTML = '⏳ Arrêt...';
+    stopBtn.innerHTML = 'Arrêt...';
     stopBtn.style.pointerEvents = 'none';
 
     fetch('/api/stop', {method: 'POST'}).then(() => {
@@ -281,6 +289,30 @@ function stopRun() {
         setTimeout(() => window.location.reload(), 1000);
     }).catch(() => {
         window.location.reload();
+    });
+}
+
+// ── Expand state persistence ──
+function toggleExpand(el) {
+    el.classList.toggle('expanded');
+    saveExpandState();
+}
+
+function saveExpandState() {
+    const expanded = Array.from(document.querySelectorAll('.series-row.expanded'))
+        .map(el => el.id);
+    sessionStorage.setItem('expandedSeries', JSON.stringify(expanded));
+}
+
+// Restore expanded state from sessionStorage
+const savedExpanded = sessionStorage.getItem('expandedSeries');
+if (savedExpanded) {
+    const ids = JSON.parse(savedExpanded);
+    // Remove default expanded (fail series) first, then apply saved state
+    document.querySelectorAll('.series-row.expanded').forEach(el => el.classList.remove('expanded'));
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('expanded');
     });
 }
 

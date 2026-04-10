@@ -10,13 +10,20 @@
 </div>
 {% endif %}
 <h1 class="page-title">Overview</h1>
-<p class="page-subtitle">
-    {% if report and report.run_at is defined and report.run_at %}
-    Dernier rapport : {{ report.run_at[:19] | replace("T", " ") }}
-    {% else %}
-    Aucun rapport disponible
+{% if report and report.run_at is defined and report.run_at %}
+<div class="run-banner">
+    <span class="run-banner-label">{{ report._label or 'Dernier run' }}</span>
+    <span class="run-banner-date">{{ report.run_at[:19] | replace("T", " ") }}</span>
+    {% if report.summary %}
+    <span class="run-banner-stats">{{ report.summary.pass }}/{{ report.summary.total }} PASS</span>
     {% endif %}
-</p>
+    {% if report._git_branch %}
+    <span class="run-banner-git">{{ report._git_branch }}{% if report._git_commit %}@{{ report._git_commit }}{% endif %}</span>
+    {% endif %}
+</div>
+{% else %}
+<p class="page-subtitle">Aucun rapport disponible</p>
+{% endif %}
 
 {% if report %}
 {% set s = report.summary %}
@@ -45,6 +52,32 @@
         <div class="kpi-value">{{ report.duration_seconds }}s</div>
     </div>
 </div>
+
+<!-- LLM Config -->
+{% if llm_config %}
+<div class="llm-config-bar">
+    <div class="llm-config-item">
+        <span class="llm-config-label">Provider</span>
+        <span class="llm-config-value">{{ llm_config.provider }}</span>
+    </div>
+    <div class="llm-config-item">
+        <span class="llm-config-label">Mod&egrave;le (Vision + Texte)</span>
+        <span class="llm-config-value">{{ llm_config.model }}</span>
+    </div>
+    <div class="llm-config-item">
+        <span class="llm-config-label">Co&ucirc;t / appel</span>
+        <span class="llm-config-value">${{ llm_config.cost_per_call }}</span>
+    </div>
+    <div class="llm-config-item">
+        <span class="llm-config-label">API Key</span>
+        {% if api_key_set %}
+        <span class="llm-config-value text-green">configur&eacute;e</span>
+        {% else %}
+        <span class="llm-config-value text-red">manquante</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <!-- Actions -->
 <div class="actions-bar">

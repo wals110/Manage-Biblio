@@ -189,7 +189,7 @@ def get_run_detail(run_id: str) -> dict | None:
         con.close()
         return None
 
-    cols = ["id", "date", "duration", "total", "pass", "fail", "skip", "rate", "run_type"]
+    cols = ["id", "label", "date", "duration", "total", "pass", "fail", "skip", "rate", "run_type", "git_branch", "git_commit"]
     run_dict = dict(zip(cols, run))
 
     # Get series grouped by phase
@@ -237,8 +237,11 @@ def get_run_detail(run_id: str) -> dict | None:
         },
         "phases": list(phases.values()),
         "_run_id": run_dict["id"],
+        "_label": run_dict.get("label", ""),
         "_run_type": run_dict["run_type"],
         "_rate": run_dict["rate"],
+        "_git_branch": run_dict.get("git_branch", ""),
+        "_git_commit": run_dict.get("git_commit", ""),
     }
 
 

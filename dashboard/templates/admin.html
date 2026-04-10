@@ -4,7 +4,50 @@
 
 {% block content %}
 <h1 class="page-title">Administration</h1>
-<p class="page-subtitle">Maintenance des donn&eacute;es de test</p>
+<p class="page-subtitle">Configuration &amp; maintenance</p>
+
+<!-- ── API Keys ── -->
+<div class="admin-config">
+    <h2 class="section-title">Cl&eacute;s API</h2>
+    <div class="api-keys-list">
+        {% for key in api_keys %}
+        <div class="api-key-card" id="api-key-{{ key.name }}">
+            <div class="api-key-header">
+                <span class="api-key-label">{{ key.label }}</span>
+                {% if key.set %}
+                    <span class="badge pass">&#10003; configur&eacute;e</span>
+                {% else %}
+                    <span class="badge fail">&#10007; manquante</span>
+                {% endif %}
+            </div>
+            <div class="api-key-detail">
+                <code class="api-key-name">{{ key.name }}</code>
+                {% if key.set %}
+                <span class="api-key-masked">{{ key.masked }}</span>
+                {% endif %}
+            </div>
+            <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+                <input type="password" id="input-{{ key.name }}"
+                       style="flex:1;background:var(--card);border:none;color:var(--text);padding:12px 16px;font-family:var(--mono);font-size:0.9rem;min-width:0;"
+                       placeholder="Coller la cl&eacute; ici..." value="">
+                <button class="btn" onclick="saveApiKey('{{ key.name }}')"
+                        style="border-radius:0;border:none;border-left:1px solid var(--border);padding:12px 20px;white-space:nowrap;">
+                    Sauvegarder
+                </button>
+                {% if key.set %}
+                <button class="btn btn-danger" onclick="deleteApiKey('{{ key.name }}')"
+                        style="border-radius:0;border:none;border-left:1px solid var(--border);padding:12px 20px;white-space:nowrap;">
+                    Supprimer
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="text-muted" style="font-size:0.8rem;margin-top:12px;">
+        Sauvegard&eacute; dans <code>.env</code> (gitignored). Appliqu&eacute; au runtime imm&eacute;diatement.
+    </p>
+</div>
 
 <!-- ── Quick Actions ── -->
 <div class="admin-actions">
@@ -114,6 +157,26 @@
 </div>
 
 <script>
+function saveApiKey(keyName) {
+    const input = document.getElementById('input-' + keyName);
+    const value = input.value.trim();
+    if (!value) { alert('Veuillez entrer une clé API'); return; }
+    fetch('/api/admin/save-api-key?key_name=' + keyName + '&key_value=' + encodeURIComponent(value), {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            alert(data.message);
+            window.location.reload();
+        });
+}
+
+function deleteApiKey(keyName) {
+    if (!confirm('Supprimer la clé ' + keyName + ' ?')) return;
+    fetch('/api/admin/delete-api-key?key_name=' + keyName, {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            alert(data.message);
+            window.location.reload();
+        });
+}
+
 function adminAction(url, confirmMsg) {
     if (!confirm(confirmMsg)) return;
     fetch(url, {method: 'POST'}).then(r => r.json()).then(data => {

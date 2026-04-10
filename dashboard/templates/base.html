@@ -50,6 +50,11 @@ function validateCheck(runId, checkId, status) {
     });
 }
 
+function reviseWidget(runId, checkId) {
+    return '<button class="btn btn-sm btn-pass" onclick="validateCheck(\'' + runId + '\', \'' + checkId + '\', \'pass\')">&#10003; Oui</button>'
+         + '<button class="btn btn-sm btn-fail-action" onclick="validateCheck(\'' + runId + '\', \'' + checkId + '\', \'fail\')">&#10007; Non</button>';
+}
+
 function activateStops(btn) {
     // Activate the phase stop button and global stop button
     var phase = btn.closest('.phase-accordion');
