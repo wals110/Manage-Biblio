@@ -39,11 +39,16 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# ── Charger .env si présent ──
+# ── Charger .env si présent (sans écraser les variables déjà définies) ──
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
-    set -a
-    source "$SCRIPT_DIR/.env"
-    set +a
+    while IFS='=' read -r key value; do
+        [[ -z "$key" || "$key" == \#* ]] && continue
+        key=$(echo "$key" | xargs)
+        value=$(echo "$value" | xargs)
+        if [[ -z "${!key+x}" ]]; then
+            export "$key=$value"
+        fi
+    done < "$SCRIPT_DIR/.env"
 fi
 
 # ── Vérifications ──

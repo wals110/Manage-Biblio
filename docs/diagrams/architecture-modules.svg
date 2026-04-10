@@ -47,6 +47,10 @@
     <text x="702" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Profils</text>
 
     <!-- Second row of lib -->
+    <rect x="50" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="107" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">wordcheck.py</text>
+    <text x="107" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Validation noms</text>
+
     <rect x="180" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
     <text x="237" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">checkpoint.py</text>
     <text x="237" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Reprise</text>

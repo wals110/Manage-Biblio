@@ -51,7 +51,7 @@ def foo(x: Optional[dict]): ...
 
 ## Tests
 
-La suite de tests couvre 191 tests répartis en modules :
+La suite de tests couvre 281 tests répartis en modules :
 
 ```bash
 # Lancer tous les tests

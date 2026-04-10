@@ -40,17 +40,17 @@
   <text x="375" y="152" text-anchor="middle" fill="#64748b" font-size="10">10 règles, auto-fix</text>
   <text x="375" y="166" text-anchor="middle" fill="#64748b" font-size="9">grep-c, -y, clean, paths</text>
 
-  <!-- Arrow Validateur → Skill 2 -->
+  <!-- Arrow Validateur → Runner -->
   <line x1="465" y1="135" x2="515" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- Skill 2 -->
-  <rect x="520" y="95" width="200" height="80" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="620" y="118" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">Skill 2</text>
-  <text x="620" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">functional-test-runner</text>
-  <text x="620" y="152" text-anchor="middle" fill="#64748b" font-size="10">Génère run_functional.py</text>
-  <text x="620" y="166" text-anchor="middle" fill="#64748b" font-size="9">9 assertions, box-drawing</text>
+  <!-- Runner (code maintenu) -->
+  <rect x="520" y="95" width="200" height="80" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="620" y="118" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">Runner</text>
+  <text x="620" y="135" text-anchor="middle" fill="#e2e8f0" font-size="11">run_functional.py</text>
+  <text x="620" y="152" text-anchor="middle" fill="#64748b" font-size="10">Code maintenu manuellement</text>
+  <text x="620" y="166" text-anchor="middle" fill="#64748b" font-size="9">9 assertions, DuckDB, monitoring</text>
 
-  <!-- Arrow Skill 2 → Skill 3 -->
+  <!-- Arrow Runner → Skill 3 -->
   <line x1="720" y1="135" x2="770" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
 
   <!-- Skill 3 -->
@@ -90,7 +90,7 @@
   <text x="525" y="240" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="600">run_functional.py</text>
   <text x="525" y="255" text-anchor="middle" fill="#64748b" font-size="9">Runner exécutable</text>
 
-  <!-- Arrow down from Skill 2 -->
+  <!-- Arrow down from Runner -->
   <line x1="620" y1="175" x2="525" y2="220" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
 
   <!-- inventory.yaml -->

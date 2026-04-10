@@ -28,6 +28,7 @@ klodo/
 │   ├── llm_mapper.py          Résolution LLM de thèmes + auto-apprentissage
 │   ├── refiner.py             Raffinement récursif (3 niveaux + vision)
 │   ├── renamer.py             Moteur de renommage (ISBN, PDF, LLM Vision)
+│   ├── wordcheck.py           Validation noms par dictionnaire (EN+FR)
 │   ├── checkpoint.py          Checkpoint / reprise thread-safe
 │   ├── profile.py             Chargement profils YAML
 │   ├── utils.py               Sanitize, rapports CSV, résumés
@@ -57,7 +58,7 @@ klodo/
 │   ├── flatten_to_inbox.sh    Remise à plat des PDFs vers _INBOX (tests)
 │   └── clean_logs.sh          Nettoyage des rapports CSV
 │
-├── tests/                     Suite de tests (191 tests)
+├── tests/                     Suite de tests (281 tests)
 │   ├── run_all.sh             Lanceur de tests
 │   ├── test_compile.py        Compilation
 │   ├── test_imports.py        Imports croisés

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/version-1.0.0--dev-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/python-3.13-green?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/LLM-Qwen3--VL-purple?style=flat-square" alt="LLM">
-  <img src="https://img.shields.io/badge/tests-191%20pass-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-281%20pass-brightgreen?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
 </p>
 

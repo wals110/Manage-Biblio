@@ -12,9 +12,32 @@ Le module de renommage transforme les noms de fichiers PDF cryptiques (`978-3-03
 
 ## Pipeline en détail
 
-### Étape 1 : Nettoyage
+### Étape 1 : Nettoyage + Wordcheck
 
-Vérifie si le nom de fichier est déjà exploitable (`is_name_clean()`). Supprime les caractères spéciaux, normalise les espaces, retire les préfixes numériques.
+Vérifie si le nom de fichier est déjà exploitable via `is_name_clean()`, qui combine deux vérifications :
+
+1. **Structure** — Le nom doit contenir au moins 2 mots de 3+ caractères (pas un simple code ou numéro)
+2. **Wordcheck** — Le module `lib/wordcheck.py` valide que le nom contient de vrais mots humains, pas du gibberish
+
+Le wordcheck fonctionne en 3 étapes :
+
+1. **Tokenization** — Extrait les mots de 3+ caractères via regex `[A-Za-zÀ-ÿ]{2,}`
+2. **Validation de chaque mot** — Dans cet ordre :
+   - Whitelist technique (~100 termes : kubernetes, tensorflow, graphql, etc.)
+   - Dictionnaire anglais (pyspellchecker, ~130k mots)
+   - Dictionnaire français (pyspellchecker, ~300k mots)
+   - Heuristique acronyme/nom propre : ALL CAPS 2-6 chars (API, SQL), TitleCase (Einstein), CamelCase (JavaScript)
+3. **Calcul du ratio** — `mots reconnus / total mots ≥ 3 chars`. Seuil : **40%**
+
+| Fichier | Mots | Reconnus | Ratio | Résultat |
+| --- | --- | --- | --- | --- |
+| `'fh&itei.pdf` | fh, itei | 0 | 0% | GIBBERISH → renommer |
+| `Algorithms.pdf` | Algorithms | 1 | 100% | PROPRE → garder |
+| `MCAD MCSD NET.pdf` | MCAD, MCSD, NET | 3 (acronymes) | 100% | PROPRE → garder |
+
+Si le ratio est inférieur à 40%, le fichier est considéré comme ayant un nom sale et passe aux étapes suivantes du pipeline de renommage.
+
+Le wordcheck intervient aussi dans `_is_good_title()` pour rejeter les titres extraits des métadonnées PDF qui ne contiennent pas de vrais mots.
 
 ### Étape 2 : Recherche ISBN
 
@@ -45,7 +68,7 @@ Les réponses avec `confidence < 0.3` ou les titres génériques (listés dans `
 
 Avec `--force`, le LLM Vision passe en priorité (avant ISBN et métadonnées) et re-analyse même les fichiers dont le nom est déjà considéré propre par `is_name_clean()`.
 
-**Configuration** : endpoint et modèle dans `profile.yaml`. Paramètres d'appel : `max_tokens: 300`, `temperature: 0.1`, timeout de 30s.
+**Configuration** : endpoint et modèle dans `profile.yaml`. Paramètres d'appel : `max_tokens: 800`, `temperature: 0.1`, timeout de 120s.
 
 ### Étape 5 : Fallback dossier parent
 
@@ -94,4 +117,4 @@ Les résultats de recherche ISBN sont stockés dans `profiles/<nom>/.cache/isbn_
 
 ## Module
 
-**Fichiers** : `lib/renamer.py` (moteur), `lib/vision.py` (LLM Vision), `lib/utils.py` (sanitize).
+**Fichiers** : `lib/renamer.py` (moteur), `lib/vision.py` (LLM Vision), `lib/wordcheck.py` (validation dictionnaire), `lib/utils.py` (sanitize).

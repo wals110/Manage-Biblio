@@ -24,27 +24,39 @@
   <text x="460" y="136" fill="#64748b" font-size="11">TEXT</text>
   <text x="545" y="136" fill="#475569" font-size="10" font-style="italic">"run_20260408_165219"</text>
 
-  <text x="325" y="156" fill="#e2e8f0" font-size="12">date</text>
-  <text x="460" y="156" fill="#64748b" font-size="11">TEXT</text>
-  <text x="545" y="156" fill="#475569" font-size="10" font-style="italic">"2026-04-08T16:52:19"</text>
+  <text x="325" y="152" fill="#e2e8f0" font-size="12">label</text>
+  <text x="460" y="152" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="152" fill="#475569" font-size="10" font-style="italic">"cosmic-koala"</text>
 
-  <text x="325" y="176" fill="#e2e8f0" font-size="12">duration</text>
-  <text x="460" y="176" fill="#64748b" font-size="11">INTEGER</text>
-  <text x="545" y="176" fill="#475569" font-size="10" font-style="italic">842 (secondes)</text>
+  <text x="325" y="168" fill="#e2e8f0" font-size="12">date</text>
+  <text x="460" y="168" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="168" fill="#475569" font-size="10" font-style="italic">"2026-04-08T16:52:19"</text>
 
-  <text x="325" y="196" fill="#e2e8f0" font-size="12">total / pass / fail / skip</text>
-  <text x="545" y="196" fill="#475569" font-size="10" font-style="italic">123 / 104 / 1 / 18</text>
+  <text x="325" y="184" fill="#e2e8f0" font-size="12">duration</text>
+  <text x="460" y="184" fill="#64748b" font-size="11">INTEGER</text>
+  <text x="545" y="184" fill="#475569" font-size="10" font-style="italic">842 (secondes)</text>
+
+  <text x="325" y="200" fill="#e2e8f0" font-size="12">total / pass / fail / skip</text>
+  <text x="545" y="200" fill="#475569" font-size="10" font-style="italic">123 / 104 / 1 / 18</text>
 
   <text x="325" y="216" fill="#e2e8f0" font-size="12">rate</text>
   <text x="460" y="216" fill="#64748b" font-size="11">REAL</text>
   <text x="545" y="216" fill="#475569" font-size="10" font-style="italic">84.5</text>
 
-  <text x="325" y="236" fill="#e2e8f0" font-size="12">run_type</text>
-  <text x="460" y="236" fill="#64748b" font-size="11">TEXT</text>
-  <text x="545" y="236" fill="#475569" font-size="10" font-style="italic">"full" / "phase_0" / "series_T0.1"</text>
+  <text x="325" y="232" fill="#e2e8f0" font-size="12">run_type</text>
+  <text x="460" y="232" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="232" fill="#475569" font-size="10" font-style="italic">"full" / "phase_0"</text>
+
+  <text x="325" y="248" fill="#e2e8f0" font-size="12">git_branch</text>
+  <text x="460" y="248" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="248" fill="#475569" font-size="10" font-style="italic">"develop"</text>
+
+  <text x="325" y="264" fill="#e2e8f0" font-size="12">git_commit</text>
+  <text x="460" y="264" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="264" fill="#475569" font-size="10" font-style="italic">"a1b2c3d"</text>
 
   <!-- Cardinality label -->
-  <text x="450" y="265" text-anchor="middle" fill="#64748b" font-size="10">1 run = N séries = N×M checks</text>
+  <text x="450" y="283" text-anchor="middle" fill="#64748b" font-size="10">1 run = N séries = N×M checks</text>
 
   <!-- ═══ Arrow RUNS → SERIES ═══ -->
   <line x1="350" y1="290" x2="200" y2="340" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
