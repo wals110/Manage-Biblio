@@ -28,6 +28,7 @@ klodo/
 │   ├── llm_mapper.py          Résolution LLM de thèmes + auto-apprentissage
 │   ├── refiner.py             Raffinement récursif (3 niveaux + vision)
 │   ├── renamer.py             Moteur de renommage (ISBN, PDF, LLM Vision)
+│   ├── wordcheck.py           Validation noms par dictionnaire (EN+FR)
 │   ├── checkpoint.py          Checkpoint / reprise thread-safe
 │   ├── profile.py             Chargement profils YAML
 │   ├── utils.py               Sanitize, rapports CSV, résumés

@@ -24,10 +24,10 @@
     <text x="597" y="290" text-anchor="middle" font-size="12" fill="#166534">Titre</text>
     <text x="597" y="306" text-anchor="middle" font-size="12" fill="#166534">- Auteur.pdf</text>
 
-    <!-- Étape 1 : Nettoyage -->
+    <!-- Étape 1 : Nettoyage + Wordcheck -->
     <rect x="195" y="87" width="260" height="48" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-    <text x="325" y="109" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e40af">1. Nettoyage du nom</text>
-    <text x="325" y="125" text-anchor="middle" font-size="11" fill="#3b82f6">suppression caractères spéciaux</text>
+    <text x="325" y="109" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e40af">1. Nettoyage + Wordcheck</text>
+    <text x="325" y="125" text-anchor="middle" font-size="11" fill="#3b82f6">dictionnaire EN+FR, seuil 40%</text>
 
     <line x1="460" y1="111" x2="530" y2="111" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
     <text x="488" y="105" font-size="11" fill="#22c55e">propre</text>
