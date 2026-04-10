@@ -183,23 +183,23 @@ def is_name_clean(filename: str) -> bool:
         return False
 
     # --- Signal positif : le nom est-il déjà lisible ? ---
+    # Le nom doit contenir de vrais mots (dictionnaire EN/FR + termes techniques)
+    from lib.wordcheck import contains_real_words
+
     words = re.findall(r'[A-Za-zÀ-ÿ]{2,}', stem_decoded)
 
-    # 3+ vrais mots = clairement un titre lisible
+    # 3+ mots et ≥ 10 chars : vérifier que ce sont de vrais mots
     if len(words) >= 3 and len(stem_decoded) >= 10:
-        return True
+        return contains_real_words(stem_decoded)
 
-    # 1-2 mots mais c'est un mot réel (pas un code) et ≥ 5 chars
-    # Ex: "Algorithms.pdf", "JavaScript.pdf", "Blockchain.pdf"
-    # On les laisse tranquilles car le script ne pourra pas faire mieux
+    # 1-2 mots, ≥ 5 chars, pas d'IDs collés : vérifier dans le dico
     if len(words) >= 1 and len(stem) >= 5 and re.search(r'[A-Za-zÀ-ÿ]{3,}', stem):
-        # Exclure les cas qui contiennent des IDs collés
         if not re.search(r'\d{5,}', stem_decoded):
-            return True
+            return contains_real_words(stem_decoded)
 
-    # Nom avec au moins un espace et ≥ 5 chars
+    # Nom avec espace et ≥ 5 chars : vérifier dans le dico
     if len(stem) >= 5 and ' ' in stem:
-        return True
+        return contains_real_words(stem_decoded)
 
     return False
 
@@ -580,6 +580,10 @@ def _is_good_title(name: str) -> bool:
         return False
     # Rejeté si c'est tout en majuscules ET un seul mot (ex: ADAPTIVE, COMPUTATIONAL)
     if stem.isupper() and len(words) <= 2 and len(stem) < 25:
+        return False
+    # Rejeté si le titre ne contient pas de vrais mots
+    from lib.wordcheck import contains_real_words
+    if not contains_real_words(stem):
         return False
     return True
 
