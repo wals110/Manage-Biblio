@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% set active = "suggestions" %}
+{% block title %}Suggestions{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Suggestions</h1>
+<p class="page-subtitle">Propositions de nouveaux dossiers issues de la classification</p>
+
+{% if suggestions %}
+<!-- KPI row -->
+<div class="kpi-row">
+    <div class="kpi-card blue">
+        <div class="kpi-label">Suggestions en attente</div>
+        <div class="kpi-value">{{ suggestions | length }}</div>
+    </div>
+    <div class="kpi-card purple">
+        <div class="kpi-label">Fichiers concern&eacute;s</div>
+        <div class="kpi-value">{{ total_files }}</div>
+    </div>
+</div>
+
+<!-- Suggestions list -->
+<div class="suggestions-list">
+{% for s in suggestions %}
+<div class="suggestion-card">
+    <div class="suggestion-header">
+        <span class="suggestion-theme">{{ s.theme }}</span>
+        <span class="suggestion-file-count">{{ s.files | length if s.files else 0 }} fichier{{ 's' if (s.files | length if s.files else 0) != 1 else '' }}</span>
+    </div>
+    <div class="suggestion-folder">{{ s.folder }}</div>
+    {% if s.reason %}
+    <div class="suggestion-reason">{{ s.reason }}</div>
+    {% endif %}
+    {% if s.files %}
+    <div class="suggestion-files-toggle" onclick="this.parentElement.querySelector('.suggestion-files').classList.toggle('expanded'); this.classList.toggle('open')">
+        Fichiers concern&eacute;s ({{ s.files | length }})
+    </div>
+    <ul class="suggestion-files">
+        {% for f in s.files %}
+        <li>{{ f }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endfor %}
+</div>
+
+<p class="suggestion-cli-hint">Les suggestions se g&egrave;rent via le CLI : <code>./klodo.sh suggest --apply --execute</code></p>
+
+{% else %}
+<!-- Empty state -->
+<div class="empty-state">
+    <div class="empty-state-icon">?</div>
+    <div class="empty-state-text">Aucune suggestion</div>
+    <div class="empty-state-hint">Lancez une classification pour en g&eacute;n&eacute;rer :<br><code>./klodo.sh classify /chemin --execute</code></div>
+</div>
+{% endif %}
+{% endblock %}

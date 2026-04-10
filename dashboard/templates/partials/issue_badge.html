@@ -1,0 +1,22 @@
+{# Issue badge — used inline and for HTMX swap after close #}
+{% if issue_num %}
+{% set is_closed = false %}
+{% if issue is defined and issue and issue.state == 'closed' %}{% set is_closed = true %}{% endif %}
+{% if is_closed %}
+<span class="btn btn-issue btn-sm btn-issue-closed" title="Issue #{{ issue_num }} ferm&eacute;e">
+    &#10003; #{{ issue_num }}
+</span>
+{% else %}
+<a class="btn btn-issue btn-sm" href="https://github.com/walidnamane/Manage-Biblio/issues/{{ issue_num }}"
+   target="_blank" title="Issue #{{ issue_num }}">
+    &#128279; #{{ issue_num }}
+</a>
+<button class="btn btn-sm btn-close-issue"
+        hx-post="/api/issue/close?number={{ issue_num }}"
+        hx-target="#issue-badge-{{ issue_num }}"
+        hx-swap="innerHTML"
+        title="Fermer l'issue #{{ issue_num }}">
+    &#10005;
+</button>
+{% endif %}
+{% endif %}

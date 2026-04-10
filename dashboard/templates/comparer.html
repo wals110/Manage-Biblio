@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% set active = "comparer" %}
+{% block title %}Comparer{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Comparer</h1>
+<p class="page-subtitle">Diff entre le run courant et un ancien run</p>
+
+{# ── Run Selector ── #}
+<div class="diff-selector">
+    <div class="diff-runs">
+        <div class="diff-run-card">
+            <label class="diff-label">Run courant</label>
+            {% if current_run %}
+            <div class="diff-run-info">
+                <span class="run-banner-label">{{ current_run._label or current_run._run_id }}</span>
+                <span class="text-muted">{{ current_run.run_at[:19] | replace("T", " ") }}</span>
+                <span class="text-green">{{ current_run.summary.pass }}/{{ current_run.summary.total }}</span>
+                {% if current_run._git_branch %}
+                <span class="run-banner-git">{{ current_run._git_branch }}</span>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="text-muted">Aucun run disponible</div>
+            {% endif %}
+        </div>
+
+        <span class="diff-arrow-big">vs</span>
+
+        <div class="diff-run-card">
+            <label class="diff-label">Ancien run</label>
+            <form method="get" action="/comparer" id="compare-form">
+                <select name="old_run" class="filter-select" onchange="this.form.submit()">
+                    <option value="">-- Choisir un run --</option>
+                    {% for r in old_runs %}
+                    <option value="{{ r.id }}" {% if selected_old_run == r.id %}selected{% endif %}>
+                        {{ r.label or r.id }} &mdash; {{ r.date[:16] | replace("T", " ") }}
+                        ({{ r.pass }}/{{ r.total }})
+                        {% if r.git_branch %}[{{ r.git_branch }}]{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if common_series %}
+                <select name="series_filter" class="filter-select" style="margin-top:8px;" onchange="this.form.submit()">
+                    <option value="">Toutes les s&eacute;ries</option>
+                    {% for s in common_series %}
+                    <option value="{{ s.id }}" {% if series_filter == s.id %}selected{% endif %}>
+                        {{ s.id }} &mdash; {{ s.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if diff %}
+
+{# ── Diff Stats ── #}
+<div class="kpi-row diff-stats">
+    <div class="kpi-card green">
+        <div class="kpi-label">Am&eacute;lior&eacute;s</div>
+        <div class="kpi-value">+{{ diff.stats.improved }}</div>
+    </div>
+    <div class="kpi-card red">
+        <div class="kpi-label">R&eacute;gressions</div>
+        <div class="kpi-value">{{ diff.stats.regressed }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Inchang&eacute;s</div>
+        <div class="kpi-value">{{ diff.stats.unchanged }}</div>
+    </div>
+    {% if diff.stats.new > 0 %}
+    <div class="kpi-card blue">
+        <div class="kpi-label">Nouveaux</div>
+        <div class="kpi-value">{{ diff.stats.new }}</div>
+    </div>
+    {% endif %}
+</div>
+
+{# ── Diff Table by Series ── #}
+{% for series in diff.series %}
+<div class="diff-series-block">
+    <h3 class="diff-series-title">{{ series.id }} &mdash; {{ series.name }}</h3>
+    <div class="table-wrapper">
+        <table class="data-table diff-table">
+            <thead>
+                <tr>
+                    <th>Check</th>
+                    <th>Description</th>
+                    <th>Ancien</th>
+                    <th></th>
+                    <th>Nouveau</th>
+                    <th>Changement</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ck in series.checks %}
+                <tr class="diff-row-{{ ck.change }}">
+                    <td class="text-muted" style="font-family:var(--mono);font-size:0.8rem;">{{ ck.id }}</td>
+                    <td>{{ ck.description }}</td>
+                    <td>
+                        {% if ck.old_status %}
+                        <span class="badge {{ ck.old_status }}">{{ ck.old_status | upper }}</span>
+                        {% else %}
+                        <span class="text-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td class="diff-arrow-cell">&rarr;</td>
+                    <td>
+                        {% if ck.new_status %}
+                        <span class="badge {{ ck.new_status }}">{{ ck.new_status | upper }}</span>
+                        {% else %}
+                        <span class="text-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ck.change == 'improved' %}
+                        <span class="diff-change diff-improved">&#9650; Am&eacute;lior&eacute;</span>
+                        {% elif ck.change == 'regressed' %}
+                        <span class="diff-change diff-regressed">&#9660; R&eacute;gression</span>
+                        {% elif ck.change == 'new' %}
+                        <span class="diff-change diff-new">Nouveau</span>
+                        {% elif ck.change == 'removed' %}
+                        <span class="diff-change diff-removed">Retir&eacute;</span>
+                        {% else %}
+                        <span class="text-muted">=</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+{% elif selected_old_run %}
+<div class="no-data">
+    <p>Aucune donn&eacute;e de comparaison trouv&eacute;e.</p>
+</div>
+
+{% else %}
+<div class="no-data">
+    <p>S&eacute;lectionnez un ancien run pour comparer</p>
+    <p class="text-muted">Le run courant sera compar&eacute; check par check avec l'ancien run choisi.</p>
+</div>
+{% endif %}
+
+{% endblock %}

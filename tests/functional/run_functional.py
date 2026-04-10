@@ -226,6 +226,10 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show plan only")
     parser.add_argument("--rerun-failures", action="store_true",
                         help="Rerun only FAIL and SKIP series from the latest report")
+    parser.add_argument("--no-history", action="store_true",
+                        help="Do not save results to DuckDB")
+    parser.add_argument("--label", default=None,
+                        help="Custom label for this run (default: random name)")
     args = parser.parse_args()
 
     if not os.path.exists(TY):
@@ -235,7 +239,14 @@ def main():
 
     # --rerun-failures: find latest report, extract FAIL + SKIP series
     if args.rerun_failures:
-        reports = sorted(G.glob(os.path.join(RD, "report_*.json")), reverse=True)
+        # Find latest report: check "latest" symlink or scan run_* dirs
+        latest_link = os.path.join(RD, "latest", "report.json")
+        run_dirs = sorted(G.glob(os.path.join(RD, "run_*", "report.json")), reverse=True)
+        # Also check old-style flat reports for backward compat
+        old_reports = sorted(G.glob(os.path.join(RD, "report_*.json")), reverse=True)
+        reports = run_dirs + old_reports
+        if os.path.exists(latest_link):
+            reports.insert(0, latest_link)
         if not reports:
             print(f"{red('ERROR')}: No previous report found in {RD}"); sys.exit(1)
         with open(reports[0], encoding="utf-8") as f:
@@ -391,6 +402,14 @@ def main():
             st = time.monotonic()
             logs_before = set(G.glob(os.path.join(PR, "logs", "*")))
 
+            # Create structured log directory early (signals which test is running)
+            phase_id = ph.get("id", f"phase_{pi}")
+            series_log_dir = os.path.join(SD, "logs", phase_id, sid)
+            os.makedirs(series_log_dir, exist_ok=True)
+            # Write a marker file so the dashboard knows this test is running
+            with open(os.path.join(series_log_dir, ".running"), "w") as f:
+                f.write(sid)
+
             # Series pre_run
             if s.get("pre_run"):
                 if not run_cmds(s["pre_run"], f"{sid}.pre_run"):
@@ -481,8 +500,27 @@ def main():
             # Capture new log files produced during this series
             logs_after = set(G.glob(os.path.join(PR, "logs", "*")))
             new_logs = sorted(logs_after - logs_before)
+
+            # Move logs to structured directory (already created above)
+            # Remove running marker
+            running_marker = os.path.join(series_log_dir, ".running")
+            if os.path.exists(running_marker):
+                os.remove(running_marker)
+
             if new_logs:
-                sr["logs"] = [os.path.relpath(f, PR) for f in new_logs]
+                import shutil
+                structured_logs = []
+                for lf in new_logs:
+                    dest = os.path.join(series_log_dir, os.path.basename(lf))
+                    shutil.move(lf, dest)
+                    structured_logs.append(os.path.relpath(dest, PR))
+                sr["logs"] = structured_logs
+
+            # Move setup output to structured dir
+            if os.path.exists(setup_output_file):
+                import shutil
+                shutil.move(setup_output_file, os.path.join(series_log_dir, ".setup_output.txt"))
+
             ph_rpt["series"].append(sr)
 
             pc = sum(1 for c in sr["checks"] if c["status"] == "pass")
@@ -538,13 +576,41 @@ def main():
         print(f"\n  {dim('Session post_run...')}")
         run_cmds(post_cmds, "session.post_run")
 
-    # Reports
+    # Reports — organized in per-run directories
     dur = time.monotonic() - t0; ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     report = {"project": data.get("project", "?"), "run_at": datetime.now().isoformat(),
               "duration_seconds": round(dur), "variables": variables, "summary": sm, "phases": rpt_phases}
-    os.makedirs(RD, exist_ok=True)
-    jp = os.path.join(RD, f"report_{ts}.json"); mp = os.path.join(RD, f"report_{ts}.md")
+    run_dir = os.path.join(RD, f"run_{ts}")
+    os.makedirs(run_dir, exist_ok=True)
+    jp = os.path.join(run_dir, "report.json"); mp = os.path.join(run_dir, "report.md")
     write_json(report, jp); write_md(report, mp)
+    # Update "latest" symlink
+    latest = os.path.join(RD, "latest")
+    if os.path.islink(latest):
+        os.remove(latest)
+    os.symlink(f"run_{ts}", latest)
+
+    # Save to DuckDB (long-term tracking)
+    if args.no_history:
+        print(f"  {dim('Historique : désactivé (--no-history)')}")
+    else:
+        # Determine run type
+        if args.series:
+            run_type = f"series_{','.join(args.series)}"
+        elif args.phase:
+            run_type = f"phase_{'_'.join(str(p) for p in args.phase)}"
+        elif args.rerun_failures:
+            run_type = "rerun_failures"
+        else:
+            run_type = "full"
+
+        try:
+            from db import insert_run, generate_run_name
+            label = args.label or generate_run_name()
+            insert_run(report, f"run_{ts}", run_type, label=label)
+            print(f"  {dim(f'Historique : {label} (run_{ts})')}")
+        except Exception as e:
+            print(f"  {ylw(f'Historique : erreur DuckDB — {e}')}")
 
     # Summary
     m, sc = divmod(int(dur), 60)

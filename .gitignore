@@ -30,6 +30,12 @@ tests/fixtures/pdfs/*.pdf
 # Notes personnelles
 notes/
 
+# Secrets
+.env
+
 # Claude
 .claude/
 tests/functional/reports/
+tests/functional/logs/
+tests/functional/results.db
+.superpowers/

@@ -1,0 +1,159 @@
+{# Single series row — used inline and for HTMX swap #}
+{% set issue_num = none %}
+{% if tests and tests.phases %}
+{% for tp in tests.phases %}
+{% for ts in tp.series %}
+{% if ts.id == series.id %}{% set issue_num = ts.github_issue %}{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+
+<div class="series-row series-{{ series.status }}{% if series.status == 'fail' %} expanded{% endif %}" id="series-{{ series.id | replace('.', '-') }}">
+    <div class="series-summary" onclick="toggleExpand(this.parentElement)">
+        <input type="checkbox" class="series-checkbox" value="{{ series.id }}"
+               onclick="event.stopPropagation(); updateSelectionCount()">
+        <span class="status-dot dot-{{ series.status }}"></span>
+        <span class="series-id">{{ series.id }}</span>
+        <span class="series-name">{{ series.name }}</span>
+        <span class="series-stats">
+            {% set ns_checks = namespace(pass_count=0, skip_count=0, skip_reason='') %}
+            {% for c in series.checks %}
+                {% if c.status == 'pass' %}{% set ns_checks.pass_count = ns_checks.pass_count + 1 %}{% endif %}
+                {% if c.status == 'skip' %}
+                    {% set ns_checks.skip_count = ns_checks.skip_count + 1 %}
+                    {% if not ns_checks.skip_reason %}
+                        {% if 'Manual' in (c.detail or '') %}{% set ns_checks.skip_reason = 'manual' %}
+                        {% elif 'Unmet' in (c.detail or '') %}{% set ns_checks.skip_reason = 'dependency' %}
+                        {% elif 'pre_run' in (c.detail or '') %}{% set ns_checks.skip_reason = 'pre_run failed' %}
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+            {% if series.status == 'not_run' %}
+            <span class="text-muted">non exécuté</span>
+            {% elif ns_checks.pass_count == series.checks|length %}
+            <span class="text-green">{{ ns_checks.pass_count }}/{{ series.checks|length }} PASS</span>
+            {% elif series.status == 'skip' and ns_checks.skip_reason %}
+            <span class="text-yellow">SKIP ({{ ns_checks.skip_reason }})</span>
+            {% elif series.status == 'fail' %}
+            <span class="text-red">{{ ns_checks.pass_count }}/{{ series.checks|length }} PASS</span>
+            {% else %}
+            <span class="text-yellow">{{ ns_checks.pass_count }}/{{ series.checks|length }} PASS</span>
+            {% endif %}
+        </span>
+        {% if series.duration_ms is defined and series.duration_ms %}
+        <span class="series-duration text-muted">{{ (series.duration_ms / 1000) | round(1) }}s</span>
+        {% endif %}
+        <span class="series-actions" onclick="event.stopPropagation()">
+            <button class="btn btn-run btn-sm"
+                    hx-post="/api/run?series={{ series.id }}"
+                    hx-target="#series-{{ series.id | replace('.', '-') }}"
+                    hx-swap="outerHTML"
+                    onclick="this.closest('.series-row').classList.add('running'); activateStops(this)">
+                &#9654;
+            </button>
+            {% if issue_num %}
+            <span id="issue-badge-{{ issue_num }}">
+                {% include "partials/issue_badge.html" %}
+            </span>
+            {% endif %}
+        </span>
+    </div>
+    <div class="series-details">
+        {% if series.description %}
+        <div class="series-desc-text">{{ series.description }}</div>
+        {% endif %}
+
+        {% if series.setup %}
+        <div class="series-commands">
+            <div class="cmd-label">Setup :</div>
+            {% for cmd in series.setup %}
+            <div class="cmd-line">
+                <span class="cmd-prompt">$</span>
+                <span class="cmd-text">{{ cmd }}</span>
+                <button class="btn-copy" onclick="copyCmd(this, '{{ cmd | e }}')" title="Copier">&#128203;</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% for check in series.checks %}
+        <div class="check-detail check-{{ check.status }}">
+            <span class="status-dot dot-{{ check.status }}"></span>
+            <span class="check-id">{{ check.id }}</span>
+            <span class="check-desc">{{ check.description }}</span>
+            {% if check.mode == 'manual_check' and check.status in ('pass', 'fail') %}
+            {# Already validated manual check — with option to change #}
+            <span class="manual-widget" id="widget-{{ check.id | replace('.', '-') }}">
+                <span class="manual-validated manual-validated-{{ check.status }}">
+                    {% if check.status == 'pass' %}&#10003;{% else %}&#10007;{% endif %} Validation manuelle
+                </span>
+                <button class="btn btn-sm btn-revise"
+                        onclick="this.parentElement.innerHTML = reviseWidget('{{ current_run_id }}', '{{ check.id }}')">
+                    Modifier
+                </button>
+            </span>
+            {% elif check.status == 'skip' and ('Manual' in (check.detail or '') or check.mode == 'manual_check') %}
+            {# Manual check widget — pending validation #}
+            <span class="manual-widget" id="widget-{{ check.id | replace('.', '-') }}">
+                {% if check.prompt %}
+                <div class="manual-prompt">{{ check.prompt }}</div>
+                {% endif %}
+                <button class="btn btn-sm btn-pass"
+                        onclick="validateCheck('{{ current_run_id }}', '{{ check.id }}', 'pass')">
+                    &#10003; Oui
+                </button>
+                <button class="btn btn-sm btn-fail-action"
+                        onclick="validateCheck('{{ current_run_id }}', '{{ check.id }}', 'fail')">
+                    &#10007; Non
+                </button>
+            </span>
+            {% elif check.status == 'skip' %}
+            <span class="skip-reason">
+                {% if 'Unmet' in (check.detail or '') %}⊘ dependency
+                {% elif 'pre_run' in (check.detail or '') %}⊘ pre_run
+                {% else %}⊘ skip
+                {% endif %}
+            </span>
+            {% endif %}
+            {% if check.status == 'not_run' %}
+            <span class="skip-reason">— non exécuté</span>
+            {% endif %}
+            {% if check.command and check.command != 'echo check' %}
+            <div class="check-command">
+                <span class="cmd-prompt">$</span>
+                <span class="cmd-text">{{ check.command }}</span>
+                <button class="btn-copy" onclick="copyCmd(this, '{{ check.command | e }}')" title="Copier">&#128203;</button>
+            </div>
+            {% endif %}
+            {% if check.status == 'fail' and check.detail %}
+            <div class="check-error">{{ check.detail }}</div>
+            {% elif check.status == 'fail' and check.error %}
+            <div class="check-error">{{ check.error }}</div>
+            {% endif %}
+            {% if check.output and check.status != 'not_run' %}
+            <div class="terminal-output">{{ check.output[:500] }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        {% if series.logs %}
+        <div class="series-logs">
+            <div class="cmd-label">Logs associ&eacute;s :</div>
+            {% for log in series.logs %}
+            <div class="log-file">
+                {% set log_name = log | replace('tests/functional/logs/', '') %}
+                {% if 'rapport_' in log or 'refine_' in log %}
+                <span class="log-icon">📊</span>
+                {% set log_type = 'rename' if 'rename' in log else ('classify' if 'classify' in log else ('refine' if 'refine' in log else ('process' if 'process' in log else 'classify'))) %}
+                <a href="/rapports?type={{ log_type }}&file={{ project_root }}/{{ log }}" class="log-link">{{ log_name }}</a>
+                {% else %}
+                <span class="log-icon">📄</span>
+                <span class="text-muted">{{ log_name }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% set active = "admin" %}
+{% block title %}Admin{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Administration</h1>
+<p class="page-subtitle">Configuration &amp; maintenance</p>
+
+<!-- ── API Keys ── -->
+<div class="admin-config">
+    <h2 class="section-title">Cl&eacute;s API</h2>
+    <div class="api-keys-list">
+        {% for key in api_keys %}
+        <div class="api-key-card" id="api-key-{{ key.name }}">
+            <div class="api-key-header">
+                <span class="api-key-label">{{ key.label }}</span>
+                {% if key.set %}
+                    <span class="badge pass">&#10003; configur&eacute;e</span>
+                {% else %}
+                    <span class="badge fail">&#10007; manquante</span>
+                {% endif %}
+            </div>
+            <div class="api-key-detail">
+                <code class="api-key-name">{{ key.name }}</code>
+                {% if key.set %}
+                <span class="api-key-masked">{{ key.masked }}</span>
+                {% endif %}
+            </div>
+            <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+                <input type="password" id="input-{{ key.name }}"
+                       style="flex:1;background:var(--card);border:none;color:var(--text);padding:12px 16px;font-family:var(--mono);font-size:0.9rem;min-width:0;"
+                       placeholder="Coller la cl&eacute; ici..." value="">
+                <button class="btn" onclick="saveApiKey('{{ key.name }}')"
+                        style="border-radius:0;border:none;border-left:1px solid var(--border);padding:12px 20px;white-space:nowrap;">
+                    Sauvegarder
+                </button>
+                {% if key.set %}
+                <button class="btn btn-danger" onclick="deleteApiKey('{{ key.name }}')"
+                        style="border-radius:0;border:none;border-left:1px solid var(--border);padding:12px 20px;white-space:nowrap;">
+                    Supprimer
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="text-muted" style="font-size:0.8rem;margin-top:12px;">
+        Sauvegard&eacute; dans <code>.env</code> (gitignored). Appliqu&eacute; au runtime imm&eacute;diatement.
+    </p>
+</div>
+
+<!-- ── Quick Actions ── -->
+<div class="admin-actions">
+    <h2 class="section-title">Actions rapides</h2>
+    <div class="admin-buttons">
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-logs', 'Supprimer tous les logs ?')">
+            &#128465; Clean logs
+        </button>
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-reports', 'Supprimer tous les rapports ?')">
+            &#128465; Clean rapports
+        </button>
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-db', 'Vider la base DuckDB ?')">
+            &#128465; Clean DB
+        </button>
+        <button class="btn btn-danger" onclick="adminAction('/api/admin/clean-progress', 'Supprimer les checkpoints ?')">
+            &#128465; Clean progress
+        </button>
+        <button class="btn btn-danger-full" onclick="adminAction('/api/admin/clean-all', 'TOUT supprimer (logs + rapports + DB + progress) ?')">
+            &#9888; Clean ALL
+        </button>
+    </div>
+</div>
+
+<!-- ── Stats ── -->
+<div class="admin-stats">
+    <h2 class="section-title">&Eacute;tat du syst&egrave;me</h2>
+    <div class="kpi-row">
+        <div class="kpi-card">
+            <div class="kpi-label">Logs Klodo</div>
+            <div class="kpi-value">{{ stats.logs_count }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Logs tests</div>
+            <div class="kpi-value">{{ stats.test_logs_count }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Rapports</div>
+            <div class="kpi-value">{{ stats.reports_count }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Runs en DB</div>
+            <div class="kpi-value">{{ stats.db_runs }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Taille DB</div>
+            <div class="kpi-value">{{ stats.db_size }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Runs List ── -->
+<div class="admin-runs">
+    <h2 class="section-title">Runs enregistr&eacute;s</h2>
+    {% if runs %}
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Label</th>
+                    <th>Date</th>
+                    <th>Pass</th>
+                    <th>Fail</th>
+                    <th>Skip</th>
+                    <th>Taux</th>
+                    <th>Type</th>
+                    <th>Branche</th>
+                    <th>Commit</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in runs %}
+                <tr id="run-row-{{ r.id }}">
+                    <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}"></td>
+                    <td class="run-label">{{ r.label or r.id }}</td>
+                    <td class="text-muted">{{ r.date[:16] | replace("T", " ") }}</td>
+                    <td class="text-green">{{ r.pass }}</td>
+                    <td class="text-red">{{ r.fail }}</td>
+                    <td class="text-yellow">{{ r.skip }}</td>
+                    <td>
+                        <span class="badge {% if r.rate >= 90 %}pass{% elif r.rate >= 70 %}skip{% else %}fail{% endif %}">
+                            {{ r.rate | round(1) }}%
+                        </span>
+                    </td>
+                    <td class="text-muted" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.run_type }}">{{ r.run_type | replace('series_', '') | replace('phase_', 'P') | truncate(15) }}</td>
+                    <td class="text-blue">{{ r.git_branch or '' }}</td>
+                    <td class="text-muted" style="font-family:monospace;font-size:0.75rem;">{{ r.git_commit or '' }}</td>
+                    <td>
+                        <a href="/tests?run={{ r.id }}" class="btn btn-sm">Voir</a>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRun('{{ r.id }}')">&#128465;</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="admin-bulk" style="margin-top:12px;">
+        <button class="btn btn-sm" onclick="toggleRunCheckboxes()">&#9745; Tout cocher</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteSelectedRuns()">Supprimer la s&eacute;lection</button>
+    </div>
+    {% else %}
+    <div class="no-data">
+        <p>Aucun run enregistr&eacute; dans la base.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function saveApiKey(keyName) {
+    const input = document.getElementById('input-' + keyName);
+    const value = input.value.trim();
+    if (!value) { alert('Veuillez entrer une clé API'); return; }
+    fetch('/api/admin/save-api-key?key_name=' + keyName + '&key_value=' + encodeURIComponent(value), {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            alert(data.message);
+            window.location.reload();
+        });
+}
+
+function deleteApiKey(keyName) {
+    if (!confirm('Supprimer la clé ' + keyName + ' ?')) return;
+    fetch('/api/admin/delete-api-key?key_name=' + keyName, {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            alert(data.message);
+            window.location.reload();
+        });
+}
+
+function adminAction(url, confirmMsg) {
+    if (!confirm(confirmMsg)) return;
+    fetch(url, {method: 'POST'}).then(r => r.json()).then(data => {
+        alert(data.message || 'Done');
+        window.location.reload();
+    });
+}
+
+function deleteRun(runId) {
+    if (!confirm('Supprimer le run ' + runId + ' ?')) return;
+    fetch('/api/admin/delete-run?id=' + runId, {method: 'POST'}).then(r => r.json()).then(data => {
+        document.getElementById('run-row-' + runId)?.remove();
+    });
+}
+
+function toggleRunCheckboxes() {
+    const boxes = document.querySelectorAll('.run-checkbox');
+    const allChecked = Array.from(boxes).every(b => b.checked);
+    boxes.forEach(b => b.checked = !allChecked);
+}
+
+function deleteSelectedRuns() {
+    const checked = Array.from(document.querySelectorAll('.run-checkbox:checked')).map(c => c.value);
+    if (checked.length === 0) return;
+    if (!confirm('Supprimer ' + checked.length + ' run(s) ?')) return;
+    Promise.all(checked.map(id =>
+        fetch('/api/admin/delete-run?id=' + id, {method: 'POST'})
+    )).then(() => window.location.reload());
+}
+</script>
+{% endblock %}

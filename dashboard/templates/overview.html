@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% set active = "overview" %}
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+{% if not api_key_set %}
+<div class="alert alert-warn">
+    &#9888; <strong>SILICONFLOW_API_KEY</strong> non d&eacute;finie &mdash; les tests classify/process ne fonctionneront pas.
+    <code>export SILICONFLOW_API_KEY=votre-cl&eacute;</code>
+</div>
+{% endif %}
+<h1 class="page-title">Overview</h1>
+{% if report and report.run_at is defined and report.run_at %}
+<div class="run-banner">
+    <span class="run-banner-label">{{ report._label or 'Dernier run' }}</span>
+    <span class="run-banner-date">{{ report.run_at[:19] | replace("T", " ") }}</span>
+    {% if report.summary %}
+    <span class="run-banner-stats">{{ report.summary.pass }}/{{ report.summary.total }} PASS</span>
+    {% endif %}
+    {% if report._git_branch %}
+    <span class="run-banner-git">{{ report._git_branch }}{% if report._git_commit %}@{{ report._git_commit }}{% endif %}</span>
+    {% endif %}
+</div>
+{% else %}
+<p class="page-subtitle">Aucun rapport disponible</p>
+{% endif %}
+
+{% if report %}
+{% set s = report.summary %}
+{% set rate = ((s.pass / s.total * 100) | round(1)) if s.total > 0 else 0 %}
+
+<!-- KPI Cards -->
+<div class="kpi-row">
+    <div class="kpi-card green">
+        <div class="kpi-label">Pass</div>
+        <div class="kpi-value">{{ s.pass }}</div>
+    </div>
+    <div class="kpi-card red">
+        <div class="kpi-label">Fail</div>
+        <div class="kpi-value">{{ s.fail }}</div>
+    </div>
+    <div class="kpi-card yellow">
+        <div class="kpi-label">Skip</div>
+        <div class="kpi-value">{{ s.skip }}</div>
+    </div>
+    <div class="kpi-card blue">
+        <div class="kpi-label">Taux de r&eacute;ussite</div>
+        <div class="kpi-value">{{ rate }}%</div>
+    </div>
+    <div class="kpi-card purple">
+        <div class="kpi-label">Dur&eacute;e</div>
+        <div class="kpi-value">{{ report.duration_seconds }}s</div>
+    </div>
+</div>
+
+<!-- LLM Config -->
+{% if llm_config %}
+<div class="llm-config-bar">
+    <div class="llm-config-item">
+        <span class="llm-config-label">Provider</span>
+        <span class="llm-config-value">{{ llm_config.provider }}</span>
+    </div>
+    <div class="llm-config-item">
+        <span class="llm-config-label">Mod&egrave;le (Vision + Texte)</span>
+        <span class="llm-config-value">{{ llm_config.model }}</span>
+    </div>
+    <div class="llm-config-item">
+        <span class="llm-config-label">Co&ucirc;t / appel</span>
+        <span class="llm-config-value">${{ llm_config.cost_per_call }}</span>
+    </div>
+    <div class="llm-config-item">
+        <span class="llm-config-label">API Key</span>
+        {% if api_key_set %}
+        <span class="llm-config-value text-green">configur&eacute;e</span>
+        {% else %}
+        <span class="llm-config-value text-red">manquante</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Actions -->
+<div class="actions-bar">
+    <button class="btn btn-primary"
+            hx-post="/api/run"
+            hx-vals='{"mode": "all"}'
+            hx-swap="none">
+        Lancer tous les tests
+    </button>
+    <button class="btn"
+            hx-post="/api/run"
+            hx-vals='{"mode": "failures"}'
+            hx-swap="none">
+        Relancer les &eacute;checs
+    </button>
+</div>
+
+<!-- Content grid: heatmap + release gate -->
+<div class="content-grid">
+    <!-- Phase Heatmap -->
+    <div class="heatmap-card">
+        <h2 class="section-title">Heatmap par phase</h2>
+        {% for phase in report.phases %}
+        <div class="heatmap-phase">
+            <div class="heatmap-phase-name">{{ phase.name }}</div>
+            <div class="heatmap-squares">
+                {% for series in phase.series %}
+                <div class="heatmap-square {{ series.status }}"
+                     title="{{ series.id }} — {{ series.name }} ({{ series.status }})"></div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Release Gate -->
+    <div class="gate-card">
+        <h2 class="section-title">Release Gate</h2>
+        {% if s.fail == 0 and issues | length == 0 %}
+        <div class="gate-status ready">READY</div>
+        <p class="text-muted mt-1">Tous les tests passent, aucune issue ouverte.</p>
+        {% else %}
+        <div class="gate-status blocked">BLOCKED</div>
+        {% if s.fail > 0 %}
+        <p class="text-red mt-1">{{ s.fail }} s&eacute;rie(s) en &eacute;chec</p>
+        {% endif %}
+        {% if issues | length > 0 %}
+        <p class="text-muted mt-1">{{ issues | length }} issue(s) ouverte(s) :</p>
+        <ul class="gate-issues">
+            {% for issue in issues %}
+            <li><span class="issue-num">#{{ issue.number }}</span>{{ issue.title }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+{% else %}
+<!-- No data state -->
+<div class="no-data">
+    <p>Aucun rapport de test trouv&eacute;.</p>
+    <p class="text-muted">Lancez les tests fonctionnels pour g&eacute;n&eacute;rer un rapport :</p>
+    <p><code>uv run python tests/functional/run_functional.py</code></p>
+</div>
+{% endif %}
+{% endblock %}

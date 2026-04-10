@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% set active = "metriques" %}
+{% block title %}M&eacute;triques{% endblock %}
+
+{% block content %}
+<h1 class="page-title">M&eacute;triques</h1>
+<p class="page-subtitle">Indicateurs qualit&eacute; de classification et renommage</p>
+
+<!-- ── Run Selector ── -->
+<div class="metrics-selector">
+    <form method="get" action="/metriques" class="filters-form">
+        <select name="run" class="filter-select" onchange="this.form.submit()">
+            <option value="">Dernier run</option>
+            {% for r in available_runs %}
+            <option value="{{ r.id }}" {% if selected_run == r.id %}selected{% endif %}>
+                {{ r.label or r.id }} &mdash; {{ r.date[:16] | replace("T", " ") }}
+                ({{ r.pass }}/{{ r.total }})
+                {% if r.git_branch %}[{{ r.git_branch }}]{% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+{% if current_run %}
+<div class="run-banner">
+    <span class="run-banner-label">{{ current_run._label or 'Run' }}</span>
+    <span class="run-banner-date">{{ current_run.run_at[:19] | replace("T", " ") }}</span>
+    <span class="run-banner-stats">{{ current_run.summary.pass }}/{{ current_run.summary.total }} PASS</span>
+    {% if current_run._git_branch %}
+    <span class="run-banner-git">{{ current_run._git_branch }}{% if current_run._git_commit %}@{{ current_run._git_commit }}{% endif %}</span>
+    {% endif %}
+    <span class="text-muted" style="font-size:0.8rem;">
+        {{ classify_count }} rapport(s) classify &middot; {{ rename_count }} rapport(s) rename
+    </span>
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- ── Classification Section ── -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="metrics-section metrics-section-blue">
+    <h2 class="metrics-section-title">Classification</h2>
+
+    {% if classify_metrics %}
+    <div class="kpi-row">
+        <div class="kpi-card green">
+            <div class="kpi-label">Taux de classification</div>
+            <div class="kpi-value">{{ classify_metrics.rate }}%</div>
+            <div class="progress-bar">
+                <div class="progress-bar-fill progress-bar-green" style="width: {{ classify_metrics.rate }}%"></div>
+            </div>
+        </div>
+        <div class="kpi-card blue">
+            <div class="kpi-label">Confiance moyenne</div>
+            <div class="kpi-value">{{ classify_metrics.avg_confidence }}</div>
+            <div class="progress-bar">
+                <div class="progress-bar-fill progress-bar-blue" style="width: {{ (classify_metrics.avg_confidence * 100) | round(0) }}%"></div>
+            </div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">Co&ucirc;t API estim&eacute;</div>
+            <div class="kpi-value">${{ classify_metrics.cost }}</div>
+        </div>
+        <div class="kpi-card yellow">
+            <div class="kpi-label">Suggestions en attente</div>
+            <div class="kpi-value">{{ classify_metrics.suggestions }}</div>
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi-card" style="padding: 4px 8px;">
+            <span class="text-muted" style="font-size: 0.8rem;">
+                {{ classify_metrics.total }} fichiers &mdash;
+                <span class="text-green">{{ classify_metrics.classified }} class.</span> &middot;
+                <span class="text-yellow">{{ classify_metrics.not_classified }} non class.</span> &middot;
+                <span class="text-red">{{ classify_metrics.errors }} erreurs</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="charts-row">
+        <div class="chart-container">
+            <h3 class="chart-title">R&eacute;partition par section</h3>
+            <canvas id="sectionDonut" height="250"></canvas>
+        </div>
+        <div class="chart-container">
+            <h3 class="chart-title">Top 10 th&egrave;mes d&eacute;tect&eacute;s</h3>
+            <canvas id="themesBar" height="220"></canvas>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="no-data">
+        <p>Aucune donn&eacute;e de classification dans ce run.</p>
+        <p class="text-muted">Ce run ne contient pas de tests de classification (phases 2-3).</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- ── Renommage Section ── -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="metrics-section metrics-section-green">
+    <h2 class="metrics-section-title">Renommage</h2>
+
+    {% if rename_metrics %}
+    <div class="kpi-row">
+        <div class="kpi-card green">
+            <div class="kpi-label">Taux de renommage</div>
+            <div class="kpi-value">{{ rename_metrics.rate }}%</div>
+            <div class="progress-bar">
+                <div class="progress-bar-fill progress-bar-green" style="width: {{ rename_metrics.rate }}%"></div>
+            </div>
+        </div>
+        <div class="kpi-card blue">
+            <div class="kpi-label">D&eacute;j&agrave; propres</div>
+            <div class="kpi-value">{{ rename_metrics.unchanged }}</div>
+        </div>
+        <div class="kpi-card red">
+            <div class="kpi-label">&Eacute;checs</div>
+            <div class="kpi-value">{{ rename_metrics.errors }}</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">LLM Vision utilis&eacute;</div>
+            <div class="kpi-value">{{ rename_metrics.llm_used }}</div>
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi-card" style="padding: 4px 8px;">
+            <span class="text-muted" style="font-size: 0.8rem;">
+                {{ rename_metrics.total }} fichiers &mdash;
+                <span class="text-green">{{ rename_metrics.renamed }} renomm&eacute;s</span> &middot;
+                <span class="text-blue">{{ rename_metrics.unchanged }} inchang&eacute;s</span> &middot;
+                <span class="text-red">{{ rename_metrics.errors }} &eacute;checs</span>
+            </span>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="no-data">
+        <p>Aucune donn&eacute;e de renommage dans ce run.</p>
+        <p class="text-muted">Ce run ne contient pas de tests de renommage (phase 1).</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- ── Chart.js Scripts ── -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<script>
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#334155';
+
+{% if classify_metrics and classify_metrics.by_section %}
+(function() {
+    var sectionData = {{ classify_metrics.by_section | tojson }};
+    var labels = Object.keys(sectionData);
+    var values = Object.values(sectionData);
+    var colors = [
+        '#38bdf8', '#4ade80', '#fbbf24', '#f87171', '#a78bfa',
+        '#fb923c', '#2dd4bf', '#f472b6', '#818cf8', '#22d3ee',
+        '#a3e635', '#e879f9', '#94a3b8'
+    ];
+
+    new Chart(document.getElementById('sectionDonut'), {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: values,
+                backgroundColor: colors.slice(0, labels.length),
+                borderColor: '#1e293b',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '55%',
+            layout: {
+                padding: 10
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#94a3b8',
+                        font: { size: 11 },
+                        padding: 10,
+                        boxWidth: 12,
+                        usePointStyle: true
+                    }
+                }
+            }
+        }
+    });
+})();
+{% endif %}
+
+{% if classify_metrics and classify_metrics.top_themes %}
+(function() {
+    var themes = {{ classify_metrics.top_themes | tojson }};
+    var labels = themes.map(function(t) { return t[0]; });
+    var values = themes.map(function(t) { return t[1]; });
+
+    new Chart(document.getElementById('themesBar'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Fichiers',
+                data: values,
+                backgroundColor: 'rgba(56, 189, 248, 0.6)',
+                borderColor: '#38bdf8',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { color: '#1e293b' },
+                    ticks: { color: '#94a3b8' }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { color: '#94a3b8', font: { size: 11 } }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+})();
+{% endif %}
+</script>
+{% endblock %}

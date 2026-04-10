@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="650" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Modèle de données — DuckDB (results.db)</text>
+  <text x="450" y="55" text-anchor="middle" fill="#64748b" font-size="12">Historisation des résultats de tests fonctionnels</text>
+
+  <!-- ═══ RUNS TABLE ═══ -->
+  <rect x="280" y="80" width="340" height="210" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <!-- Header -->
+  <rect x="280" y="80" width="340" height="36" rx="8" fill="#38bdf8" opacity="0.15"/>
+  <rect x="280" y="108" width="340" height="8" fill="#1e293b"/>
+  <text x="450" y="104" text-anchor="middle" fill="#38bdf8" font-size="15" font-weight="700">RUNS</text>
+  <!-- Columns -->
+  <text x="298" y="136" fill="#fbbf24" font-size="11" font-weight="600">PK</text>
+  <text x="325" y="136" fill="#e2e8f0" font-size="12" font-weight="600">id</text>
+  <text x="460" y="136" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="136" fill="#475569" font-size="10" font-style="italic">"run_20260408_165219"</text>
+
+  <text x="325" y="156" fill="#e2e8f0" font-size="12">date</text>
+  <text x="460" y="156" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="156" fill="#475569" font-size="10" font-style="italic">"2026-04-08T16:52:19"</text>
+
+  <text x="325" y="176" fill="#e2e8f0" font-size="12">duration</text>
+  <text x="460" y="176" fill="#64748b" font-size="11">INTEGER</text>
+  <text x="545" y="176" fill="#475569" font-size="10" font-style="italic">842 (secondes)</text>
+
+  <text x="325" y="196" fill="#e2e8f0" font-size="12">total / pass / fail / skip</text>
+  <text x="545" y="196" fill="#475569" font-size="10" font-style="italic">123 / 104 / 1 / 18</text>
+
+  <text x="325" y="216" fill="#e2e8f0" font-size="12">rate</text>
+  <text x="460" y="216" fill="#64748b" font-size="11">REAL</text>
+  <text x="545" y="216" fill="#475569" font-size="10" font-style="italic">84.5</text>
+
+  <text x="325" y="236" fill="#e2e8f0" font-size="12">run_type</text>
+  <text x="460" y="236" fill="#64748b" font-size="11">TEXT</text>
+  <text x="545" y="236" fill="#475569" font-size="10" font-style="italic">"full" / "phase_0" / "series_T0.1"</text>
+
+  <!-- Cardinality label -->
+  <text x="450" y="265" text-anchor="middle" fill="#64748b" font-size="10">1 run = N séries = N×M checks</text>
+
+  <!-- ═══ Arrow RUNS → SERIES ═══ -->
+  <line x1="350" y1="290" x2="200" y2="340" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="255" y="310" fill="#4ade80" font-size="11" font-weight="600">1:N</text>
+
+  <!-- ═══ Arrow RUNS → CHECKS ═══ -->
+  <line x1="550" y1="290" x2="700" y2="340" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="640" y="310" fill="#4ade80" font-size="11" font-weight="600">1:N</text>
+
+  <!-- ═══ SERIES_RESULTS TABLE ═══ -->
+  <rect x="30" y="340" width="370" height="200" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <!-- Header -->
+  <rect x="30" y="340" width="370" height="36" rx="8" fill="#4ade80" opacity="0.12"/>
+  <rect x="30" y="368" width="370" height="8" fill="#1e293b"/>
+  <text x="215" y="364" text-anchor="middle" fill="#4ade80" font-size="15" font-weight="700">SERIES_RESULTS</text>
+  <!-- Columns -->
+  <text x="48" y="396" fill="#fbbf24" font-size="11" font-weight="600">PK</text>
+  <text x="75" y="396" fill="#38bdf8" font-size="12" font-weight="600">run_id</text>
+  <text x="200" y="396" fill="#64748b" font-size="11">TEXT → FK runs.id</text>
+
+  <text x="48" y="416" fill="#fbbf24" font-size="11" font-weight="600">PK</text>
+  <text x="75" y="416" fill="#e2e8f0" font-size="12" font-weight="600">series_id</text>
+  <text x="200" y="416" fill="#64748b" font-size="11">TEXT</text>
+  <text x="300" y="416" fill="#475569" font-size="10" font-style="italic">"T0.1"</text>
+
+  <text x="75" y="440" fill="#e2e8f0" font-size="12">name</text>
+  <text x="200" y="440" fill="#64748b" font-size="11">TEXT</text>
+  <text x="300" y="440" fill="#475569" font-size="10" font-style="italic">"Intégrité arbo."</text>
+
+  <text x="75" y="460" fill="#e2e8f0" font-size="12">status</text>
+  <text x="200" y="460" fill="#64748b" font-size="11">TEXT</text>
+  <text x="300" y="460" fill="#475569" font-size="10" font-style="italic">"pass" / "fail" / "skip"</text>
+
+  <text x="75" y="480" fill="#e2e8f0" font-size="12">duration_ms</text>
+  <text x="200" y="480" fill="#64748b" font-size="11">REAL</text>
+  <text x="300" y="480" fill="#475569" font-size="10" font-style="italic">1933.5</text>
+
+  <text x="75" y="500" fill="#e2e8f0" font-size="12">phase_id</text>
+  <text x="200" y="500" fill="#64748b" font-size="11">TEXT</text>
+  <text x="300" y="500" fill="#475569" font-size="10" font-style="italic">"phase_0"</text>
+
+  <!-- ═══ CHECK_RESULTS TABLE ═══ -->
+  <rect x="500" y="340" width="370" height="220" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <!-- Header -->
+  <rect x="500" y="340" width="370" height="36" rx="8" fill="#a78bfa" opacity="0.12"/>
+  <rect x="500" y="368" width="370" height="8" fill="#1e293b"/>
+  <text x="685" y="364" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700">CHECK_RESULTS</text>
+  <!-- Columns -->
+  <text x="518" y="396" fill="#fbbf24" font-size="11" font-weight="600">PK</text>
+  <text x="545" y="396" fill="#38bdf8" font-size="12" font-weight="600">run_id</text>
+  <text x="670" y="396" fill="#64748b" font-size="11">TEXT → FK runs.id</text>
+
+  <text x="518" y="416" fill="#fbbf24" font-size="11" font-weight="600">PK</text>
+  <text x="545" y="416" fill="#e2e8f0" font-size="12" font-weight="600">check_id</text>
+  <text x="670" y="416" fill="#64748b" font-size="11">TEXT</text>
+  <text x="780" y="416" fill="#475569" font-size="10" font-style="italic">"T0.1a"</text>
+
+  <text x="545" y="440" fill="#e2e8f0" font-size="12">series_id</text>
+  <text x="670" y="440" fill="#64748b" font-size="11">TEXT</text>
+  <text x="780" y="440" fill="#475569" font-size="10" font-style="italic">"T0.1"</text>
+
+  <text x="545" y="460" fill="#e2e8f0" font-size="12">description</text>
+  <text x="670" y="460" fill="#64748b" font-size="11">TEXT</text>
+  <text x="780" y="460" fill="#475569" font-size="10" font-style="italic">"SSD monté"</text>
+
+  <text x="545" y="480" fill="#e2e8f0" font-size="12">status</text>
+  <text x="670" y="480" fill="#64748b" font-size="11">TEXT</text>
+  <text x="780" y="480" fill="#475569" font-size="10" font-style="italic">"pass"/"fail"/"skip"</text>
+
+  <text x="545" y="500" fill="#e2e8f0" font-size="12">error</text>
+  <text x="670" y="500" fill="#64748b" font-size="11">TEXT</text>
+  <text x="780" y="500" fill="#475569" font-size="10" font-style="italic">"Expected 0, got 3"</text>
+
+  <text x="545" y="520" fill="#e2e8f0" font-size="12">duration_ms</text>
+  <text x="670" y="520" fill="#64748b" font-size="11">REAL</text>
+  <text x="780" y="520" fill="#475569" font-size="10" font-style="italic">45.2</text>
+
+  <!-- ═══ Arrow SERIES → CHECKS ═══ -->
+  <line x1="400" y1="460" x2="500" y2="440" stroke="#64748b" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="450" y="445" fill="#64748b" font-size="10">series_id</text>
+
+  <!-- ═══ Queries Examples ═══ -->
+  <rect x="50" y="580" width="800" height="55" rx="6" fill="#16213e" stroke="#334155" stroke-width="1"/>
+  <text x="65" y="600" fill="#64748b" font-size="11" font-weight="600">Requêtes types :</text>
+  <text x="65" y="616" fill="#4ade80" font-size="10" font-family="monospace">SELECT r.date, s.status FROM series_results s JOIN runs r ON s.run_id = r.id WHERE s.series_id = 'T2.2'</text>
+  <text x="65" y="630" fill="#38bdf8" font-size="10" font-family="monospace">SELECT theme_detecte, COUNT(*) FROM read_csv_auto('logs/rapport_classify_*.csv') GROUP BY 1</text>
+</svg>
