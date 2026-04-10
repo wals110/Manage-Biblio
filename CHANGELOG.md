@@ -2,7 +2,50 @@
 
 All notable changes to Klodo are documented in this file.
 
-## [1.0.0-dev] — 2026-04-05
+## [1.0.0-dev] — 2026-04-10
+
+### Dashboard (tests fonctionnels)
+- FastAPI + Jinja2 + HTMX + Chart.js dashboard (8 pages, dark theme)
+- DuckDB backend for test result historization (runs, series, checks, manual validations)
+- Random run naming (adjective-noun: "cosmic-koala") with git branch/commit tracking
+- Real-time test monitoring via stdout pipe + background thread
+- Manual validation widgets (Oui/Non + revise) with DuckDB persistence
+- Run comparison page (check-by-check diff between two runs)
+- Metrics page linked to runs, using DuckDB read_csv_auto() for SQL analytics
+- Admin page: API key management (.env), cleanup, system stats, runs CRUD
+- Profile selector (Cloud/Local) with command text live update
+- Variable resolution in displayed commands (${VAR} replaced with values)
+
+### Ollama Local LLM
+- Add test-local profile (Ollama qwen3-vl:32b, cost $0)
+- LLM_TIMEOUT 30s to 120s, LLM_VISION_MAX_TOKENS 300 to 800 for thinking models
+- .env auto-loading in klodo.sh (without overwriting existing vars) and runner
+
+### Wordcheck (filename validation)
+- Add lib/wordcheck.py: dictionary validation using pyspellchecker (EN+FR) + technical whitelist
+- Integrated into is_name_clean() and _is_good_title() in renamer.py
+- Rejects gibberish filenames like 'fh&itei.pdf (0% real words) while keeping 'Algorithms.pdf'
+
+### Functional Testing
+- Skill 1 (functional-test-plan): add UPDATE mode (incremental, preserves existing IDs)
+- Skill 2 (functional-test-runner): REMOVED — runner is maintained code, not generated
+- Runner loads .env at startup for API key availability
+- Dashboard auto-includes phase 0 when running single phase (dependency fix)
+- T0.4a checks correct LLM provider (SiliconFlow vs Ollama)
+- Skip reasons show full detail ("Unmet requires: api_ready")
+
+### Documentation
+- 10 new SVG diagrams (architecture, runner flow, monitoring, data flow, etc.)
+- Full documentation: docs/functional-testing-and-dashboard.md
+- Steel-man analysis skill created
+
+### Testing
+- 281 total tests (unit + integration + 33 dashboard + 35 wordcheck)
+- 123 functional checks (11 phases, 45 series)
+
+---
+
+## [1.0.0-dev initial] — 2026-04-05
 
 ### Cache & Storage
 - Move `progress.json` and `isbn_cache.json` from `logs/` to `profiles/<name>/.cache/`

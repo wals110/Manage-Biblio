@@ -38,7 +38,7 @@
 
 ### Pourquoi un systeme de tests fonctionnels dedie ?
 
-Klodo utilise des LLMs pour classifier et renommer des PDFs. Ce pipeline est **non-deterministe** par nature : le meme fichier peut recevoir un theme different selon le modele, la temperature, ou le contexte. Les tests unitaires (246 tests dans `tests/auto/`) verifient que le code fonctionne, mais pas que le **resultat metier** est correct.
+Klodo utilise des LLMs pour classifier et renommer des PDFs. Ce pipeline est **non-deterministe** par nature : le meme fichier peut recevoir un theme different selon le modele, la temperature, ou le contexte. Les tests unitaires (281 tests dans `tests/auto/`) verifient que le code fonctionne, mais pas que le **resultat metier** est correct.
 
 Les tests fonctionnels comblent ce gap : ils executent le pipeline reel sur un jeu de donnees controle (1000 PDFs) et verifient que les metriques de qualite (taux de classification, taux de renommage, confiance moyenne) restent dans les seuils acceptables.
 
@@ -346,7 +346,7 @@ Deux methodes :
 
 | Chemin | Role |
 |--------|------|
-| `tests/functional/tests.yaml` | Source de verite (11 phases, 45 series, 119 checks) |
+| `tests/functional/tests.yaml` | Source de verite (11 phases, 45 series, 123 checks) |
 | `tests/functional/CAHIER_TESTS_FONCTIONNELS.md` | Vue Markdown generee |
 | `tests/functional/run_functional.py` | Runner (code maintenu manuellement) |
 | `tests/functional/db.py` | Backend DuckDB |
