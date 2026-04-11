@@ -1,6 +1,7 @@
 """Klodo — Sous-commandes CLI."""
 
 from commands.classify import cmd_classify as cmd_classify
+from commands.detect import cmd_detect as cmd_detect
 from commands.misc import cmd_clean as cmd_clean
 from commands.misc import cmd_init as cmd_init
 from commands.misc import cmd_profiles as cmd_profiles

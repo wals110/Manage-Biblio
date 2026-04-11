@@ -12,6 +12,20 @@ from fastapi.templating import Jinja2Templates
 from dashboard import data
 
 app = FastAPI(title="Klodo Dashboard")
+
+
+def _is_safe_file_path(file_path: str) -> bool:
+    """Validate that a file path is inside allowed directories (prevent path traversal)."""
+    if not file_path:
+        return False
+    from pathlib import Path
+    resolved = Path(file_path).resolve()
+    root = data.get_project_root().resolve()
+    allowed = [
+        root / "logs",
+        root / "tests" / "functional" / "logs",
+    ]
+    return any(str(resolved).startswith(str(d)) for d in allowed)
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
 
@@ -267,6 +281,10 @@ async def rapports_page(
     # Use selected file or most recent from filtered list
     selected_file = file or (csv_files_filtered[0]["path"] if csv_files_filtered else None)
 
+    # Path traversal protection
+    if selected_file and not _is_safe_file_path(selected_file):
+        selected_file = csv_files_filtered[0]["path"] if csv_files_filtered else None
+
     headers: list[str] = []
     rows: list[dict] = []
     stats: dict = {}
@@ -334,6 +352,88 @@ async def rapports_page(
             "total_pages": total_pages,
             "total_rows": total_rows,
             "associated_test": associated_test,
+        },
+    )
+
+
+@app.get("/logs")
+async def logs_page(
+    request: Request,
+    type: str = "all",
+    file: str | None = None,
+    search: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    order: str = "asc",
+    page: int = 1,
+):
+    """Logs page — viewer for user reports in logs/."""
+    log_files = data.get_user_log_files(type)
+    selected_file = file or (log_files[0]["path"] if log_files else None)
+
+    # Path traversal protection
+    if selected_file and not _is_safe_file_path(selected_file):
+        selected_file = log_files[0]["path"] if log_files else None
+
+    headers: list[str] = []
+    rows: list[dict] = []
+    stats: dict = {}
+    statuses: list[str] = []
+    sections: list[str] = []
+    total_pages = 1
+    total_rows = 0
+
+    # Determine effective type for the selected file
+    effective_type = type
+    if selected_file and type == "all":
+        for lf in log_files:
+            if lf["path"] == selected_file:
+                effective_type = lf["log_type"]
+                break
+
+    if selected_file:
+        headers, rows = data.load_csv(selected_file)
+        stats = data.compute_csv_stats(rows, effective_type)
+        statuses = data.get_csv_statuses(rows, effective_type)
+        sections = data.get_csv_sections(rows)
+
+        if search:
+            rows = [r for r in rows if search.lower() in str(r).lower()]
+        if status:
+            status_key = "action" if effective_type == "rename" else "status"
+            rows = [r for r in rows if r.get(status_key, "") == status]
+
+        if sort and sort in headers:
+            reverse = order == "desc"
+            rows.sort(key=lambda r: r.get(sort, ""), reverse=reverse)
+
+        per_page = 50
+        total_rows = len(rows)
+        total_pages = max(1, (total_rows + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        rows = rows[(page - 1) * per_page : page * per_page]
+
+    return templates.TemplateResponse(
+        request,
+        "logs.html",
+        {
+            "active": "logs",
+            "log_type": type,
+            "effective_type": effective_type,
+            "log_files": log_files,
+            "selected_file": selected_file or "",
+            "headers": headers,
+            "rows": rows,
+            "stats": stats,
+            "statuses": statuses,
+            "sections": sections,
+            "search": search or "",
+            "status_filter": status or "",
+            "sort": sort or "",
+            "order": order,
+            "page": page,
+            "total_pages": total_pages,
+            "total_rows": total_rows,
         },
     )
 

@@ -80,7 +80,8 @@ def cmd_process(args, profile) -> None:
             source, enable_online=enable_online, enable_pdf=enable_pdf,
             llm_callback=llm_callback, max_files=getattr(args, 'max', 0),
             force=force, verbose=args.verbose,
-            cache_dir=profile.cache_dir)
+            cache_dir=profile.cache_dir,
+            name_patterns=profile.name_patterns)
 
         if args.execute:
             renamer.execute(source, report_path)

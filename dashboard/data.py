@@ -169,6 +169,49 @@ def _parse_csv_date(name: str) -> str:
     return ""
 
 
+def get_user_log_files(log_type: str = "all") -> list[dict]:
+    """List CSV files in logs/ (user reports), sorted newest first.
+
+    Returns list of {name, path, date, size, log_type}.
+    """
+    root = get_project_root()
+    logs_dir = root / "logs"
+    if not logs_dir.exists():
+        return []
+
+    if log_type == "all":
+        patterns = list(CSV_PATTERNS.values())
+    else:
+        p = CSV_PATTERNS.get(log_type)
+        if not p:
+            return []
+        patterns = [p]
+
+    all_files = []
+    for pattern in patterns:
+        all_files.extend(logs_dir.glob(pattern))
+
+    files = sorted(all_files, key=lambda f: f.name, reverse=True)
+    results: list[dict] = []
+    for f in files:
+        stat = f.stat()
+        # Determine log type from filename
+        ftype = "unknown"
+        for t, pat in CSV_PATTERNS.items():
+            prefix = pat.replace("*.csv", "")
+            if f.name.startswith(prefix):
+                ftype = t
+                break
+        results.append({
+            "name": f.name,
+            "path": str(f),
+            "date": _parse_csv_date(f.name),
+            "size": stat.st_size,
+            "log_type": ftype,
+        })
+    return results
+
+
 def get_csv_files(report_type: str, tests_yaml: dict | None = None) -> list[dict]:
     """List available CSV files for a given type, sorted newest first.
 

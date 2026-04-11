@@ -56,7 +56,8 @@ def cmd_rename(args, profile) -> None:
     report_path = renamer.scan(
         source, enable_online=enable_online, enable_pdf=enable_pdf,
         llm_callback=llm_callback, max_files=max_files, force=force,
-        verbose=args.verbose, cache_dir=profile.cache_dir)
+        verbose=args.verbose, cache_dir=profile.cache_dir,
+        name_patterns=profile.name_patterns)
 
     # Exécution si demandée
     if args.execute:
