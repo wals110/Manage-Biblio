@@ -5,7 +5,7 @@
     </marker>
   </defs>
   <rect width="1000" height="550" fill="#0f172a" rx="12"/>
-  <text x="500" y="30" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="700">Dashboard — 8 pages + API endpoints</text>
+  <text x="500" y="30" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="700">Dashboard — 10 pages + API endpoints</text>
 
   <!-- Row 1: Main pages -->
   <g transform="translate(30, 55)">

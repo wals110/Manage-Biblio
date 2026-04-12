@@ -27,8 +27,10 @@ klodo/
 │   ├── keyword_classifier.py  Classifieur YAML + TF-IDF
 │   ├── llm_mapper.py          Résolution LLM de thèmes + auto-apprentissage
 │   ├── refiner.py             Raffinement récursif (3 niveaux + vision)
-│   ├── renamer.py             Moteur de renommage (ISBN, PDF, LLM Vision)
+│   ├── renamer.py             Moteur de renommage (ISBN, PDF, LLM Vision, name_patterns)
 │   ├── wordcheck.py           Validation noms par dictionnaire (EN+FR)
+│   ├── pattern_detector.py    Détection LLM de patterns de nommage
+│   ├── thumbnail.py           Génération thumbnails PDF/ePub multi-pages
 │   ├── checkpoint.py          Checkpoint / reprise thread-safe
 │   ├── profile.py             Chargement profils YAML
 │   ├── utils.py               Sanitize, rapports CSV, résumés
@@ -41,6 +43,7 @@ klodo/
 │   ├── rename.py              cmd_rename
 │   ├── refine.py              cmd_refine
 │   ├── process.py             cmd_process (pipeline complet)
+│   ├── detect.py              cmd_detect (pattern detector LLM)
 │   └── misc.py                cmd_profiles, cmd_init, cmd_suggest, cmd_clean
 │
 ├── profiles/                  Profils de configuration
@@ -55,10 +58,11 @@ klodo/
 │       └── refinement.yaml    Règles de raffinement (45 règles)
 │
 ├── scripts/                   Scripts utilitaires
-│   ├── flatten_to_inbox.sh    Remise à plat des PDFs vers _INBOX (tests)
+│   ├── flatten_to_inbox.sh    Remise à plat des PDFs vers _INBOX (+ restore noms)
+│   ├── restore_original_names.py  Restaure les noms d'origine depuis les logs
 │   └── clean_logs.sh          Nettoyage des rapports CSV
 │
-├── tests/                     Suite de tests (281 tests)
+├── tests/                     Suite de tests (360+ tests)
 │   ├── run_all.sh             Lanceur de tests
 │   ├── test_compile.py        Compilation
 │   ├── test_imports.py        Imports croisés

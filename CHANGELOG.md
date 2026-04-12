@@ -2,6 +2,60 @@
 
 All notable changes to Klodo are documented in this file.
 
+## [1.0.0-dev] — 2026-04-12
+
+### Curation tab (dashboard)
+- New `/viewer` (label "Curation") double-panel viewer to build custom test datasets
+- Source pane (read-only, all profiles) + destination pane (test/test-local hard-coded restriction)
+- Mark files with `+` button (toggle, persisted in sessionStorage)
+- "Copy selection (N) → destination" via `POST /api/viewer/copy` (path traversal blocked, profile validated server- AND client-side)
+- "Empty destination" preserves `.thumbnail-cache/` subfolder
+- Static mockup at `/viewer-mockup` for visual reference
+
+### Multi-page thumbnails
+- New `lib/thumbnail.py` — `generate_thumbnail(source, doc_dir, n_pages, start_page)` produces `doc_dir/{1..n}.jpg`
+- Cache structure: `{INBOX}/.thumbnail-cache/{stem}/{1..n}.jpg` (subfolder per document)
+- "Pages 1-4" selector in destination header
+- Page navigator (←/→) under each thumbnail, hidden when single-page
+- Source displays all cached pages (not just page 1)
+- "Generate missing" completes each file up to N pages
+- ePub support via stdlib `zipfile` + manifest OPF parsing (ePub 2 + 3)
+- ProcessPoolExecutor with 4 workers — real CPU parallelism (bypasses GIL)
+- Inline progress bar per panel via SSE (`/api/viewer/events`), blue → green "Done"
+- 20 unit tests in `test_thumbnail.py`
+
+### Name patterns + pattern detector
+- `rename.name_patterns` regex list in `profile.yaml` enforces naming format after wordcheck
+- `is_name_clean(name_patterns=...)` — invalid regex silently skipped (try/except `re.error`)
+- New `lib/pattern_detector.py` — LLM-based regex generation from sample files (single API call)
+- New `commands/detect.py` — `./klodo.sh detect --files ... --execute` injects regex into `profile.yaml` preserving comments
+- 22 tests in `test_pattern_detector.py`
+
+### Logs viewer
+- New `/logs` page in dashboard for user CSV reports in `logs/` directory
+- Filter by type (rename/classify/process/refine), search by name, sort columns, pagination
+- Path traversal protection via `_is_safe_file_path()`
+
+### Dashboard refactor (medium)
+- 6 Jinja2 macros (`templates/macros/widgets.html`): kpi_card, status_badge, run_banner, pagination, filter_bar, data_table
+- 5 JS modules in `static/js/`: common, validation, filters, tests, admin
+- SSE replaces polling for test progress (`/api/events`)
+- Tech debt cleaned: datetime import, glob, ruff E701/E702, duckdb context managers, sys.path, assert→guard, wordcheck import
+
+### Restore original names
+- `scripts/restore_original_names.py` — recursive scan of `logs/log_renommage_*.csv` and `tests/functional/logs/**`
+- Called automatically by `flatten_to_inbox.sh` before flattening, restores original names
+- 9 unit tests in `test_restore_names.py`
+
+### Functional tests fixes
+- T1.5 idempotence: 2 setup passes + safe `grep -c` with `|| true` fallback
+- Name pattern #2 broadened to accept ponctuations (`Jia Hu · Victor C.M. Leung`)
+- New pattern #3 for digit-prefixed titles (`101 Quantum Questions - Ford`)
+- All `--max N` removed from test commands (user controls dataset via Curation viewer)
+- All `${INBOX}` removed from `klodo rename/classify/process` (uses `profile.inbox` automatically)
+
+---
+
 ## [1.0.0-dev] — 2026-04-10
 
 ### Code review refactoring (17 steps)

@@ -15,7 +15,7 @@
 | [Dependances](diagrams/testing-dependencies.svg) | Systeme provides/requires entre series |
 | [Skills Claude Code](diagrams/testing-skills-overview.svg) | Orchestrateur + Skill 1 (generate/update) + Skill 3 |
 | [Flux complet](diagrams/testing-full-flow.svg) | Du lancement au dashboard, toutes les etapes |
-| [Pages du dashboard](diagrams/testing-dashboard-pages.svg) | 8 pages + API endpoints detailles |
+| [Pages du dashboard](diagrams/testing-dashboard-pages.svg) | 10 pages + API endpoints detailles |
 
 ---
 
@@ -38,9 +38,9 @@
 
 ### Pourquoi un systeme de tests fonctionnels dedie ?
 
-Klodo utilise des LLMs pour classifier et renommer des PDFs. Ce pipeline est **non-deterministe** par nature : le meme fichier peut recevoir un theme different selon le modele, la temperature, ou le contexte. Les tests unitaires (281 tests dans `tests/auto/`) verifient que le code fonctionne, mais pas que le **resultat metier** est correct.
+Klodo utilise des LLMs pour classifier et renommer des PDFs. Ce pipeline est **non-deterministe** par nature : le meme fichier peut recevoir un theme different selon le modele, la temperature, ou le contexte. Les tests unitaires (360+ tests dans `tests/auto/`) verifient que le code fonctionne, mais pas que le **resultat metier** est correct.
 
-Les tests fonctionnels comblent ce gap : ils executent le pipeline reel sur un jeu de donnees controle (1000 PDFs) et verifient que les metriques de qualite (taux de classification, taux de renommage, confiance moyenne) restent dans les seuils acceptables.
+Les tests fonctionnels comblent ce gap : ils executent le pipeline reel sur un jeu de donnees controle (taille variable, curee via le dashboard Curation) et verifient que les metriques de qualite (taux de classification, taux de renommage, confiance moyenne) restent dans les seuils acceptables.
 
 ### Les pieces du puzzle
 
@@ -262,6 +262,35 @@ Les runs recoivent un nom aleatoire memorable : `cosmic-koala`, `turbo-tiramisu`
 
 ![Validation manuelle](diagrams/testing-manual-validation.svg)
 
+### Onglet Curation — viewer double panneau
+
+L'onglet **Curation** (`/viewer`) permet de constituer des jeux de tests sur mesure par copie selective de fichiers entre profils. Layout en deux panneaux empiles :
+
+- **Source (haut)** — Lecture seule, accepte tous les profils (default, test, test-local). Liste filtrable, navigateur de pages, bouton `+` a droite de chaque fichier pour le marquer.
+- **Destination (bas)** — Bride a `test` et `test-local` uniquement (validation cote serveur ET UI). Recoit les fichiers copies. Selecteur "Pages 1-4" dans le header pour controler combien de pages sont generees.
+
+**Operations** :
+
+- **Copier selection (N) → destination** : `POST /api/viewer/copy` avec validation path traversal et profil destination
+- **Vider destination** : supprime les `.pdf`/`.epub` mais **preserve** `.thumbnail-cache/`
+- **Generer manquants** : complete chaque fichier jusqu'a N pages (option B)
+- **Regenerer tout** (source uniquement) : vide complement et regenere page 1
+- **Vider cache** : supprime tout le contenu de `.thumbnail-cache/` (sous-dossiers + legacy `.jpg` a plat)
+
+**Cache structure** : `{INBOX}/.thumbnail-cache/{stem}/{1..n}.jpg` (un sous-dossier par document, avec une image par page numérotée).
+
+**Generation parallele** : `ProcessPoolExecutor` avec 4 workers (`_THUMBNAIL_BATCH_WORKERS = 4` dans `dashboard/app.py`) — vrai parallelisme CPU pour `pdf2image` qui contourne le GIL Python.
+
+**Progress bar inline** : sous le header de chaque panneau, bleue pendant la generation puis verte avec "✓ Termine" via SSE (`/api/viewer/events`).
+
+**Formats supportes** : PDF (via `lib/vision.py:extract_cover_image` + Poppler) et ePub (parsing manifest OPF via `zipfile` stdlib, supporte ePub 2 et 3). Les autres formats produisent un placeholder.
+
+**Mockup statique** : `/viewer-mockup` reste accessible comme reference visuelle (bandeau "Mockup non fonctionnel").
+
+### Onglet Logs — viewer des rapports utilisateur
+
+L'onglet **Logs** (`/logs`) affiche les rapports CSV utilisateur dans `logs/` (rapport_rename, rapport_classify, rapport_process, refine). Filtre par type, recherche par nom, tri colonnes, pagination 50 lignes/page. Path traversal protege via `_is_safe_file_path()`.
+
 ### Gestion des cles API
 
 La cle API est geree via la page Admin :
@@ -363,7 +392,8 @@ Deux methodes :
 | `tests/functional/logs/` | Logs structures par phase/serie (gitignored) |
 | `tests/functional/reports/` | Rapports par run (gitignored) |
 | `dashboard/__main__.py` | Point d'entree (uvicorn, port 8080) |
-| `dashboard/app.py` | Routes FastAPI + monitoring temps reel |
-| `dashboard/data.py` | Couche donnees (fusion YAML+JSON+DuckDB+CSV) |
-| `dashboard/static/style.css` | Dark theme complet |
-| `dashboard/templates/` | 10 templates (8 pages + 2 partials) |
+| `dashboard/app.py` | Routes FastAPI + monitoring temps reel + SSE + ProcessPool thumbnails |
+| `dashboard/data.py` | Couche donnees (fusion YAML+JSON+DuckDB+CSV + helpers viewer) |
+| `dashboard/static/style.css` | Dark theme + composants viewer + progress bar inline |
+| `dashboard/static/js/` | Modules JS extraits : common, validation, filters, tests, admin, viewer |
+| `dashboard/templates/` | 12+ templates dont macros reutilisables (`macros/widgets.html`) |
