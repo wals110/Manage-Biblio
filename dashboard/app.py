@@ -695,6 +695,432 @@ async def validate_check_api(run_id: str, check_id: str, status: str):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  Viewer — visualisation des fichiers de l'INBOX
+# ═══════════════════════════════════════════════════════════════════════════
+
+# État de génération en masse (similaire à _running_process)
+_thumbnail_gen_state: dict = {
+    "running": False,
+    "profile": None,
+    "total": 0,
+    "done": 0,
+    "current": "",
+    "errors": 0,
+    "force": False,
+}
+
+
+def _is_safe_thumbnail_path(target: Path, cache_dir: Path) -> bool:
+    """Path traversal guard pour les fichiers du cache thumbnails."""
+    try:
+        target_resolved = target.resolve()
+        cache_resolved = cache_dir.resolve()
+    except OSError:
+        return False
+    return str(target_resolved).startswith(str(cache_resolved))
+
+
+def _profile_cache_stats(profile: str) -> dict:
+    """Helper : récupère les stats du cache thumbnails d'un profil."""
+    from lib.thumbnail import get_cache_stats
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+        return get_cache_stats(cache_dir)
+    except Exception:
+        return {"count": 0, "size_bytes": 0}
+
+
+@app.get("/viewer")
+async def viewer_page(
+    request: Request,
+    source_profile: str = "default",
+    dest_profile: str = "test",
+):
+    """Page principale du viewer (double panneau source + destination)."""
+    all_profiles = data.get_available_profiles(include_all=True)
+    dest_profiles = [p for p in all_profiles if p["name"] in data.CURATION_DEST_PROFILES]
+
+    source_files = data.list_inbox_files(source_profile) if source_profile else []
+    dest_files = data.list_inbox_files(dest_profile) if dest_profile else []
+
+    source_cache = _profile_cache_stats(source_profile) if source_profile else {"count": 0, "size_bytes": 0}
+    dest_cache = _profile_cache_stats(dest_profile) if dest_profile else {"count": 0, "size_bytes": 0}
+
+    return templates.TemplateResponse(
+        request,
+        "viewer.html",
+        {
+            "active": "viewer",
+            "all_profiles": all_profiles,
+            "dest_profiles": dest_profiles,
+            "source_profile": source_profile,
+            "dest_profile": dest_profile,
+            "source_files": source_files,
+            "dest_files": dest_files,
+            "source_cache": source_cache,
+            "dest_cache": dest_cache,
+            "source_cache_mo": round(source_cache["size_bytes"] / 1024 / 1024, 1),
+            "dest_cache_mo": round(dest_cache["size_bytes"] / 1024 / 1024, 1),
+        },
+    )
+
+
+@app.get("/viewer-mockup")
+async def viewer_mockup_page(request: Request):
+    """Mockup statique du viewer double-panneau pour validation visuelle."""
+    source_files = [
+        {"name": "Clean Code - Robert Martin.pdf", "cached": True, "marked": True},
+        {"name": "Algorithms - Thomas Cormen.pdf", "cached": True, "marked": True},
+        {"name": "Python Cookbook - David Beazley.pdf", "cached": True, "marked": True},
+        {"name": "Deep Learning - Ian Goodfellow.pdf", "cached": False, "marked": False},
+        {"name": "Practical Statistics.epub", "cached": True, "marked": False},
+        {"name": "Refactoring - Martin Fowler.pdf", "cached": True, "marked": False},
+        {"name": "The Pragmatic Programmer.pdf", "cached": False, "marked": False},
+        {"name": "Designing Data-Intensive Apps.pdf", "cached": True, "marked": False},
+        {"name": "Effective Java.pdf", "cached": False, "marked": False},
+        {"name": "Head First Design Patterns.pdf", "cached": True, "marked": False},
+    ]
+    dest_files = [
+        {"name": "Clean Code - Robert Martin.pdf", "cached": False},
+        {"name": "Algorithms - Thomas Cormen.pdf", "cached": False},
+        {"name": "Python Cookbook - David Beazley.pdf", "cached": True},
+    ]
+    return templates.TemplateResponse(request, "viewer_mockup.html", {
+        "active": "viewer",
+        "source_files": source_files,
+        "dest_files": dest_files,
+    })
+
+
+@app.get("/api/viewer/files")
+async def viewer_files(profile: str):
+    """Renvoie la liste des fichiers de l'INBOX avec leur état de cache."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(data.list_inbox_files(profile))
+
+
+@app.get("/api/viewer/thumbnail")
+async def viewer_thumbnail(profile: str, filename: str, page: int = 1):
+    """Sert un thumbnail JPEG depuis le cache.
+
+    page: numéro de page (1 par défaut). Cherche cache_dir/{stem}/{page}.jpg
+    """
+    from fastapi.responses import FileResponse, JSONResponse
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    safe_stem = Path(filename).stem
+    doc_dir = cache_dir / safe_stem
+    target = doc_dir / f"{page}.jpg"
+
+    if not _is_safe_thumbnail_path(target, cache_dir):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if not target.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(target, media_type="image/jpeg")
+
+
+@app.get("/api/viewer/pages")
+async def viewer_pages(profile: str, filename: str):
+    """Retourne le nombre de pages en cache pour un document."""
+    from fastapi.responses import JSONResponse
+
+    from lib.thumbnail import count_pages
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    safe_stem = Path(filename).stem
+    return JSONResponse({"count": count_pages(cache_dir, safe_stem)})
+
+
+@app.get("/api/viewer/cache-stats")
+async def viewer_cache_stats(profile: str):
+    """Retourne les stats du cache thumbnails pour un profil."""
+    from fastapi.responses import JSONResponse
+    stats = _profile_cache_stats(profile)
+    stats["size_mo"] = round(stats["size_bytes"] / 1024 / 1024, 1)
+    return JSONResponse(stats)
+
+
+@app.post("/api/viewer/generate")
+async def viewer_generate_one(
+    profile: str, filename: str, n_pages: int = 1, complete: bool = False,
+):
+    """Génère N thumbnails pour un fichier unique.
+
+    Args:
+        n_pages: nombre de pages à générer (1-5)
+        complete: si True, complète à partir de la première page manquante
+                  (utile pour "Compléter jusqu'à N" de l'option B)
+    """
+    from fastapi.responses import JSONResponse
+
+    from lib.profile import Profile
+    from lib.thumbnail import count_pages, generate_thumbnail
+    try:
+        profile_obj = Profile(profile)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
+    source = Path(profile_obj.inbox) / filename
+    if not source.exists():
+        return JSONResponse({"success": False, "error": "source not found"}, status_code=404)
+
+    cache_dir = data.get_thumbnail_cache_dir(profile)
+    safe_stem = Path(filename).stem
+    doc_dir = cache_dir / safe_stem
+
+    if not _is_safe_thumbnail_path(doc_dir, cache_dir):
+        return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
+
+    if complete:
+        existing = count_pages(cache_dir, safe_stem)
+        start = existing + 1
+        remaining = max(0, n_pages - existing)
+        if remaining == 0:
+            return JSONResponse({"success": True, "filename": filename, "generated": 0})
+        generated = generate_thumbnail(source, doc_dir, n_pages=remaining, start_page=start)
+    else:
+        generated = generate_thumbnail(source, doc_dir, n_pages=n_pages, start_page=1)
+
+    return JSONResponse({
+        "success": generated > 0,
+        "filename": filename,
+        "generated": generated,
+    })
+
+
+_THUMBNAIL_BATCH_WORKERS = 4
+_thumbnail_state_lock = threading.Lock()
+
+
+def _process_one_file(
+    f: Path, cache_dir: Path, force: bool, n_pages: int,
+) -> tuple[bool, bool]:
+    """Traite un seul fichier (utilisé par le pool de threads).
+
+    Returns:
+        (was_processed, had_error)
+        - was_processed: False si on a skip (déjà cache complet, mode "complete")
+        - had_error: True si la génération a échoué
+    """
+    import shutil
+
+    from lib.thumbnail import count_pages, generate_thumbnail
+
+    doc_dir = cache_dir / f.stem
+    existing = count_pages(cache_dir, f.stem)
+
+    if force:
+        if doc_dir.exists():
+            try:
+                shutil.rmtree(doc_dir)
+            except OSError:
+                pass
+        start = 1
+        remaining = n_pages
+    else:
+        if existing >= n_pages:
+            return (False, False)
+        start = existing + 1
+        remaining = n_pages - existing
+
+    try:
+        generated = generate_thumbnail(f, doc_dir, n_pages=remaining, start_page=start)
+        return (True, generated == 0)
+    except Exception:
+        return (True, True)
+
+
+def _generate_batch_thread(profile: str, force: bool, n_pages: int):
+    """Worker thread principal — orchestre un ThreadPoolExecutor parallèle.
+
+    Stratégies :
+    - force=True : régénère tout (efface puis crée n_pages pages par fichier)
+    - force=False : "compléter jusqu'à n_pages" pour chaque fichier
+    """
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    from lib.profile import Profile
+
+    global _thumbnail_gen_state
+    try:
+        profile_obj = Profile(profile)
+    except Exception as e:
+        _thumbnail_gen_state.update({"running": False, "current": f"Erreur: {e}"})
+        return
+
+    inbox = Path(profile_obj.inbox)
+    cache_dir = data.get_thumbnail_cache_dir(profile)
+
+    files = sorted(
+        f for f in inbox.iterdir()
+        if f.is_file() and f.suffix.lower() in data.VIEWER_SUPPORTED_EXTS
+    )
+
+    _thumbnail_gen_state.update({
+        "running": True,
+        "profile": profile,
+        "total": len(files),
+        "done": 0,
+        "current": "",
+        "errors": 0,
+        "force": force,
+    })
+
+    if not files:
+        _thumbnail_gen_state["running"] = False
+        return
+
+    with ThreadPoolExecutor(max_workers=_THUMBNAIL_BATCH_WORKERS) as executor:
+        future_to_file = {
+            executor.submit(_process_one_file, f, cache_dir, force, n_pages): f
+            for f in files
+        }
+        for future in as_completed(future_to_file):
+            f = future_to_file[future]
+            try:
+                _, had_error = future.result()
+            except Exception:
+                had_error = True
+            with _thumbnail_state_lock:
+                _thumbnail_gen_state["current"] = f.name
+                _thumbnail_gen_state["done"] += 1
+                if had_error:
+                    _thumbnail_gen_state["errors"] += 1
+
+    _thumbnail_gen_state["running"] = False
+    _thumbnail_gen_state["current"] = ""
+
+
+@app.post("/api/viewer/generate-batch")
+async def viewer_generate_batch(profile: str, force: bool = False, n_pages: int = 1):
+    """Lance la génération en masse en arrière-plan.
+
+    n_pages: nombre de pages à générer/compléter par document (1-5)
+    force: True = régénération totale, False = complète jusqu'à n_pages
+    """
+    from fastapi.responses import JSONResponse
+    if _thumbnail_gen_state["running"]:
+        return JSONResponse({"started": False, "reason": "already running"}, status_code=409)
+
+    n_pages = max(1, min(5, n_pages))
+    thread = threading.Thread(
+        target=_generate_batch_thread, args=(profile, force, n_pages), daemon=True)
+    thread.start()
+    return JSONResponse({"started": True})
+
+
+@app.get("/api/viewer/events")
+async def viewer_events():
+    """SSE pour la progression de la génération en masse."""
+    async def generate():
+        yield 'data: {"type": "connected"}\n\n'
+
+        # Attendre que le thread worker démarre (max 3s)
+        waited = 0.0
+        while not _thumbnail_gen_state["running"] and waited < 3.0:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+
+        last_done = -1
+        last_current = None
+
+        while True:
+            done = _thumbnail_gen_state["done"]
+            total = _thumbnail_gen_state["total"]
+            current = _thumbnail_gen_state["current"]
+            running = _thumbnail_gen_state["running"]
+
+            if done != last_done or current != last_current:
+                payload = {
+                    "type": "progress",
+                    "done": done,
+                    "total": total,
+                    "current": current,
+                    "errors": _thumbnail_gen_state["errors"],
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+                last_done = done
+                last_current = current
+
+            # Sortir quand le thread a fini ET qu'on a rapporté le dernier état
+            if not running and done >= total:
+                break
+            if not running and total == 0:
+                break
+
+            await asyncio.sleep(0.2)
+
+        final = {
+            "type": "batch_finished",
+            "done": _thumbnail_gen_state["done"],
+            "total": _thumbnail_gen_state["total"],
+            "errors": _thumbnail_gen_state["errors"],
+        }
+        yield f"data: {json.dumps(final)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.post("/api/viewer/clear-cache")
+async def viewer_clear_cache(profile: str):
+    """Vide le cache des thumbnails pour un profil."""
+    from fastapi.responses import JSONResponse
+
+    from lib.thumbnail import clear_cache
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    count, freed = clear_cache(cache_dir)
+    return JSONResponse({"count": count, "freed_bytes": freed})
+
+
+@app.post("/api/viewer/copy")
+async def viewer_copy(source_profile: str, dest_profile: str, filenames: str):
+    """Copie des fichiers de l'INBOX source vers l'INBOX destination.
+
+    filenames est une liste séparée par des virgules.
+    """
+    from fastapi.responses import JSONResponse
+    names = [f.strip() for f in filenames.split(",") if f.strip()]
+    if not names:
+        return JSONResponse({"error": "no filenames provided"}, status_code=400)
+    try:
+        result = data.copy_files_between_profiles(source_profile, dest_profile, names)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(result)
+
+
+@app.post("/api/viewer/clear-destination")
+async def viewer_clear_destination(profile: str):
+    """Supprime tous les .pdf/.epub de l'INBOX du profil destination."""
+    from fastapi.responses import JSONResponse
+    try:
+        result = data.clear_destination_inbox(profile)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(result)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  Admin
 # ═══════════════════════════════════════════════════════════════════════════
 

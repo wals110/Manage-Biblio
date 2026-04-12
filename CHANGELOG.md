@@ -4,6 +4,23 @@ All notable changes to Klodo are documented in this file.
 
 ## [1.0.0-dev] — 2026-04-10
 
+### Code review refactoring (17 steps)
+
+All 17 improvement steps from the code review session have been applied:
+
+1. Python 3.13 type hints across 20 files
+2. `lib/constants.py` — centralized constants
+3. Removed `organiser/` → `lib/keyword_classifier.py`
+4. Removed `renommage/` → `lib/renamer.py`
+5. `lib/exceptions.py` — custom exception hierarchy
+6. Cleaned up unused imports (ruff F401)
+7. Full ruff lint pass (F401, F841, E741, E402)
+8. `sanitize_for_prompt()` — LLM prompt injection protection
+9. CHANGELOG.md added
+10. Functional test plan + `scripts/flatten_to_inbox.sh`
+11. Step 12 (externalize GENERIC_TITLES) — skipped (not useful)
+12. Step 15 (TF-IDF persistence) — skipped (LLM Mapper is superior)
+
 ### Dashboard (tests fonctionnels)
 - FastAPI + Jinja2 + HTMX + Chart.js dashboard (8 pages, dark theme)
 - DuckDB backend for test result historization (runs, series, checks, manual validations)
