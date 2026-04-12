@@ -1,15 +1,26 @@
 """Klodo Dashboard — FastAPI application."""
 
+import asyncio
+import json
 import os
 import re
 import subprocess
+import sys
 import threading
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from dashboard import data
+
+# Ensure functional test db module is importable
+_func_dir = str(data.get_project_root() / "tests" / "functional")
+if _func_dir not in sys.path:
+    sys.path.insert(0, _func_dir)
 
 app = FastAPI(title="Klodo Dashboard")
 
@@ -18,7 +29,6 @@ def _is_safe_file_path(file_path: str) -> bool:
     """Validate that a file path is inside allowed directories (prevent path traversal)."""
     if not file_path:
         return False
-    from pathlib import Path
     resolved = Path(file_path).resolve()
     root = data.get_project_root().resolve()
     allowed = [
@@ -41,11 +51,13 @@ async def overview(request: Request):
     tests = data.get_tests_yaml()
     issues = data.get_open_issues()
     llm_config = data.get_llm_config()
+    api_keys = _get_api_keys_status()
+    api_key_set = any(k["set"] for k in api_keys if k["name"] == "SILICONFLOW_API_KEY")
     return templates.TemplateResponse(
         request,
         "overview.html",
         {"report": report, "tests": tests, "issues": issues,
-         "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+         "api_key_set": api_key_set,
          "llm_config": llm_config},
     )
 
@@ -83,7 +95,7 @@ async def tests_page(
             "phase": phase_int,
             "status": status_val,
             "active": "tests",
-            "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+            "api_key_set": any(k["set"] for k in _get_api_keys_status() if k["name"] == "SILICONFLOW_API_KEY"),
             "available_runs": available_runs,
             "selected_run": run or "",
             "current_run_id": report.get("_run_id", run or "") if report else "",
@@ -146,6 +158,66 @@ async def run_status():
         "completed": dict(_completed_series) if running else {},
         "checks": dict(_completed_checks) if running else {},
     })
+
+
+@app.get("/api/events")
+async def sse_events():
+    """Server-Sent Events stream for test run progress.
+
+    Lit les dicts module-level (_current_series, _completed_series, _completed_checks)
+    mis à jour par le thread _monitor_output, et émet des événements JSON
+    à chaque changement d'état. Le client utilise EventSource() côté navigateur.
+    """
+    async def generate():
+        last_series = None
+        sent_series: set[str] = set()
+        sent_checks: set[str] = set()
+
+        # Événement initial immédiat (pour débloquer les clients)
+        yield 'data: {"type": "connected"}\n\n'
+
+        while True:
+            running = _running_process is not None and _running_process.poll() is None
+
+            if not running:
+                if last_series is not None or sent_series or sent_checks:
+                    # Le run vient de se terminer
+                    yield 'data: {"type": "run_finished"}\n\n'
+                    break
+                # Pas de run actif : keep-alive périodique
+                yield 'data: {"type": "idle"}\n\n'
+                await asyncio.sleep(2)
+                continue
+
+            # Nouvelle série en cours
+            current = _current_series
+            if current and current != last_series:
+                last_series = current
+                yield f"data: {json.dumps({'type': 'series_started', 'id': current})}\n\n"
+
+            # Séries terminées
+            for sid, status in list(_completed_series.items()):
+                if sid not in sent_series:
+                    sent_series.add(sid)
+                    yield f"data: {json.dumps({'type': 'series_completed', 'id': sid, 'status': status})}\n\n"
+
+            # Checks terminés
+            for cid, status in list(_completed_checks.items()):
+                if cid not in sent_checks:
+                    sent_checks.add(cid)
+                    yield f"data: {json.dumps({'type': 'check_completed', 'id': cid, 'status': status})}\n\n"
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.post("/api/stop")
@@ -227,7 +299,6 @@ async def run_test(
     monitor_thread.start()
 
     # Wait in a non-blocking loop so other requests (like /api/stop) can be processed
-    import asyncio
     while _running_process and _running_process.poll() is None:
         await asyncio.sleep(0.5)
     _running_process = None
@@ -612,11 +683,11 @@ async def validate_check_api(run_id: str, check_id: str, status: str):
     if func_dir not in sys.path:
         sys.path.insert(0, func_dir)
     from db import validate_check
-    success = validate_check(run_id, check_id, status)
+    validate_check(run_id, check_id, status)
     # Return updated widget HTML
     icon = "✓" if status == "pass" else "✗"
     color = "green" if status == "pass" else "red"
-    validated_at = __import__("datetime").datetime.now().strftime("%d/%m %H:%M")
+    validated_at = datetime.now().strftime("%d/%m %H:%M")
     html = f'''<span class="manual-validated text-{color}">
         {icon} Valid&eacute; ({status.upper()}) le {validated_at}
     </span>'''
@@ -707,9 +778,8 @@ def _get_admin_stats() -> dict:
         db_size = f"{db_path.stat().st_size / 1024:.1f} KB"
         try:
             import duckdb
-            con = duckdb.connect(str(db_path), read_only=True)
-            db_runs = con.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-            con.close()
+            with duckdb.connect(str(db_path), read_only=True) as con:
+                db_runs = con.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
         except Exception:
             pass
     return {
@@ -751,7 +821,7 @@ async def delete_api_key(key_name: str):
     env_path = _get_env_path()
     if env_path.exists():
         lines = env_path.read_text().splitlines()
-        lines = [l for l in lines if not l.strip().startswith(f"{key_name}=")]
+        lines = [line for line in lines if not line.strip().startswith(f"{key_name}=")]
         env_path.write_text("\n".join(lines) + "\n")
     os.environ.pop(key_name, None)
     return JSONResponse({"message": f"{key_name} supprimée"})
@@ -826,25 +896,37 @@ async def clean_all():
     count = 0
     # Logs
     for f in (root / "logs").iterdir() if (root / "logs").exists() else []:
-        if f.is_file(): f.unlink(); count += 1
+        if f.is_file():
+            f.unlink()
+            count += 1
     # Test logs
     test_logs = root / "tests" / "functional" / "logs"
     if test_logs.exists():
-        shutil.rmtree(test_logs); test_logs.mkdir(); count += 1
+        shutil.rmtree(test_logs)
+        test_logs.mkdir()
+        count += 1
     # Reports
     reports = root / "tests" / "functional" / "reports"
     if reports.exists():
-        shutil.rmtree(reports); reports.mkdir(); count += 1
+        shutil.rmtree(reports)
+        reports.mkdir()
+        count += 1
     # DB
     db = root / "tests" / "functional" / "results.db"
-    if db.exists(): db.unlink(); count += 1
+    if db.exists():
+        db.unlink()
+        count += 1
     # History
     h = root / "tests" / "functional" / "history.json"
-    if h.exists(): h.unlink(); count += 1
+    if h.exists():
+        h.unlink()
+        count += 1
     # Progress
     cache = root / "profiles" / "test" / ".cache"
     if cache.exists():
-        for f in cache.glob("progress*.json"): f.unlink(); count += 1
+        for f in cache.glob("progress*.json"):
+            f.unlink()
+            count += 1
     return JSONResponse({"message": f"Tout nettoyé ({count} éléments)"})
 
 
@@ -856,11 +938,10 @@ async def delete_run(id: str):
     if db_path.exists():
         try:
             import duckdb
-            con = duckdb.connect(str(db_path))
-            con.execute("DELETE FROM check_results WHERE run_id = ?", [id])
-            con.execute("DELETE FROM series_results WHERE run_id = ?", [id])
-            con.execute("DELETE FROM runs WHERE id = ?", [id])
-            con.close()
+            with duckdb.connect(str(db_path)) as con:
+                con.execute("DELETE FROM check_results WHERE run_id = ?", [id])
+                con.execute("DELETE FROM series_results WHERE run_id = ?", [id])
+                con.execute("DELETE FROM runs WHERE id = ?", [id])
         except Exception as e:
             return JSONResponse({"message": f"Erreur: {e}"})
     # Also delete report directory

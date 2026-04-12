@@ -17,6 +17,7 @@ class TestDashboardRoutes(unittest.TestCase):
         from fastapi.testclient import TestClient
 
         from dashboard.app import app
+        cls.app = app
         cls.client = TestClient(app)
 
     def test_overview(self):
@@ -78,6 +79,21 @@ class TestDashboardRoutes(unittest.TestCase):
     def test_static_css(self):
         r = self.client.get("/static/style.css")
         self.assertEqual(r.status_code, 200)
+
+    def test_static_js_common(self):
+        r = self.client.get("/static/js/common.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("copyCmd", r.text)
+
+    def test_static_js_tests(self):
+        r = self.client.get("/static/js/tests.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("updateSeriesStatus", r.text)
+
+    def test_sse_events_endpoint_registered(self):
+        """SSE endpoint /api/events is registered in the app routes."""
+        routes = [r.path for r in self.app.routes if hasattr(r, 'path')]
+        self.assertIn("/api/events", routes)
 
 
 class TestDashboardData(unittest.TestCase):

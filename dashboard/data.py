@@ -430,7 +430,8 @@ def diff_reports(rows_a: list[dict], rows_b: list[dict], key_col: str) -> dict:
             continue
 
         # Both exist
-        assert row_a is not None and row_b is not None
+        if row_a is None or row_b is None:
+            continue
         a_classified = _is_classified(row_a)
         b_classified = _is_classified(row_b)
 

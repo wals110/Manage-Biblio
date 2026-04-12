@@ -1,0 +1,140 @@
+{# ─────────────────────────────────────────────────────────────────────────── #}
+{# widgets.html — Macros Jinja2 réutilisables pour le dashboard                #}
+{# ─────────────────────────────────────────────────────────────────────────── #}
+
+
+{# KPI Card — utilisé dans overview, metriques, rapports, logs, admin, ... #}
+{% macro kpi_card(label, value, color="", progress=None) %}
+<div class="kpi-card {{ color }}">
+    <div class="kpi-label">{{ label }}</div>
+    <div class="kpi-value">{{ value }}</div>
+    {% if progress is not none %}
+    <div class="progress-bar">
+        <div class="progress-bar-fill progress-bar-{{ color }}" style="width: {{ progress }}%"></div>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+{# Status Badge — unifie la logique de rapports/logs/comparer/tests/admin #}
+{% macro status_badge(value) %}
+{% if value in ['classifié', 'RENOMME', 'déplacé', 'renommé'] %}
+<span class="badge badge-pass">{{ value }}</span>
+{% elif value in ['non_classifié', 'INCHANGE'] %}
+<span class="badge badge-warn">{{ value }}</span>
+{% elif value.startswith('erreur') or value == 'ECHEC' %}
+<span class="badge badge-fail">{{ value }}</span>
+{% else %}
+<span class="badge badge-default">{{ value }}</span>
+{% endif %}
+{% endmacro %}
+
+
+{# Run Banner — bandeau affiché sur overview, tests, metriques #}
+{% macro run_banner(report, default_label='Run') %}
+{% if report %}
+<div class="run-banner">
+    <span class="run-banner-label">{{ report._label or default_label }}</span>
+    {% if report.run_at %}
+    <span class="run-banner-date">{{ report.run_at[:19] | replace("T", " ") }}</span>
+    {% endif %}
+    {% if report.summary %}
+    <span class="run-banner-stats">{{ report.summary.pass }}/{{ report.summary.total }} PASS</span>
+    {% endif %}
+    {% if report._git_branch %}
+    <span class="run-banner-git">{{ report._git_branch }}{% if report._git_commit %}@{{ report._git_commit }}{% endif %}</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# Pagination — rapports et logs (nécessite goToPage défini en JS) #}
+{% macro pagination(page, total_pages) %}
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="#" class="btn btn-sm" onclick="goToPage({{ page - 1 }}); return false;">&laquo; Pr&eacute;c&eacute;dent</a>
+    {% else %}
+    <span class="btn btn-sm btn-disabled">&laquo; Pr&eacute;c&eacute;dent</span>
+    {% endif %}
+    <span class="page-info">Page {{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="#" class="btn btn-sm" onclick="goToPage({{ page + 1 }}); return false;">Suivant &raquo;</a>
+    {% else %}
+    <span class="btn btn-sm btn-disabled">Suivant &raquo;</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# Filter Bar — recherche + filtres par statut/section (rapports, logs) #}
+{% macro filter_bar(search, status_filter, statuses, sections, section_filter, total_rows) %}
+<div class="filter-bar">
+    <input type="text" class="filter-input" id="search-input"
+           placeholder="Rechercher par nom de fichier..."
+           value="{{ search }}"
+           onkeyup="debounceSearch(this.value)">
+    <select class="filter-select" id="status-filter" onchange="applyFilters()">
+        <option value="">Tous les statuts</option>
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+    </select>
+    {% if sections %}
+    <select class="filter-select" id="section-filter" onchange="applyFilters()">
+        <option value="">Toutes les sections</option>
+        {% for s in sections %}
+        <option value="{{ s }}" {% if s == section_filter %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    <span class="filter-count">{{ total_rows }} r&eacute;sultat{{ 's' if total_rows != 1 else '' }}</span>
+</div>
+{% endmacro %}
+
+
+{# Data Table — table triable avec badges statut auto (rapports, logs) #}
+{% macro data_table(headers, rows, sort, order) %}
+<div class="table-wrapper">
+    <table class="data-table">
+        <thead>
+            <tr>
+                {% for h in headers %}
+                <th class="sort-header {% if sort == h %}sorted{% endif %}"
+                    onclick="sortBy('{{ h }}')">
+                    {{ h }}
+                    {% if sort == h %}
+                    <span class="sort-arrow">{{ '&#9650;' if order == 'asc' else '&#9660;' }}</span>
+                    {% endif %}
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                {% for h in headers %}
+                <td>
+                    {% set val = row.get(h, '') %}
+                    {% if h == 'status' or h == 'action' %}
+                        {{ status_badge(val) }}
+                    {% elif h == 'confiance' %}
+                        {% if val %}<span class="confidence-value">{{ val }}</span>{% endif %}
+                    {% elif h == 'destination' %}
+                        <span class="dest-path" title="{{ val }}">{{ val }}</span>
+                    {% elif h in ['fichier', 'ancien_nom', 'nouveau_nom', 'ancien_chemin', 'nouveau_chemin', 'chemin'] %}
+                        <span class="filename-cell" title="{{ val }}">{{ val | truncate(60) }}</span>
+                    {% else %}
+                        {{ val }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}

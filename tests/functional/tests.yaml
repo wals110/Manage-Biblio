@@ -315,12 +315,12 @@ phases:
       mode: auto
     - id: T1.3b
       description: Des fichiers ont été renommés via LLM
-      command: grep -ci 'llm\|vision' $(ls -t ${LOGS}/rapport_rename_*.csv | head
-        -1) ; true
+      command: grep -q 'EXTRAIRE_LLM' $(ls -t ${LOGS}/rapport_rename_*.csv | head
+        -1) && echo "oui" || echo "non"
       assert:
         type: output_contains
         expected:
-        - '0'
+        - oui
       mode: auto
     - id: T1.3c
       description: Qualité des noms générés par LLM

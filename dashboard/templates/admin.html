@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card %}
 {% set active = "admin" %}
 {% block title %}Admin{% endblock %}
 
@@ -75,26 +76,11 @@
 <div class="admin-stats">
     <h2 class="section-title">&Eacute;tat du syst&egrave;me</h2>
     <div class="kpi-row">
-        <div class="kpi-card">
-            <div class="kpi-label">Logs Klodo</div>
-            <div class="kpi-value">{{ stats.logs_count }}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Logs tests</div>
-            <div class="kpi-value">{{ stats.test_logs_count }}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Rapports</div>
-            <div class="kpi-value">{{ stats.reports_count }}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Runs en DB</div>
-            <div class="kpi-value">{{ stats.db_runs }}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Taille DB</div>
-            <div class="kpi-value">{{ stats.db_size }}</div>
-        </div>
+        {{ kpi_card("Logs Klodo", stats.logs_count) }}
+        {{ kpi_card("Logs tests", stats.test_logs_count) }}
+        {{ kpi_card("Rapports", stats.reports_count) }}
+        {{ kpi_card("Runs en DB", stats.db_runs) }}
+        {{ kpi_card("Taille DB", stats.db_size) }}
     </div>
 </div>
 
@@ -156,55 +142,5 @@
     {% endif %}
 </div>
 
-<script>
-function saveApiKey(keyName) {
-    const input = document.getElementById('input-' + keyName);
-    const value = input.value.trim();
-    if (!value) { alert('Veuillez entrer une clé API'); return; }
-    fetch('/api/admin/save-api-key?key_name=' + keyName + '&key_value=' + encodeURIComponent(value), {method: 'POST'})
-        .then(r => r.json()).then(data => {
-            alert(data.message);
-            window.location.reload();
-        });
-}
-
-function deleteApiKey(keyName) {
-    if (!confirm('Supprimer la clé ' + keyName + ' ?')) return;
-    fetch('/api/admin/delete-api-key?key_name=' + keyName, {method: 'POST'})
-        .then(r => r.json()).then(data => {
-            alert(data.message);
-            window.location.reload();
-        });
-}
-
-function adminAction(url, confirmMsg) {
-    if (!confirm(confirmMsg)) return;
-    fetch(url, {method: 'POST'}).then(r => r.json()).then(data => {
-        alert(data.message || 'Done');
-        window.location.reload();
-    });
-}
-
-function deleteRun(runId) {
-    if (!confirm('Supprimer le run ' + runId + ' ?')) return;
-    fetch('/api/admin/delete-run?id=' + runId, {method: 'POST'}).then(r => r.json()).then(data => {
-        document.getElementById('run-row-' + runId)?.remove();
-    });
-}
-
-function toggleRunCheckboxes() {
-    const boxes = document.querySelectorAll('.run-checkbox');
-    const allChecked = Array.from(boxes).every(b => b.checked);
-    boxes.forEach(b => b.checked = !allChecked);
-}
-
-function deleteSelectedRuns() {
-    const checked = Array.from(document.querySelectorAll('.run-checkbox:checked')).map(c => c.value);
-    if (checked.length === 0) return;
-    if (!confirm('Supprimer ' + checked.length + ' run(s) ?')) return;
-    Promise.all(checked.map(id =>
-        fetch('/api/admin/delete-run?id=' + id, {method: 'POST'})
-    )).then(() => window.location.reload());
-}
-</script>
+<script src="/static/js/admin.js"></script>
 {% endblock %}

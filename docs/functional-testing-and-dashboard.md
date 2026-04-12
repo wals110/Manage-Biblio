@@ -336,6 +336,15 @@ uv run python scripts/validate_tests.py --fix    # Verifier + corriger
 echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --execute
 ```
 
+Le script effectue deux etapes :
+
+1. **Restauration des noms originaux** via `scripts/restore_original_names.py` — Lit les `logs/log_renommage_*.csv` produits par `rename --execute` et renomme chaque PDF vers son nom d'origine. Permet de garder un jeu de test reproductible entre les runs.
+2. **Deplacement vers _INBOX** — Tous les PDFs (hors _INBOX) sont deplaces vers `_INBOX/` avec gestion des collisions (suffixe numerique).
+
+![Flatten to inbox](diagrams/flatten-to-inbox.svg)
+
+Sans la restauration, `rename --execute` altererait progressivement le jeu de test (les fichiers renommes garderaient leurs nouveaux noms au prochain run).
+
 ### Configurer la cle API
 
 Deux methodes :

@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4ade80"/>
+    </marker>
+    <style>
+      .tree { font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 11px; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="720" fill="#0f172a" rx="12"/>
+
+  <!-- Title -->
+  <text x="550" y="38" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700">flatten_to_inbox.sh — Remise à plat du jeu de test</text>
+  <text x="550" y="58" text-anchor="middle" fill="#64748b" font-size="12">2 étapes : restauration des noms originaux, puis déplacement vers _INBOX</text>
+
+  <!-- ═══ LAYER 1: AVANT / APRÈS RESTAURATION ═══ -->
+  <rect x="30" y="80" width="1040" height="220" rx="10" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <text x="55" y="100" fill="#fbbf24" font-size="13" font-weight="700" opacity="0.7">ÉTAT DE LA BIBLIO</text>
+
+  <!-- État initial -->
+  <rect x="60" y="115" width="300" height="170" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <rect x="60" y="115" width="300" height="28" rx="8" fill="#fbbf24" opacity="0.15"/>
+  <rect x="60" y="135" width="300" height="8" fill="#1e293b"/>
+  <text x="210" y="135" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">État initial</text>
+  <text x="210" y="158" text-anchor="middle" fill="#e2e8f0" font-size="11">BIBLIO-TEST-FUNC/</text>
+  <text x="78" y="180" class="tree" fill="#cbd5e1">├── _INBOX/ (quelques PDFs)</text>
+  <text x="78" y="198" class="tree" fill="#cbd5e1">├── 01-Informatique/</text>
+  <text x="78" y="216" class="tree" fill="#94a3b8">│   └── Clean Code - Martin.pdf</text>
+  <text x="78" y="234" class="tree" fill="#cbd5e1">├── 02-Math/</text>
+  <text x="78" y="252" class="tree" fill="#94a3b8">│   └── Algorithms - Cormen.pdf</text>
+  <text x="78" y="270" class="tree" fill="#64748b">└── ...</text>
+
+  <!-- Flèche avant → étape 1 -->
+  <line x1="365" y1="200" x2="410" y2="200" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Étape 1 : Restauration (au centre) -->
+  <rect x="415" y="115" width="270" height="170" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <rect x="415" y="115" width="270" height="28" rx="8" fill="#a78bfa" opacity="0.15"/>
+  <rect x="415" y="135" width="270" height="8" fill="#1e293b"/>
+  <text x="550" y="135" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">1. Restauration des noms</text>
+  <text x="550" y="158" text-anchor="middle" fill="#e2e8f0" font-size="11">restore_original_names.py</text>
+  <text x="432" y="180" fill="#cbd5e1" font-size="11">• Lit logs/log_renommage_*.csv</text>
+  <text x="432" y="198" fill="#cbd5e1" font-size="11">• Mapping nouveau → ancien</text>
+  <text x="432" y="216" fill="#cbd5e1" font-size="11">• rglob() sur toute la biblio</text>
+  <text x="432" y="234" fill="#cbd5e1" font-size="11">• Renomme vers nom d'origine</text>
+  <text x="432" y="252" fill="#cbd5e1" font-size="11">• Gère collisions (suffixe)</text>
+
+  <!-- Flèche étape 1 → après -->
+  <line x1="690" y1="200" x2="735" y2="200" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Après restauration -->
+  <rect x="740" y="115" width="300" height="170" rx="8" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <rect x="740" y="115" width="300" height="28" rx="8" fill="#4ade80" opacity="0.15"/>
+  <rect x="740" y="135" width="300" height="8" fill="#1e293b"/>
+  <text x="890" y="135" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">Après restauration</text>
+  <text x="890" y="158" text-anchor="middle" fill="#e2e8f0" font-size="11">BIBLIO-TEST-FUNC/</text>
+  <text x="758" y="180" class="tree" fill="#cbd5e1">├── _INBOX/ (inchangé)</text>
+  <text x="758" y="198" class="tree" fill="#cbd5e1">├── 01-Informatique/</text>
+  <text x="758" y="216" class="tree" fill="#94a3b8">│   └── 01_raw_scan.pdf</text>
+  <text x="758" y="234" class="tree" fill="#cbd5e1">├── 02-Math/</text>
+  <text x="758" y="252" class="tree" fill="#94a3b8">│   └── old_cryptic_id.pdf</text>
+  <text x="758" y="270" class="tree" fill="#64748b">└── ...</text>
+
+  <!-- Note "Pourquoi" -->
+  <rect x="60" y="320" width="320" height="120" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+  <rect x="60" y="320" width="320" height="24" rx="8" fill="#64748b" opacity="0.2"/>
+  <rect x="60" y="336" width="320" height="8" fill="#1e293b"/>
+  <text x="220" y="337" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="700">Pourquoi la restauration ?</text>
+  <text x="78" y="360" fill="#94a3b8" font-size="11">• rename --execute modifie les noms</text>
+  <text x="78" y="378" fill="#94a3b8" font-size="11">• Sans elle, le jeu de test « grandit »</text>
+  <text x="78" y="396" fill="#94a3b8" font-size="11">  et devient incohérent entre runs</text>
+  <text x="78" y="414" fill="#94a3b8" font-size="11">• Les logs CSV = référentiel rollback</text>
+  <text x="78" y="432" fill="#94a3b8" font-size="11">  par nom de fichier</text>
+
+  <!-- Logs CSV (source) -->
+  <rect x="420" y="320" width="260" height="90" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="550" y="345" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">logs/log_renommage_*.csv</text>
+  <text x="550" y="365" text-anchor="middle" fill="#cbd5e1" font-size="10">ancien_chemin, nouveau_chemin</text>
+  <text x="550" y="382" text-anchor="middle" fill="#64748b" font-size="10">produit par rename --execute</text>
+  <text x="550" y="400" text-anchor="middle" fill="#64748b" font-size="10">(référentiel pour le rollback)</text>
+
+  <!-- Flèche logs → étape 1 (remontante, pointillée) -->
+  <line x1="550" y1="316" x2="550" y2="290" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow-purple)"/>
+
+  <!-- ═══ LAYER 2: FLATTEN ═══ -->
+  <rect x="30" y="460" width="1040" height="140" rx="10" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <text x="55" y="480" fill="#38bdf8" font-size="13" font-weight="700" opacity="0.7">FLATTEN</text>
+
+  <rect x="60" y="495" width="980" height="90" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <rect x="60" y="495" width="980" height="28" rx="8" fill="#38bdf8" opacity="0.15"/>
+  <rect x="60" y="515" width="980" height="8" fill="#1e293b"/>
+  <text x="550" y="515" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">2. Déplacement vers _INBOX — flatten_to_inbox.sh</text>
+  <text x="90" y="545" fill="#cbd5e1" font-size="11">• find BIBLIO -name "*.pdf" -not -path "*/_INBOX/*"</text>
+  <text x="90" y="563" fill="#cbd5e1" font-size="11">• mv chaque fichier vers _INBOX/  •  Gère les collisions (suffixe numérique)  •  Préserve l'arborescence (dossiers vides)</text>
+
+  <!-- Flèche après restauration → flatten -->
+  <line x1="890" y1="290" x2="890" y2="490" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ═══ LAYER 3: ÉTAT FINAL ═══ -->
+  <rect x="30" y="615" width="1040" height="95" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+  <rect x="30" y="615" width="1040" height="28" rx="10" fill="#4ade80" opacity="0.15"/>
+  <rect x="30" y="635" width="1040" height="8" fill="#1e293b"/>
+  <text x="550" y="635" text-anchor="middle" fill="#4ade80" font-size="14" font-weight="700">État final — Jeu de test reproductible</text>
+  <text x="60" y="665" class="tree" fill="#cbd5e1">BIBLIO-TEST-FUNC/_INBOX/</text>
+  <text x="60" y="682" class="tree" fill="#94a3b8">├── 01_raw_scan.pdf   ├── old_cryptic_id.pdf   └── ... tous les PDFs avec leurs noms originaux</text>
+  <text x="60" y="699" fill="#64748b" font-size="10">Les dossiers de catégories restent en place (vides), prêts pour un nouveau run de classification.</text>
+
+  <!-- Flèche flatten → final -->
+  <line x1="550" y1="590" x2="550" y2="610" stroke="#4ade80" stroke-width="2" marker-end="url(#arrow-green)"/>
+</svg>

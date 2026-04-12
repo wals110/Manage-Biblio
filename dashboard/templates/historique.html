@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card %}
 {% set active = "historique" %}
 {% block title %}Historique{% endblock %}
 
@@ -17,25 +18,13 @@
 <!-- ── KPI summary (latest run) ── -->
 {% set latest = history[-1] %}
 <div class="kpi-row">
-    <div class="kpi-card green">
-        <div class="kpi-label">Dernier taux</div>
-        <div class="kpi-value">{{ latest.rate }}%</div>
-    </div>
-    <div class="kpi-card blue">
-        <div class="kpi-label">Nombre de runs</div>
-        <div class="kpi-value">{{ history|length }}</div>
-    </div>
-    <div class="kpi-card purple">
-        <div class="kpi-label">Derni&egrave;re dur&eacute;e</div>
-        <div class="kpi-value">{{ (latest.duration / 60)|round(1) }}m</div>
-    </div>
+    {{ kpi_card("Dernier taux", latest.rate ~ '%', "green") }}
+    {{ kpi_card("Nombre de runs", history|length, "blue") }}
+    {{ kpi_card("Derni&egrave;re dur&eacute;e" | safe, (latest.duration / 60)|round(1) ~ 'm', "purple") }}
     {% if history|length > 1 %}
     {% set prev = history[-2] %}
     {% set delta = latest.pass - prev.pass %}
-    <div class="kpi-card {% if delta >= 0 %}green{% else %}red{% endif %}">
-        <div class="kpi-label">Delta pass</div>
-        <div class="kpi-value">{% if delta > 0 %}+{% endif %}{{ delta }}</div>
-    </div>
+    {{ kpi_card("Delta pass", (('+' if delta > 0 else '') ~ delta), ("green" if delta >= 0 else "red")) }}
     {% endif %}
 </div>
 

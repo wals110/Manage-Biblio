@@ -43,6 +43,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from lib.checkpoint import CheckpointManager
+from lib.wordcheck import contains_real_words
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
@@ -190,8 +191,6 @@ def is_name_clean(filename: str, name_patterns: list[str] | None = None) -> bool
 
     # --- Signal positif : le nom est-il déjà lisible ? ---
     # Le nom doit contenir de vrais mots (dictionnaire EN/FR + termes techniques)
-    from lib.wordcheck import contains_real_words
-
     words = re.findall(r'[A-Za-zÀ-ÿ]{2,}', stem_decoded)
 
     # Vérification wordcheck
@@ -601,7 +600,6 @@ def _is_good_title(name: str) -> bool:
     if stem.isupper() and len(words) <= 2 and len(stem) < 25:
         return False
     # Rejeté si le titre ne contient pas de vrais mots
-    from lib.wordcheck import contains_real_words
     if not contains_real_words(stem):
         return False
     return True

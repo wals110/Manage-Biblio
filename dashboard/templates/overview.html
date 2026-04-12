@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card, run_banner %}
 {% set active = "overview" %}
 {% block title %}Overview{% endblock %}
 
@@ -11,16 +12,7 @@
 {% endif %}
 <h1 class="page-title">Overview</h1>
 {% if report and report.run_at is defined and report.run_at %}
-<div class="run-banner">
-    <span class="run-banner-label">{{ report._label or 'Dernier run' }}</span>
-    <span class="run-banner-date">{{ report.run_at[:19] | replace("T", " ") }}</span>
-    {% if report.summary %}
-    <span class="run-banner-stats">{{ report.summary.pass }}/{{ report.summary.total }} PASS</span>
-    {% endif %}
-    {% if report._git_branch %}
-    <span class="run-banner-git">{{ report._git_branch }}{% if report._git_commit %}@{{ report._git_commit }}{% endif %}</span>
-    {% endif %}
-</div>
+{{ run_banner(report, default_label='Dernier run') }}
 {% else %}
 <p class="page-subtitle">Aucun rapport disponible</p>
 {% endif %}
@@ -31,26 +23,11 @@
 
 <!-- KPI Cards -->
 <div class="kpi-row">
-    <div class="kpi-card green">
-        <div class="kpi-label">Pass</div>
-        <div class="kpi-value">{{ s.pass }}</div>
-    </div>
-    <div class="kpi-card red">
-        <div class="kpi-label">Fail</div>
-        <div class="kpi-value">{{ s.fail }}</div>
-    </div>
-    <div class="kpi-card yellow">
-        <div class="kpi-label">Skip</div>
-        <div class="kpi-value">{{ s.skip }}</div>
-    </div>
-    <div class="kpi-card blue">
-        <div class="kpi-label">Taux de r&eacute;ussite</div>
-        <div class="kpi-value">{{ rate }}%</div>
-    </div>
-    <div class="kpi-card purple">
-        <div class="kpi-label">Dur&eacute;e</div>
-        <div class="kpi-value">{{ report.duration_seconds }}s</div>
-    </div>
+    {{ kpi_card("Pass", s.pass, "green") }}
+    {{ kpi_card("Fail", s.fail, "red") }}
+    {{ kpi_card("Skip", s.skip, "yellow") }}
+    {{ kpi_card("Taux de r&eacute;ussite" | safe, rate ~ '%', "blue") }}
+    {{ kpi_card("Dur&eacute;e" | safe, report.duration_seconds ~ 's', "purple") }}
 </div>
 
 <!-- LLM Config -->
