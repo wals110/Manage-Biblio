@@ -116,7 +116,7 @@ phases:
       mode: auto
     - id: T0.2d
       description: klodo avec un profil inexistant échoue proprement
-      command: ${KLODO} classify --profile inexistant -y ${INBOX} 2>&1 ; true
+      command: ${KLODO} classify --profile inexistant -y 2>&1 ; true
       assert:
         type: output_contains
         expected:
@@ -211,7 +211,7 @@ phases:
     pre_run: []
     post_run: []
     setup:
-    - ${KLODO} rename ${INBOX} --profile ${PROF} --max 20 --verbose 2>&1
+    - ${KLODO} rename --profile ${PROF} --verbose 2>&1
     checks:
     - id: T1.1a
       description: Un rapport CSV rename est généré dans logs/
@@ -260,7 +260,7 @@ phases:
     - rm -f ${LOGS}/rapport_rename_*.csv
     post_run: []
     setup:
-    - ${KLODO} rename ${INBOX} --profile ${PROF} --max 50 --execute --verbose 2>&1
+    - ${KLODO} rename --profile ${PROF} --execute --verbose 2>&1
     checks:
     - id: T1.2a
       description: Le rapport indique des fichiers renommés
@@ -302,8 +302,8 @@ phases:
     - rm -f ${LOGS}/rapport_rename_*.csv
     post_run: []
     setup:
-    - ${KLODO} rename ${INBOX} --profile ${PROF} --llm --pages 2 --max 10 --execute
-      --verbose 2>&1
+    - ${KLODO} rename --profile ${PROF} --llm --pages 2 --execute --verbose
+      2>&1
     checks:
     - id: T1.3a
       description: Le rapport indique le mode LLM Vision
@@ -344,7 +344,7 @@ phases:
     - rm -f ${LOGS}/rapport_rename_*.csv
     post_run: []
     setup:
-    - ${KLODO} rename ${INBOX} --profile ${PROF} --max 20 --force --verbose 2>&1
+    - ${KLODO} rename --profile ${PROF} --force --verbose 2>&1
     checks:
     - id: T1.4a
       description: En mode force, tous les fichiers sont analysés (pas de skip 'déjà
@@ -365,20 +365,24 @@ phases:
     pre_run: []
     post_run: []
     setup:
-    - ${KLODO} rename ${INBOX} --profile ${PROF} --max 50 --execute --verbose 2>&1
+    # Premier passage : renomme les fichiers
+    - ${KLODO} rename --profile ${PROF} --execute --verbose 2>&1
+    # Second passage : doit être idempotent (aucun renommage effectif)
+    - ${KLODO} rename --profile ${PROF} --execute --verbose 2>&1
     checks:
     - id: T1.5a
-      description: Fichiers déjà renommés ont status INCHANGE
-      command: R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); grep -c INCHANGE "$R";
-        true
+      description: Le 2e rapport contient des lignes INCHANGE (fichiers déjà propres)
+      command: R=$(ls -t ${LOGS}/rapport_rename_*.csv|head -1); C=$(grep -c INCHANGE
+        "$R" 2>/dev/null || true); echo "${C:-0}"
       assert:
-        type: exit_code
-        expected: 0
+        type: output_not_contains
+        expected:
+        - '0'
       mode: auto
     - id: T1.5b
       description: 0 fichiers effectivement renommés au 2e passage
-      command: R=$(ls -t ${LOGS}/log_renommage_*.csv|head -1); grep -c OK "$R" 2>/dev/null;
-        true
+      command: R=$(ls -t ${LOGS}/log_renommage_*.csv|head -1); C=$(grep -c OK "$R"
+        2>/dev/null || true); echo "${C:-0}"
       assert:
         type: output_equals
         expected: '0'
@@ -406,7 +410,7 @@ phases:
     - rm -f ${LOGS}/rapport_classify_*.csv
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 30 --workers 5 --verbose
+    - ${KLODO} classify -y --profile ${PROF} --workers 5 --verbose
       2>&1
     checks:
     - id: T2.1a
@@ -463,7 +467,7 @@ phases:
     - rm -f ${LOGS}/rapport_classify_*.csv
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 30 --workers 5 --execute
+    - ${KLODO} classify -y --profile ${PROF} --workers 5 --execute
       --verbose 2>&1
     checks:
     - id: T2.2a
@@ -513,21 +517,20 @@ phases:
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 10 --workers 1 --verbose
+    - ${KLODO} classify -y --profile ${PROF} --workers 1 --verbose
       2>&1
     checks:
     - id: T2.3a
-      description: Le checkpoint contient les résultats du premier run
+      description: Le checkpoint contient des résultats du premier run
       command: python3 -c "import json; d=json.load(open('${CACHE}/progress.json'));
-        print(len(d.get('results', d)))" 2>/dev/null
+        n=len(d.get('results', d)); print(n); exit(0 if n>0 else 1)" 2>/dev/null
       assert:
-        type: output_contains
-        expected:
-        - '10'
+        type: exit_code
+        expected: 0
       mode: auto
     - id: T2.3b
       description: Un deuxième run reprend là où le premier s'est arrêté
-      command: ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 20 --workers
+      command: ${KLODO} classify -y --profile ${PROF} --workers
         1 --verbose 2>&1 | grep -c 'Reprise' ; true
       assert:
         type: output_contains
@@ -536,7 +539,7 @@ phases:
       mode: auto
     - id: T2.3c
       description: Avec --reset, le traitement repart de zéro
-      command: ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 5 --workers 1
+      command: ${KLODO} classify -y --profile ${PROF} --workers 1
         --reset --verbose 2>&1 | grep -c 'Reprise' ; true
       assert:
         type: output_equals
@@ -556,13 +559,13 @@ phases:
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 20 --workers 5 --verbose
+    - ${KLODO} classify -y --profile ${PROF} --workers 5 --verbose
       2>&1
     checks:
     - id: T2.4a
       description: Avec --retry-errors, les fichiers erreur sont retraités
-      command: ${KLODO} classify -y ${INBOX} --profile ${PROF} --retry-errors --max
-        20 --verbose 2>&1 | tail -5
+      command: ${KLODO} classify -y --profile ${PROF} --retry-errors --verbose
+        2>&1 | tail -5
       assert:
         type: output_contains
         expected:
@@ -582,7 +585,7 @@ phases:
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 10 --vision --pages 2
+    - ${KLODO} classify -y --profile ${PROF} --vision --pages 2
       --verbose 2>&1
     checks:
     - id: T2.5a
@@ -614,7 +617,7 @@ phases:
     - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1; true
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     - rm -f ${LOGS}/refine_*.csv
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 50 -w 5 --execute --verbose 2>&1
+    - ${KLODO} classify -y --profile ${PROF} -w 5 --execute --verbose 2>&1
     post_run: []
     setup:
     - ${KLODO} refine --profile ${PROF} --verbose 2>&1
@@ -688,7 +691,7 @@ phases:
     - rm -f ${LOGS}/refine_*.csv
     post_run: []
     setup:
-    - ${KLODO} refine --profile ${PROF} --llm --max 10 --verbose 2>&1
+    - ${KLODO} refine --profile ${PROF} --llm --verbose 2>&1
     checks:
     - id: T3.3a
       description: Le LLM refine est actif dans les logs
@@ -748,7 +751,7 @@ phases:
     pre_run: []
     post_run: []
     setup:
-    - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 20 --workers 5 --verbose
+    - ${KLODO} process -y --profile ${PROF} --workers 5 --verbose
       2>&1
     checks:
     - id: T4.1a
@@ -792,7 +795,7 @@ phases:
     - find ${INBOX} -name '*.pdf' | wc -l | tr -d ' ' > logs/.inbox_count_before_T4.2.txt
     post_run: []
     setup:
-    - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 30 --workers 5 --execute
+    - ${KLODO} process -y --profile ${PROF} --workers 5 --execute
       --verbose 2>&1
     checks:
     - id: T4.2a
@@ -847,7 +850,7 @@ phases:
     - rm -f ${LOGS}/rapport_process_*.csv ${LOGS}/rapport_rename_*.csv
     post_run: []
     setup:
-    - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 20 --no-rename --workers
+    - ${KLODO} process -y --profile ${PROF} --no-rename --workers
       5 --verbose 2>&1
     checks:
     - id: T4.3a
@@ -880,7 +883,7 @@ phases:
     - rm -f ${LOGS}/rapport_process_*.csv ${LOGS}/rapport_rename_*.csv
     post_run: []
     setup:
-    - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 10 --llm --pages 2 --workers
+    - ${KLODO} process -y --profile ${PROF} --llm --pages 2 --workers
       3 --execute --verbose 2>&1
     checks:
     - id: T4.4a
@@ -1099,7 +1102,7 @@ phases:
     checks:
     - id: T6.3a
       description: rename --llm sans API key affiche une erreur claire
-      command: SILICONFLOW_API_KEY= ${KLODO} rename ${INBOX} --profile ${PROF} --llm
+      command: SILICONFLOW_API_KEY= ${KLODO} rename --profile ${PROF} --llm
         2>&1; true
       assert:
         type: output_contains
@@ -1135,7 +1138,7 @@ phases:
     checks:
     - id: T6.4a
       description: rename gère les noms avec espaces multiples
-      command: ${KLODO} rename '${INBOX}' --profile ${PROF} --max 5 --verbose 2>&1;
+      command: ${KLODO} rename '${INBOX}' --profile ${PROF} --verbose 2>&1;
         true
       assert:
         type: output_not_contains
@@ -1199,7 +1202,7 @@ phases:
     checks:
     - id: T6.6a
       description: rename gère le PDF corrompu sans crash
-      command: ${KLODO} rename ${INBOX} --profile ${PROF} --max 5 --verbose 2>&1;
+      command: ${KLODO} rename --profile ${PROF} --verbose 2>&1;
         echo "EXIT:$?"
       assert:
         type: output_contains
@@ -1208,7 +1211,7 @@ phases:
       mode: auto
     - id: T6.6b
       description: classify gère le PDF corrompu sans crash
-      command: ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 5 --verbose 2>&1;
+      command: ${KLODO} classify -y --profile ${PROF} --verbose 2>&1;
         echo "EXIT:$?"
       assert:
         type: output_contains
@@ -1238,7 +1241,7 @@ phases:
     - rm -f ${LOGS}/rapport_process_*.csv ${LOGS}/rapport_rename_*.csv
     post_run: []
     setup:
-    - ${KLODO} process -y ${INBOX} --profile ${PROF} --max 500 --workers 10 --execute
+    - ${KLODO} process -y --profile ${PROF} --workers 10 --execute
       --verbose 2>&1
     checks:
     - id: T7.1a
@@ -1278,7 +1281,7 @@ phases:
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 50 --workers 20 --verbose
+    - ${KLODO} classify -y --profile ${PROF} --workers 20 --verbose
       2>&1
     checks:
     - id: T7.2a
@@ -1499,11 +1502,11 @@ phases:
     - classify_execute
     - api_ready
     pre_run:
-    - ${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1
+    - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 500 -w 10 --execute --verbose
+    - ${KLODO} classify -y --profile ${PROF} -w 10 --execute --verbose
       2>&1
     checks:
     - id: T9.1a
@@ -1547,7 +1550,7 @@ phases:
     pre_run: []
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --reclassify 2>&1
+    - ${KLODO} classify -y --profile ${PROF} --reclassify 2>&1
     checks:
     - id: T9.2a
       description: Reclassify fonctionne sans appel LLM (pur YAML)
@@ -1574,13 +1577,13 @@ phases:
     - classify_execute
     - api_ready
     pre_run:
-    - ${FLATTEN} ${BIBLIO_TEST} --max 100 --execute 2>&1
+    - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
     - BEFORE=$(wc -l < ${PROFILES}/${PROF}/theme_mapping.yaml 2>/dev/null || echo
       0)
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 100 -w 10 --execute --verbose
+    - ${KLODO} classify -y --profile ${PROF} -w 10 --execute --verbose
       2>&1
     - AFTER=$(wc -l < ${PROFILES}/${PROF}/theme_mapping.yaml 2>/dev/null || echo 0)
     - echo "mapping_before=$BEFORE mapping_after=$AFTER"
@@ -1604,7 +1607,7 @@ phases:
   name: Benchmark et stabilité
   priority: basse
   pre_run:
-  - ${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1
+  - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
   - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
   post_run: []
   series:
@@ -1617,15 +1620,15 @@ phases:
     - classify_dryrun
     - api_ready
     pre_run:
-    - ${FLATTEN} ${BIBLIO_TEST} --max 50 --execute 2>&1
+    - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - T1=$(date +%s); ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 50 -w
+    - T1=$(date +%s); ${KLODO} classify -y --profile ${PROF} -w
       1 --verbose 2>&1; T2=$(date +%s); echo $((T2-T1)) > ${LOGS}/.bench_1w.txt; true
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
-    - ${FLATTEN} ${BIBLIO_TEST} --max 50 --execute 2>&1
-    - T1=$(date +%s); ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 50 -w
+    - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
+    - T1=$(date +%s); ${KLODO} classify -y --profile ${PROF} -w
       10 --verbose 2>&1; T2=$(date +%s); echo $((T2-T1)) > ${LOGS}/.bench_10w.txt;
       true
     checks:
@@ -1654,29 +1657,29 @@ phases:
     - cli_works
     - api_ready
     pre_run:
-    - ${FLATTEN} ${BIBLIO_TEST} --max 500 --execute 2>&1
+    - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup: []
     checks:
     - id: T10.2a
       description: Renommage 500 fichiers (sans LLM) < 60 secondes
-      command: ${KLODO} rename ${INBOX} --profile ${PROF} --max 500 2>&1
+      command: ${KLODO} rename --profile ${PROF} 2>&1
       assert:
         type: duration_under
         seconds: 60
       mode: auto
     - id: T10.2b
       description: Classification 500 fichiers (10 workers) < 5 minutes
-      command: ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 500 -w 10 2>&1
+      command: ${KLODO} classify -y --profile ${PROF} -w 10 2>&1
       assert:
         type: duration_under
         seconds: 300
       mode: auto
     - id: T10.2c
       description: Pipeline complet 500 fichiers avec LLM < 15 minutes
-      command: ${KLODO} process -y ${INBOX} --profile ${PROF} --llm --pages 1 -w 10
-        --max 500 2>&1
+      command: ${KLODO} process -y --profile ${PROF} --llm --pages 1 -w 10
+        2>&1
       assert:
         type: duration_under
         seconds: 900
@@ -1690,11 +1693,11 @@ phases:
     - classify_execute
     - api_ready
     pre_run:
-    - ${FLATTEN} ${BIBLIO_TEST} --max 50 --execute 2>&1
+    - ${FLATTEN} ${BIBLIO_TEST} --execute 2>&1
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} classify -y ${INBOX} --profile ${PROF} --max 50 --delay 0 -w 20 --verbose
+    - ${KLODO} classify -y --profile ${PROF} --delay 0 -w 20 --verbose
       2>&1
     checks:
     - id: T10.3a
@@ -1742,7 +1745,7 @@ phases:
     - ${KLODO} clean progress --profile ${PROF} --execute 2>&1; true
     post_run: []
     setup:
-    - ${KLODO} process -y ${INBOX} --profile ${PROF} -w 10 --execute --verbose 2>&1
+    - ${KLODO} process -y --profile ${PROF} -w 10 --execute --verbose 2>&1
     checks:
     - id: T10.4a
       description: Terminaison propre sur le volume complet

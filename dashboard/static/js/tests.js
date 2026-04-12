@@ -200,10 +200,12 @@ function updateSeriesStatus(seriesId, completed, checks) {
             });
         }
     }
-    document.querySelectorAll('.dot-running').forEach(d => {
-        d.className = 'status-dot dot-not_run';
-    });
+    // Ne retirer le pulse que si on a explicitement une nouvelle série à mettre en cours.
+    // Sinon la pastille bleue clignotante disparaitrait à chaque événement check/series_completed.
     if (seriesId) {
+        document.querySelectorAll('.dot-running').forEach(d => {
+            d.className = 'status-dot dot-not_run';
+        });
         const safeId = seriesId.replace('.', '-');
         const row = document.getElementById('series-' + safeId);
         if (row) {
