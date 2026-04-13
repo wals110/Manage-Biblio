@@ -46,18 +46,18 @@ echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --max 
 |-------|-----|--------|--------|----------|---------------|
 | 0 | Prérequis et smoke tests | 3 | 14 | Obligatoire | 5 min |
 | 1 | Renommage | 5 | 13 | Obligatoire | 15 min |
-| 2 | Classification LLM | 5 | 14 | Obligatoire | 20 min |
+| 2 | Classification LLM | 6 | 18 | Obligatoire | 22 min |
 | 3 | Raffinement | 4 | 8 | Haute | 10 min |
 | 4 | Pipeline complet (process) | 4 | 10 | Obligatoire | 20 min |
-| 5 | Commandes utilitaires | 3 | 9 | Moyenne | 5 min |
+| 5 | Commandes utilitaires | 3 | 10 | Moyenne | 5 min |
 | 6 | Sécurité et cas limites | 6 | 13 | Haute | 5 min |
 | 7 | Performance et stabilité | 3 | 7 | Basse | 30 min |
 | 8 | Qualité de classification | 4 | 13 | Haute | 15 min |
 | 9 | Reclassification et enrichissement | 3 | 8 | Moyenne | 15 min |
 | 10 | Benchmark et stabilité | 4 | 14 | Basse | 45 min |
-| **Total** | | **44** | **123** | | **~185 min** |
+| **Total** | | **46** | **129** | | **~187 min** |
 
-**Automatisation :** 105 checks auto (85%) + 18 checks manuels (15%)
+**Automatisation :** 111 checks auto (86%) + 18 checks manuels (14%)
 
 ---
 
@@ -271,6 +271,24 @@ echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --exec
 |---|-------------|---------|
 | T2.5a | Le mode vision escalade est affiché | Contient `Vision` et `escalade` |
 
+### T2.6 — Cache vision persistant
+
+Vérifie que le cache vision persistant (`profiles/test/.cache/vision_cache.json`) est créé au premier run classify, réutilisé au second (économie d'appels LLM sur runs répétés) et purgeable via `clean vision-cache`.
+
+```bash
+./klodo.sh clean vision-cache --profile test --execute
+./klodo.sh classify -y --profile test --workers 5 --verbose   # 1er run : population du cache
+./klodo.sh clean progress --profile test --execute
+./klodo.sh classify -y --profile test --workers 5 --verbose   # 2e run : hits cache vision
+```
+
+| # | Vérification | Attendu |
+|---|-------------|---------|
+| T2.6a | Le fichier `vision_cache.json` est créé dans le cache du profil | `OK` affiché |
+| T2.6b | Le cache contient au moins une entrée sérialisée | Nombre d'entrées > 0 |
+| T2.6c | Les entrées ont la structure attendue | Clés `model`, `prompt_version`, `result.title` présentes |
+| T2.6d | `clean vision-cache --execute` purge complètement le cache | Contient `PURGED` |
+
 ---
 
 ## Phase 3 — Raffinement (`refine`)
@@ -354,6 +372,7 @@ echo oui | ./scripts/flatten_to_inbox.sh /Volumes/ExtSSD/BIBLIO-TEST-FUNC --exec
 | T5.1c | `clean isbn --execute` supprime le cache ISBN | Contient `supprimé` |
 | T5.1d | `clean logs --execute` supprime les rapports CSV | Contient `supprimé` |
 | T5.1e | `clean` sur un cache déjà vide | Contient `Rien à nettoyer` |
+| T5.1f | `clean vision-cache --execute` supprime `vision_cache.json` | Contient `DELETED` |
 
 ### T5.2 — init — Création de profil
 

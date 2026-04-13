@@ -95,6 +95,7 @@ def scan_and_classify(source_dir, profile, api_key,
     theme_mapping = profile.theme_mapping
     min_confidence = profile.defaults.get('min_confidence', 0.5)
     max_api_errors = profile.defaults.get('max_api_errors', 10)
+    vision_cache_path = os.path.join(profile.cache_dir, 'vision_cache.json')
 
     classifier, mapper = load_classifiers(profile, api_key, verbose, vision=vision)
 
@@ -108,7 +109,8 @@ def scan_and_classify(source_dir, profile, api_key,
         result = process_single_file(
             pdf_path, api_key, endpoint, model,
             theme_mapping, classifier, mapper, verbose=verbose,
-            min_confidence=min_confidence, n_pages=n_pages)
+            min_confidence=min_confidence, n_pages=n_pages,
+            vision_cache_path=vision_cache_path)
 
         with progress_lock:
             progress[pdf_path] = result

@@ -45,12 +45,6 @@ import os
 import re
 
 try:
-    from pdf2image import convert_from_path
-    HAS_PDF2IMAGE = True
-except ImportError:
-    HAS_PDF2IMAGE = False
-
-try:
     from PIL import Image
     HAS_PIL = True
 except ImportError:
@@ -62,7 +56,6 @@ from lib.constants import (
     LLM_TIMEOUT,
     LLM_VISION_MAX_TOKENS,
     PDF_DPI,
-    PDF_EXTRACT_THREADS,
     PDF_MAX_PAGES,
 )
 from lib.llm_client import LLMClient
@@ -124,6 +117,10 @@ def extract_cover_image(pdf_path: str, dpi: int = PDF_DPI,
     """
     Extrait les N premières pages du PDF comme images PIL.
 
+    Passe par le cache mémoire intra-run `lib.pdf_cover.get_cover_image()`
+    pour mutualiser l'appel Poppler entre rename, classify et viewer Curation
+    (un seul `pdf2image.convert_from_path` par (pdf_path, dpi, n_pages)).
+
     Args:
         pdf_path: Chemin vers le fichier PDF
         dpi: Résolution de l'extraction (par défaut 150 dpi)
@@ -132,22 +129,8 @@ def extract_cover_image(pdf_path: str, dpi: int = PDF_DPI,
     Returns:
         Liste d'images PIL ou None si extraction échoue
     """
-    if not HAS_PDF2IMAGE:
-        log.warning("  ⚠ pdf2image non installé (pip install pdf2image)")
-        return None
-    try:
-        images = convert_from_path(
-            pdf_path,
-            first_page=1,
-            last_page=n_pages,
-            dpi=dpi,
-            fmt='png',
-            thread_count=PDF_EXTRACT_THREADS,
-        )
-        return images if images else None
-    except Exception as e:
-        log.error(f"  ⚠ Erreur extraction couverture: {e}")
-        return None
+    from lib.pdf_cover import get_cover_image
+    return get_cover_image(pdf_path, dpi=dpi, n_pages=n_pages)
 
 
 def image_to_base64(img: 'Image.Image', max_size: int = 1024) -> str:
@@ -351,5 +334,77 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
 
     if result is None:
         return {'error': 'api'}
+
+    return result
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# VERSION CACHÉE (persistance JSON sur disque)
+# ════════════════════════════════════════════════════════════════════════════
+
+def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
+                         api_key: str = '', endpoint: str = '',
+                         model: str = DEFAULT_MODEL,
+                         dpi: int = 150,
+                         verbose: bool = False,
+                         max_retries: int = 3,
+                         n_pages: int = 1,
+                         client: 'LLMClient | None' = None) -> dict | None:
+    """Version cachée de `analyze_cover()` — lookup JSON avant appel LLM.
+
+    Cache hit → retourne le résultat direct (0 token, ~5 ms).
+    Cache miss → appelle `analyze_cover()` puis stocke le résultat valide.
+
+    Seules les réponses « utiles » sont cachées : title non vide et pas
+    d'erreur. Les `{"error": ...}` sont retournés mais pas persistés (retry
+    possible sur le run suivant sans avoir à vider le cache).
+
+    Args:
+        pdf_path: Chemin du PDF à analyser
+        cache_path: Chemin du fichier JSON de cache (profile.cache_dir/vision_cache.json)
+        Autres args : identiques à analyze_cover()
+
+    Returns:
+        Dict avec title/author/theme/language/confidence, ou {'error': ...}
+    """
+    from pathlib import Path as _Path
+
+    from lib import vision_cache
+
+    cache_path = _Path(cache_path)
+    n_pages = max(1, min(n_pages, PDF_MAX_PAGES))
+
+    key = vision_cache.compute_cache_key(
+        pdf_path, model=model, n_pages=n_pages)
+
+    if key is not None:
+        cache = vision_cache.load_cache(cache_path)
+        hit = vision_cache.lookup(cache, key)
+        if hit is not None:
+            if verbose:
+                log.info("💾 Cache vision HIT : {}".format(
+                    os.path.basename(pdf_path)))
+            return hit
+        vision_cache.note_miss()
+    else:
+        cache = None
+
+    result = analyze_cover(
+        pdf_path, api_key=api_key, endpoint=endpoint, model=model,
+        dpi=dpi, verbose=verbose, max_retries=max_retries,
+        n_pages=n_pages, client=client)
+
+    if (
+        key is not None
+        and cache is not None
+        and isinstance(result, dict)
+        and not result.get('error')
+        and result.get('title')
+    ):
+        vision_cache.store(cache, key, result, model=model)
+        try:
+            vision_cache.save_cache(cache_path, cache)
+        except OSError as e:
+            log.warning("  ⚠ Impossible d'écrire le cache vision: {}".format(e))
 
     return result

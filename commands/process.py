@@ -72,9 +72,11 @@ def cmd_process(args, profile) -> None:
             if not api_key:
                 log.error("❌ --llm nécessite une clé API. export SILICONFLOW_API_KEY=votre-clé")
                 sys.exit(1)
+            vision_cache_path = os.path.join(profile.cache_dir, 'vision_cache.json')
             llm_callback = make_llm_rename_callback(
                 api_key, profile.llm_endpoint, profile.llm_model,
-                verbose=args.verbose, n_pages=n_pages)
+                verbose=args.verbose, n_pages=n_pages,
+                vision_cache_path=vision_cache_path)
 
         report_path = renamer.scan(
             source, enable_online=enable_online, enable_pdf=enable_pdf,

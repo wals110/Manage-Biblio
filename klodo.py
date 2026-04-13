@@ -187,8 +187,10 @@ def _build_parser():
         'clean', parents=[common],
         help='Nettoyer le cache du profil (classify, rename, progress, isbn, logs, all)')
     p_clean.add_argument('target',
-                         choices=['classify', 'rename', 'progress', 'isbn', 'logs', 'all'],
-                         help='Quoi nettoyer : classify, rename, progress (les deux), isbn, logs ou all')
+                         choices=['classify', 'rename', 'progress', 'isbn',
+                                  'vision-cache', 'logs', 'all'],
+                         help='Quoi nettoyer : classify, rename, progress (les deux), '
+                              'isbn, vision-cache, logs ou all')
 
     # ── init ��─
     p_init = subparsers.add_parser(
