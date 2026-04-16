@@ -39,3 +39,8 @@ tests/functional/reports/
 tests/functional/logs/
 tests/functional/results.db
 .superpowers/
+
+# Jupyter checkpoints
+notebooks/checkpoints/
+notebooks/*.ipynb_checkpoints
+**/.ipynb_checkpoints/
