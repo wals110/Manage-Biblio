@@ -44,3 +44,6 @@ tests/functional/results.db
 notebooks/checkpoints/
 notebooks/*.ipynb_checkpoints
 **/.ipynb_checkpoints/
+
+# HF/SetFit trainer checkpoints (1GB+)
+checkpoints/
