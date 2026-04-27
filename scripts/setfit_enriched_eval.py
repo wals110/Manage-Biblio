@@ -86,7 +86,7 @@ def main(profile: str) -> int:
     mapping_path = profile_dir / "theme_mapping.yaml"
     tree_path = profile_dir / "tree.yaml"
 
-    print(f"=== SetFit Étape 0 — input enrichi + split stratifié ===")
+    print("=== SetFit Étape 0 — input enrichi + split stratifié ===")
     print(f"Profil : {profile}")
     print(f"Seed   : {RANDOM_SEED}")
     print()

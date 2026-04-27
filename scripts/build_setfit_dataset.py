@@ -25,7 +25,6 @@ from pathlib import Path
 
 import yaml
 
-
 # Tokens to strip from filenames (noise that doesn't help classification)
 NOISE_PATTERNS = [
     r"\b(?:19|20)\d{2}\b",              # years

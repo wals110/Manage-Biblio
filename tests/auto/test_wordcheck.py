@@ -8,7 +8,7 @@ import unittest
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
-from lib.wordcheck import contains_real_words, word_score, _is_known_word, _is_acronym_or_name
+from lib.wordcheck import _is_acronym_or_name, _is_known_word, contains_real_words, word_score
 
 
 class TestIsKnownWord(unittest.TestCase):

@@ -505,8 +505,9 @@ async def close_issue(
 @app.post("/api/validate-check")
 async def validate_check_api(run_id: str, check_id: str, status: str):
     """Validate a manual check from the dashboard (pass/fail)."""
-    from fastapi.responses import HTMLResponse
     import sys
+
+    from fastapi.responses import HTMLResponse
     func_dir = str(data.get_project_root() / "tests" / "functional")
     if func_dir not in sys.path:
         sys.path.insert(0, func_dir)
@@ -593,7 +594,6 @@ def _get_api_keys_status() -> list[dict]:
 
 def _get_admin_stats() -> dict:
     """Compute admin stats."""
-    import glob as G
     root = data.get_project_root()
     logs_count = len(list((root / "logs").glob("*"))) if (root / "logs").exists() else 0
     test_logs = root / "tests" / "functional" / "logs"
@@ -660,8 +660,8 @@ async def delete_api_key(key_name: str):
 @app.post("/api/admin/clean-logs")
 async def clean_logs():
     """Delete all files in logs/."""
+
     from fastapi.responses import JSONResponse
-    import shutil
     logs_dir = data.get_project_root() / "logs"
     count = 0
     if logs_dir.exists():
@@ -675,8 +675,9 @@ async def clean_logs():
 @app.post("/api/admin/clean-reports")
 async def clean_reports():
     """Delete all reports."""
-    from fastapi.responses import JSONResponse
     import shutil
+
+    from fastapi.responses import JSONResponse
     reports_dir = data.get_project_root() / "tests" / "functional" / "reports"
     count = 0
     if reports_dir.exists():
@@ -718,8 +719,9 @@ async def clean_progress():
 @app.post("/api/admin/clean-all")
 async def clean_all():
     """Clean everything: logs + reports + DB + progress + test logs."""
-    from fastapi.responses import JSONResponse
     import shutil
+
+    from fastapi.responses import JSONResponse
     root = data.get_project_root()
     count = 0
     # Logs

@@ -333,7 +333,7 @@ def main():
                     print(f"  │  {dim('pre_run:')} $ {c}")
                 for c in s.get("setup", []):
                     print(f"  │  {dim('setup: ')} $ {c}")
-                print(f"  │")
+                print("  │")
                 for ck in s.get("checks", []):
                     tag = f" {ylw('[manual]')}" if ck.get("mode") == "manual_check" else ""
                     print(f"  │  [{ck['id']}] {ck['description']}{tag}")
@@ -345,7 +345,7 @@ def main():
                     if atype and atype != "manual_check":
                         exp = a.get("expected", a.get("pattern", a.get("seconds", "")))
                         print(f"  │          {dim(f'assert: {atype} → {exp}')}")
-                print(f"  └─")
+                print("  └─")
             print()
         post = session.get("post_run", [])
         if post:
@@ -573,7 +573,7 @@ def main():
                             subprocess.run(
                                 f'gh issue comment {gh} --repo wals110/Manage-Biblio --body "{body}"',
                                 shell=True, capture_output=True, cwd=PR)
-                ans = input(f"  Continuer ? [Y]es / [S]kip / [Q]uit ? ").strip().lower()
+                ans = input("  Continuer ? [Y]es / [S]kip / [Q]uit ? ").strip().lower()
                 if ans in ("q", "quit"):
                     print(f"\n  {ylw('Quit.')}"); break
 
@@ -615,7 +615,7 @@ def main():
             run_type = "full"
 
         try:
-            from db import insert_run, generate_run_name
+            from db import generate_run_name, insert_run
             label = args.label or generate_run_name()
             insert_run(report, f"run_{ts}", run_type, label=label)
             print(f"  {dim(f'Historique : {label} (run_{ts})')}")
@@ -632,7 +632,7 @@ def main():
     print(f"  {ylw('Skip')}  : {sm['skip']}")
     print(f"  Durée : {m}m {sc:02d}s")
     dline()
-    print(f"\n  Rapports:")
+    print("\n  Rapports:")
     print(f"    {dim(jp)}")
     print(f"    {dim(mp)}")
     print()

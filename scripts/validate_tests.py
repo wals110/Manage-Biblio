@@ -12,7 +12,8 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("ERROR: pip install pyyaml"); sys.exit(2)
+    print("ERROR: pip install pyyaml")
+    sys.exit(2)
 
 # ── Paths ──────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
