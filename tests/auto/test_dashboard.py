@@ -15,6 +15,7 @@ class TestDashboardRoutes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         cls.client = TestClient(app)
 
