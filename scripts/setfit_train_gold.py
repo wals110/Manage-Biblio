@@ -93,7 +93,7 @@ def main(profile: str, per_class: int, iterations: int) -> int:
         return 2
 
     print("=" * 60)
-    print(f"SetFit Étape 1 — training sur gold dataset SSD")
+    print("SetFit Étape 1 — training sur gold dataset SSD")
     print("=" * 60)
     print(f"Dataset : {dataset_path.relative_to(repo_root)}")
     print(f"Per-class cap : {per_class}")

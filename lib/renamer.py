@@ -840,10 +840,6 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
         if not force and is_name_clean(fn):
             stats['INCHANGE'] += 1
             seen.add(str(pdf_path).lower())
-            results.append({
-                'dossier': str(rel), 'ancien_nom': fn, 'nouveau_nom': '',
-                'action': 'INCHANGE', 'source': 'déjà_propre', 'chemin': str(pdf_path),
-            })
             if verbose:
                 print(f"\n    ⏭ {fn} → déjà propre")
             continue

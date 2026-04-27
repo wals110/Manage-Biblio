@@ -81,7 +81,7 @@ def main() -> int:
     human_to_folder = {v: k for k, v in human_map.items()}
     human_labels = list(human_map.values())
     print(f"  {len(mapping)} thèmes labellisés, {len(folders)} dossiers")
-    print(f"  exemples humanisés :")
+    print("  exemples humanisés :")
     for f in folders[:3]:
         print(f"    {f}")
         print(f"      -> {human_map[f]}")

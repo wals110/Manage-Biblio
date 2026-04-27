@@ -87,7 +87,7 @@ def main(profile: str) -> int:
     report.append("")
     report.append(f"**Profil** : `{profile}`  ")
     report.append(f"**Target** : `{target_base}`  ")
-    report.append(f"**Date génération** : `scripts/taxonomy_audit.py`")
+    report.append("**Date génération** : `scripts/taxonomy_audit.py`")
     report.append("")
     report.append("## Résumé")
     report.append("")
