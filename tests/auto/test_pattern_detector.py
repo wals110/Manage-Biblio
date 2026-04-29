@@ -15,7 +15,6 @@ from lib.pattern_detector import (
     test_coverage,
 )
 
-
 VALID_JSON = json.dumps({
     "regex": r"^[A-ZÀ-Ÿ].+ - [A-ZÀ-Ÿ].+$",
     "description": "Titre - Auteur capitalisés",

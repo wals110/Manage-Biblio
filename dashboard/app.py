@@ -975,7 +975,7 @@ def _generate_batch_thread(profile: str, force: bool, n_pages: int):
         _thumbnail_gen_state["running"] = False
         return
 
-    with ThreadPoolExecutor(max_workers=_THUMBNAIL_BATCH_WORKERS) as executor:
+    with ProcessPoolExecutor(max_workers=_THUMBNAIL_BATCH_WORKERS) as executor:
         future_to_file = {
             executor.submit(_process_one_file, f, cache_dir, force, n_pages): f
             for f in files

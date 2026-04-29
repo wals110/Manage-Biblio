@@ -199,15 +199,19 @@ class TestScanForce(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     def test_without_force_skips_clean(self):
-        """Sans --force, les noms propres sont marqués INCHANGE."""
+        """Sans --force, les noms propres sont ignorés (pas dans le rapport).
+
+        Behavior aligned with develop's PR #134: INCHANGE rows are filtered
+        from the rename report (consistent with checkpoint-resume path).
+        """
         from lib.renamer import scan
         report = scan(self.tmp, enable_online=False, enable_pdf=False,
                       force=False)
         import csv
         with open(report) as f:
             rows = list(csv.DictReader(f))
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]['action'], 'INCHANGE')
+        self.assertEqual(len(rows), 0,
+                         "Fichier propre ne devrait pas être dans le rapport")
 
     def test_with_force_analyses_clean(self):
         """Avec --force, même les noms propres sont re-analysés."""
