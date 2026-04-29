@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% set active = "baseline" %}
+{% block title %}Baseline — Validation classification{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Baseline — Matrice de confusion</h1>
+<p class="page-subtitle">
+    Validation manuelle de l'échantillon pour mesurer la précision réelle du classifier.
+</p>
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# Switch entre les 2 modes                                          #}
+{# ════════════════════════════════════════════════════════════════ #}
+<div class="baseline-mode-switch">
+    <a href="/baseline?mode=classified"
+       class="baseline-mode-tab {% if mode == 'classified' %}active{% endif %}">
+        <span class="baseline-mode-label">Mesure A — Précision sur fichiers classés</span>
+        <span class="baseline-mode-progress">
+            {{ classified_stats.validated }} / {{ classified_stats.total }}
+            {% if classified_stats.total > 0 %}
+                ({{ (100 * classified_stats.validated / classified_stats.total) | round(0, 'floor') | int }}%)
+            {% endif %}
+        </span>
+    </a>
+    <a href="/baseline?mode=atrier"
+       class="baseline-mode-tab {% if mode == 'atrier' %}active{% endif %}">
+        <span class="baseline-mode-label">Mesure B — Diagnostic A-TRIER</span>
+        <span class="baseline-mode-progress">
+            {{ atrier_stats.validated }} / {{ atrier_stats.total }}
+            {% if atrier_stats.total > 0 %}
+                ({{ (100 * atrier_stats.validated / atrier_stats.total) | round(0, 'floor') | int }}%)
+            {% endif %}
+        </span>
+    </a>
+</div>
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# Aucun sample disponible                                           #}
+{# ════════════════════════════════════════════════════════════════ #}
+{% if mode == 'classified' and not classified_stats.exists %}
+<div class="no-data">
+    <p><strong>Aucun échantillon disponible pour la Mesure A.</strong></p>
+    <p>Génère-le avec :</p>
+    <pre class="code-block">uv run python scripts/build_validation_sample.py</pre>
+</div>
+{% elif mode == 'atrier' and not atrier_stats.exists %}
+<div class="no-data">
+    <p><strong>Aucun échantillon disponible pour la Mesure B.</strong></p>
+    <p>Génère-le avec :</p>
+    <pre class="code-block">uv run python scripts/build_atrier_sample.py</pre>
+</div>
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# Validation terminée                                               #}
+{# ════════════════════════════════════════════════════════════════ #}
+{% elif record is none %}
+<div class="baseline-done">
+    <h2>✓ Validation terminée pour ce mode</h2>
+    {% if mode == 'classified' %}
+        <p>
+            <strong>{{ classified_stats.correct }}</strong> corrects ·
+            <strong>{{ classified_stats.wrong }}</strong> incorrects ·
+            <strong>{{ classified_stats.skip }}</strong> sautés
+            sur {{ classified_stats.total }} fichiers validés.
+        </p>
+    {% else %}
+        <p>
+            <strong>{{ atrier_stats.classified }}</strong> classés ·
+            <strong>{{ atrier_stats.skip }}</strong> sautés
+            sur {{ atrier_stats.total }} fichiers validés.
+        </p>
+    {% endif %}
+    <p>Pour générer le rapport :</p>
+    <pre class="code-block">uv run python scripts/compute_baseline.py</pre>
+</div>
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# UI principale de validation                                       #}
+{# ════════════════════════════════════════════════════════════════ #}
+{% else %}
+<div class="baseline-container" data-mode="{{ mode }}" data-profile="{{ profile }}">
+    {% set st = classified_stats if mode == 'classified' else atrier_stats %}
+    <div class="baseline-progress-wrap">
+        <div class="baseline-progress-bar">
+            <div class="baseline-progress-fill"
+                 style="width: {% if st.total %}{{ 100 * st.validated / st.total }}{% else %}0{% endif %}%"></div>
+        </div>
+        <div class="baseline-progress-text">
+            <strong id="baseline-validated">{{ st.validated }}</strong> /
+            <strong id="baseline-total">{{ st.total }}</strong>
+            <span class="text-muted">·
+                <span id="baseline-correct">{{ st.correct if mode == 'classified' else st.classified }}</span>
+                {% if mode == 'classified' %}corrects · <span id="baseline-wrong">{{ st.wrong }}</span> incorrects{% else %}classés{% endif %}
+                · <span id="baseline-skip">{{ st.skip }}</span> sautés
+            </span>
+        </div>
+    </div>
+
+    <div class="baseline-card">
+        <div class="baseline-thumbnail-pane">
+            <img id="baseline-thumb"
+                 src="/api/baseline/thumbnail/{{ record.file_id }}?profile={{ profile }}&mode={{ mode }}"
+                 alt="Couverture"
+                 class="baseline-thumb-img">
+        </div>
+
+        <div class="baseline-info-pane">
+            <div class="baseline-filename" id="baseline-filename">{{ record.filename }}</div>
+            <div class="baseline-relpath text-muted" id="baseline-relpath">{{ record.rel_path }}</div>
+
+            {% if mode == 'classified' %}
+            <div class="baseline-prediction">
+                <span class="baseline-label">Klodo a prédit :</span>
+                <span class="baseline-folder-pill" id="baseline-predicted">{{ record.predicted_folder }}</span>
+            </div>
+            <div class="baseline-question">C'est correct ?</div>
+            <div class="baseline-actions">
+                <button class="btn btn-success" data-action="correct">
+                    ✓ Oui (Y)
+                </button>
+                <button class="btn btn-danger" data-action="wrong">
+                    ✗ Non, en fait c'est… (N)
+                </button>
+                <button class="btn btn-muted" data-action="skip">
+                    ⏭ Skip (S)
+                </button>
+            </div>
+            {% else %}
+            <div class="baseline-prediction">
+                <span class="baseline-label">Klodo a abandonné →</span>
+                <span class="baseline-folder-pill baseline-pill-warn">_A-TRIER</span>
+            </div>
+            <div class="baseline-question">Quel était le bon dossier ?</div>
+            <div class="baseline-atrier-actions">
+                <button class="btn btn-muted" data-action="skip">
+                    ⏭ Illisible / Incertain (S)
+                </button>
+            </div>
+            {% endif %}
+
+            <div id="baseline-folder-picker" class="baseline-folder-picker hidden">
+                <label for="baseline-folder-input">
+                    {% if mode == 'classified' %}Bon dossier :{% else %}Choisis le dossier :{% endif %}
+                </label>
+                <input type="text" id="baseline-folder-input"
+                       class="baseline-autocomplete"
+                       placeholder="Tape pour filtrer parmi {{ folders | length }} dossiers…"
+                       autocomplete="off">
+                <div id="baseline-folder-suggestions" class="baseline-suggestions"></div>
+                <div class="baseline-folder-actions">
+                    <button id="baseline-folder-confirm" class="btn btn-success" disabled>
+                        Confirmer (Enter)
+                    </button>
+                    <button id="baseline-folder-cancel" class="btn btn-muted">
+                        Annuler (Esc)
+                    </button>
+                </div>
+            </div>
+
+            <div class="baseline-shortcuts text-muted">
+                <strong>Raccourcis :</strong>
+                {% if mode == 'classified' %}
+                    <kbd>Y</kbd> = correct ·
+                    <kbd>N</kbd> = incorrect ·
+                    <kbd>S</kbd> = skip ·
+                {% else %}
+                    <kbd>S</kbd> = skip ·
+                {% endif %}
+                <kbd>↓</kbd>/<kbd>↑</kbd> = nav suggestions ·
+                <kbd>Enter</kbd> = confirmer ·
+                <kbd>Esc</kbd> = annuler
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="baseline-folders-data" type="application/json">{{ folders | tojson }}</script>
+<script>
+window._baselineConfig = {
+    profile: "{{ profile }}",
+    mode: "{{ mode }}",
+    initialFileId: "{{ record.file_id }}",
+};
+</script>
+<script src="/static/js/baseline.js"></script>
+{% endif %}
+{% endblock %}

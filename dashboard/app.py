@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import data
+from dashboard import baseline, data
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -1376,3 +1376,146 @@ async def delete_run(id: str):
     if report_dir.exists():
         shutil.rmtree(report_dir)
     return JSONResponse({"message": f"Run {id} supprimé"})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Baseline classification validation
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/baseline")
+async def baseline_page(request: Request, mode: str = "classified"):
+    """Validation page for the classification baseline.
+
+    Two modes:
+    - 'classified' : confirm/correct Klodo's predictions on classified files
+    - 'atrier'     : provide ground-truth folder for files Klodo dumped to A-TRIER
+    """
+    profile = "default"
+    if mode not in ("classified", "atrier"):
+        mode = "classified"
+
+    classified_stats = baseline.stats(profile, "classified")
+    atrier_stats = baseline.stats(profile, "atrier")
+    folders = baseline.list_target_folders(profile)
+    record = baseline.next_record(profile, mode)
+
+    return templates.TemplateResponse(
+        request,
+        "baseline.html",
+        {
+            "active": "baseline",
+            "profile": profile,
+            "mode": mode,
+            "record": record,
+            "folders": folders,
+            "classified_stats": classified_stats,
+            "atrier_stats": atrier_stats,
+        },
+    )
+
+
+@app.get("/api/baseline/next")
+async def baseline_next(profile: str = "default", mode: str = "classified"):
+    """Return the next unvalidated record + progress, or null if all done."""
+    from fastapi.responses import JSONResponse
+    if mode not in ("classified", "atrier"):
+        return JSONResponse({"error": "invalid mode"}, status_code=400)
+    record = baseline.next_record(profile, mode)
+    stats = baseline.stats(profile, mode)
+    if record is None:
+        return JSONResponse({"done": True, "record": None, "stats": stats})
+    return JSONResponse({"done": False, "record": record, "stats": stats})
+
+
+@app.post("/api/baseline/verdict")
+async def baseline_save_verdict(request: Request):
+    """Persist a verdict for a single file_id.
+
+    Body JSON:
+      {profile, mode, file_id, verdict, ground_truth?, notes?}
+    """
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile", "default")
+    mode = body.get("mode")
+    file_id = body.get("file_id")
+    verdict = body.get("verdict")
+    ground_truth = body.get("ground_truth")
+    notes = body.get("notes")
+
+    if mode not in ("classified", "atrier"):
+        return JSONResponse({"error": "invalid mode"}, status_code=400)
+    if not file_id or not verdict:
+        return JSONResponse({"error": "missing file_id or verdict"}, status_code=400)
+
+    try:
+        ok = baseline.save_verdict(
+            profile, mode, file_id, verdict,
+            ground_truth=ground_truth, notes=notes,
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    if not ok:
+        return JSONResponse({"error": "file_id not found"}, status_code=404)
+
+    stats = baseline.stats(profile, mode)
+    next_rec = baseline.next_record(profile, mode)
+    return JSONResponse({
+        "ok": True, "stats": stats,
+        "next": next_rec, "done": next_rec is None,
+    })
+
+
+@app.get("/api/baseline/thumbnail/{file_id}")
+async def baseline_thumbnail(file_id: str, profile: str = "default", mode: str = "classified"):
+    """Serve a thumbnail for the given file_id, generating it on demand.
+
+    Path traversal is impossible: file_id is a sha1 hash and the resolved
+    source path is checked to live under the profile's target.
+    """
+    from fastapi.responses import FileResponse, JSONResponse
+
+    from lib.thumbnail import generate_thumbnail
+    if mode not in ("classified", "atrier"):
+        return JSONResponse({"error": "invalid mode"}, status_code=400)
+
+    record = baseline.get_record(profile, mode, file_id)
+    if record is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    source = baseline.resolve_source_path(profile, record["rel_path"])
+    if source is None:
+        return JSONResponse({"error": "source missing on disk"}, status_code=404)
+
+    doc_dir = baseline.baseline_thumbnail_dir(profile, file_id)
+    target = doc_dir / "1.jpg"
+
+    if not target.exists():
+        try:
+            generate_thumbnail(source, doc_dir, n_pages=1, start_page=1)
+        except Exception as e:
+            return JSONResponse({"error": f"thumbnail failed: {e}"}, status_code=500)
+
+    if not target.exists():
+        return JSONResponse({"error": "thumbnail unavailable"}, status_code=500)
+
+    return FileResponse(target, media_type="image/jpeg")
+
+
+@app.get("/api/baseline/folders")
+async def baseline_folders(profile: str = "default"):
+    """Return the list of valid folders for ground-truth selection (autocomplete)."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"folders": baseline.list_target_folders(profile)})
+
+
+@app.get("/api/baseline/stats")
+async def baseline_stats_api(profile: str = "default"):
+    """Return progression stats for both modes."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({
+        "classified": baseline.stats(profile, "classified"),
+        "atrier": baseline.stats(profile, "atrier"),
+    })

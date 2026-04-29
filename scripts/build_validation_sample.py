@@ -162,12 +162,12 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", default="default")
-    parser.add_argument("--per-class", type=int, default=6,
-                        help="Target sample size per class (default: 6)")
-    parser.add_argument("--floor", type=int, default=3,
-                        help="Below this folder size, take all files (default: 3)")
-    parser.add_argument("--cap", type=int, default=15,
-                        help="Cap per-class sample size (default: 15)")
+    parser.add_argument("--per-class", type=int, default=3,
+                        help="Target sample size per class (default: 3 → ~280 files)")
+    parser.add_argument("--floor", type=int, default=2,
+                        help="Below this folder size, take all files (default: 2)")
+    parser.add_argument("--cap", type=int, default=10,
+                        help="Cap per-class sample size (default: 10)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=Path, default=None,
                         help="Override output path")
