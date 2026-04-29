@@ -15,7 +15,7 @@ from lib.constants import CONFIDENCE_THRESHOLD, MAPPER_MIN_CONFIDENCE
 from lib.exceptions import SafetyError
 from lib.llm_mapper import LLMMapper
 from lib.logger import get_logger
-from lib.vision import analyze_cover
+from lib.vision import analyze_cover, analyze_cover_cached
 
 log = get_logger()
 
@@ -198,12 +198,13 @@ def execute_classify(results, target_base, fallback='_A-TRIER'):
 
 def process_single_file(pdf_path, api_key, endpoint, model,
                         theme_mapping, classifier=None, llm_mapper=None,
-                        verbose=False, min_confidence=CONFIDENCE_THRESHOLD, n_pages=1):
-    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int) -> dict
+                        verbose=False, min_confidence=CONFIDENCE_THRESHOLD, n_pages=1,
+                        vision_cache_path=None):
+    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int, str | None) -> dict
     """
     Pipeline de classification pour un fichier :
     1. Extraction couverture → image
-    2. Envoi au LLM Vision → titre, auteur, thème
+    2. Envoi au LLM Vision → titre, auteur, thème (via cache si `vision_cache_path` fourni)
     3. Classification thématique
     """
     filename = os.path.basename(pdf_path)
@@ -221,8 +222,13 @@ def process_single_file(pdf_path, api_key, endpoint, model,
         'status': 'pending',
     }  # type: dict
 
-    vision = analyze_cover(pdf_path, api_key, endpoint, model,
-                           verbose=verbose, n_pages=n_pages)
+    if vision_cache_path:
+        vision = analyze_cover_cached(pdf_path, vision_cache_path,
+                                      api_key, endpoint, model,
+                                      verbose=verbose, n_pages=n_pages)
+    else:
+        vision = analyze_cover(pdf_path, api_key, endpoint, model,
+                               verbose=verbose, n_pages=n_pages)
 
     if vision.get('error') == 'extraction':
         result['status'] = 'erreur_extraction'
@@ -347,11 +353,16 @@ def save_mapper_results(mapper, profile, logs_dir):
     mapper.print_stats()
 
 
-def make_llm_rename_callback(api_key, endpoint, model, verbose=False, n_pages=1):
-    # type: (str, str, str, bool, int) -> object
-    """Crée un callback LLM Vision pour le renommage."""
+def make_llm_rename_callback(api_key, endpoint, model, verbose=False, n_pages=1,
+                             vision_cache_path=None):
+    # type: (str, str, str, bool, int, str | None) -> object
+    """Crée un callback LLM Vision pour le renommage (passe par le cache si fourni)."""
     def callback(pdf_path):
         # type: (str) -> dict
+        if vision_cache_path:
+            return analyze_cover_cached(pdf_path, vision_cache_path,
+                                        api_key, endpoint, model,
+                                        verbose=verbose, n_pages=n_pages)
         return analyze_cover(pdf_path, api_key, endpoint, model,
                              verbose=verbose, n_pages=n_pages)
     return callback

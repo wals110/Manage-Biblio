@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card, run_banner %}
 {% set active = "metriques" %}
 {% block title %}M&eacute;triques{% endblock %}
 
@@ -23,13 +24,8 @@
 </div>
 
 {% if current_run %}
-<div class="run-banner">
-    <span class="run-banner-label">{{ current_run._label or 'Run' }}</span>
-    <span class="run-banner-date">{{ current_run.run_at[:19] | replace("T", " ") }}</span>
-    <span class="run-banner-stats">{{ current_run.summary.pass }}/{{ current_run.summary.total }} PASS</span>
-    {% if current_run._git_branch %}
-    <span class="run-banner-git">{{ current_run._git_branch }}{% if current_run._git_commit %}@{{ current_run._git_commit }}{% endif %}</span>
-    {% endif %}
+{{ run_banner(current_run) }}
+<div style="margin-top:-12px;margin-bottom:12px;">
     <span class="text-muted" style="font-size:0.8rem;">
         {{ classify_count }} rapport(s) classify &middot; {{ rename_count }} rapport(s) rename
     </span>

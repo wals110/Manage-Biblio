@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import run_banner %}
 {% set active = "tests" %}
 {% block title %}Tests{% endblock %}
 
@@ -11,14 +12,7 @@
 {% endif %}
 <h1 class="page-title">Tests &mdash; Ex&eacute;cution</h1>
 {% if report and report.run_at is defined and report.run_at %}
-<div class="run-banner">
-    <span class="run-banner-label">{{ report._label or 'Run' }}</span>
-    <span class="run-banner-date">{{ report.run_at[:19] | replace("T", " ") }}</span>
-    <span class="run-banner-stats">{{ report.summary.pass }}/{{ report.summary.total }} PASS</span>
-    {% if report._git_branch %}
-    <span class="run-banner-git">{{ report._git_branch }}{% if report._git_commit %}@{{ report._git_commit }}{% endif %}</span>
-    {% endif %}
-</div>
+{{ run_banner(report) }}
 {% else %}
 <p class="page-subtitle">Aucun rapport disponible &mdash; lancez les tests pour commencer</p>
 {% endif %}
@@ -164,256 +158,44 @@
 {% endif %}
 
 <script>
-function updateSelectionCount() {
-    const checked = document.querySelectorAll('.series-checkbox:checked');
-    const count = checked.length;
-    document.getElementById('selection-count').textContent = count;
-    const btn = document.getElementById('btn-run-selection');
-    btn.disabled = count === 0;
-    btn.style.opacity = count === 0 ? '0.4' : '1';
-}
-
-function togglePhaseCheckboxes(phaseCheckbox, phaseIdx) {
-    const phase = phaseCheckbox.closest('.phase-accordion');
-    const boxes = phase.querySelectorAll('.series-checkbox');
-    boxes.forEach(b => b.checked = phaseCheckbox.checked);
-    updateSelectionCount();
-}
-
-function checkAll() {
-    document.querySelectorAll('.series-checkbox, .phase-checkbox').forEach(b => b.checked = true);
-    updateSelectionCount();
-}
-
-function toggleAllCheckboxes() {
-    const boxes = document.querySelectorAll('.series-checkbox');
-    const allChecked = Array.from(boxes).every(b => b.checked);
-    const newState = !allChecked;
-    boxes.forEach(b => b.checked = newState);
-    document.querySelectorAll('.phase-checkbox').forEach(b => b.checked = newState);
-    const btn = document.querySelector('.btn-toggle-all');
-    if (btn) btn.textContent = newState ? 'Tout désélectionner' : 'Tout sélectionner';
-    updateSelectionCount();
-}
-
-function runSelection(btn) {
-    const checked = document.querySelectorAll('.series-checkbox:checked');
-    if (checked.length === 0) return;
-    const series = Array.from(checked).map(c => c.value).join(',');
-    const url = buildRunUrl('/api/run?series=' + series);
-    console.log('[dashboard] Selection URL:', url);
-    console.log('[dashboard] Series:', series);
-    console.log('[dashboard] Checked:', checked.length);
-    runAll(btn, url);
-}
-
+// Bindings Jinja → JS, doivent être définis avant tests.js
 const _profileNames = [{% for p in available_profiles %}'{{ p.name }}'{% if not loop.last %}, {% endif %}{% endfor %}];
 let _currentProfile = '{{ current_profile }}';
-
-function updateProfileInCommands(newProfile) {
-    document.querySelectorAll('.cmd-text').forEach(el => {
-        el.textContent = el.textContent.replace(
-            '--profile ' + _currentProfile,
-            '--profile ' + newProfile
-        );
-    });
-    // Also update copy buttons
-    document.querySelectorAll('.btn-copy').forEach(btn => {
-        const onclick = btn.getAttribute('onclick');
-        if (onclick && onclick.includes('--profile ' + _currentProfile)) {
-            btn.setAttribute('onclick', onclick.replace(
-                '--profile ' + _currentProfile,
-                '--profile ' + newProfile
-            ));
-        }
-    });
-    _currentProfile = newProfile;
-}
-
-function buildRunUrl(baseUrl) {
-    let url = baseUrl;
-    const historyChecked = document.getElementById('history-toggle').checked;
-    if (!historyChecked) url += '&no_history=true';
-    const profile = document.getElementById('profile-select').value;
-    if (profile) url += '&profile=' + encodeURIComponent(profile);
-    return url;
-}
-
-function runAll(btn, url) {
-    const isPhase = url.includes('phase=');
-    const scope = isPhase ? btn.closest('.phase-accordion') : document.getElementById('test-phases');
-    if (!scope) return;
-
-    // Reset dots to grey, highlight first one as running
-    scope.querySelectorAll('.status-dot').forEach(d => {
-        d.className = 'status-dot dot-not_run';
-    });
-    const firstDot = scope.querySelector('.series-summary > .status-dot');
-    if (firstDot) firstDot.className = 'status-dot dot-running';
-
-    // Start polling for real current series
-    const runPollInterval = setInterval(() => {
-        fetch('/api/status').then(r => r.json()).then(s => {
-            if (s.current_series) {
-                updateSeriesStatus(s.current_series, s.completed, s.checks);
-            }
-            if (!s.running) {
-                clearInterval(runPollInterval);
-            }
-        });
-    }, 2000);
-    scope.querySelectorAll('.series-stats span').forEach(s => {
-        s.textContent = '...';
-        s.className = 'text-muted';
-    });
-    scope.querySelectorAll('.phase-pass-count').forEach(s => {
-        s.textContent = '...';
-        s.className = 'phase-pass-count text-muted';
-    });
-
-    // Disable run buttons, show stop button
-    document.querySelectorAll('.btn-run, .btn-primary, #btn-run-failures').forEach(b => {
-        b.style.pointerEvents = 'none';
-        b.style.opacity = '0.4';
-    });
-    btn.innerHTML = 'Exécution...';
-    // Activate global stop button
-    const stopBtn = document.getElementById('btn-stop');
-    stopBtn.disabled = false;
-    stopBtn.className = 'btn btn-stop';
-
-    // Activate phase stop button if running a phase
-    if (isPhase) {
-        const phaseStop = btn.closest('.phase-header-right').querySelector('.btn-phase-stop');
-        if (phaseStop) {
-            phaseStop.disabled = false;
-            phaseStop.className = 'btn btn-stop btn-sm btn-phase-stop';
-        }
-    }
-    // Activate all phase stop buttons if running all
-    if (!isPhase) {
-        document.querySelectorAll('.btn-phase-stop').forEach(b => {
-            b.disabled = false;
-            b.className = 'btn btn-stop btn-sm btn-phase-stop';
+</script>
+<script src="/static/js/tests.js"></script>
+<script>
+// Code DOM-dépendant : restauration de l'état et polling initial
+(function restoreState() {
+    const savedExpanded = sessionStorage.getItem('expandedSeries');
+    if (savedExpanded) {
+        const ids = JSON.parse(savedExpanded);
+        document.querySelectorAll('.series-row.expanded').forEach(el => el.classList.remove('expanded'));
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('expanded');
         });
     }
-
-    // Save checkbox state before reload
-    function saveCheckboxes() {
-        const checked = Array.from(document.querySelectorAll('.series-checkbox:checked')).map(c => c.value);
-        sessionStorage.setItem('checkedSeries', JSON.stringify(checked));
-    }
-
-    // POST then reload
-    fetch(url, {method: 'POST'}).then(() => {
-        saveCheckboxes();
-        window.location.reload();
-    }).catch(() => {
-        saveCheckboxes();
-        window.location.reload();
-    });
-}
-
-function stopRun() {
-    const stopBtn = document.getElementById('btn-stop');
-    stopBtn.innerHTML = 'Arrêt...';
-    stopBtn.style.pointerEvents = 'none';
-
-    fetch('/api/stop', {method: 'POST'}).then(() => {
-        // Wait a moment for process to terminate, then reload
-        setTimeout(() => window.location.reload(), 1000);
-    }).catch(() => {
-        window.location.reload();
-    });
-}
-
-// ── Expand state persistence ──
-function toggleExpand(el) {
-    el.classList.toggle('expanded');
-    saveExpandState();
-}
-
-function saveExpandState() {
-    const expanded = Array.from(document.querySelectorAll('.series-row.expanded'))
-        .map(el => el.id);
-    sessionStorage.setItem('expandedSeries', JSON.stringify(expanded));
-}
-
-// Restore expanded state from sessionStorage
-const savedExpanded = sessionStorage.getItem('expandedSeries');
-if (savedExpanded) {
-    const ids = JSON.parse(savedExpanded);
-    // Remove default expanded (fail series) first, then apply saved state
-    document.querySelectorAll('.series-row.expanded').forEach(el => el.classList.remove('expanded'));
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('expanded');
-    });
-}
-
-// Restore checkboxes from sessionStorage
-const savedChecks = sessionStorage.getItem('checkedSeries');
-if (savedChecks) {
-    const checked = JSON.parse(savedChecks);
-    checked.forEach(id => {
-        const cb = document.querySelector(`.series-checkbox[value="${id}"]`);
-        if (cb) cb.checked = true;
-    });
-    // Also check parent phase checkboxes if all series in phase are checked
-    document.querySelectorAll('.phase-checkbox').forEach(pcb => {
-        const phase = pcb.closest('.phase-accordion');
-        if (phase) {
-            const all = phase.querySelectorAll('.series-checkbox');
-            const allChecked = Array.from(all).every(b => b.checked);
-            pcb.checked = allChecked;
-        }
-    });
-    updateSelectionCount();
-}
-
-// On page load, check if a test is already running
-function updateSeriesStatus(seriesId, completed, checks) {
-    // Update completed series with their final color
-    if (completed) {
-        for (const [sid, status] of Object.entries(completed)) {
-            const safeId = sid.replace('.', '-');
-            const row = document.getElementById('series-' + safeId);
-            if (row) {
-                const dot = row.querySelector('.series-summary > .status-dot');
-                if (dot) dot.className = 'status-dot dot-' + status;
+    const savedChecks = sessionStorage.getItem('checkedSeries');
+    if (savedChecks) {
+        const checked = JSON.parse(savedChecks);
+        checked.forEach(id => {
+            const cb = document.querySelector(`.series-checkbox[value="${id}"]`);
+            if (cb) cb.checked = true;
+        });
+        document.querySelectorAll('.phase-checkbox').forEach(pcb => {
+            const phase = pcb.closest('.phase-accordion');
+            if (phase) {
+                const all = phase.querySelectorAll('.series-checkbox');
+                pcb.checked = Array.from(all).every(b => b.checked);
             }
-        }
+        });
+        updateSelectionCount();
     }
-    // Update completed checks with their color
-    if (checks) {
-        for (const [cid, status] of Object.entries(checks)) {
-            // Find check dot by matching check-id text
-            document.querySelectorAll('.check-id').forEach(el => {
-                if (el.textContent.trim() === cid) {
-                    const checkDot = el.parentElement.querySelector('.status-dot');
-                    if (checkDot) checkDot.className = 'status-dot dot-' + status;
-                }
-            });
-        }
-    }
-    // Reset current running dot (remove previous blue)
-    document.querySelectorAll('.dot-running').forEach(d => {
-        d.className = 'status-dot dot-not_run';
-    });
-    // Highlight current series in blue
-    if (seriesId) {
-        const safeId = seriesId.replace('.', '-');
-        const row = document.getElementById('series-' + safeId);
-        if (row) {
-            const dot = row.querySelector('.series-summary > .status-dot');
-            if (dot) dot.className = 'status-dot dot-running';
-        }
-    }
-}
+})();
 
+// Si un test est déjà en cours au chargement, activer le flux SSE
 fetch('/api/status').then(r => r.json()).then(data => {
     if (data.running) {
-        // Disable buttons
         document.querySelectorAll('.btn-run, .btn-primary, #btn-run-failures, #btn-run-selection').forEach(b => {
             b.style.pointerEvents = 'none';
             b.style.opacity = '0.4';
@@ -421,20 +203,8 @@ fetch('/api/status').then(r => r.json()).then(data => {
         const stopBtn = document.getElementById('btn-stop');
         if (stopBtn) { stopBtn.disabled = false; stopBtn.className = 'btn btn-stop'; }
 
-        // Show current series
         updateSeriesStatus(data.current_series, data.completed, data.checks);
-
-        // Poll for updates
-        const pollInterval = setInterval(() => {
-            fetch('/api/status').then(r => r.json()).then(s => {
-                if (!s.running) {
-                    clearInterval(pollInterval);
-                    window.location.reload();
-                } else {
-                    updateSeriesStatus(s.current_series, s.completed, s.checks);
-                }
-            });
-        }, 2000);
+        startProgressStream();
     }
 });
 </script>

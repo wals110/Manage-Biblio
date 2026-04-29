@@ -158,5 +158,70 @@ class TestIntegrationWithRenamer(unittest.TestCase):
         self.assertFalse(is_name_clean("2738119042.pdf"))
 
 
+class TestNamePatterns(unittest.TestCase):
+    """Test name_patterns validation in is_name_clean."""
+
+    PATTERNS = [
+        r"^[A-ZÀ-Ÿ].+ - [A-ZÀ-Ÿ].+$",   # Titre - Auteur
+        r"^[A-ZÀ-Ÿ][A-Za-zÀ-ÿ ]{4,}$",    # Titre seul capitalisé
+    ]
+
+    def test_no_patterns_retrocompatible(self):
+        """Sans patterns, seul le wordcheck décide."""
+        from lib.renamer import is_name_clean
+        self.assertTrue(is_name_clean("Python Programming.pdf"))
+        self.assertTrue(is_name_clean("Python Programming.pdf", name_patterns=[]))
+
+    def test_titre_auteur_matches(self):
+        from lib.renamer import is_name_clean
+        self.assertTrue(is_name_clean(
+            "Introduction to Algorithms - Thomas Cormen.pdf", self.PATTERNS))
+
+    def test_titre_seul_matches(self):
+        from lib.renamer import is_name_clean
+        self.assertTrue(is_name_clean("Algorithms.pdf", self.PATTERNS))
+        self.assertTrue(is_name_clean("Python Programming.pdf", self.PATTERNS))
+
+    def test_scan_artifact_rejected(self):
+        """Artefact de scan : vrais mots mais pas au bon format."""
+        from lib.renamer import is_name_clean
+        self.assertFalse(is_name_clean(
+            "00 0672318350 fm 05•02•2003 2 31 PM Page i.pdf", self.PATTERNS))
+
+    def test_lowercase_rejected(self):
+        """Nom tout en minuscules ne matche aucun pattern."""
+        from lib.renamer import is_name_clean
+        self.assertFalse(is_name_clean(
+            "introduction to algorithms.pdf", self.PATTERNS))
+
+    def test_gibberish_still_rejected(self):
+        """Gibberish rejeté par wordcheck avant même les patterns."""
+        from lib.renamer import is_name_clean
+        self.assertFalse(is_name_clean("'fh&itei.pdf", self.PATTERNS))
+
+    def test_invalid_regex_does_not_crash(self):
+        """Regex invalide dans les patterns ne crashe pas."""
+        from lib.renamer import is_name_clean
+        bad_patterns = ["[", r"^[A-Z].+ - [A-Z].+$"]
+        # Le premier pattern est invalide, le second valide → doit matcher
+        self.assertTrue(is_name_clean(
+            "Clean Code - Robert Martin.pdf", bad_patterns))
+
+    def test_no_match_returns_false(self):
+        """Fichier avec vrais mots mais aucun pattern ne matche → dirty."""
+        from lib.renamer import is_name_clean
+        # Pattern très restrictif qui ne matche pas ce fichier
+        strict = [r"^EXACTMATCH$"]
+        self.assertFalse(is_name_clean(
+            "Python Programming.pdf", strict))
+
+    def test_pattern_with_accents(self):
+        from lib.renamer import is_name_clean
+        self.assertTrue(is_name_clean(
+            "Économie Politique.pdf", self.PATTERNS))
+        self.assertTrue(is_name_clean(
+            "Économie Politique - François Dupont.pdf", self.PATTERNS))
+
+
 if __name__ == "__main__":
     unittest.main()

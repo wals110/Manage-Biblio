@@ -151,6 +151,10 @@ class Profile:
 
         self.defaults = data.get("defaults", {})
 
+        # Rename config
+        rename_cfg = data.get("rename", {})
+        self.name_patterns = rename_cfg.get("name_patterns", [])
+
         # Cache directory: inside the profile folder (.cache/)
         self.cache_dir = str(self._profile_dir / ".cache")
 

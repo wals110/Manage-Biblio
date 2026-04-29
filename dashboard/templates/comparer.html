@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card %}
 {% set active = "comparer" %}
 {% block title %}Comparer{% endblock %}
 
@@ -59,23 +60,11 @@
 
 {# ── Diff Stats ── #}
 <div class="kpi-row diff-stats">
-    <div class="kpi-card green">
-        <div class="kpi-label">Am&eacute;lior&eacute;s</div>
-        <div class="kpi-value">+{{ diff.stats.improved }}</div>
-    </div>
-    <div class="kpi-card red">
-        <div class="kpi-label">R&eacute;gressions</div>
-        <div class="kpi-value">{{ diff.stats.regressed }}</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-label">Inchang&eacute;s</div>
-        <div class="kpi-value">{{ diff.stats.unchanged }}</div>
-    </div>
+    {{ kpi_card("Am&eacute;lior&eacute;s" | safe, '+' ~ diff.stats.improved, "green") }}
+    {{ kpi_card("R&eacute;gressions" | safe, diff.stats.regressed, "red") }}
+    {{ kpi_card("Inchang&eacute;s" | safe, diff.stats.unchanged) }}
     {% if diff.stats.new > 0 %}
-    <div class="kpi-card blue">
-        <div class="kpi-label">Nouveaux</div>
-        <div class="kpi-value">{{ diff.stats.new }}</div>
-    </div>
+    {{ kpi_card("Nouveaux", diff.stats.new, "blue") }}
     {% endif %}
 </div>
 

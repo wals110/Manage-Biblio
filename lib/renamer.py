@@ -43,6 +43,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from lib.checkpoint import CheckpointManager
+from lib.wordcheck import contains_real_words
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
@@ -118,8 +119,14 @@ def _looks_like_real_title(text: str) -> bool:
     return True
 
 
-def is_name_clean(filename: str) -> bool:
-    """Retourne True si le nom n'a pas besoin de correction."""
+def is_name_clean(filename: str, name_patterns: list[str] | None = None) -> bool:
+    """Retourne True si le nom n'a pas besoin de correction.
+
+    Args:
+        filename: Nom du fichier (avec extension).
+        name_patterns: Liste de regex que le stem doit matcher (au moins un).
+                       Si vide ou None, pas de vérification de format.
+    """
     stem = Path(filename).stem
 
     # Décoder URL
@@ -184,24 +191,35 @@ def is_name_clean(filename: str) -> bool:
 
     # --- Signal positif : le nom est-il déjà lisible ? ---
     # Le nom doit contenir de vrais mots (dictionnaire EN/FR + termes techniques)
-    from lib.wordcheck import contains_real_words
-
     words = re.findall(r'[A-Za-zÀ-ÿ]{2,}', stem_decoded)
 
+    # Vérification wordcheck
+    wordcheck_ok = False
     # 3+ mots et ≥ 10 chars : vérifier que ce sont de vrais mots
     if len(words) >= 3 and len(stem_decoded) >= 10:
-        return contains_real_words(stem_decoded)
-
+        wordcheck_ok = contains_real_words(stem_decoded)
     # 1-2 mots, ≥ 5 chars, pas d'IDs collés : vérifier dans le dico
-    if len(words) >= 1 and len(stem) >= 5 and re.search(r'[A-Za-zÀ-ÿ]{3,}', stem):
+    elif len(words) >= 1 and len(stem) >= 5 and re.search(r'[A-Za-zÀ-ÿ]{3,}', stem):
         if not re.search(r'\d{5,}', stem_decoded):
-            return contains_real_words(stem_decoded)
-
+            wordcheck_ok = contains_real_words(stem_decoded)
     # Nom avec espace et ≥ 5 chars : vérifier dans le dico
-    if len(stem) >= 5 and ' ' in stem:
-        return contains_real_words(stem_decoded)
+    elif len(stem) >= 5 and ' ' in stem:
+        wordcheck_ok = contains_real_words(stem_decoded)
 
-    return False
+    if not wordcheck_ok:
+        return False
+
+    # Vérification des patterns de nommage (si configurés)
+    if name_patterns:
+        for p in name_patterns:
+            try:
+                if re.search(p, stem_decoded):
+                    return True
+            except re.error:
+                continue
+        return False
+
+    return True
 
 
 # ===================================================================
@@ -582,7 +600,6 @@ def _is_good_title(name: str) -> bool:
     if stem.isupper() and len(words) <= 2 and len(stem) < 25:
         return False
     # Rejeté si le titre ne contient pas de vrais mots
-    from lib.wordcheck import contains_real_words
     if not contains_real_words(stem):
         return False
     return True
@@ -763,7 +780,8 @@ def resolve_duplicate(new_path: Path, seen: set) -> Path:
 # ===================================================================
 def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
          llm_callback=None, max_files: int = 0, force: bool = False,
-         verbose: bool = False, cache_dir: str = ''):
+         verbose: bool = False, cache_dir: str = '',
+         name_patterns: list[str] | None = None):
     """Scanne la bibliothèque et génère un rapport CSV.
 
     Args:
@@ -837,7 +855,7 @@ def scan(root_path: str, enable_online: bool = True, enable_pdf: bool = True,
             continue
 
         # Déjà propre ?
-        if not force and is_name_clean(fn):
+        if not force and is_name_clean(fn, name_patterns=name_patterns):
             stats['INCHANGE'] += 1
             seen.add(str(pdf_path).lower())
             if verbose:

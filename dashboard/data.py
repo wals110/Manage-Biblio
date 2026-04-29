@@ -87,15 +87,19 @@ def get_llm_config() -> dict | None:
     return None
 
 
-def get_available_profiles() -> list[dict]:
-    """List available test profiles with their LLM config.
+def get_available_profiles(include_all: bool = False) -> list[dict]:
+    """List available profiles with their LLM config.
 
-    Only includes profiles starting with 'test' (test, test-local, etc.)
+    Args:
+        include_all: Si True, retourne tous les profils (y compris 'default').
+                     Si False (défaut), seulement ceux commençant par 'test'.
     """
     profiles_dir = get_project_root() / "profiles"
     results = []
     for p in sorted(profiles_dir.iterdir()):
-        if not p.name.startswith("test"):
+        if not p.is_dir() or p.name.startswith("."):
+            continue
+        if not include_all and not p.name.startswith("test"):
             continue
         profile_file = p / "profile.yaml"
         if not profile_file.exists():
@@ -167,6 +171,49 @@ def _parse_csv_date(name: str) -> str:
             except ValueError:
                 pass
     return ""
+
+
+def get_user_log_files(log_type: str = "all") -> list[dict]:
+    """List CSV files in logs/ (user reports), sorted newest first.
+
+    Returns list of {name, path, date, size, log_type}.
+    """
+    root = get_project_root()
+    logs_dir = root / "logs"
+    if not logs_dir.exists():
+        return []
+
+    if log_type == "all":
+        patterns = list(CSV_PATTERNS.values())
+    else:
+        p = CSV_PATTERNS.get(log_type)
+        if not p:
+            return []
+        patterns = [p]
+
+    all_files = []
+    for pattern in patterns:
+        all_files.extend(logs_dir.glob(pattern))
+
+    files = sorted(all_files, key=lambda f: f.name, reverse=True)
+    results: list[dict] = []
+    for f in files:
+        stat = f.stat()
+        # Determine log type from filename
+        ftype = "unknown"
+        for t, pat in CSV_PATTERNS.items():
+            prefix = pat.replace("*.csv", "")
+            if f.name.startswith(prefix):
+                ftype = t
+                break
+        results.append({
+            "name": f.name,
+            "path": str(f),
+            "date": _parse_csv_date(f.name),
+            "size": stat.st_size,
+            "log_type": ftype,
+        })
+    return results
 
 
 def get_csv_files(report_type: str, tests_yaml: dict | None = None) -> list[dict]:
@@ -387,7 +434,8 @@ def diff_reports(rows_a: list[dict], rows_b: list[dict], key_col: str) -> dict:
             continue
 
         # Both exist
-        assert row_a is not None and row_b is not None
+        if row_a is None or row_b is None:
+            continue
         a_classified = _is_classified(row_a)
         b_classified = _is_classified(row_b)
 
@@ -1209,3 +1257,189 @@ def compare_runs(
         "series": sorted(series_map.values(), key=lambda s: s["id"]),
         "stats": stats,
     }
+
+
+# ── Viewer ─────────────────────────────────────────────────────────────────
+
+VIEWER_SUPPORTED_EXTS = {".pdf", ".epub"}
+
+
+def get_thumbnail_cache_dir(profile_name: str) -> Path:
+    """Retourne le dossier de cache des thumbnails pour un profil.
+
+    Le dossier est créé s'il n'existe pas.
+    """
+    from lib.profile import Profile
+    profile = Profile(profile_name)
+    cache_dir = Path(profile.inbox) / ".thumbnail-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def list_inbox_files(profile_name: str) -> list[dict]:
+    """Liste les fichiers PDF/ePub de l'INBOX d'un profil.
+
+    Triés alphabétiquement, avec indication du nombre de pages en cache.
+
+    Returns:
+        Liste de dicts {name, size, ext, page_count, cached}
+        - page_count: nombre de pages dans .thumbnail-cache/{stem}/
+        - cached: True si page_count >= 1
+    """
+    from lib.profile import Profile
+    from lib.thumbnail import count_pages
+    try:
+        profile = Profile(profile_name)
+    except Exception:
+        return []
+
+    inbox = Path(profile.inbox)
+    if not inbox.is_dir():
+        return []
+
+    cache_dir = inbox / ".thumbnail-cache"
+
+    files: list[dict] = []
+    for entry in inbox.iterdir():
+        if not entry.is_file():
+            continue
+        ext = entry.suffix.lower()
+        if ext not in VIEWER_SUPPORTED_EXTS:
+            continue
+        try:
+            size = entry.stat().st_size
+        except OSError:
+            size = 0
+        page_count = count_pages(cache_dir, entry.stem)
+        files.append({
+            "name": entry.name,
+            "size": size,
+            "ext": ext,
+            "page_count": page_count,
+            "cached": page_count > 0,
+        })
+
+    files.sort(key=lambda f: f["name"].lower())
+    return files
+
+
+# ── Destinations autorisées pour la curation ─────────────────────────────
+CURATION_DEST_PROFILES = {"test", "test-local"}
+
+
+def copy_files_between_profiles(
+    source_profile: str,
+    dest_profile: str,
+    filenames: list[str],
+) -> dict:
+    """Copie N fichiers de l'INBOX source vers l'INBOX destination.
+
+    Args:
+        source_profile: nom du profil source (n'importe lequel)
+        dest_profile: nom du profil destination (test ou test-local uniquement)
+        filenames: noms de fichiers (basename, pas de chemin)
+
+    Returns:
+        {"copied": int, "skipped": int, "errors": list[str], "total": int}
+
+    Raises:
+        ValueError: si dest_profile n'est pas dans CURATION_DEST_PROFILES
+    """
+    import shutil
+
+    from lib.profile import Profile
+
+    if dest_profile not in CURATION_DEST_PROFILES:
+        raise ValueError(
+            f"Profil destination interdit : {dest_profile}. "
+            f"Autorisés : {sorted(CURATION_DEST_PROFILES)}"
+        )
+
+    source = Profile(source_profile)
+    dest = Profile(dest_profile)
+    source_inbox = Path(source.inbox)
+    dest_inbox = Path(dest.inbox)
+    dest_inbox.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    skipped = 0
+    errors: list[str] = []
+
+    for raw_name in filenames:
+        name = raw_name.strip()
+        if not name:
+            continue
+        # Path traversal guard : basename uniquement
+        if "/" in name or "\\" in name or ".." in name:
+            errors.append(f"Nom invalide : {name}")
+            continue
+
+        src = source_inbox / name
+        if not src.exists() or not src.is_file():
+            errors.append(f"Source absente : {name}")
+            continue
+
+        dst = dest_inbox / name
+        if dst.exists():
+            skipped += 1
+            continue
+
+        try:
+            shutil.copy2(src, dst)
+            copied += 1
+        except OSError as e:
+            errors.append(f"{name} : {e}")
+
+    return {
+        "copied": copied,
+        "skipped": skipped,
+        "errors": errors,
+        "total": len(filenames),
+    }
+
+
+def clear_destination_inbox(profile: str) -> dict:
+    """Supprime tous les .pdf/.epub de l'INBOX d'un profil destination.
+
+    Préserve le dossier .thumbnail-cache/ et tous les autres fichiers/dossiers.
+
+    Args:
+        profile: nom du profil (test ou test-local uniquement)
+
+    Returns:
+        {"removed": int, "preserved_cache": int}
+
+    Raises:
+        ValueError: si profile n'est pas dans CURATION_DEST_PROFILES
+    """
+    from lib.profile import Profile
+
+    if profile not in CURATION_DEST_PROFILES:
+        raise ValueError(
+            f"Profil destination interdit : {profile}. "
+            f"Autorisés : {sorted(CURATION_DEST_PROFILES)}"
+        )
+
+    profile_obj = Profile(profile)
+    inbox = Path(profile_obj.inbox)
+    if not inbox.is_dir():
+        return {"removed": 0, "preserved_cache": 0}
+
+    removed = 0
+    cache_dir = inbox / ".thumbnail-cache"
+    preserved_cache = 0
+    if cache_dir.exists():
+        preserved_cache = sum(1 for _ in cache_dir.glob("*.jpg"))
+
+    for entry in inbox.iterdir():
+        if not entry.is_file():
+            continue
+        if entry.suffix.lower() not in VIEWER_SUPPORTED_EXTS:
+            continue
+        try:
+            entry.unlink()
+            removed += 1
+        except OSError:
+            continue
+
+    return {"removed": removed, "preserved_cache": preserved_cache}

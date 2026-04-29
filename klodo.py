@@ -46,6 +46,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from commands import (
     cmd_classify,
     cmd_clean,
+    cmd_detect,
     cmd_init,
     cmd_process,
     cmd_profiles,
@@ -186,8 +187,10 @@ def _build_parser():
         'clean', parents=[common],
         help='Nettoyer le cache du profil (classify, rename, progress, isbn, logs, all)')
     p_clean.add_argument('target',
-                         choices=['classify', 'rename', 'progress', 'isbn', 'logs', 'all'],
-                         help='Quoi nettoyer : classify, rename, progress (les deux), isbn, logs ou all')
+                         choices=['classify', 'rename', 'progress', 'isbn',
+                                  'vision-cache', 'logs', 'all'],
+                         help='Quoi nettoyer : classify, rename, progress (les deux), '
+                              'isbn, vision-cache, logs ou all')
 
     # ── init ��─
     p_init = subparsers.add_parser(
@@ -195,6 +198,17 @@ def _build_parser():
     p_init.add_argument('name', help='Nom du profil')
     p_init.add_argument('--target', required=True,
                         help='Chemin de la bibliothèque cible')
+
+    # ── detect ──
+    p_detect = subparsers.add_parser(
+        'detect', parents=[common],
+        help='Détecter un pattern de nommage depuis un échantillon de fichiers')
+    p_detect.add_argument('--files', nargs='+', metavar='FICHIER',
+                          help='Liste de fichiers PDF à analyser')
+    p_detect.add_argument('--dir', metavar='DOSSIER',
+                          help='Dossier ou pattern glob pour sélectionner les fichiers')
+    p_detect.add_argument('--library', metavar='CHEMIN',
+                          help='Bibliothèque pour tester la couverture (défaut: target du profil)')
 
     # ── dashboard ──
     p_dashboard = subparsers.add_parser(
@@ -251,6 +265,7 @@ def main():
         'refine': cmd_refine,
         'suggest': cmd_suggest,
         'clean': cmd_clean,
+        'detect': cmd_detect,
     }
     handler = dispatch.get(args.command)
     if handler:

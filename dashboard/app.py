@@ -1,17 +1,41 @@
 """Klodo Dashboard — FastAPI application."""
 
+import asyncio
+import json
 import os
 import re
 import subprocess
+import sys
 import threading
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from dashboard import data
 
+# Ensure functional test db module is importable
+_func_dir = str(data.get_project_root() / "tests" / "functional")
+if _func_dir not in sys.path:
+    sys.path.insert(0, _func_dir)
+
 app = FastAPI(title="Klodo Dashboard")
+
+
+def _is_safe_file_path(file_path: str) -> bool:
+    """Validate that a file path is inside allowed directories (prevent path traversal)."""
+    if not file_path:
+        return False
+    resolved = Path(file_path).resolve()
+    root = data.get_project_root().resolve()
+    allowed = [
+        root / "logs",
+        root / "tests" / "functional" / "logs",
+    ]
+    return any(str(resolved).startswith(str(d)) for d in allowed)
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
 
@@ -27,11 +51,13 @@ async def overview(request: Request):
     tests = data.get_tests_yaml()
     issues = data.get_open_issues()
     llm_config = data.get_llm_config()
+    api_keys = _get_api_keys_status()
+    api_key_set = any(k["set"] for k in api_keys if k["name"] == "SILICONFLOW_API_KEY")
     return templates.TemplateResponse(
         request,
         "overview.html",
         {"report": report, "tests": tests, "issues": issues,
-         "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+         "api_key_set": api_key_set,
          "llm_config": llm_config},
     )
 
@@ -69,7 +95,7 @@ async def tests_page(
             "phase": phase_int,
             "status": status_val,
             "active": "tests",
-            "api_key_set": bool(os.environ.get("SILICONFLOW_API_KEY")),
+            "api_key_set": any(k["set"] for k in _get_api_keys_status() if k["name"] == "SILICONFLOW_API_KEY"),
             "available_runs": available_runs,
             "selected_run": run or "",
             "current_run_id": report.get("_run_id", run or "") if report else "",
@@ -132,6 +158,66 @@ async def run_status():
         "completed": dict(_completed_series) if running else {},
         "checks": dict(_completed_checks) if running else {},
     })
+
+
+@app.get("/api/events")
+async def sse_events():
+    """Server-Sent Events stream for test run progress.
+
+    Lit les dicts module-level (_current_series, _completed_series, _completed_checks)
+    mis à jour par le thread _monitor_output, et émet des événements JSON
+    à chaque changement d'état. Le client utilise EventSource() côté navigateur.
+    """
+    async def generate():
+        last_series = None
+        sent_series: set[str] = set()
+        sent_checks: set[str] = set()
+
+        # Événement initial immédiat (pour débloquer les clients)
+        yield 'data: {"type": "connected"}\n\n'
+
+        while True:
+            running = _running_process is not None and _running_process.poll() is None
+
+            if not running:
+                if last_series is not None or sent_series or sent_checks:
+                    # Le run vient de se terminer
+                    yield 'data: {"type": "run_finished"}\n\n'
+                    break
+                # Pas de run actif : keep-alive périodique
+                yield 'data: {"type": "idle"}\n\n'
+                await asyncio.sleep(2)
+                continue
+
+            # Nouvelle série en cours
+            current = _current_series
+            if current and current != last_series:
+                last_series = current
+                yield f"data: {json.dumps({'type': 'series_started', 'id': current})}\n\n"
+
+            # Séries terminées
+            for sid, status in list(_completed_series.items()):
+                if sid not in sent_series:
+                    sent_series.add(sid)
+                    yield f"data: {json.dumps({'type': 'series_completed', 'id': sid, 'status': status})}\n\n"
+
+            # Checks terminés
+            for cid, status in list(_completed_checks.items()):
+                if cid not in sent_checks:
+                    sent_checks.add(cid)
+                    yield f"data: {json.dumps({'type': 'check_completed', 'id': cid, 'status': status})}\n\n"
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.post("/api/stop")
@@ -213,7 +299,6 @@ async def run_test(
     monitor_thread.start()
 
     # Wait in a non-blocking loop so other requests (like /api/stop) can be processed
-    import asyncio
     while _running_process and _running_process.poll() is None:
         await asyncio.sleep(0.5)
     _running_process = None
@@ -266,6 +351,10 @@ async def rapports_page(
 
     # Use selected file or most recent from filtered list
     selected_file = file or (csv_files_filtered[0]["path"] if csv_files_filtered else None)
+
+    # Path traversal protection
+    if selected_file and not _is_safe_file_path(selected_file):
+        selected_file = csv_files_filtered[0]["path"] if csv_files_filtered else None
 
     headers: list[str] = []
     rows: list[dict] = []
@@ -334,6 +423,88 @@ async def rapports_page(
             "total_pages": total_pages,
             "total_rows": total_rows,
             "associated_test": associated_test,
+        },
+    )
+
+
+@app.get("/logs")
+async def logs_page(
+    request: Request,
+    type: str = "all",
+    file: str | None = None,
+    search: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    order: str = "asc",
+    page: int = 1,
+):
+    """Logs page — viewer for user reports in logs/."""
+    log_files = data.get_user_log_files(type)
+    selected_file = file or (log_files[0]["path"] if log_files else None)
+
+    # Path traversal protection
+    if selected_file and not _is_safe_file_path(selected_file):
+        selected_file = log_files[0]["path"] if log_files else None
+
+    headers: list[str] = []
+    rows: list[dict] = []
+    stats: dict = {}
+    statuses: list[str] = []
+    sections: list[str] = []
+    total_pages = 1
+    total_rows = 0
+
+    # Determine effective type for the selected file
+    effective_type = type
+    if selected_file and type == "all":
+        for lf in log_files:
+            if lf["path"] == selected_file:
+                effective_type = lf["log_type"]
+                break
+
+    if selected_file:
+        headers, rows = data.load_csv(selected_file)
+        stats = data.compute_csv_stats(rows, effective_type)
+        statuses = data.get_csv_statuses(rows, effective_type)
+        sections = data.get_csv_sections(rows)
+
+        if search:
+            rows = [r for r in rows if search.lower() in str(r).lower()]
+        if status:
+            status_key = "action" if effective_type == "rename" else "status"
+            rows = [r for r in rows if r.get(status_key, "") == status]
+
+        if sort and sort in headers:
+            reverse = order == "desc"
+            rows.sort(key=lambda r: r.get(sort, ""), reverse=reverse)
+
+        per_page = 50
+        total_rows = len(rows)
+        total_pages = max(1, (total_rows + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        rows = rows[(page - 1) * per_page : page * per_page]
+
+    return templates.TemplateResponse(
+        request,
+        "logs.html",
+        {
+            "active": "logs",
+            "log_type": type,
+            "effective_type": effective_type,
+            "log_files": log_files,
+            "selected_file": selected_file or "",
+            "headers": headers,
+            "rows": rows,
+            "stats": stats,
+            "statuses": statuses,
+            "sections": sections,
+            "search": search or "",
+            "status_filter": status or "",
+            "sort": sort or "",
+            "order": order,
+            "page": page,
+            "total_pages": total_pages,
+            "total_rows": total_rows,
         },
     )
 
@@ -512,15 +683,441 @@ async def validate_check_api(run_id: str, check_id: str, status: str):
     if func_dir not in sys.path:
         sys.path.insert(0, func_dir)
     from db import validate_check
-    success = validate_check(run_id, check_id, status)
+    validate_check(run_id, check_id, status)
     # Return updated widget HTML
     icon = "✓" if status == "pass" else "✗"
     color = "green" if status == "pass" else "red"
-    validated_at = __import__("datetime").datetime.now().strftime("%d/%m %H:%M")
+    validated_at = datetime.now().strftime("%d/%m %H:%M")
     html = f'''<span class="manual-validated text-{color}">
         {icon} Valid&eacute; ({status.upper()}) le {validated_at}
     </span>'''
     return HTMLResponse(html)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Viewer — visualisation des fichiers de l'INBOX
+# ═══════════════════════════════════════════════════════════════════════════
+
+# État de génération en masse (similaire à _running_process)
+_thumbnail_gen_state: dict = {
+    "running": False,
+    "profile": None,
+    "total": 0,
+    "done": 0,
+    "current": "",
+    "errors": 0,
+    "force": False,
+}
+
+
+def _is_safe_thumbnail_path(target: Path, cache_dir: Path) -> bool:
+    """Path traversal guard pour les fichiers du cache thumbnails."""
+    try:
+        target_resolved = target.resolve()
+        cache_resolved = cache_dir.resolve()
+    except OSError:
+        return False
+    return str(target_resolved).startswith(str(cache_resolved))
+
+
+def _profile_cache_stats(profile: str) -> dict:
+    """Helper : récupère les stats du cache thumbnails d'un profil."""
+    from lib.thumbnail import get_cache_stats
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+        return get_cache_stats(cache_dir)
+    except Exception:
+        return {"count": 0, "size_bytes": 0}
+
+
+@app.get("/viewer")
+async def viewer_page(
+    request: Request,
+    source_profile: str = "default",
+    dest_profile: str = "test",
+):
+    """Page principale du viewer (double panneau source + destination)."""
+    all_profiles = data.get_available_profiles(include_all=True)
+    dest_profiles = [p for p in all_profiles if p["name"] in data.CURATION_DEST_PROFILES]
+
+    source_files = data.list_inbox_files(source_profile) if source_profile else []
+    dest_files = data.list_inbox_files(dest_profile) if dest_profile else []
+
+    source_cache = _profile_cache_stats(source_profile) if source_profile else {"count": 0, "size_bytes": 0}
+    dest_cache = _profile_cache_stats(dest_profile) if dest_profile else {"count": 0, "size_bytes": 0}
+
+    return templates.TemplateResponse(
+        request,
+        "viewer.html",
+        {
+            "active": "viewer",
+            "all_profiles": all_profiles,
+            "dest_profiles": dest_profiles,
+            "source_profile": source_profile,
+            "dest_profile": dest_profile,
+            "source_files": source_files,
+            "dest_files": dest_files,
+            "source_cache": source_cache,
+            "dest_cache": dest_cache,
+            "source_cache_mo": round(source_cache["size_bytes"] / 1024 / 1024, 1),
+            "dest_cache_mo": round(dest_cache["size_bytes"] / 1024 / 1024, 1),
+        },
+    )
+
+
+@app.get("/viewer-mockup")
+async def viewer_mockup_page(request: Request):
+    """Mockup statique du viewer double-panneau pour validation visuelle."""
+    source_files = [
+        {"name": "Clean Code - Robert Martin.pdf", "cached": True, "marked": True},
+        {"name": "Algorithms - Thomas Cormen.pdf", "cached": True, "marked": True},
+        {"name": "Python Cookbook - David Beazley.pdf", "cached": True, "marked": True},
+        {"name": "Deep Learning - Ian Goodfellow.pdf", "cached": False, "marked": False},
+        {"name": "Practical Statistics.epub", "cached": True, "marked": False},
+        {"name": "Refactoring - Martin Fowler.pdf", "cached": True, "marked": False},
+        {"name": "The Pragmatic Programmer.pdf", "cached": False, "marked": False},
+        {"name": "Designing Data-Intensive Apps.pdf", "cached": True, "marked": False},
+        {"name": "Effective Java.pdf", "cached": False, "marked": False},
+        {"name": "Head First Design Patterns.pdf", "cached": True, "marked": False},
+    ]
+    dest_files = [
+        {"name": "Clean Code - Robert Martin.pdf", "cached": False},
+        {"name": "Algorithms - Thomas Cormen.pdf", "cached": False},
+        {"name": "Python Cookbook - David Beazley.pdf", "cached": True},
+    ]
+    return templates.TemplateResponse(request, "viewer_mockup.html", {
+        "active": "viewer",
+        "source_files": source_files,
+        "dest_files": dest_files,
+    })
+
+
+@app.get("/api/viewer/files")
+async def viewer_files(profile: str):
+    """Renvoie la liste des fichiers de l'INBOX avec leur état de cache."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(data.list_inbox_files(profile))
+
+
+@app.get("/api/viewer/thumbnail")
+async def viewer_thumbnail(profile: str, filename: str, page: int = 1):
+    """Sert un thumbnail JPEG depuis le cache.
+
+    page: numéro de page (1 par défaut). Cherche cache_dir/{stem}/{page}.jpg
+    """
+    from fastapi.responses import FileResponse, JSONResponse
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    safe_stem = Path(filename).stem
+    doc_dir = cache_dir / safe_stem
+    target = doc_dir / f"{page}.jpg"
+
+    if not _is_safe_thumbnail_path(target, cache_dir):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if not target.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(target, media_type="image/jpeg")
+
+
+@app.get("/api/viewer/pages")
+async def viewer_pages(profile: str, filename: str):
+    """Retourne le nombre de pages en cache pour un document."""
+    from fastapi.responses import JSONResponse
+
+    from lib.thumbnail import count_pages
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    safe_stem = Path(filename).stem
+    return JSONResponse({"count": count_pages(cache_dir, safe_stem)})
+
+
+@app.get("/api/viewer/cache-stats")
+async def viewer_cache_stats(profile: str):
+    """Retourne les stats du cache thumbnails pour un profil."""
+    from fastapi.responses import JSONResponse
+    stats = _profile_cache_stats(profile)
+    stats["size_mo"] = round(stats["size_bytes"] / 1024 / 1024, 1)
+    return JSONResponse(stats)
+
+
+@app.post("/api/viewer/generate")
+async def viewer_generate_one(
+    profile: str, filename: str, n_pages: int = 1, complete: bool = False,
+):
+    """Génère N thumbnails pour un fichier unique.
+
+    Args:
+        n_pages: nombre de pages à générer (1-5)
+        complete: si True, complète à partir de la première page manquante
+                  (utile pour "Compléter jusqu'à N" de l'option B)
+    """
+    from fastapi.responses import JSONResponse
+
+    from lib.profile import Profile
+    from lib.thumbnail import count_pages, generate_thumbnail
+    try:
+        profile_obj = Profile(profile)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
+    source = Path(profile_obj.inbox) / filename
+    if not source.exists():
+        return JSONResponse({"success": False, "error": "source not found"}, status_code=404)
+
+    cache_dir = data.get_thumbnail_cache_dir(profile)
+    safe_stem = Path(filename).stem
+    doc_dir = cache_dir / safe_stem
+
+    if not _is_safe_thumbnail_path(doc_dir, cache_dir):
+        return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
+
+    if complete:
+        existing = count_pages(cache_dir, safe_stem)
+        start = existing + 1
+        remaining = max(0, n_pages - existing)
+        if remaining == 0:
+            return JSONResponse({"success": True, "filename": filename, "generated": 0})
+        generated = generate_thumbnail(source, doc_dir, n_pages=remaining, start_page=start)
+    else:
+        generated = generate_thumbnail(source, doc_dir, n_pages=n_pages, start_page=1)
+
+    return JSONResponse({
+        "success": generated > 0,
+        "filename": filename,
+        "generated": generated,
+    })
+
+
+_THUMBNAIL_BATCH_WORKERS = 4
+_thumbnail_state_lock = threading.Lock()
+
+
+def _process_one_file(
+    f: Path, cache_dir: Path, force: bool, n_pages: int,
+) -> tuple[bool, bool]:
+    """Traite un seul fichier (utilisé par le pool de threads).
+
+    Returns:
+        (was_processed, had_error)
+        - was_processed: False si on a skip (déjà cache complet, mode "complete")
+        - had_error: True si la génération a échoué
+    """
+    import shutil
+
+    from lib.thumbnail import count_pages, generate_thumbnail
+
+    doc_dir = cache_dir / f.stem
+    existing = count_pages(cache_dir, f.stem)
+
+    if force:
+        if doc_dir.exists():
+            try:
+                shutil.rmtree(doc_dir)
+            except OSError:
+                pass
+        start = 1
+        remaining = n_pages
+    else:
+        if existing >= n_pages:
+            return (False, False)
+        start = existing + 1
+        remaining = n_pages - existing
+
+    try:
+        generated = generate_thumbnail(f, doc_dir, n_pages=remaining, start_page=start)
+        return (True, generated == 0)
+    except Exception:
+        return (True, True)
+
+
+def _generate_batch_thread(profile: str, force: bool, n_pages: int):
+    """Worker thread principal — orchestre un ThreadPoolExecutor parallèle.
+
+    Stratégies :
+    - force=True : régénère tout (efface puis crée n_pages pages par fichier)
+    - force=False : "compléter jusqu'à n_pages" pour chaque fichier
+    """
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    from lib.profile import Profile
+
+    global _thumbnail_gen_state
+    try:
+        profile_obj = Profile(profile)
+    except Exception as e:
+        _thumbnail_gen_state.update({"running": False, "current": f"Erreur: {e}"})
+        return
+
+    inbox = Path(profile_obj.inbox)
+    cache_dir = data.get_thumbnail_cache_dir(profile)
+
+    files = sorted(
+        f for f in inbox.iterdir()
+        if f.is_file() and f.suffix.lower() in data.VIEWER_SUPPORTED_EXTS
+    )
+
+    _thumbnail_gen_state.update({
+        "running": True,
+        "profile": profile,
+        "total": len(files),
+        "done": 0,
+        "current": "",
+        "errors": 0,
+        "force": force,
+    })
+
+    if not files:
+        _thumbnail_gen_state["running"] = False
+        return
+
+    with ProcessPoolExecutor(max_workers=_THUMBNAIL_BATCH_WORKERS) as executor:
+        future_to_file = {
+            executor.submit(_process_one_file, f, cache_dir, force, n_pages): f
+            for f in files
+        }
+        for future in as_completed(future_to_file):
+            f = future_to_file[future]
+            try:
+                _, had_error = future.result()
+            except Exception:
+                had_error = True
+            with _thumbnail_state_lock:
+                _thumbnail_gen_state["current"] = f.name
+                _thumbnail_gen_state["done"] += 1
+                if had_error:
+                    _thumbnail_gen_state["errors"] += 1
+
+    _thumbnail_gen_state["running"] = False
+    _thumbnail_gen_state["current"] = ""
+
+
+@app.post("/api/viewer/generate-batch")
+async def viewer_generate_batch(profile: str, force: bool = False, n_pages: int = 1):
+    """Lance la génération en masse en arrière-plan.
+
+    n_pages: nombre de pages à générer/compléter par document (1-5)
+    force: True = régénération totale, False = complète jusqu'à n_pages
+    """
+    from fastapi.responses import JSONResponse
+    if _thumbnail_gen_state["running"]:
+        return JSONResponse({"started": False, "reason": "already running"}, status_code=409)
+
+    n_pages = max(1, min(5, n_pages))
+    thread = threading.Thread(
+        target=_generate_batch_thread, args=(profile, force, n_pages), daemon=True)
+    thread.start()
+    return JSONResponse({"started": True})
+
+
+@app.get("/api/viewer/events")
+async def viewer_events():
+    """SSE pour la progression de la génération en masse."""
+    async def generate():
+        yield 'data: {"type": "connected"}\n\n'
+
+        # Attendre que le thread worker démarre (max 3s)
+        waited = 0.0
+        while not _thumbnail_gen_state["running"] and waited < 3.0:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+
+        last_done = -1
+        last_current = None
+
+        while True:
+            done = _thumbnail_gen_state["done"]
+            total = _thumbnail_gen_state["total"]
+            current = _thumbnail_gen_state["current"]
+            running = _thumbnail_gen_state["running"]
+
+            if done != last_done or current != last_current:
+                payload = {
+                    "type": "progress",
+                    "done": done,
+                    "total": total,
+                    "current": current,
+                    "errors": _thumbnail_gen_state["errors"],
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+                last_done = done
+                last_current = current
+
+            # Sortir quand le thread a fini ET qu'on a rapporté le dernier état
+            if not running and done >= total:
+                break
+            if not running and total == 0:
+                break
+
+            await asyncio.sleep(0.2)
+
+        final = {
+            "type": "batch_finished",
+            "done": _thumbnail_gen_state["done"],
+            "total": _thumbnail_gen_state["total"],
+            "errors": _thumbnail_gen_state["errors"],
+        }
+        yield f"data: {json.dumps(final)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.post("/api/viewer/clear-cache")
+async def viewer_clear_cache(profile: str):
+    """Vide le cache des thumbnails pour un profil."""
+    from fastapi.responses import JSONResponse
+
+    from lib.thumbnail import clear_cache
+    try:
+        cache_dir = data.get_thumbnail_cache_dir(profile)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    count, freed = clear_cache(cache_dir)
+    return JSONResponse({"count": count, "freed_bytes": freed})
+
+
+@app.post("/api/viewer/copy")
+async def viewer_copy(source_profile: str, dest_profile: str, filenames: str):
+    """Copie des fichiers de l'INBOX source vers l'INBOX destination.
+
+    filenames est une liste séparée par des virgules.
+    """
+    from fastapi.responses import JSONResponse
+    names = [f.strip() for f in filenames.split(",") if f.strip()]
+    if not names:
+        return JSONResponse({"error": "no filenames provided"}, status_code=400)
+    try:
+        result = data.copy_files_between_profiles(source_profile, dest_profile, names)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(result)
+
+
+@app.post("/api/viewer/clear-destination")
+async def viewer_clear_destination(profile: str):
+    """Supprime tous les .pdf/.epub de l'INBOX du profil destination."""
+    from fastapi.responses import JSONResponse
+    try:
+        result = data.clear_destination_inbox(profile)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(result)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -607,9 +1204,8 @@ def _get_admin_stats() -> dict:
         db_size = f"{db_path.stat().st_size / 1024:.1f} KB"
         try:
             import duckdb
-            con = duckdb.connect(str(db_path), read_only=True)
-            db_runs = con.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-            con.close()
+            with duckdb.connect(str(db_path), read_only=True) as con:
+                db_runs = con.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
         except Exception:
             pass
     return {
@@ -651,7 +1247,7 @@ async def delete_api_key(key_name: str):
     env_path = _get_env_path()
     if env_path.exists():
         lines = env_path.read_text().splitlines()
-        lines = [l for l in lines if not l.strip().startswith(f"{key_name}=")]
+        lines = [line for line in lines if not line.strip().startswith(f"{key_name}=")]
         env_path.write_text("\n".join(lines) + "\n")
     os.environ.pop(key_name, None)
     return JSONResponse({"message": f"{key_name} supprimée"})
@@ -726,25 +1322,37 @@ async def clean_all():
     count = 0
     # Logs
     for f in (root / "logs").iterdir() if (root / "logs").exists() else []:
-        if f.is_file(): f.unlink(); count += 1
+        if f.is_file():
+            f.unlink()
+            count += 1
     # Test logs
     test_logs = root / "tests" / "functional" / "logs"
     if test_logs.exists():
-        shutil.rmtree(test_logs); test_logs.mkdir(); count += 1
+        shutil.rmtree(test_logs)
+        test_logs.mkdir()
+        count += 1
     # Reports
     reports = root / "tests" / "functional" / "reports"
     if reports.exists():
-        shutil.rmtree(reports); reports.mkdir(); count += 1
+        shutil.rmtree(reports)
+        reports.mkdir()
+        count += 1
     # DB
     db = root / "tests" / "functional" / "results.db"
-    if db.exists(): db.unlink(); count += 1
+    if db.exists():
+        db.unlink()
+        count += 1
     # History
     h = root / "tests" / "functional" / "history.json"
-    if h.exists(): h.unlink(); count += 1
+    if h.exists():
+        h.unlink()
+        count += 1
     # Progress
     cache = root / "profiles" / "test" / ".cache"
     if cache.exists():
-        for f in cache.glob("progress*.json"): f.unlink(); count += 1
+        for f in cache.glob("progress*.json"):
+            f.unlink()
+            count += 1
     return JSONResponse({"message": f"Tout nettoyé ({count} éléments)"})
 
 
@@ -756,11 +1364,10 @@ async def delete_run(id: str):
     if db_path.exists():
         try:
             import duckdb
-            con = duckdb.connect(str(db_path))
-            con.execute("DELETE FROM check_results WHERE run_id = ?", [id])
-            con.execute("DELETE FROM series_results WHERE run_id = ?", [id])
-            con.execute("DELETE FROM runs WHERE id = ?", [id])
-            con.close()
+            with duckdb.connect(str(db_path)) as con:
+                con.execute("DELETE FROM check_results WHERE run_id = ?", [id])
+                con.execute("DELETE FROM series_results WHERE run_id = ?", [id])
+                con.execute("DELETE FROM runs WHERE id = ?", [id])
         except Exception as e:
             return JSONResponse({"message": f"Erreur: {e}"})
     # Also delete report directory

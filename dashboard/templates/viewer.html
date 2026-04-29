@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% set active = "viewer" %}
+{% block title %}Curation{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Curation</h1>
+<p class="page-subtitle">Constituer un jeu de tests par copie s&eacute;lective entre profils</p>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# PANNEAU SOURCE                                               #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="viewer-panel-wrap viewer-panel-source">
+    <div class="viewer-panel-header">
+        <div class="viewer-panel-label">SOURCE &mdash; Lecture seule</div>
+        <div class="viewer-header-left">
+            <label class="filter-label">Profil :</label>
+            <select id="source-profile-select" class="filter-select" onchange="changeSourceProfile(this.value)">
+                {% for p in all_profiles %}
+                <option value="{{ p.name }}" {% if p.name == source_profile %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <span class="text-muted" style="margin-left:12px;">
+                {{ source_files | length }} fichier{{ 's' if source_files | length != 1 else '' }}
+                &middot; <span class="text-green"><span id="marked-count">0</span> marqu&eacute;s</span>
+            </span>
+        </div>
+        <div class="viewer-header-right">
+            <button class="btn btn-sm" onclick="generateMissing('source')">G&eacute;n&eacute;rer manquants</button>
+            <button class="btn btn-sm" onclick="generateAll('source')">R&eacute;g&eacute;n&eacute;rer tout</button>
+            <button id="source-clear-btn" class="btn btn-sm btn-danger" onclick="clearCache('source')">
+                Vider cache (<span class="cache-count" data-count="{{ source_cache.count }}">{{ source_cache.count }}</span> img,
+                <span class="cache-mo" data-bytes="{{ source_cache.size_bytes }}">{{ source_cache_mo }}</span> Mo)
+            </button>
+        </div>
+    </div>
+
+    <div id="source-progress" class="panel-progress hidden">
+        <div class="panel-progress-bar">
+            <div class="panel-progress-fill" style="width:0%"></div>
+        </div>
+        <div class="panel-progress-text">
+            <span class="panel-progress-count">0 / 0</span>
+            <span class="panel-progress-current"></span>
+            <span class="panel-progress-percent">0%</span>
+        </div>
+    </div>
+
+    {% if not source_files %}
+    <div class="no-data">
+        <p>Aucun fichier PDF ou ePub dans l'INBOX du profil <strong>{{ source_profile }}</strong>.</p>
+    </div>
+    {% else %}
+    <div class="viewer-body">
+        <div class="viewer-left">
+            <input type="text" class="filter-input" placeholder="Filtrer par nom..."
+                   onkeyup="filterFiles('source', this.value)">
+            <ul id="source-file-list" class="viewer-file-list">
+                {% for f in source_files %}
+                <li class="viewer-file-item" data-name="{{ f.name }}" data-cached="{{ 'true' if f.cached else 'false' }}"
+                    onclick="selectFile('source', this, '{{ f.name | e }}')">
+                    <span class="viewer-cache-dot {% if f.cached %}cached{% endif %}"></span>
+                    <span class="viewer-file-name" title="{{ f.name }}">{{ f.name }}</span>
+                    <button class="viewer-mark-btn" data-file="{{ f.name | e }}"
+                            onclick="event.stopPropagation(); toggleMark('{{ f.name | e }}', this)">+</button>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="viewer-right">
+            <div class="viewer-mockup-actions">
+                <button id="btn-copy-selection" class="btn-copy-selection" onclick="copySelection()" disabled>
+                    Copier s&eacute;lection (0) &rarr; destination
+                </button>
+            </div>
+            <div id="source-thumbnail-display" class="viewer-thumbnail-display">
+                <p class="text-muted">S&eacute;lectionnez un fichier pour voir sa couverture</p>
+            </div>
+            <div id="source-page-navigator" class="page-navigator hidden">
+                <button class="page-nav-btn" onclick="prevPage('source')">&larr;</button>
+                <span class="page-nav-info">Page <strong id="source-page-current">1</strong> / <span id="source-page-total">1</span></span>
+                <button class="page-nav-btn" onclick="nextPage('source')">&rarr;</button>
+            </div>
+            <div id="source-file-info" class="viewer-file-info"></div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# FLECHE DE COPIE                                              #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="viewer-copy-arrow">
+    <div class="viewer-copy-arrow-line"></div>
+    <div class="viewer-copy-arrow-label">COPIE (pas de suppression source)</div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# PANNEAU DESTINATION                                          #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="viewer-panel-wrap viewer-panel-destination">
+    <div class="viewer-panel-header">
+        <div class="viewer-panel-label">DESTINATION &mdash; Panier de curation</div>
+        <div class="viewer-header-left">
+            <label class="filter-label">Profil :</label>
+            <select id="dest-profile-select" class="filter-select" onchange="changeDestProfile(this.value)">
+                {% for p in dest_profiles %}
+                <option value="{{ p.name }}" {% if p.name == dest_profile %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <span class="text-muted viewer-dst-hint">(test / test-local uniquement)</span>
+            <span class="text-muted" style="margin-left:12px;">
+                {{ dest_files | length }} fichier{{ 's' if dest_files | length != 1 else '' }}
+            </span>
+        </div>
+        <div class="viewer-header-right">
+            <label class="filter-label">Pages :</label>
+            <select id="dest-pages-select" class="filter-select" style="min-width:60px;">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+            </select>
+            <button class="btn btn-sm" onclick="generateMissing('dest')">G&eacute;n&eacute;rer manquants</button>
+            <button class="btn btn-sm btn-danger" onclick="clearDestination()">Vider destination</button>
+        </div>
+    </div>
+
+    <div id="dest-progress" class="panel-progress hidden">
+        <div class="panel-progress-bar">
+            <div class="panel-progress-fill" style="width:0%"></div>
+        </div>
+        <div class="panel-progress-text">
+            <span class="panel-progress-count">0 / 0</span>
+            <span class="panel-progress-current"></span>
+            <span class="panel-progress-percent">0%</span>
+        </div>
+    </div>
+
+    {% if not dest_files %}
+    <div class="no-data">
+        <p>Le panier <strong>{{ dest_profile }}</strong> est vide. Marquez des fichiers dans la source et cliquez "Copier s&eacute;lection".</p>
+    </div>
+    {% else %}
+    <div class="viewer-body">
+        <div class="viewer-left">
+            <input type="text" class="filter-input" placeholder="Filtrer par nom..."
+                   onkeyup="filterFiles('dest', this.value)">
+            <ul id="dest-file-list" class="viewer-file-list">
+                {% for f in dest_files %}
+                <li class="viewer-file-item" data-name="{{ f.name }}" data-cached="{{ 'true' if f.cached else 'false' }}"
+                    onclick="selectFile('dest', this, '{{ f.name | e }}')">
+                    <span class="viewer-cache-dot {% if f.cached %}cached{% endif %}"></span>
+                    <span class="viewer-file-name" title="{{ f.name }}">{{ f.name }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="viewer-right">
+            <div id="dest-thumbnail-display" class="viewer-thumbnail-display">
+                <p class="text-muted">S&eacute;lectionnez un fichier pour voir sa couverture</p>
+            </div>
+            <div id="dest-page-navigator" class="page-navigator hidden">
+                <button class="page-nav-btn" onclick="prevPage('dest')">&larr;</button>
+                <span class="page-nav-info">Page <strong id="dest-page-current">1</strong> / <span id="dest-page-total">1</span></span>
+                <button class="page-nav-btn" onclick="nextPage('dest')">&rarr;</button>
+            </div>
+            <div id="dest-file-info" class="viewer-file-info"></div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+const _sourceProfile = '{{ source_profile }}';
+const _destProfile = '{{ dest_profile }}';
+</script>
+<script src="/static/js/viewer.js"></script>
+{% endblock %}

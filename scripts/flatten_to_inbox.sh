@@ -87,6 +87,26 @@ echo -e "  PDFs hors INBOX : ${GREEN}$TOTAL_BEFORE${NC}"
 echo -e "  PDFs dans INBOX : ${GREEN}$INBOX_BEFORE${NC}"
 echo ""
 
+# ── Restauration des noms originaux ──
+# Lit récursivement les log_renommage_*.csv (logs/ et tests/functional/logs/**)
+# pour restaurer les noms d'avant-rename. Jeu de test reproductible.
+# Exécutée AVANT le check "rien à déplacer" car les noms peuvent être altérés
+# même si les fichiers sont déjà dans _INBOX.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_COUNT=$(find "$PROJECT_ROOT/logs" "$PROJECT_ROOT/tests/functional/logs" \
+    -name "log_renommage_*.csv" 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$LOG_COUNT" -gt 0 ]]; then
+    echo -e "${BLUE}🔄 Restauration des noms originaux depuis les logs ($LOG_COUNT trouvés)...${NC}"
+    if $EXECUTE; then
+        uv run python "$PROJECT_ROOT/scripts/restore_original_names.py" \
+            "$BIBLIO" "$PROJECT_ROOT" --execute || true
+    else
+        uv run python "$PROJECT_ROOT/scripts/restore_original_names.py" \
+            "$BIBLIO" "$PROJECT_ROOT" || true
+    fi
+    echo ""
+fi
+
 if [[ "$TOTAL_BEFORE" -eq 0 ]]; then
     echo -e "${GREEN}Rien à déplacer — tous les PDFs sont déjà dans _INBOX !${NC}"
     exit 0

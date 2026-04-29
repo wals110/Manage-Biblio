@@ -111,6 +111,41 @@ Dernier recours : utilise le nom du dossier parent comme approximation du sujet.
 | `--no-online` | Désactiver la recherche ISBN en ligne |
 | `--no-pdf` | Désactiver l'extraction des métadonnées PDF |
 
+## Patterns de nommage (`name_patterns`)
+
+En complément du wordcheck, les profils peuvent imposer un format strict via une liste de regex dans `profile.yaml` :
+
+```yaml
+rename:
+  name_patterns:
+    - "^[A-ZÀ-Ÿ].+ - [A-ZÀ-Ÿ].+$"            # Titre - Auteur
+    - "^[A-ZÀ-Ÿ][A-Za-zÀ-ÿ0-9 .·\\-']{4,}$"   # Titre seul ou auteurs avec ponctuation
+    - "^\\d+\\s+[A-ZÀ-Ÿ].+ - [A-ZÀ-Ÿ].+$"     # 101 Titre - Auteur
+```
+
+Si configurés, `is_name_clean()` exige que le fichier matche **au moins un** pattern **après** le wordcheck. Cela rejette les artefacts de scan que le wordcheck laisse passer (ex: `00 0672318350 fm 05•02•2003 2 31 PM Page i.pdf` contient des vrais mots anglais "Page", "PM" mais ne respecte aucun format).
+
+Les regex invalides du profil sont silencieusement ignorées (try/except `re.error`) pour ne pas crasher.
+
+## Pattern Detector — détection automatique via LLM
+
+La sous-commande `./klodo.sh detect` permet de générer des patterns regex à partir d'un échantillon de fichiers :
+
+```bash
+# Avec une liste explicite
+./klodo.sh detect --files "Titre - Auteur.pdf" "Autre - Bob.pdf" --execute
+
+# Avec un dossier
+./klodo.sh detect --dir /Volumes/ExtSSD/BIBLIO/Informatique/ --execute
+
+# Mode interactif
+./klodo.sh detect
+```
+
+Le LLM analyse l'échantillon (1 seul appel), retourne une regex Python validée + description + score de confiance + exemples qui matchent et qui ne matchent pas. Avec `--execute`, le pattern est injecté dans `profile.yaml → rename.name_patterns` en préservant les commentaires existants.
+
+Module : `lib/pattern_detector.py`. Commande : `commands/detect.py`.
+
 ## Cache ISBN
 
 Les résultats de recherche ISBN sont stockés dans `profiles/<nom>/.cache/isbn_cache.json`. Ce cache accélère les prochains runs et réduit les appels réseau. Il contient ~3400 entrées après le traitement initial de la bibliothèque. Nettoyable via `./klodo.sh clean isbn --execute`.

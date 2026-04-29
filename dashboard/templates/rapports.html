@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card, pagination, filter_bar, data_table %}
 {% set active = "rapports" %}
 {% block title %}Rapports{% endblock %}
 
@@ -55,155 +56,30 @@
 {# ── Stats Bar ── #}
 <div class="kpi-row">
     {% if report_type in ['classify', 'process'] %}
-    <div class="kpi-card">
-        <div class="kpi-label">Total fichiers</div>
-        <div class="kpi-value">{{ stats.total }}</div>
-    </div>
-    <div class="kpi-card green">
-        <div class="kpi-label">Classifi&eacute;s</div>
-        <div class="kpi-value">{{ stats.classified }}</div>
-    </div>
-    <div class="kpi-card yellow">
-        <div class="kpi-label">Non classifi&eacute;s</div>
-        <div class="kpi-value">{{ stats.not_classified }}</div>
-    </div>
-    <div class="kpi-card red">
-        <div class="kpi-label">Erreurs</div>
-        <div class="kpi-value">{{ stats.errors }}</div>
-    </div>
-    <div class="kpi-card blue">
-        <div class="kpi-label">Confiance moy.</div>
-        <div class="kpi-value">{{ stats.avg_confidence }}</div>
-    </div>
+    {{ kpi_card("Total fichiers", stats.total) }}
+    {{ kpi_card("Classifi&eacute;s" | safe, stats.classified, "green") }}
+    {{ kpi_card("Non classifi&eacute;s" | safe, stats.not_classified, "yellow") }}
+    {{ kpi_card("Erreurs", stats.errors, "red") }}
+    {{ kpi_card("Confiance moy.", stats.avg_confidence, "blue") }}
     {% elif report_type == 'rename' %}
-    <div class="kpi-card">
-        <div class="kpi-label">Total fichiers</div>
-        <div class="kpi-value">{{ stats.total }}</div>
-    </div>
-    <div class="kpi-card green">
-        <div class="kpi-label">Renomm&eacute;s</div>
-        <div class="kpi-value">{{ stats.renamed }}</div>
-    </div>
-    <div class="kpi-card blue">
-        <div class="kpi-label">Inchang&eacute;s</div>
-        <div class="kpi-value">{{ stats.unchanged }}</div>
-    </div>
-    <div class="kpi-card red">
-        <div class="kpi-label">&Eacute;checs</div>
-        <div class="kpi-value">{{ stats.errors }}</div>
-    </div>
+    {{ kpi_card("Total fichiers", stats.total) }}
+    {{ kpi_card("Renomm&eacute;s" | safe, stats.renamed, "green") }}
+    {{ kpi_card("Inchang&eacute;s" | safe, stats.unchanged, "blue") }}
+    {{ kpi_card("&Eacute;checs" | safe, stats.errors, "red") }}
     {% elif report_type == 'refine' %}
-    <div class="kpi-card">
-        <div class="kpi-label">Total fichiers</div>
-        <div class="kpi-value">{{ stats.total }}</div>
-    </div>
-    <div class="kpi-card green">
-        <div class="kpi-label">D&eacute;plac&eacute;s</div>
-        <div class="kpi-value">{{ stats.moved }}</div>
-    </div>
-    <div class="kpi-card yellow">
-        <div class="kpi-label">Non d&eacute;plac&eacute;s</div>
-        <div class="kpi-value">{{ stats.not_moved }}</div>
-    </div>
+    {{ kpi_card("Total fichiers", stats.total) }}
+    {{ kpi_card("D&eacute;plac&eacute;s" | safe, stats.moved, "green") }}
+    {{ kpi_card("Non d&eacute;plac&eacute;s" | safe, stats.not_moved, "yellow") }}
     {% endif %}
 </div>
 
 {# ── Filter Bar ── #}
-<div class="filter-bar">
-    <input type="text" class="filter-input" id="search-input"
-           placeholder="Rechercher par nom de fichier..."
-           value="{{ search }}"
-           onkeyup="debounceSearch(this.value)">
-    <select class="filter-select" id="status-filter"
-            onchange="applyFilters()">
-        <option value="">Tous les statuts</option>
-        {% for s in statuses %}
-        <option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-    </select>
-    {% if sections %}
-    <select class="filter-select" id="section-filter"
-            onchange="applyFilters()">
-        <option value="">Toutes les sections</option>
-        {% for s in sections %}
-        <option value="{{ s }}" {% if s == section_filter %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-    </select>
-    {% endif %}
-    <span class="filter-count">{{ total_rows }} r&eacute;sultat{{ 's' if total_rows != 1 else '' }}</span>
-</div>
+{{ filter_bar(search, status_filter, statuses, sections, section_filter, total_rows) }}
 
 {# ── Data Table ── #}
 {% if rows %}
-<div class="table-wrapper">
-    <table class="data-table">
-        <thead>
-            <tr>
-                {% for h in headers %}
-                <th class="sort-header {% if sort == h %}sorted{% endif %}"
-                    onclick="sortBy('{{ h }}')">
-                    {{ h }}
-                    {% if sort == h %}
-                    <span class="sort-arrow">{{ '&#9650;' if order == 'asc' else '&#9660;' }}</span>
-                    {% endif %}
-                </th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-            <tr>
-                {% for h in headers %}
-                <td>
-                    {% set val = row.get(h, '') %}
-                    {% if h == 'status' or h == 'action' %}
-                        {% if val in ['classifié', 'RENOMME', 'déplacé', 'renommé'] %}
-                        <span class="badge badge-pass">{{ val }}</span>
-                        {% elif val in ['non_classifié', 'INCHANGE'] %}
-                        <span class="badge badge-warn">{{ val }}</span>
-                        {% elif val in ['erreur', 'ECHEC'] %}
-                        <span class="badge badge-fail">{{ val }}</span>
-                        {% else %}
-                        <span class="badge badge-default">{{ val }}</span>
-                        {% endif %}
-                    {% elif h == 'confiance' %}
-                        {% if val %}
-                        <span class="confidence-value">{{ val }}</span>
-                        {% endif %}
-                    {% elif h == 'destination' %}
-                        <span class="dest-path" title="{{ val }}">{{ val }}</span>
-                    {% elif h in ['fichier', 'ancien_nom', 'nouveau_nom', 'ancien_chemin', 'nouveau_chemin', 'chemin'] %}
-                        <span class="filename-cell" title="{{ val }}">{{ val | truncate(60) }}</span>
-                    {% else %}
-                        {{ val }}
-                    {% endif %}
-                </td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-{# ── Pagination ── #}
-{% if total_pages > 1 %}
-<div class="pagination">
-    {% if page > 1 %}
-    <a href="#" class="btn btn-sm" onclick="goToPage({{ page - 1 }}); return false;">&laquo; Pr&eacute;c&eacute;dent</a>
-    {% else %}
-    <span class="btn btn-sm btn-disabled">&laquo; Pr&eacute;c&eacute;dent</span>
-    {% endif %}
-
-    <span class="page-info">Page {{ page }} / {{ total_pages }}</span>
-
-    {% if page < total_pages %}
-    <a href="#" class="btn btn-sm" onclick="goToPage({{ page + 1 }}); return false;">Suivant &raquo;</a>
-    {% else %}
-    <span class="btn btn-sm btn-disabled">Suivant &raquo;</span>
-    {% endif %}
-</div>
-{% endif %}
-
+{{ data_table(headers, rows, sort, order) }}
+{{ pagination(page, total_pages) }}
 {% else %}
 <div class="no-data">
     <p>Aucune ligne dans ce rapport{% if search or status_filter or section_filter %} avec ces filtres{% endif %}.</p>
@@ -213,7 +89,6 @@
 {% endif %}
 
 <script>
-// Current state
 const state = {
     type: '{{ report_type }}',
     test: '{{ test_filter }}',
@@ -252,32 +127,6 @@ function updateTest(test) {
 function updateFile(file) {
     window.location.href = buildUrl({file: file, page: 1});
 }
-
-function applyFilters() {
-    const status = document.getElementById('status-filter').value;
-    const sectionEl = document.getElementById('section-filter');
-    const section = sectionEl ? sectionEl.value : '';
-    window.location.href = buildUrl({status: status, section: section, page: 1});
-}
-
-let searchTimer;
-function debounceSearch(val) {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-        window.location.href = buildUrl({search: val, page: 1});
-    }, 400);
-}
-
-function sortBy(col) {
-    let newOrder = 'asc';
-    if (state.sort === col && state.order === 'asc') {
-        newOrder = 'desc';
-    }
-    window.location.href = buildUrl({sort: col, order: newOrder, page: 1});
-}
-
-function goToPage(p) {
-    window.location.href = buildUrl({page: p});
-}
 </script>
+<script src="/static/js/filters.js"></script>
 {% endblock %}

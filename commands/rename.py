@@ -32,9 +32,11 @@ def cmd_rename(args, profile) -> None:
             log.error("❌ --llm nécessite une clé API. export SILICONFLOW_API_KEY=votre-clé")
             sys.exit(1)
         n_pages = getattr(args, 'pages', 1)
+        vision_cache_path = os.path.join(profile.cache_dir, 'vision_cache.json')
         llm_callback = make_llm_rename_callback(
             api_key, profile.llm_endpoint, profile.llm_model,
-            verbose=args.verbose, n_pages=n_pages)
+            verbose=args.verbose, n_pages=n_pages,
+            vision_cache_path=vision_cache_path)
 
     max_files = getattr(args, 'max', 0)
     force = getattr(args, 'force', False)
@@ -56,7 +58,8 @@ def cmd_rename(args, profile) -> None:
     report_path = renamer.scan(
         source, enable_online=enable_online, enable_pdf=enable_pdf,
         llm_callback=llm_callback, max_files=max_files, force=force,
-        verbose=args.verbose, cache_dir=profile.cache_dir)
+        verbose=args.verbose, cache_dir=profile.cache_dir,
+        name_patterns=profile.name_patterns)
 
     # Exécution si demandée
     if args.execute:

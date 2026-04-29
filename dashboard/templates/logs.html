@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from 'macros/widgets.html' import kpi_card, pagination, filter_bar, data_table %}
+{% set active = "logs" %}
+{% block title %}Logs{% endblock %}
+
+{% block content %}
+<div class="page-header-row">
+    <h1 class="page-title">Logs utilisateur</h1>
+    <div class="header-selectors">
+        <select class="filter-select" id="type-select"
+                onchange="updateType(this.value)">
+            <option value="all" {% if log_type == 'all' %}selected{% endif %}>Tous les types</option>
+            <option value="classify" {% if log_type == 'classify' %}selected{% endif %}>Classification</option>
+            <option value="rename" {% if log_type == 'rename' %}selected{% endif %}>Renommage</option>
+            <option value="refine" {% if log_type == 'refine' %}selected{% endif %}>Raffinement</option>
+            <option value="process" {% if log_type == 'process' %}selected{% endif %}>Process</option>
+        </select>
+        <select class="filter-select file-select" id="file-select"
+                onchange="updateFile(this.value)">
+            {% for f in log_files %}
+            <option value="{{ f.path }}" {% if f.path == selected_file %}selected{% endif %}>
+                {{ f.date }} &mdash; {{ f.log_type }} &mdash; {{ (f.size / 1024) | round(1) }} Ko
+            </option>
+            {% endfor %}
+            {% if not log_files %}
+            <option value="">Aucun fichier</option>
+            {% endif %}
+        </select>
+    </div>
+</div>
+
+{% if not log_files %}
+<div class="no-data">
+    <p>Aucun log disponible.</p>
+    <p class="text-muted">Lancez une commande klodo pour g&eacute;n&eacute;rer des rapports CSV dans logs/.</p>
+</div>
+{% else %}
+
+{# -- Stats Bar -- #}
+<div class="kpi-row">
+    {% if effective_type in ['classify', 'process'] %}
+    {{ kpi_card("Total fichiers", stats.total) }}
+    {{ kpi_card("Classifi&eacute;s" | safe, stats.classified, "green") }}
+    {{ kpi_card("Non classifi&eacute;s" | safe, stats.not_classified, "yellow") }}
+    {{ kpi_card("Erreurs", stats.errors, "red") }}
+    {{ kpi_card("Confiance moy.", stats.avg_confidence, "blue") }}
+    {% elif effective_type == 'rename' %}
+    {{ kpi_card("Total fichiers", stats.total) }}
+    {{ kpi_card("Renomm&eacute;s" | safe, stats.renamed, "green") }}
+    {{ kpi_card("Inchang&eacute;s" | safe, stats.unchanged, "blue") }}
+    {{ kpi_card("&Eacute;checs" | safe, stats.errors, "red") }}
+    {% elif effective_type == 'refine' %}
+    {{ kpi_card("Total fichiers", stats.total) }}
+    {{ kpi_card("D&eacute;plac&eacute;s" | safe, stats.moved, "green") }}
+    {{ kpi_card("Non d&eacute;plac&eacute;s" | safe, stats.not_moved, "yellow") }}
+    {% endif %}
+</div>
+
+{# -- Filter Bar -- #}
+{{ filter_bar(search, status_filter, statuses, sections, "", total_rows) }}
+
+{# -- Data Table -- #}
+{% if rows %}
+{{ data_table(headers, rows, sort, order) }}
+{{ pagination(page, total_pages) }}
+{% else %}
+<div class="no-data">
+    <p>Aucune ligne dans ce rapport{% if search or status_filter %} avec ces filtres{% endif %}.</p>
+</div>
+{% endif %}
+
+{% endif %}
+
+<script>
+const state = {
+    type: '{{ log_type }}',
+    file: '{{ selected_file }}',
+    search: '{{ search }}',
+    status: '{{ status_filter }}',
+    sort: '{{ sort }}',
+    order: '{{ order }}',
+    page: {{ page }},
+};
+
+function buildUrl(overrides) {
+    const params = new URLSearchParams();
+    const s = {...state, ...overrides};
+    params.set('type', s.type);
+    if (s.file) params.set('file', s.file);
+    if (s.search) params.set('search', s.search);
+    if (s.status) params.set('status', s.status);
+    if (s.sort) params.set('sort', s.sort);
+    if (s.order) params.set('order', s.order);
+    if (s.page > 1) params.set('page', s.page);
+    return '/logs?' + params.toString();
+}
+
+function updateType(type) {
+    window.location.href = buildUrl({type: type, file: '', search: '', status: '', sort: '', page: 1});
+}
+
+function updateFile(file) {
+    window.location.href = buildUrl({file: file, page: 1});
+}
+</script>
+<script src="/static/js/filters.js"></script>
+{% endblock %}

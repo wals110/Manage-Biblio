@@ -17,6 +17,7 @@ class TestDashboardRoutes(unittest.TestCase):
         from fastapi.testclient import TestClient
 
         from dashboard.app import app
+        cls.app = app
         cls.client = TestClient(app)
 
     def test_overview(self):
@@ -78,6 +79,58 @@ class TestDashboardRoutes(unittest.TestCase):
     def test_static_css(self):
         r = self.client.get("/static/style.css")
         self.assertEqual(r.status_code, 200)
+
+    def test_static_js_common(self):
+        r = self.client.get("/static/js/common.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("copyCmd", r.text)
+
+    def test_static_js_tests(self):
+        r = self.client.get("/static/js/tests.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("updateSeriesStatus", r.text)
+
+    def test_static_js_viewer(self):
+        r = self.client.get("/static/js/viewer.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("loadThumbnail", r.text)
+
+    def test_viewer_page(self):
+        r = self.client.get("/viewer")
+        self.assertEqual(r.status_code, 200)
+
+    def test_viewer_page_with_profile(self):
+        r = self.client.get("/viewer?profile=test")
+        self.assertEqual(r.status_code, 200)
+
+    def test_viewer_files_endpoint(self):
+        r = self.client.get("/api/viewer/files?profile=test")
+        self.assertEqual(r.status_code, 200)
+
+    def test_viewer_page_with_both_profiles(self):
+        r = self.client.get("/viewer?source_profile=default&dest_profile=test")
+        self.assertEqual(r.status_code, 200)
+
+    def test_copy_endpoint_rejects_default_destination(self):
+        r = self.client.post(
+            "/api/viewer/copy?source_profile=default&dest_profile=default&filenames=any.pdf"
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_copy_endpoint_no_filenames(self):
+        r = self.client.post(
+            "/api/viewer/copy?source_profile=default&dest_profile=test&filenames="
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_clear_destination_rejects_default(self):
+        r = self.client.post("/api/viewer/clear-destination?profile=default")
+        self.assertEqual(r.status_code, 400)
+
+    def test_sse_events_endpoint_registered(self):
+        """SSE endpoint /api/events is registered in the app routes."""
+        routes = [r.path for r in self.app.routes if hasattr(r, 'path')]
+        self.assertIn("/api/events", routes)
 
 
 class TestDashboardData(unittest.TestCase):

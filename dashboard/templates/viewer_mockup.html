@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% set active = "viewer" %}
+{% block title %}Viewer Mockup{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Viewer &mdash; Mockup (Source + Destination)</h1>
+<p class="page-subtitle">Pr&eacute;visualisation statique du double panneau avec s&eacute;lection et copie</p>
+
+<div class="mockup-banner">
+    <span>&#9888; Mockup non fonctionnel</span>
+    <span class="text-muted">Toutes les actions sont d&eacute;sactiv&eacute;es &mdash; uniquement pour valider le design visuel</span>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# PANNEAU SOURCE                                               #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="viewer-panel-wrap viewer-panel-source">
+    <div class="viewer-panel-header">
+        <div class="viewer-panel-label">SOURCE &mdash; Lecture seule</div>
+        <div class="viewer-header-left">
+            <label class="filter-label">Profil :</label>
+            <select class="filter-select" disabled>
+                <option>default</option>
+                <option>test</option>
+                <option>test-local</option>
+            </select>
+            <span class="text-muted" style="margin-left:12px;">1 250 fichiers &middot; <span class="text-green">3 marqu&eacute;s</span></span>
+        </div>
+        <div class="viewer-header-right">
+            <button class="btn btn-sm" disabled>G&eacute;n&eacute;rer manquants</button>
+            <button class="btn btn-sm" disabled>R&eacute;g&eacute;n&eacute;rer tout</button>
+            <button class="btn btn-sm btn-danger" disabled>Vider cache (1042 img, 45 Mo)</button>
+        </div>
+    </div>
+
+    {# Progress bar inline (état "en cours") #}
+    <div class="panel-progress">
+        <div class="panel-progress-bar">
+            <div class="panel-progress-fill" style="width: 47%"></div>
+        </div>
+        <div class="panel-progress-text">
+            <span class="panel-progress-count">47 / 100</span>
+            <span class="panel-progress-current">Clean Code - Robert Martin.pdf</span>
+            <span class="panel-progress-percent">47%</span>
+        </div>
+    </div>
+
+    <div class="viewer-body">
+        <div class="viewer-left">
+            <input type="text" class="filter-input" placeholder="Filtrer par nom..." disabled>
+            <ul class="viewer-file-list">
+                {% for f in source_files %}
+                <li class="viewer-file-item mockup-item {% if loop.index == 3 %}selected{% endif %}">
+                    <span class="viewer-cache-dot {% if f.cached %}cached{% endif %}"></span>
+                    <span class="viewer-file-name" title="{{ f.name }}">{{ f.name }}</span>
+                    <button class="viewer-mark-btn {% if f.marked %}marked{% endif %}" disabled>+</button>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="viewer-right">
+            <div class="viewer-mockup-actions">
+                <button class="btn btn-copy-selection" disabled>
+                    Copier s&eacute;lection (3) &rarr; destination
+                </button>
+                <p class="text-muted viewer-mockup-hint">3 fichiers marqu&eacute;s avec <span class="viewer-mark-btn marked inline">+</span></p>
+            </div>
+            <div class="viewer-thumbnail-display">
+                <div class="mockup-thumb">
+                    <div class="mockup-thumb-title">Python Cookbook</div>
+                    <div class="mockup-thumb-author">David Beazley</div>
+                    <div class="mockup-thumb-label">Thumbnail 400&times;550</div>
+                </div>
+            </div>
+            <div class="viewer-file-info">Python Cookbook - David Beazley.pdf &middot; 4.2 Mo</div>
+        </div>
+    </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# FLECHE DE COPIE                                              #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="viewer-copy-arrow">
+    <div class="viewer-copy-arrow-line"></div>
+    <div class="viewer-copy-arrow-label">COPIE (pas de suppression source)</div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# PANNEAU DESTINATION                                          #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="viewer-panel-wrap viewer-panel-destination">
+    <div class="viewer-panel-header">
+        <div class="viewer-panel-label">DESTINATION &mdash; Panier de curation</div>
+        <div class="viewer-header-left">
+            <label class="filter-label">Profil :</label>
+            <select class="filter-select" disabled>
+                <option>test</option>
+                <option>test-local</option>
+            </select>
+            <span class="text-muted viewer-dst-hint">(test / test-local uniquement)</span>
+            <span class="text-muted" style="margin-left:12px;">3 fichiers</span>
+        </div>
+        <div class="viewer-header-right">
+            <label class="filter-label">Pages :</label>
+            <select class="filter-select" disabled style="min-width:60px;">
+                <option>4</option>
+            </select>
+            <button class="btn btn-sm" disabled>G&eacute;n&eacute;rer manquants</button>
+            <button class="btn btn-sm btn-danger" disabled>Vider destination</button>
+        </div>
+    </div>
+
+    {# Progress bar inline (état "terminé") #}
+    <div class="panel-progress panel-progress-done">
+        <div class="panel-progress-bar">
+            <div class="panel-progress-fill" style="width: 100%"></div>
+        </div>
+        <div class="panel-progress-text">
+            <span class="panel-progress-count">3 / 3 ✓ Terminé</span>
+            <span class="panel-progress-current"></span>
+            <span class="panel-progress-percent">100%</span>
+        </div>
+    </div>
+
+    <div class="viewer-body">
+        <div class="viewer-left">
+            <input type="text" class="filter-input" placeholder="Filtrer par nom..." disabled>
+            <ul class="viewer-file-list">
+                {% for f in dest_files %}
+                <li class="viewer-file-item mockup-item {% if loop.index == 3 %}selected{% endif %}">
+                    <span class="viewer-cache-dot {% if f.cached %}cached{% endif %}"></span>
+                    <span class="viewer-file-name" title="{{ f.name }}">{{ f.name }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="viewer-right">
+            <div class="viewer-thumbnail-display">
+                <div class="mockup-thumb mockup-thumb-dest">
+                    <div class="mockup-thumb-title">Python Cookbook</div>
+                    <div class="mockup-thumb-author">David Beazley</div>
+                    <div class="mockup-thumb-label">Page 2 / 4</div>
+                </div>
+            </div>
+            <div class="page-navigator">
+                <button class="page-nav-btn" disabled>&larr;</button>
+                <span class="page-nav-info">Page <strong>2</strong> / 4</span>
+                <button class="page-nav-btn" disabled>&rarr;</button>
+            </div>
+            <div class="viewer-file-info">Python Cookbook - David Beazley.pdf &middot; 4.2 Mo</div>
+        </div>
+    </div>
+</div>
+
+<div class="mockup-notes">
+    <h3>Notes de conception</h3>
+    <ul>
+        <li>Le bouton <strong>+</strong> &agrave; droite de chaque fichier est un <em>toggle</em> : 1er clic marque (vert plein), 2&egrave;me clic d&eacute;marque</li>
+        <li>Le compteur &laquo; 3 marqu&eacute;s &raquo; s'actualise en temps r&eacute;el</li>
+        <li>Le bouton &laquo; Copier s&eacute;lection &raquo; est <strong>d&eacute;sactiv&eacute;</strong> quand aucun fichier n'est marqu&eacute;</li>
+        <li>Le profil destination est <strong>limit&eacute; &agrave; test/test-local</strong> pour &eacute;viter d'alt&eacute;rer le profil <code>default</code></li>
+        <li>&laquo; Vider destination &raquo; supprime les <code>.pdf</code>/<code>.epub</code> mais <strong>pr&eacute;serve</strong> <code>.thumbnail-cache/</code></li>
+        <li>Apr&egrave;s la copie, le panneau destination se rafra&icirc;chit automatiquement</li>
+    </ul>
+</div>
+{% endblock %}
