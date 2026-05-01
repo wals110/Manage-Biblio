@@ -3,95 +3,92 @@
 {% block title %}Baseline — Validation classification{% endblock %}
 
 {% block content %}
-<h1 class="page-title">Baseline — Matrice de confusion</h1>
+<h1 class="page-title">Baseline classification</h1>
 <p class="page-subtitle">
-    Validation manuelle de l'échantillon pour mesurer la précision réelle du classifier.
+    Compare les prédictions du Klodo courant à l'emplacement actuel des fichiers.
+    Tu n'arbitres que les désaccords ; les accords sont considérés corrects.
 </p>
 
 {# ════════════════════════════════════════════════════════════════ #}
-{# Switch entre les 2 modes                                          #}
+{# Bandeau profil + run sélectionné                                  #}
 {# ════════════════════════════════════════════════════════════════ #}
-<div class="baseline-mode-switch">
-    <a href="/baseline?mode=classified"
-       class="baseline-mode-tab {% if mode == 'classified' %}active{% endif %}">
-        <span class="baseline-mode-label">Mesure A — Précision sur fichiers classés</span>
-        <span class="baseline-mode-progress">
-            {{ classified_stats.validated }} / {{ classified_stats.total }}
-            {% if classified_stats.total > 0 %}
-                ({{ (100 * classified_stats.validated / classified_stats.total) | round(0, 'floor') | int }}%)
-            {% endif %}
-        </span>
-    </a>
-    <a href="/baseline?mode=atrier"
-       class="baseline-mode-tab {% if mode == 'atrier' %}active{% endif %}">
-        <span class="baseline-mode-label">Mesure B — Diagnostic A-TRIER</span>
-        <span class="baseline-mode-progress">
-            {{ atrier_stats.validated }} / {{ atrier_stats.total }}
-            {% if atrier_stats.total > 0 %}
-                ({{ (100 * atrier_stats.validated / atrier_stats.total) | round(0, 'floor') | int }}%)
-            {% endif %}
-        </span>
-    </a>
+<div class="baseline-toolbar">
+    <div class="baseline-toolbar-group">
+        <label class="filter-label">Profil :</label>
+        <select id="profile-select" class="filter-select"
+                onchange="window.location.href='/baseline?profile=' + this.value">
+            {% for p in available_profiles %}
+            <option value="{{ p }}" {% if p == profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="baseline-toolbar-group">
+        <label class="filter-label">Run :</label>
+        {% if runs %}
+        <select id="run-select" class="filter-select"
+                onchange="window.location.href='/baseline?profile={{ profile }}&run_id=' + this.value">
+            {% for r in runs %}
+            <option value="{{ r.run_id }}"
+                    {% if selected_run and r.run_id == selected_run.run_id %}selected{% endif %}>
+                {{ r.created_at[:16] }} · v{{ r.klodo_version }} · {{ r.n_disagreements }}/{{ r.n_files }} désaccords
+            </option>
+            {% endfor %}
+        </select>
+        {% else %}
+        <span class="text-muted">Aucun run pour ce profil</span>
+        {% endif %}
+    </div>
 </div>
 
-{# ════════════════════════════════════════════════════════════════ #}
-{# Aucun sample disponible                                           #}
-{# ════════════════════════════════════════════════════════════════ #}
-{% if mode == 'classified' and not classified_stats.exists %}
+{% if not runs %}
 <div class="no-data">
-    <p><strong>Aucun échantillon disponible pour la Mesure A.</strong></p>
-    <p>Génère-le avec :</p>
-    <pre class="code-block">uv run python scripts/build_validation_sample.py</pre>
-</div>
-{% elif mode == 'atrier' and not atrier_stats.exists %}
-<div class="no-data">
-    <p><strong>Aucun échantillon disponible pour la Mesure B.</strong></p>
-    <p>Génère-le avec :</p>
-    <pre class="code-block">uv run python scripts/build_atrier_sample.py</pre>
+    <p><strong>Aucun run baseline pour le profil <code>{{ profile }}</code>.</strong></p>
+    <p>Lance un run avec :</p>
+    <pre class="code-block">uv run python scripts/baseline_run.py --profile {{ profile }} --workers 8</pre>
+    <p class="text-muted">
+        Le run prédit où Klodo classerait chaque fichier (avec cache vision)
+        puis identifie les désaccords avec l'emplacement actuel.
+    </p>
 </div>
 
-{# ════════════════════════════════════════════════════════════════ #}
-{# Validation terminée                                               #}
-{# ════════════════════════════════════════════════════════════════ #}
 {% elif record is none %}
 <div class="baseline-done">
-    <h2>✓ Validation terminée pour ce mode</h2>
-    {% if mode == 'classified' %}
-        <p>
-            <strong>{{ classified_stats.correct }}</strong> corrects ·
-            <strong>{{ classified_stats.wrong }}</strong> incorrects ·
-            <strong>{{ classified_stats.skip }}</strong> sautés
-            sur {{ classified_stats.total }} fichiers validés.
-        </p>
-    {% else %}
-        <p>
-            <strong>{{ atrier_stats.classified }}</strong> classés ·
-            <strong>{{ atrier_stats.skip }}</strong> sautés
-            sur {{ atrier_stats.total }} fichiers validés.
-        </p>
+    <h2>✓ Tous les désaccords arbitrés</h2>
+    {% if stats %}
+    <p>
+        <strong>{{ stats.klodo_right }}</strong> Klodo a raison ·
+        <strong>{{ stats.actual_right }}</strong> Actuel a raison ·
+        <strong>{{ stats.neither_right }}</strong> Aucun des deux ·
+        <strong>{{ stats.skip }}</strong> sautés
+    </p>
+    <p class="text-muted">
+        ({{ stats.n_agreements }} accords + {{ stats.n_disagreements }} désaccords arbitrés
+        sur {{ stats.n_files }} fichiers évalués)
+    </p>
     {% endif %}
     <p>Pour générer le rapport :</p>
-    <pre class="code-block">uv run python scripts/compute_baseline.py</pre>
+    <pre class="code-block">uv run python scripts/compute_baseline.py --profile {{ profile }} --run-id {{ selected_run.run_id }}</pre>
 </div>
 
-{# ════════════════════════════════════════════════════════════════ #}
-{# UI principale de validation                                       #}
-{# ════════════════════════════════════════════════════════════════ #}
 {% else %}
-<div class="baseline-container" data-mode="{{ mode }}" data-profile="{{ profile }}">
-    {% set st = classified_stats if mode == 'classified' else atrier_stats %}
+<div class="baseline-container"
+     data-profile="{{ profile }}"
+     data-run-id="{{ selected_run.run_id }}">
+
     <div class="baseline-progress-wrap">
         <div class="baseline-progress-bar">
             <div class="baseline-progress-fill"
-                 style="width: {% if st.total %}{{ 100 * st.validated / st.total }}{% else %}0{% endif %}%"></div>
+                 style="width: {% if stats.n_disagreements %}{{ 100 * stats.validated / stats.n_disagreements }}{% else %}0{% endif %}%"></div>
         </div>
         <div class="baseline-progress-text">
-            <strong id="baseline-validated">{{ st.validated }}</strong> /
-            <strong id="baseline-total">{{ st.total }}</strong>
+            <strong id="baseline-validated">{{ stats.validated }}</strong> /
+            <strong id="baseline-total">{{ stats.n_disagreements }}</strong> désaccords arbitrés
             <span class="text-muted">·
-                <span id="baseline-correct">{{ st.correct if mode == 'classified' else st.classified }}</span>
-                {% if mode == 'classified' %}corrects · <span id="baseline-wrong">{{ st.wrong }}</span> incorrects{% else %}classés{% endif %}
-                · <span id="baseline-skip">{{ st.skip }}</span> sautés
+                <span id="baseline-kr">{{ stats.klodo_right }}</span> Klodo ·
+                <span id="baseline-ar">{{ stats.actual_right }}</span> Actuel ·
+                <span id="baseline-nr">{{ stats.neither_right }}</span> Aucun ·
+                <span id="baseline-sk">{{ stats.skip }}</span> skip
+                · ({{ stats.n_agreements }} accords présumés corrects)
             </span>
         </div>
     </div>
@@ -99,7 +96,7 @@
     <div class="baseline-card">
         <div class="baseline-thumbnail-pane">
             <img id="baseline-thumb"
-                 src="/api/baseline/thumbnail/{{ record.file_id }}?profile={{ profile }}&mode={{ mode }}"
+                 src="/api/baseline/thumbnail/{{ record.file_id }}?profile={{ profile }}&run_id={{ selected_run.run_id }}"
                  alt="Couverture"
                  class="baseline-thumb-img">
         </div>
@@ -108,40 +105,45 @@
             <div class="baseline-filename" id="baseline-filename">{{ record.filename }}</div>
             <div class="baseline-relpath text-muted" id="baseline-relpath">{{ record.rel_path }}</div>
 
-            {% if mode == 'classified' %}
-            <div class="baseline-prediction">
-                <span class="baseline-label">Klodo a prédit :</span>
-                <span class="baseline-folder-pill" id="baseline-predicted">{{ record.predicted_folder }}</span>
-            </div>
-            <div class="baseline-question">C'est correct ?</div>
-            <div class="baseline-actions">
-                <button class="btn btn-success" data-action="correct">
-                    ✓ Oui (Y)
-                </button>
-                <button class="btn btn-danger" data-action="wrong">
-                    ✗ Non, en fait c'est… (N)
-                </button>
-                <button class="btn btn-muted" data-action="skip">
-                    ⏭ Skip (S)
-                </button>
-            </div>
-            {% else %}
-            <div class="baseline-prediction">
-                <span class="baseline-label">Klodo a abandonné →</span>
-                <span class="baseline-folder-pill baseline-pill-warn">_A-TRIER</span>
-            </div>
-            <div class="baseline-question">Quel était le bon dossier ?</div>
-            <div class="baseline-atrier-actions">
-                <button class="btn btn-muted" data-action="skip">
-                    ⏭ Illisible / Incertain (S)
-                </button>
+            {% if record.theme or record.title %}
+            <div class="baseline-vision-meta text-muted">
+                {% if record.title %}<div>📕 <em>{{ record.title }}</em></div>{% endif %}
+                {% if record.theme %}<div>🏷️ thème détecté : {{ record.theme }}
+                    {% if record.confidence %}<span class="text-muted">(conf. {{ (record.confidence * 100) | round(0) | int }}%)</span>{% endif %}
+                </div>{% endif %}
             </div>
             {% endif %}
 
+            <div class="baseline-comparison">
+                <div class="baseline-side baseline-side-actual">
+                    <div class="baseline-label">Emplacement actuel</div>
+                    <code id="baseline-actual">{{ record.current_folder or '(racine)' }}</code>
+                </div>
+                <div class="baseline-vs">vs</div>
+                <div class="baseline-side baseline-side-klodo">
+                    <div class="baseline-label">Klodo prédit</div>
+                    <code id="baseline-predicted">{{ record.predicted_folder }}</code>
+                </div>
+            </div>
+
+            <div class="baseline-question">Qui a raison ?</div>
+            <div class="baseline-actions">
+                <button class="btn btn-success" data-action="klodo_right">
+                    K · Klodo a raison
+                </button>
+                <button class="btn btn-info" data-action="actual_right">
+                    A · Actuel a raison
+                </button>
+                <button class="btn btn-warning" data-action="neither_right">
+                    N · Aucun des deux…
+                </button>
+                <button class="btn btn-muted" data-action="skip">
+                    S · Skip
+                </button>
+            </div>
+
             <div id="baseline-folder-picker" class="baseline-folder-picker hidden">
-                <label for="baseline-folder-input">
-                    {% if mode == 'classified' %}Bon dossier :{% else %}Choisis le dossier :{% endif %}
-                </label>
+                <label for="baseline-folder-input">Bon dossier :</label>
                 <input type="text" id="baseline-folder-input"
                        class="baseline-autocomplete"
                        placeholder="Tape pour filtrer parmi {{ folders | length }} dossiers…"
@@ -159,16 +161,13 @@
 
             <div class="baseline-shortcuts text-muted">
                 <strong>Raccourcis :</strong>
-                {% if mode == 'classified' %}
-                    <kbd>Y</kbd> = correct ·
-                    <kbd>N</kbd> = incorrect ·
-                    <kbd>S</kbd> = skip ·
-                {% else %}
-                    <kbd>S</kbd> = skip ·
-                {% endif %}
-                <kbd>↓</kbd>/<kbd>↑</kbd> = nav suggestions ·
-                <kbd>Enter</kbd> = confirmer ·
-                <kbd>Esc</kbd> = annuler
+                <kbd>K</kbd> = Klodo correct ·
+                <kbd>A</kbd> = Actuel correct ·
+                <kbd>N</kbd> = Aucun (pickr) ·
+                <kbd>S</kbd> = Skip ·
+                <kbd>↓</kbd>/<kbd>↑</kbd> nav suggestions ·
+                <kbd>Enter</kbd> confirmer ·
+                <kbd>Esc</kbd> annuler
             </div>
         </div>
     </div>
@@ -178,7 +177,7 @@
 <script>
 window._baselineConfig = {
     profile: "{{ profile }}",
-    mode: "{{ mode }}",
+    runId: "{{ selected_run.run_id }}",
     initialFileId: "{{ record.file_id }}",
 };
 </script>

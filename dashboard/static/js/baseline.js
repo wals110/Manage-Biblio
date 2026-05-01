@@ -1,7 +1,15 @@
-// Baseline classification validation — keyboard-driven UI
-// Modes:
-//   - classified: confirm/correct Klodo's predictions
-//   - atrier:     provide ground-truth folder for unclassified files
+// Baseline classification — adjudicate disagreements between Klodo's
+// current predictions and the current SSD layout.
+//
+// Verdicts (data-action):
+//   klodo_right   → predicted folder is correct, current is wrong
+//   actual_right  → current folder is correct, predicted is wrong
+//   neither_right → both wrong, opens folder picker for ground truth
+//   skip          → cannot tell (illegible / out of scope)
+//
+// Keyboard shortcuts:
+//   K = klodo_right · A = actual_right · N = neither_right (open picker)
+//   S = skip · ↓/↑ navigate suggestions · Enter confirm · Esc cancel
 (function () {
     "use strict";
 
@@ -11,9 +19,9 @@
     );
 
     const state = {
-        currentFileId: cfg.initialFileId,
-        mode: cfg.mode,
         profile: cfg.profile,
+        runId: cfg.runId,
+        currentFileId: cfg.initialFileId,
         suggestionIndex: -1,
         currentSuggestions: [],
         pickerOpen: false,
@@ -24,6 +32,7 @@
     const $filename = document.getElementById("baseline-filename");
     const $relpath = document.getElementById("baseline-relpath");
     const $predicted = document.getElementById("baseline-predicted");
+    const $actual = document.getElementById("baseline-actual");
     const $picker = document.getElementById("baseline-folder-picker");
     const $input = document.getElementById("baseline-folder-input");
     const $suggestions = document.getElementById("baseline-folder-suggestions");
@@ -32,9 +41,10 @@
     const $progressFill = document.querySelector(".baseline-progress-fill");
     const $vCount = document.getElementById("baseline-validated");
     const $tCount = document.getElementById("baseline-total");
-    const $cCount = document.getElementById("baseline-correct");
-    const $wCount = document.getElementById("baseline-wrong");
-    const $sCount = document.getElementById("baseline-skip");
+    const $kr = document.getElementById("baseline-kr");
+    const $ar = document.getElementById("baseline-ar");
+    const $nr = document.getElementById("baseline-nr");
+    const $sk = document.getElementById("baseline-sk");
 
     // ─── Verdict submission ──────────────────────────────────────────────
     async function submitVerdict(verdict, groundTruth) {
@@ -45,7 +55,7 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     profile: state.profile,
-                    mode: state.mode,
+                    run_id: state.runId,
                     file_id: state.currentFileId,
                     verdict: verdict,
                     ground_truth: groundTruth || null,
@@ -71,24 +81,25 @@
     function updateStats(stats) {
         if (!stats) return;
         if ($vCount) $vCount.textContent = stats.validated;
-        if ($tCount) $tCount.textContent = stats.total;
-        const correct = state.mode === "classified" ? stats.correct : stats.classified;
-        if ($cCount) $cCount.textContent = correct;
-        if ($wCount && stats.wrong !== undefined) $wCount.textContent = stats.wrong;
-        if ($sCount) $sCount.textContent = stats.skip;
-        if ($progressFill && stats.total) {
-            $progressFill.style.width = (100 * stats.validated / stats.total) + "%";
+        if ($tCount) $tCount.textContent = stats.n_disagreements;
+        if ($kr) $kr.textContent = stats.klodo_right;
+        if ($ar) $ar.textContent = stats.actual_right;
+        if ($nr) $nr.textContent = stats.neither_right;
+        if ($sk) $sk.textContent = stats.skip;
+        if ($progressFill && stats.n_disagreements) {
+            $progressFill.style.width = (100 * stats.validated / stats.n_disagreements) + "%";
         }
     }
 
-    // ─── Load a new record into the card ─────────────────────────────────
+    // ─── Load a new record ───────────────────────────────────────────────
     function loadRecord(record) {
         if (!record) return;
         state.currentFileId = record.file_id;
         $filename.textContent = record.filename;
         $relpath.textContent = record.rel_path;
         if ($predicted) $predicted.textContent = record.predicted_folder;
-        $thumb.src = `/api/baseline/thumbnail/${record.file_id}?profile=${state.profile}&mode=${state.mode}`;
+        if ($actual) $actual.textContent = record.current_folder || "(racine)";
+        $thumb.src = `/api/baseline/thumbnail/${record.file_id}?profile=${state.profile}&run_id=${state.runId}`;
         closeFolderPicker();
     }
 
@@ -157,20 +168,17 @@
         if (state.suggestionIndex < 0) return;
         const folder = state.currentSuggestions[state.suggestionIndex];
         if (!folder) return;
-        const verdict = state.mode === "classified" ? "wrong" : "classified";
-        submitVerdict(verdict, folder);
+        submitVerdict("neither_right", folder);
     }
 
     // ─── Wire events ─────────────────────────────────────────────────────
     document.querySelectorAll("[data-action]").forEach(btn => {
         btn.addEventListener("click", () => {
             const action = btn.dataset.action;
-            if (action === "correct") {
-                submitVerdict("correct");
-            } else if (action === "wrong") {
+            if (action === "neither_right") {
                 openFolderPicker();
-            } else if (action === "skip") {
-                submitVerdict("skip");
+            } else {
+                submitVerdict(action);
             }
         });
     });
@@ -187,43 +195,17 @@
 
     // ─── Keyboard shortcuts ──────────────────────────────────────────────
     document.addEventListener("keydown", (e) => {
-        // Don't intercept when typing in the input field
         if (state.pickerOpen) {
             if (e.key === "ArrowDown") { e.preventDefault(); moveSuggestion(1); return; }
             if (e.key === "ArrowUp") { e.preventDefault(); moveSuggestion(-1); return; }
             if (e.key === "Enter") { e.preventDefault(); confirmSelection(); return; }
             if (e.key === "Escape") { e.preventDefault(); closeFolderPicker(); return; }
-            return; // let the input handle other keys (chars, backspace, etc.)
+            return;
         }
-        // Card-level shortcuts
-        if (e.key === "y" || e.key === "Y") {
-            if (state.mode === "classified") {
-                e.preventDefault();
-                submitVerdict("correct");
-            }
-        } else if (e.key === "n" || e.key === "N") {
-            if (state.mode === "classified") {
-                e.preventDefault();
-                openFolderPicker();
-            } else {
-                // In atrier mode, N opens the picker too (it's the main action)
-                e.preventDefault();
-                openFolderPicker();
-            }
-        } else if (e.key === "s" || e.key === "S") {
-            e.preventDefault();
-            submitVerdict("skip");
-        } else if (e.key === "f" || e.key === "F") {
-            // F = Fill folder (alias for opening picker in atrier mode)
-            if (state.mode === "atrier") {
-                e.preventDefault();
-                openFolderPicker();
-            }
-        }
+        const key = e.key.toLowerCase();
+        if (key === "k") { e.preventDefault(); submitVerdict("klodo_right"); }
+        else if (key === "a") { e.preventDefault(); submitVerdict("actual_right"); }
+        else if (key === "n") { e.preventDefault(); openFolderPicker(); }
+        else if (key === "s") { e.preventDefault(); submitVerdict("skip"); }
     });
-
-    // In atrier mode, auto-open the picker on load (it's the only useful action)
-    if (state.mode === "atrier") {
-        setTimeout(() => openFolderPicker(), 100);
-    }
 })();

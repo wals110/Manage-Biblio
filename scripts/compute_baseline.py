@@ -1,17 +1,22 @@
-"""Compute the classification baseline report from validated samples.
+"""Compute the classification baseline report for a given run.
 
-Reads the two JSONL files produced by the validation UI:
-- profiles/<profile>/.cache/validation_sample.jsonl       (Mesure A)
-- profiles/<profile>/.cache/validation_atrier_sample.jsonl (Mesure B)
+Reads:
+    profiles/<profile>/.cache/baseline/run-<id>/predictions.jsonl
+    profiles/<profile>/.cache/baseline/run-<id>/disagreements.jsonl
 
-Produces review/baseline-classification.md with:
-- Overall accuracy + per-class precision / recall / F1
-- Top confusion pairs (predicted X → actually Y)
-- A-TRIER analysis (which folders Klodo should have picked)
-- Recommendations on where to focus accuracy improvements
+Computes:
+    - Overall accuracy = (agreements + adjudication-confirmed)
+    - Per-class precision / recall / F1
+    - Top confusion pairs
+    - Disagreement breakdown by verdict
+    - Comparison with previous run if available
+
+Outputs:
+    profiles/<profile>/.cache/baseline/run-<id>/report.md
 
 Usage:
-    uv run python scripts/compute_baseline.py [--profile default]
+    uv run python scripts/compute_baseline.py --profile default
+        [--run-id <id>] [--output <path>]
 """
 
 from __future__ import annotations
@@ -22,49 +27,91 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+# ─── I/O helpers ──────────────────────────────────────────────────────────
+
 
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    out = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line:
-            out.append(json.loads(line))
-    return out
-
-
-# ════════════════════════════════════════════════════════════════════════
-#  Mesure A — confusion matrix on classified files
-# ════════════════════════════════════════════════════════════════════════
-
-
-def compute_classified_metrics(records: list[dict]) -> dict:
-    """Compute accuracy + per-class P/R/F1 + confusion pairs from validated rows."""
-    validated = [r for r in records if r.get("verdict") in ("correct", "wrong")]
-    if not validated:
-        return {"validated": 0, "skipped": 0}
-
-    # Pairs (predicted, ground_truth)
-    pairs = [
-        (r["predicted_folder"], r.get("ground_truth") or r["predicted_folder"])
-        for r in validated
+    return [
+        json.loads(line)
+        for line in path.read_text().splitlines()
+        if line.strip()
     ]
 
-    correct = sum(1 for p, t in pairs if p == t)
-    wrong = sum(1 for p, t in pairs if p != t)
-    accuracy = correct / len(pairs)
 
-    # Per-class TP/FP/FN
+def list_runs(profile_dir: Path) -> list[Path]:
+    """Return run directories newest-first."""
+    base = profile_dir / ".cache" / "baseline"
+    if not base.exists():
+        return []
+    return sorted(
+        (d for d in base.iterdir() if d.is_dir() and d.name.startswith("run-")),
+        reverse=True,
+    )
+
+
+# ─── Metric computation ───────────────────────────────────────────────────
+
+
+def compute_metrics(predictions: list[dict], disagreements: list[dict]) -> dict:
+    """Compute accuracy + per-class metrics.
+
+    For each prediction:
+    - If current == predicted (agreement) → counted as correct
+    - If disagreement and verdict == klodo_right → predicted folder is truth
+    - If disagreement and verdict == actual_right → current folder is truth
+    - If disagreement and verdict == neither_right → ground_truth is truth
+    - If disagreement and verdict == skip OR no verdict → excluded
+
+    Returns dict with totals + per_class + confusion_pairs.
+    """
+    # Build verdict lookup
+    verdicts = {d["file_id"]: d for d in disagreements}
+
     tp: Counter[str] = Counter()
     fp: Counter[str] = Counter()
     fn: Counter[str] = Counter()
-    for predicted, truth in pairs:
+    confusion: Counter[tuple[str, str]] = Counter()
+
+    correct = 0
+    wrong = 0
+    skipped = 0
+    pending = 0
+
+    for p in predictions:
+        current = p["current_folder"]
+        predicted = p["predicted_folder"]
+        if current == predicted:
+            # Agreement → considered correct
+            correct += 1
+            tp[predicted] += 1
+            continue
+        # Disagreement
+        verdict_rec = verdicts.get(p["file_id"])
+        if verdict_rec is None:
+            pending += 1
+            continue
+        verdict = verdict_rec.get("verdict")
+        if not verdict:
+            pending += 1
+            continue
+        if verdict == "skip":
+            skipped += 1
+            continue
+        truth = verdict_rec.get("ground_truth")
+        if not truth:
+            pending += 1
+            continue
+
         if predicted == truth:
-            tp[truth] += 1
+            correct += 1
+            tp[predicted] += 1
         else:
-            fp[predicted] += 1   # predicted wrongly to this folder
-            fn[truth] += 1       # truth was missed
+            wrong += 1
+            fp[predicted] += 1
+            fn[truth] += 1
+            confusion[(predicted, truth)] += 1
 
     classes = set(tp) | set(fp) | set(fn)
     per_class: list[dict] = []
@@ -82,124 +129,95 @@ def compute_classified_metrics(records: list[dict]) -> dict:
             "support": tp[c] + fn[c],
         })
 
-    # Confusion pairs (predicted, truth) where they differ
-    confusion: Counter[tuple[str, str]] = Counter()
-    for predicted, truth in pairs:
-        if predicted != truth:
-            confusion[(predicted, truth)] += 1
+    total_evaluated = correct + wrong
+    accuracy = correct / total_evaluated if total_evaluated > 0 else 0.0
 
-    # Skip count for context
-    skipped = sum(1 for r in records if r.get("verdict") == "skip")
-    pending = sum(1 for r in records if not r.get("verdict"))
+    # Verdict breakdown
+    breakdown = Counter()
+    for d in disagreements:
+        v = d.get("verdict")
+        if v:
+            breakdown[v] += 1
 
     return {
-        "validated": len(pairs),
+        "n_files": len(predictions),
+        "n_disagreements": len(disagreements),
+        "n_agreements": len(predictions) - len(disagreements),
         "correct": correct,
         "wrong": wrong,
         "skipped": skipped,
         "pending": pending,
         "accuracy": accuracy,
+        "verdict_breakdown": dict(breakdown),
         "per_class": per_class,
         "confusion_pairs": confusion.most_common(20),
     }
 
 
-# ════════════════════════════════════════════════════════════════════════
-#  Mesure B — diagnostic of A-TRIER abandons
-# ════════════════════════════════════════════════════════════════════════
+# ─── Report rendering ─────────────────────────────────────────────────────
 
 
-def compute_atrier_metrics(records: list[dict]) -> dict:
-    """Analyze where A-TRIER files should have gone."""
-    classified = [r for r in records if r.get("verdict") == "classified"]
-    skipped = sum(1 for r in records if r.get("verdict") == "skip")
-    pending = sum(1 for r in records if not r.get("verdict"))
-
-    if not classified:
-        return {"validated": 0, "skipped": skipped, "pending": pending}
-
-    # Distribution: which folders were the "right answer" for A-TRIER files
-    distribution = Counter(r["ground_truth"] for r in classified if r.get("ground_truth"))
-
-    # Top-level section breakdown (e.g., 02-INFORMATIQUE)
-    sections: Counter[str] = Counter()
-    for folder in distribution:
-        section = folder.split("/")[0]
-        sections[section] += distribution[folder]
-
-    return {
-        "validated": len(classified) + skipped,
-        "classified_count": len(classified),
-        "skipped": skipped,
-        "pending": pending,
-        "distribution": distribution.most_common(),
-        "by_section": sections.most_common(),
-    }
-
-
-# ════════════════════════════════════════════════════════════════════════
-#  Report generation
-# ════════════════════════════════════════════════════════════════════════
-
-
-def render_report(profile: str, classified: dict, atrier: dict) -> str:
-    """Render the markdown report."""
+def render_report(profile: str, run_meta: dict, metrics: dict, prev_metrics: dict | None) -> str:
     lines: list[str] = []
     lines.append("# Baseline classification — rapport")
     lines.append("")
-    lines.append(f"**Profil** : `{profile}`")
-    lines.append(f"**Source** : `profiles/{profile}/.cache/validation_sample.jsonl` "
-                 f"+ `validation_atrier_sample.jsonl`")
+    lines.append(f"**Profil** : `{profile}`  ")
+    lines.append(f"**Run** : `{run_meta.get('run_id', '?')}`  ")
+    lines.append(f"**Klodo version** : `{run_meta.get('klodo_version', '?')}`  ")
+    lines.append(f"**Date du run** : {run_meta.get('created_at', '?')}  ")
+    lines.append(f"**Fichiers évalués** : {metrics['n_files']} "
+                 f"({metrics['n_agreements']} accords + {metrics['n_disagreements']} désaccords)  ")
     lines.append("")
 
-    # ─── TL;DR ────────────────────────────────────────────────────────
+    # ─── TL;DR ────────────────────────────────────────────────────
     lines.append("## TL;DR")
     lines.append("")
-    if classified.get("validated", 0) > 0:
-        acc = classified["accuracy"]
+    if metrics["correct"] + metrics["wrong"] > 0:
+        acc = metrics["accuracy"]
         emoji = "✅" if acc >= 0.85 else "⚠️" if acc >= 0.70 else "❌"
-        lines.append(f"- {emoji} **Précision globale (Mesure A)** : "
-                     f"{acc:.1%} sur {classified['validated']} fichiers validés "
-                     f"(corrects: {classified['correct']}, incorrects: {classified['wrong']})")
+        delta = ""
+        if prev_metrics and prev_metrics.get("accuracy") is not None:
+            d = (acc - prev_metrics["accuracy"]) * 100
+            sign = "+" if d >= 0 else ""
+            delta = f" (Δ {sign}{d:.1f} pts vs run précédent)"
+        lines.append(f"- {emoji} **Précision globale** : {acc:.1%}{delta}")
+        lines.append(f"- **Corrects** : {metrics['correct']} "
+                     f"(dont {metrics['n_agreements']} accords + "
+                     f"{metrics['correct'] - metrics['n_agreements']} désaccords confirmés)")
+        lines.append(f"- **Incorrects** : {metrics['wrong']}")
+        if metrics["pending"] > 0:
+            lines.append(f"- ⏳ **Désaccords non arbitrés** : {metrics['pending']}")
     else:
-        lines.append("- ⏳ **Mesure A** : aucune validation effectuée")
-
-    if atrier.get("validated", 0) > 0:
-        cls = atrier["classified_count"]
-        skp = atrier["skipped"]
-        lines.append(f"- 📥 **Diagnostic A-TRIER (Mesure B)** : "
-                     f"{cls} fichiers classifiables, {skp} illisibles "
-                     f"sur {atrier['validated']} validés")
-    else:
-        lines.append("- ⏳ **Mesure B** : aucune validation effectuée")
+        lines.append("- ⏳ Aucun désaccord arbitré pour l'instant — précision non calculable.")
     lines.append("")
 
-    # ─── Section A ────────────────────────────────────────────────────
-    lines.append("## Mesure A — Précision sur les fichiers classés")
-    lines.append("")
-    if classified.get("validated", 0) == 0:
-        lines.append("Aucune donnée. Lance la validation via le dashboard `/baseline`.")
-    else:
-        lines.append("### Vue d'ensemble")
+    # ─── Verdict breakdown ────────────────────────────────────────
+    if metrics["verdict_breakdown"]:
+        lines.append("## Répartition des arbitrages")
         lines.append("")
-        lines.append("| Métrique | Valeur |")
-        lines.append("|---|---|")
-        lines.append(f"| Fichiers validés | {classified['validated']} |")
-        lines.append(f"| Corrects (Klodo a bien classé) | {classified['correct']} |")
-        lines.append(f"| Incorrects | {classified['wrong']} |")
-        lines.append(f"| Sautés | {classified['skipped']} |")
-        lines.append(f"| Pending | {classified['pending']} |")
-        lines.append(f"| **Accuracy** | **{classified['accuracy']:.1%}** |")
+        lines.append("| Verdict | Nombre |")
+        lines.append("|---|---:|")
+        for v in ("klodo_right", "actual_right", "neither_right", "skip"):
+            n = metrics["verdict_breakdown"].get(v, 0)
+            label = {
+                "klodo_right": "Klodo a raison (l'emplacement actuel est faux)",
+                "actual_right": "Actuel a raison (Klodo se trompe)",
+                "neither_right": "Aucun des deux (ground-truth saisie)",
+                "skip": "Sauté (illisible / hors-scope)",
+            }[v]
+            lines.append(f"| {label} | {n} |")
         lines.append("")
 
-        # Per-class metrics
-        lines.append("### Précision / Rappel par classe")
+    # ─── Per-class ────────────────────────────────────────────────
+    if metrics["per_class"]:
+        lines.append("## Précision / Rappel par classe")
         lines.append("")
-        lines.append("Trié par F1 ascendant (les classes en bas méritent l'attention).")
+        lines.append("Trié par F1 ascendant (les classes en haut méritent l'attention).")
         lines.append("")
         lines.append("| Classe | Support | Précision | Rappel | F1 | TP | FP | FN |")
         lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
-        for row in sorted(classified["per_class"], key=lambda r: r["f1"]):
+        rows = sorted(metrics["per_class"], key=lambda r: r["f1"])
+        for row in rows:
             if row["support"] == 0 and row["fp"] == 0:
                 continue
             lines.append(
@@ -209,148 +227,141 @@ def render_report(profile: str, classified: dict, atrier: dict) -> str:
             )
         lines.append("")
 
-        # Confusion pairs
-        if classified["confusion_pairs"]:
-            lines.append("### Top confusions (predicted → actually)")
-            lines.append("")
-            lines.append("Quand Klodo se trompe, vers quoi il dérive le plus souvent.")
-            lines.append("")
-            lines.append("| # | Klodo a dit | C'était en fait | Cas |")
-            lines.append("|---|---|---|---:|")
-            for i, ((predicted, truth), count) in enumerate(classified["confusion_pairs"], 1):
-                lines.append(f"| {i} | `{predicted}` | `{truth}` | {count} |")
-            lines.append("")
-
-    lines.append("")
-
-    # ─── Section B ────────────────────────────────────────────────────
-    lines.append("## Mesure B — Diagnostic A-TRIER")
-    lines.append("")
-    if atrier.get("validated", 0) == 0:
-        lines.append("Aucune donnée. Lance la validation via le dashboard `/baseline?mode=atrier`.")
-    else:
-        lines.append(f"Sur {atrier['validated']} fichiers de `_A-TRIER` validés :")
+    # ─── Confusion pairs ──────────────────────────────────────────
+    if metrics["confusion_pairs"]:
+        lines.append("## Top confusions (Klodo prédit → en fait)")
         lines.append("")
-        lines.append(f"- {atrier['classified_count']} **auraient pu être classés** "
-                     f"(le classifier a abandonné à tort)")
-        lines.append(f"- {atrier['skipped']} **vraiment illisibles** "
-                     f"(couverture absente, scan corrompu, etc.)")
+        lines.append("| # | Klodo a dit | C'était en fait | Cas |")
+        lines.append("|---|---|---|---:|")
+        for i, ((pred, truth), count) in enumerate(metrics["confusion_pairs"], 1):
+            lines.append(f"| {i} | `{pred}` | `{truth}` | {count} |")
         lines.append("")
 
-        if atrier["by_section"]:
-            lines.append("### Répartition par section")
-            lines.append("")
-            lines.append("Section où ces fichiers auraient dû atterrir :")
-            lines.append("")
-            lines.append("| Section | Nombre |")
-            lines.append("|---|---:|")
-            for section, count in atrier["by_section"]:
-                lines.append(f"| `{section}` | {count} |")
-            lines.append("")
-
-        if atrier["distribution"]:
-            lines.append("### Détail par dossier")
-            lines.append("")
-            lines.append("| Dossier | Nombre |")
-            lines.append("|---|---:|")
-            for folder, count in atrier["distribution"][:20]:
-                lines.append(f"| `{folder}` | {count} |")
-            lines.append("")
-
-    lines.append("")
-
-    # ─── Recommandations ──────────────────────────────────────────────
+    # ─── Recommandations ──────────────────────────────────────────
     lines.append("## Recommandations")
     lines.append("")
     recs: list[str] = []
 
-    if classified.get("validated", 0) > 0:
-        # Find worst classes
+    if metrics["per_class"]:
         worst = sorted(
-            (r for r in classified["per_class"] if r["support"] >= 2),
+            (r for r in metrics["per_class"] if r["support"] >= 2),
             key=lambda r: r["recall"],
-        )[:5]
-        if worst:
-            worst_list = ", ".join(f"`{r['class']}`" for r in worst[:3])
-            recs.append(f"Améliorer la classification sur les classes faibles : {worst_list}")
+        )[:3]
+        if worst and worst[0]["recall"] < 0.7:
+            classes = ", ".join(f"`{r['class']}`" for r in worst)
+            recs.append(f"Améliorer le rappel sur les classes faibles : {classes}")
 
-        # Find frequent confusion targets
-        if classified["confusion_pairs"]:
-            top_confusion = classified["confusion_pairs"][0]
-            (pred, truth), cnt = top_confusion
-            if cnt >= 3:
-                recs.append(
-                    f"Investiguer la confusion fréquente `{pred}` ↔ `{truth}` ({cnt} cas) — "
-                    "peut-être ajouter une règle de désambiguïsation ou un mot-clé spécifique"
-                )
+    if metrics["confusion_pairs"]:
+        (pred, truth), cnt = metrics["confusion_pairs"][0]
+        if cnt >= 3:
+            recs.append(
+                f"Investiguer la confusion fréquente `{pred}` → `{truth}` ({cnt} cas) — "
+                "ajouter une règle de désambiguïsation ou un mot-clé spécifique"
+            )
 
-    if atrier.get("classified_count", 0) > 0 and atrier.get("by_section"):
-        top_sec, top_count = atrier["by_section"][0]
-        recs.append(
-            f"Klodo abandonne sur {top_count} fichiers qui auraient dû aller dans `{top_sec}` — "
-            "renforcer le mapping ou le keyword classifier sur cette section"
-        )
+    if metrics["pending"] > 0:
+        recs.append(f"Terminer l'arbitrage des {metrics['pending']} désaccords pendants "
+                    "pour avoir des chiffres complets")
 
     if not recs:
-        recs.append("Pas assez de données pour des recommandations spécifiques. "
-                    "Termine la validation, puis relance ce script.")
+        recs.append("Pas de recommandation forte. Si l'accuracy est satisfaisante, ce run sert "
+                    "de baseline pour les prochaines améliorations de Klodo.")
 
     for i, rec in enumerate(recs, 1):
         lines.append(f"{i}. {rec}")
-
     lines.append("")
+
+    # ─── Comparison ───────────────────────────────────────────────
+    if prev_metrics is not None:
+        lines.append("## Comparaison avec le run précédent")
+        lines.append("")
+        lines.append("| Métrique | Précédent | Actuel | Δ |")
+        lines.append("|---|---:|---:|---:|")
+        rows = [
+            ("Précision globale", "accuracy", "{:.1%}", lambda a, b: f"{(b-a)*100:+.1f} pts"),
+            ("Désaccords", "n_disagreements", "{}", lambda a, b: f"{b-a:+d}"),
+            ("Corrects", "correct", "{}", lambda a, b: f"{b-a:+d}"),
+            ("Incorrects", "wrong", "{}", lambda a, b: f"{b-a:+d}"),
+        ]
+        for label, key, fmt, dfn in rows:
+            a = prev_metrics.get(key)
+            b = metrics.get(key)
+            if a is None or b is None:
+                continue
+            lines.append(f"| {label} | {fmt.format(a)} | {fmt.format(b)} | {dfn(a, b)} |")
+        lines.append("")
+
     return "\n".join(lines)
 
 
-# ════════════════════════════════════════════════════════════════════════
-#  Entrypoint
-# ════════════════════════════════════════════════════════════════════════
+# ─── Entrypoint ───────────────────────────────────────────────────────────
 
 
-def main(profile: str, output: Path | None) -> int:
+def main(profile: str, run_id: str | None, output: Path | None) -> int:
     repo_root = Path(__file__).resolve().parent.parent
-    cache_dir = repo_root / "profiles" / profile / ".cache"
-    classified_path = cache_dir / "validation_sample.jsonl"
-    atrier_path = cache_dir / "validation_atrier_sample.jsonl"
+    profile_dir = repo_root / "profiles" / profile
 
-    classified_records = load_jsonl(classified_path)
-    atrier_records = load_jsonl(atrier_path)
-
-    if not classified_records and not atrier_records:
-        print("ERROR: no JSONL data found. Run build_validation_sample.py "
-              "and build_atrier_sample.py first.", file=sys.stderr)
+    runs = list_runs(profile_dir)
+    if not runs:
+        print(f"ERROR: no baseline runs for profile {profile!r}. "
+              f"Run scripts/baseline_run.py first.", file=sys.stderr)
         return 2
 
-    print(f"Profile         : {profile}")
-    print(f"Mesure A source : {classified_path.relative_to(repo_root)} "
-          f"({len(classified_records)} records)")
-    print(f"Mesure B source : {atrier_path.relative_to(repo_root)} "
-          f"({len(atrier_records)} records)")
+    if run_id:
+        run_dir = next((r for r in runs if r.name == f"run-{run_id}"), None)
+        if run_dir is None:
+            print(f"ERROR: run-{run_id} not found", file=sys.stderr)
+            return 2
+    else:
+        run_dir = runs[0]
+
+    meta_path = run_dir / "meta.json"
+    if not meta_path.exists():
+        print(f"ERROR: meta.json missing in {run_dir}", file=sys.stderr)
+        return 2
+    run_meta = json.loads(meta_path.read_text())
+
+    predictions = load_jsonl(run_dir / "predictions.jsonl")
+    disagreements = load_jsonl(run_dir / "disagreements.jsonl")
+
+    print(f"Profile      : {profile}")
+    print(f"Run          : {run_meta.get('run_id')}")
+    print(f"Predictions  : {len(predictions)}")
+    print(f"Disagreements: {len(disagreements)}")
     print()
 
-    classified = compute_classified_metrics(classified_records)
-    atrier = compute_atrier_metrics(atrier_records)
+    metrics = compute_metrics(predictions, disagreements)
 
-    report = render_report(profile, classified, atrier)
+    # Find a previous run for comparison
+    prev_metrics = None
+    if len(runs) > 1:
+        prev_run_dir = next((r for r in runs if r != run_dir), None)
+        if prev_run_dir:
+            prev_predictions = load_jsonl(prev_run_dir / "predictions.jsonl")
+            prev_disagreements = load_jsonl(prev_run_dir / "disagreements.jsonl")
+            if prev_predictions:
+                prev_metrics = compute_metrics(prev_predictions, prev_disagreements)
+
+    report = render_report(profile, run_meta, metrics, prev_metrics)
 
     if output is None:
-        output = repo_root / "review" / "baseline-classification.md"
-    output.parent.mkdir(parents=True, exist_ok=True)
+        output = run_dir / "report.md"
     output.write_text(report)
 
-    print(f"Rapport écrit → {output.relative_to(repo_root)}")
-    if classified.get("accuracy") is not None:
-        print(f"  Précision Mesure A : {classified['accuracy']:.1%} "
-              f"sur {classified['validated']} validés")
-    if atrier.get("classified_count", 0) > 0:
-        print(f"  A-TRIER classifiables : {atrier['classified_count']} / {atrier['validated']}")
+    print(f"Report écrit → {output.relative_to(repo_root)}")
+    if metrics["correct"] + metrics["wrong"] > 0:
+        print(f"  Précision : {metrics['accuracy']:.1%} ({metrics['correct']}/{metrics['correct']+metrics['wrong']})")
+    if metrics["pending"] > 0:
+        print(f"  Désaccords non arbitrés : {metrics['pending']}")
     return 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", default="default")
+    parser.add_argument("--run-id", default=None,
+                        help="Run ID (without 'run-' prefix). Default: latest.")
     parser.add_argument("--output", type=Path, default=None,
-                        help="Override output path")
+                        help="Override output path (default: run-dir/report.md)")
     args = parser.parse_args()
-    sys.exit(main(args.profile, args.output))
+    sys.exit(main(args.profile, args.run_id, args.output))

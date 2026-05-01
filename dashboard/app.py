@@ -1378,27 +1378,43 @@ async def delete_run(id: str):
     return JSONResponse({"message": f"Run {id} supprimé"})
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════
-#  Baseline classification validation
+#  Baseline classification — adjudicate disagreements between current Klodo
+#  predictions and the current SSD layout. Run-based, multi-profile.
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 @app.get("/baseline")
-async def baseline_page(request: Request, mode: str = "classified"):
-    """Validation page for the classification baseline.
+async def baseline_page(
+    request: Request,
+    profile: str | None = None,
+    run_id: str | None = None,
+):
+    """Validation UI for the latest baseline run of a profile.
 
-    Two modes:
-    - 'classified' : confirm/correct Klodo's predictions on classified files
-    - 'atrier'     : provide ground-truth folder for files Klodo dumped to A-TRIER
+    Smart default: profile with the most recent run, else 'default'.
     """
-    profile = "default"
-    if mode not in ("classified", "atrier"):
-        mode = "classified"
+    if not profile:
+        profile = baseline.smart_default_profile()
 
-    classified_stats = baseline.stats(profile, "classified")
-    atrier_stats = baseline.stats(profile, "atrier")
+    available_profiles = [
+        p["name"] if isinstance(p, dict) else p
+        for p in data.get_available_profiles()
+    ]
+
+    runs = baseline.list_runs(profile)
+    selected_run = baseline.get_run(profile, run_id)
+    if selected_run is None and runs:
+        selected_run = runs[0]
+
     folders = baseline.list_target_folders(profile)
-    record = baseline.next_record(profile, mode)
+    record = None
+    stats = None
+    if selected_run:
+        rid = selected_run["run_id"]
+        record = baseline.next_record(profile, rid)
+        stats = baseline.stats(profile, rid)
 
     return templates.TemplateResponse(
         request,
@@ -1406,52 +1422,61 @@ async def baseline_page(request: Request, mode: str = "classified"):
         {
             "active": "baseline",
             "profile": profile,
-            "mode": mode,
+            "available_profiles": available_profiles,
+            "runs": runs,
+            "selected_run": selected_run,
             "record": record,
             "folders": folders,
-            "classified_stats": classified_stats,
-            "atrier_stats": atrier_stats,
+            "stats": stats,
         },
     )
 
 
-@app.get("/api/baseline/next")
-async def baseline_next(profile: str = "default", mode: str = "classified"):
-    """Return the next unvalidated record + progress, or null if all done."""
+@app.get("/api/baseline/runs")
+async def baseline_runs_api(profile: str):
+    """List baseline runs for a profile (latest first)."""
     from fastapi.responses import JSONResponse
-    if mode not in ("classified", "atrier"):
-        return JSONResponse({"error": "invalid mode"}, status_code=400)
-    record = baseline.next_record(profile, mode)
-    stats = baseline.stats(profile, mode)
-    if record is None:
-        return JSONResponse({"done": True, "record": None, "stats": stats})
-    return JSONResponse({"done": False, "record": record, "stats": stats})
+    return JSONResponse({"runs": baseline.list_runs(profile)})
+
+
+@app.get("/api/baseline/next")
+async def baseline_next_api(profile: str, run_id: str | None = None):
+    """Return the next unvalidated disagreement for a run."""
+    from fastapi.responses import JSONResponse
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"error": "no run available"}, status_code=404)
+    rid = run["run_id"]
+    record = baseline.next_record(profile, rid)
+    return JSONResponse({
+        "done": record is None,
+        "record": record,
+        "run_id": rid,
+        "stats": baseline.stats(profile, rid),
+    })
 
 
 @app.post("/api/baseline/verdict")
-async def baseline_save_verdict(request: Request):
-    """Persist a verdict for a single file_id.
+async def baseline_verdict_api(request: Request):
+    """Persist a verdict for one disagreement.
 
-    Body JSON:
-      {profile, mode, file_id, verdict, ground_truth?, notes?}
+    Body JSON: {profile, run_id, file_id, verdict, ground_truth?, notes?}
     """
     from fastapi.responses import JSONResponse
     body = await request.json()
-    profile = body.get("profile", "default")
-    mode = body.get("mode")
+    profile = body.get("profile")
+    run_id = body.get("run_id")
     file_id = body.get("file_id")
     verdict = body.get("verdict")
     ground_truth = body.get("ground_truth")
     notes = body.get("notes")
 
-    if mode not in ("classified", "atrier"):
-        return JSONResponse({"error": "invalid mode"}, status_code=400)
-    if not file_id or not verdict:
-        return JSONResponse({"error": "missing file_id or verdict"}, status_code=400)
+    if not profile or not run_id or not file_id or not verdict:
+        return JSONResponse({"error": "missing fields"}, status_code=400)
 
     try:
         ok = baseline.save_verdict(
-            profile, mode, file_id, verdict,
+            profile, run_id, file_id, verdict,
             ground_truth=ground_truth, notes=notes,
         )
     except ValueError as e:
@@ -1460,62 +1485,56 @@ async def baseline_save_verdict(request: Request):
     if not ok:
         return JSONResponse({"error": "file_id not found"}, status_code=404)
 
-    stats = baseline.stats(profile, mode)
-    next_rec = baseline.next_record(profile, mode)
+    next_rec = baseline.next_record(profile, run_id)
     return JSONResponse({
-        "ok": True, "stats": stats,
-        "next": next_rec, "done": next_rec is None,
+        "ok": True,
+        "stats": baseline.stats(profile, run_id),
+        "next": next_rec,
+        "done": next_rec is None,
     })
 
 
 @app.get("/api/baseline/thumbnail/{file_id}")
-async def baseline_thumbnail(file_id: str, profile: str = "default", mode: str = "classified"):
-    """Serve a thumbnail for the given file_id, generating it on demand.
-
-    Path traversal is impossible: file_id is a sha1 hash and the resolved
-    source path is checked to live under the profile's target.
-    """
+async def baseline_thumbnail_api(
+    file_id: str, profile: str, run_id: str | None = None,
+):
+    """Serve a JPEG thumbnail for a file_id, generating on demand."""
     from fastapi.responses import FileResponse, JSONResponse
 
     from lib.thumbnail import generate_thumbnail
-    if mode not in ("classified", "atrier"):
-        return JSONResponse({"error": "invalid mode"}, status_code=400)
-
-    record = baseline.get_record(profile, mode, file_id)
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"error": "no run"}, status_code=404)
+    record = baseline.get_record(profile, run["run_id"], file_id)
     if record is None:
         return JSONResponse({"error": "not found"}, status_code=404)
 
     source = baseline.resolve_source_path(profile, record["rel_path"])
     if source is None:
-        return JSONResponse({"error": "source missing on disk"}, status_code=404)
+        return JSONResponse({"error": "source missing"}, status_code=404)
 
     doc_dir = baseline.baseline_thumbnail_dir(profile, file_id)
     target = doc_dir / "1.jpg"
-
     if not target.exists():
         try:
             generate_thumbnail(source, doc_dir, n_pages=1, start_page=1)
         except Exception as e:
             return JSONResponse({"error": f"thumbnail failed: {e}"}, status_code=500)
-
     if not target.exists():
-        return JSONResponse({"error": "thumbnail unavailable"}, status_code=500)
-
+        return JSONResponse({"error": "unavailable"}, status_code=500)
     return FileResponse(target, media_type="image/jpeg")
 
 
 @app.get("/api/baseline/folders")
-async def baseline_folders(profile: str = "default"):
-    """Return the list of valid folders for ground-truth selection (autocomplete)."""
+async def baseline_folders_api(profile: str):
     from fastapi.responses import JSONResponse
     return JSONResponse({"folders": baseline.list_target_folders(profile)})
 
 
 @app.get("/api/baseline/stats")
-async def baseline_stats_api(profile: str = "default"):
-    """Return progression stats for both modes."""
+async def baseline_stats_api(profile: str, run_id: str | None = None):
     from fastapi.responses import JSONResponse
-    return JSONResponse({
-        "classified": baseline.stats(profile, "classified"),
-        "atrier": baseline.stats(profile, "atrier"),
-    })
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"exists": False})
+    return JSONResponse(baseline.stats(profile, run["run_id"]))

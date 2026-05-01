@@ -2698,3 +2698,76 @@ th {
     border: 1px solid var(--border);
 }
 .btn-muted:hover { background: #2a2f3d; }
+
+/* ════════════════════════════════════════════════════════════════════════ */
+/*  Baseline rework — multi-profile + 4-verdict adjudication                 */
+/* ════════════════════════════════════════════════════════════════════════ */
+.baseline-toolbar {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 14px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.baseline-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.baseline-vision-meta {
+    font-size: 13px;
+    padding: 8px 12px;
+    background: var(--card-hover, #1f2330);
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.baseline-comparison {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-top: 8px;
+}
+.baseline-side {
+    flex: 1;
+    padding: 12px;
+    border-radius: 6px;
+    background: var(--card-hover, #1f2330);
+    border: 1px solid var(--border);
+    min-width: 0;
+}
+.baseline-side .baseline-label {
+    margin-bottom: 6px;
+}
+.baseline-side code {
+    font-family: monospace;
+    font-size: 13px;
+    word-break: break-all;
+    display: block;
+}
+.baseline-side-actual { border-left: 4px solid var(--orange, #d97706); }
+.baseline-side-klogo,
+.baseline-side-klodo { border-left: 4px solid var(--blue); }
+.baseline-vs {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.btn-info {
+    background: var(--blue);
+    color: #fff;
+    border-color: var(--blue);
+}
+.btn-info:hover { background: #1e40af; }
+.btn-warning {
+    background: var(--orange, #d97706);
+    color: #fff;
+    border-color: var(--orange, #d97706);
+}
+.btn-warning:hover { background: #b45309; }
