@@ -82,7 +82,14 @@
         </div>
         <div class="baseline-progress-text">
             <strong id="baseline-validated">{{ stats.validated }}</strong> /
-            <strong id="baseline-total">{{ stats.n_disagreements }}</strong> désaccords arbitrés
+            <strong id="baseline-total">{{ stats.n_disagreements }}</strong>
+            {% if stats.sample_active %}
+            <span class="baseline-sample-badge">échantillon</span>
+            (sur {{ stats.n_disagreements_total }} désaccords totaux)
+            {% else %}
+            désaccords
+            {% endif %}
+            arbitrés
             <span class="text-muted">·
                 <span id="baseline-kr">{{ stats.klodo_right }}</span> Klodo ·
                 <span id="baseline-ar">{{ stats.actual_right }}</span> Actuel ·

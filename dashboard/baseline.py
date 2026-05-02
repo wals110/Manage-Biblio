@@ -133,29 +133,45 @@ def _save(profile: str, run_id: str, records: list[dict]) -> None:
     tmp.replace(path)
 
 
+def _is_in_sample(record: dict) -> bool:
+    """A record is in the arbitration sample if 'in_sample' is missing
+    (no sampling done yet → consider all) or explicitly True."""
+    return record.get("in_sample", True) is True
+
+
 def stats(profile: str, run_id: str) -> dict:
-    """Return progression stats for a run's disagreements."""
+    """Return progression stats for a run's disagreements.
+
+    If a sample has been defined (records have in_sample=True/False),
+    counts are restricted to in_sample records. Otherwise all
+    disagreements count.
+    """
     records = _load(profile, run_id)
-    total = len(records)
+    total_all = len(records)
+    sampled = [r for r in records if _is_in_sample(r)]
+    sampled_total = len(sampled)
+    sample_active = any("in_sample" in r for r in records) and sampled_total != total_all
+
     counts: dict[str, int] = {v: 0 for v in VERDICT_VALUES}
-    for r in records:
+    for r in sampled:
         v = r.get("verdict")
         if v in counts:
             counts[v] += 1
     validated = sum(counts.values())
 
-    # Total predictions (incl. agreements) for context
     meta = get_run(profile, run_id)
     n_files = meta.get("n_files", 0) if meta else 0
-    n_agreements = max(0, n_files - total)
+    n_agreements = max(0, n_files - total_all)
 
     return {
-        "exists": total > 0 or n_files > 0,
+        "exists": total_all > 0 or n_files > 0,
         "n_files": n_files,
         "n_agreements": n_agreements,
-        "n_disagreements": total,
+        "n_disagreements_total": total_all,
+        "n_disagreements": sampled_total,
+        "sample_active": sample_active,
         "validated": validated,
-        "remaining": total - validated,
+        "remaining": sampled_total - validated,
         "klodo_right": counts["klodo_right"],
         "actual_right": counts["actual_right"],
         "neither_right": counts["neither_right"],
@@ -166,8 +182,11 @@ def stats(profile: str, run_id: str) -> dict:
 def next_record(profile: str, run_id: str) -> dict | None:
     records = _load(profile, run_id)
     for r in records:
-        if not r.get("verdict"):
-            return r
+        if r.get("verdict"):
+            continue
+        if not _is_in_sample(r):
+            continue
+        return r
     return None
 
 

@@ -63,11 +63,22 @@ def compute_metrics(predictions: list[dict], disagreements: list[dict]) -> dict:
     - If disagreement and verdict == actual_right → current folder is truth
     - If disagreement and verdict == neither_right → ground_truth is truth
     - If disagreement and verdict == skip OR no verdict → excluded
+    - If disagreement and not in sample → excluded (when sampling active)
 
     Returns dict with totals + per_class + confusion_pairs.
     """
-    # Build verdict lookup
-    verdicts = {d["file_id"]: d for d in disagreements}
+    sample_active = any("in_sample" in d for d in disagreements)
+    if sample_active:
+        in_sample_ids = {d["file_id"] for d in disagreements if d.get("in_sample")}
+    else:
+        in_sample_ids = {d["file_id"] for d in disagreements}
+
+    # Build verdict lookup (only sample-included records when sampling active)
+    verdicts = {
+        d["file_id"]: d
+        for d in disagreements
+        if d["file_id"] in in_sample_ids
+    }
 
     tp: Counter[str] = Counter()
     fp: Counter[str] = Counter()
