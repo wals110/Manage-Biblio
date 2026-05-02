@@ -1456,6 +1456,21 @@ async def baseline_next_api(profile: str, run_id: str | None = None):
     })
 
 
+@app.get("/api/baseline/record")
+async def baseline_record_api(profile: str, file_id: str, run_id: str | None = None):
+    """Return a specific record by file_id (used for going back / editing)."""
+    from fastapi.responses import JSONResponse
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"error": "no run available"}, status_code=404)
+    rid = run["run_id"]
+    record = baseline.get_record(profile, rid, file_id)
+    if record is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"record": record, "run_id": rid,
+                         "stats": baseline.stats(profile, rid)})
+
+
 @app.post("/api/baseline/verdict")
 async def baseline_verdict_api(request: Request):
     """Persist a verdict for one disagreement.

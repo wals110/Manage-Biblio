@@ -22,9 +22,18 @@
         profile: cfg.profile,
         runId: cfg.runId,
         currentFileId: cfg.initialFileId,
+        currentRecord: null,        // full record currently displayed
+        history: [],                 // stack of file_ids visited (last 50)
         suggestionIndex: -1,
         currentSuggestions: [],
         pickerOpen: false,
+    };
+
+    const VERDICT_LABELS = {
+        klodo_right: "K · Klodo a raison",
+        actual_right: "A · Actuel a raison",
+        neither_right: "N · Aucun des deux",
+        skip: "S · Skip",
     };
 
     // ─── DOM refs ────────────────────────────────────────────────────────
@@ -49,6 +58,11 @@
     // ─── Verdict submission ──────────────────────────────────────────────
     async function submitVerdict(verdict, groundTruth) {
         if (!state.currentFileId) return;
+        // Push current onto history stack before advancing (for B = back)
+        if (state.currentFileId) {
+            state.history.push(state.currentFileId);
+            if (state.history.length > 50) state.history.shift();
+        }
         try {
             const resp = await fetch("/api/baseline/verdict", {
                 method: "POST",
@@ -72,6 +86,34 @@
                 return;
             }
             loadRecord(data.next);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    // ─── Go back to previously-visited record ───────────────────────────
+    async function goBack() {
+        // Pop our own current id if it ended up there (defensive), then pop
+        // the actual previous id and fetch it. We DON'T push to history
+        // again — going-back-then-forward should restore intuitively via
+        // submitVerdict's push.
+        if (state.history.length === 0) return;
+        const prevId = state.history.pop();
+        if (!prevId || prevId === state.currentFileId) {
+            // Edge case: stack had a stale duplicate; try once more
+            if (state.history.length === 0) return;
+            return goBack();
+        }
+        try {
+            const url = `/api/baseline/record?profile=${state.profile}&run_id=${state.runId}&file_id=${prevId}`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (!resp.ok) {
+                console.error("Back failed:", data);
+                return;
+            }
+            loadRecord(data.record);
+            updateStats(data.stats);
         } catch (e) {
             console.error(e);
         }
@@ -104,9 +146,14 @@
         if (row) row.style.display = show ? "" : "none";
     }
 
+    const $revisitBanner = document.getElementById("baseline-revisit-banner");
+    const $revisitVerdict = document.getElementById("baseline-revisit-verdict");
+    const $backBtn = document.getElementById("baseline-back-btn");
+
     function loadRecord(record) {
         if (!record) return;
         state.currentFileId = record.file_id;
+        state.currentRecord = record;
         $filename.textContent = record.filename;
         $relpath.textContent = record.rel_path;
         if ($predicted) $predicted.textContent = record.predicted_folder;
@@ -124,6 +171,20 @@
         setRow($confWrap, Boolean(conf));
         if ($visionMeta) {
             $visionMeta.classList.toggle("hidden", !title && !theme);
+        }
+        // Revisit banner if this record already has a verdict
+        if ($revisitBanner) {
+            const v = record.verdict;
+            if (v) {
+                $revisitVerdict.textContent = VERDICT_LABELS[v] || v;
+                $revisitBanner.classList.remove("hidden");
+            } else {
+                $revisitBanner.classList.add("hidden");
+            }
+        }
+        // Disable back button if no history
+        if ($backBtn) {
+            $backBtn.disabled = state.history.length === 0;
         }
         closeFolderPicker();
     }
@@ -230,6 +291,10 @@
         });
     });
 
+    if ($backBtn) {
+        $backBtn.addEventListener("click", () => goBack());
+    }
+
     if ($input) {
         $input.addEventListener("input", () => renderSuggestions($input.value));
     }
@@ -254,5 +319,6 @@
         else if (key === "a") { e.preventDefault(); submitVerdict("actual_right"); }
         else if (key === "n") { e.preventDefault(); openFolderPicker(); }
         else if (key === "s") { e.preventDefault(); submitVerdict("skip"); }
+        else if (key === "b") { e.preventDefault(); goBack(); }
     });
 })();

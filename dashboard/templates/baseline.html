@@ -134,6 +134,12 @@
                 </div>
             </div>
 
+            <div id="baseline-revisit-banner" class="baseline-revisit-banner hidden">
+                ⚠️ Tu reviens sur un fichier déjà arbitré. Verdict actuel :
+                <strong id="baseline-revisit-verdict">—</strong>.
+                Choisis un nouveau verdict pour l'écraser.
+            </div>
+
             <div class="baseline-question">Qui a raison ?</div>
             <div class="baseline-actions">
                 <button class="btn btn-success" data-action="klodo_right">
@@ -147,6 +153,10 @@
                 </button>
                 <button class="btn btn-muted" data-action="skip">
                     S · Skip
+                </button>
+                <button id="baseline-back-btn" class="btn btn-muted baseline-back-btn"
+                        title="Revenir au fichier précédent">
+                    ← B · Précédent
                 </button>
             </div>
 
@@ -173,6 +183,7 @@
                 <kbd>A</kbd> = Actuel correct ·
                 <kbd>N</kbd> = Aucun (pickr) ·
                 <kbd>S</kbd> = Skip ·
+                <kbd>B</kbd> = Précédent ·
                 <kbd>↓</kbd>/<kbd>↑</kbd> nav suggestions ·
                 <kbd>Enter</kbd> confirmer ·
                 <kbd>Esc</kbd> annuler

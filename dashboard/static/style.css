@@ -2792,3 +2792,23 @@ th {
     font-size: 13px;
     text-align: center;
 }
+
+.baseline-revisit-banner {
+    padding: 10px 14px;
+    background: rgba(217, 119, 6, 0.15);
+    border: 1px solid var(--orange, #d97706);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    margin-top: 8px;
+}
+.baseline-revisit-banner.hidden { display: none; }
+.baseline-revisit-banner strong { color: var(--orange, #d97706); }
+
+.baseline-back-btn {
+    margin-left: auto;  /* push right end of action row */
+}
+.baseline-back-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
