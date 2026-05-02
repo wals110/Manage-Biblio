@@ -112,14 +112,15 @@
             <div class="baseline-filename" id="baseline-filename">{{ record.filename }}</div>
             <div class="baseline-relpath text-muted" id="baseline-relpath">{{ record.rel_path }}</div>
 
-            {% if record.theme or record.title %}
-            <div class="baseline-vision-meta text-muted">
-                {% if record.title %}<div>📕 <em>{{ record.title }}</em></div>{% endif %}
-                {% if record.theme %}<div>🏷️ thème détecté : {{ record.theme }}
-                    {% if record.confidence %}<span class="text-muted">(conf. {{ (record.confidence * 100) | round(0) | int }}%)</span>{% endif %}
-                </div>{% endif %}
+            <div id="baseline-vision-meta" class="baseline-vision-meta text-muted{% if not (record.theme or record.title) %} hidden{% endif %}">
+                <div id="baseline-title-row" {% if not record.title %}style="display:none"{% endif %}>
+                    📕 <em id="baseline-title">{{ record.title }}</em>
+                </div>
+                <div id="baseline-theme-row" {% if not record.theme %}style="display:none"{% endif %}>
+                    🏷️ thème détecté : <span id="baseline-theme">{{ record.theme }}</span>
+                    <span id="baseline-conf-wrap" class="text-muted" {% if not record.confidence %}style="display:none"{% endif %}>(conf. <span id="baseline-conf">{{ (record.confidence * 100) | round(0) | int if record.confidence else 0 }}</span>%)</span>
+                </div>
             </div>
-            {% endif %}
 
             <div class="baseline-comparison">
                 <div class="baseline-side baseline-side-actual">

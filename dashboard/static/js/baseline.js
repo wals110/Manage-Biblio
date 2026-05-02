@@ -92,6 +92,18 @@
     }
 
     // ─── Load a new record ───────────────────────────────────────────────
+    const $visionMeta = document.getElementById("baseline-vision-meta");
+    const $titleRow = document.getElementById("baseline-title-row");
+    const $title = document.getElementById("baseline-title");
+    const $themeRow = document.getElementById("baseline-theme-row");
+    const $theme = document.getElementById("baseline-theme");
+    const $confWrap = document.getElementById("baseline-conf-wrap");
+    const $conf = document.getElementById("baseline-conf");
+
+    function setRow(row, show) {
+        if (row) row.style.display = show ? "" : "none";
+    }
+
     function loadRecord(record) {
         if (!record) return;
         state.currentFileId = record.file_id;
@@ -100,6 +112,19 @@
         if ($predicted) $predicted.textContent = record.predicted_folder;
         if ($actual) $actual.textContent = record.current_folder || "(racine)";
         $thumb.src = `/api/baseline/thumbnail/${record.file_id}?profile=${state.profile}&run_id=${state.runId}`;
+        // Update vision metadata
+        const title = record.title || "";
+        const theme = record.theme || "";
+        const conf = record.confidence || 0;
+        if ($title) $title.textContent = title;
+        if ($theme) $theme.textContent = theme;
+        if ($conf) $conf.textContent = Math.round(conf * 100);
+        setRow($titleRow, Boolean(title));
+        setRow($themeRow, Boolean(theme));
+        setRow($confWrap, Boolean(conf));
+        if ($visionMeta) {
+            $visionMeta.classList.toggle("hidden", !title && !theme);
+        }
         closeFolderPicker();
     }
 
