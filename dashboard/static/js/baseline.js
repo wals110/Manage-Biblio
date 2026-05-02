@@ -122,12 +122,28 @@
 
     function renderSuggestions(query) {
         const q = (query || "").toLowerCase().trim();
-        const matches = q
-            ? folders.filter(f => f.toLowerCase().includes(q))
-            : folders.slice(0, 30);
-        state.currentSuggestions = matches.slice(0, 30);
+        // Empty query → no suggestions (avoid misleading "first N" alphabetical slice)
+        if (!q) {
+            state.currentSuggestions = [];
+            state.suggestionIndex = -1;
+            $suggestions.innerHTML =
+                '<div class="baseline-suggestion-hint">' +
+                'Tape au moins 1 caractère pour filtrer parmi les ' + folders.length +
+                ' dossiers (ex. "info", "physique", "ml", "musique"…)</div>';
+            $confirm.disabled = true;
+            return;
+        }
+        const matches = folders.filter(f => f.toLowerCase().includes(q));
+        // Cap at 50 to keep DOM light, sort by length so most-specific (shortest) match first
+        state.currentSuggestions = matches.slice(0, 50);
         state.suggestionIndex = state.currentSuggestions.length > 0 ? 0 : -1;
         $suggestions.innerHTML = "";
+        if (state.currentSuggestions.length === 0) {
+            $suggestions.innerHTML =
+                '<div class="baseline-suggestion-hint">Aucun dossier ne contient "' +
+                q.replace(/[<>]/g, "") + '"</div>';
+            return;
+        }
         state.currentSuggestions.forEach((f, i) => {
             const div = document.createElement("div");
             div.className = "baseline-suggestion-item" + (i === 0 ? " selected" : "");
@@ -143,6 +159,12 @@
             });
             $suggestions.appendChild(div);
         });
+        if (matches.length > 50) {
+            const more = document.createElement("div");
+            more.className = "baseline-suggestion-hint";
+            more.textContent = "… et " + (matches.length - 50) + " autres. Affine la recherche.";
+            $suggestions.appendChild(more);
+        }
         $confirm.disabled = state.suggestionIndex < 0;
     }
 

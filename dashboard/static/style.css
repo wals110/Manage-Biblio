@@ -2784,3 +2784,11 @@ th {
     letter-spacing: 0.4px;
     margin-left: 6px;
 }
+
+.baseline-suggestion-hint {
+    padding: 12px;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 13px;
+    text-align: center;
+}
