@@ -16,11 +16,33 @@ For scanned PDFs (no embedded text), falls back to default page ordering.
 
 from __future__ import annotations
 
+import contextlib
+import logging
+import os
 from pathlib import Path
 
 from lib.logger import get_logger
 
 log = get_logger()
+
+# Silence pypdf's noisy warnings about malformed objects in third-party PDFs.
+# pypdf logs at WARNING level for parser inconsistencies AND prints raw to
+# stderr for "Object N not defined" — both pollute the run log without
+# affecting our scoring (we tolerate per-page failures via try/except).
+for _name in ("pypdf", "pypdf.generic", "pypdf._reader", "PyPDF2"):
+    logging.getLogger(_name).setLevel(logging.ERROR)
+
+
+@contextlib.contextmanager
+def _silence_stderr():
+    """Redirect raw stderr writes (incl. pypdf's print() statements about
+    malformed PDF objects) into a discarded buffer."""
+    devnull = open(os.devnull, "w")
+    try:
+        with contextlib.redirect_stderr(devnull):
+            yield
+    finally:
+        devnull.close()
 
 
 def _alpha_count(text: str) -> int:
@@ -44,20 +66,21 @@ def score_pages(pdf_path: str | Path, n_candidates: int = 5) -> list[tuple[int, 
         log.warning("  ⚠ pypdf non installé — pas de smart page selection")
         return []
 
-    try:
-        reader = PdfReader(str(pdf_path))
-    except Exception as e:
-        log.warning(f"  ⚠ pypdf échoue sur {Path(pdf_path).name}: {e}")
-        return []
-
-    n = min(len(reader.pages), n_candidates)
-    out: list[tuple[int, int]] = []
-    for i in range(n):
+    with _silence_stderr():
         try:
-            text = reader.pages[i].extract_text() or ""
-            out.append((i + 1, _alpha_count(text)))
-        except Exception:
-            out.append((i + 1, 0))
+            reader = PdfReader(str(pdf_path))
+        except Exception as e:
+            log.warning(f"  ⚠ pypdf échoue sur {Path(pdf_path).name}: {e}")
+            return []
+
+        n = min(len(reader.pages), n_candidates)
+        out: list[tuple[int, int]] = []
+        for i in range(n):
+            try:
+                text = reader.pages[i].extract_text() or ""
+                out.append((i + 1, _alpha_count(text)))
+            except Exception:
+                out.append((i + 1, 0))
     return out
 
 
