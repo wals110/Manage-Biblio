@@ -71,41 +71,67 @@ log = get_logger()
 SILICONFLOW_ENDPOINT = "https://api.siliconflow.com/v1/chat/completions"
 DEFAULT_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 
-VISION_PROMPT = """Analyze this book cover image. Extract the following information and respond ONLY with a valid JSON object, nothing else:
+VISION_PROMPT = """Analyze this book cover image. Respond ONLY with a valid JSON object, nothing else:
 
 {
   "title": "the book title (in the original language of the book)",
   "author": "the author name(s), or empty string if not visible",
-  "theme": "the main topic/discipline in English (e.g. Mathematics, Computer Science, Physics, Chemistry, Biology, Medicine, Philosophy, History, Economics, Law, Psychology, Religion, Literature, Art, Music, Cooking, Sports, Photography, Engineering, Electronics, Networking, Programming, Machine Learning, Data Science, etc.)",
+  "themes": [
+    {"theme": "primary topic", "confidence": 0.0 to 1.0, "reason": "why"},
+    {"theme": "alt topic if ambiguous", "confidence": 0.0 to 1.0, "reason": "why"}
+  ],
   "language": "the main language of the book (fr, en, ar, de, es, etc.)",
   "confidence": 0.0 to 1.0
 }
 
-Rules:
-- If you cannot read the title clearly, set confidence below 0.3
-- If the image is not a book cover, set all fields to empty strings and confidence to 0
-- Keep the title exactly as written on the cover (preserve original language and case)
-- For author, use "Firstname Lastname" format if possible
-- Be specific with the theme (e.g. "Machine Learning" not just "Computer Science")"""
+Rules for `themes`:
+- Provide 1 to 3 candidate themes in English, ranked by confidence.
+- Be SPECIFIC: prefer "Machine Learning" over "Computer Science",
+  "Topology" over "Mathematics", "Quantum Mechanics" over "Physics".
+- If the title contains TECHNICAL terms (stochastic, bayesian, markov,
+  algorithm, gradient, neural, optimization, …), include the matching
+  technical discipline as a candidate even when the cover style suggests
+  another field (e.g. a humanities-styled cover on a math book).
+- If a theme is ambiguous between fields (e.g. "Learning" can mean
+  Machine Learning OR Educational Psychology), include BOTH candidates.
+- For each candidate, give a 1-line `reason` from the cover/title text.
 
-VISION_PROMPT_MULTI = """You are given multiple pages from a book (cover and first pages). Extract the following information and respond ONLY with a valid JSON object, nothing else:
+Other rules:
+- If you cannot read the title clearly, set top-level confidence below 0.3.
+- If the image is not a book cover, set all fields to empty strings.
+- Keep the title exactly as written on the cover (original language + case).
+- For author, use "Firstname Lastname" format if possible."""
+
+VISION_PROMPT_MULTI = """You are given multiple pages from a book (cover + first pages). Respond ONLY with a valid JSON object:
 
 {
-  "title": "the specific book title (NOT the series/collection name)",
+  "title": "the SPECIFIC book title (NOT the series/collection name)",
   "author": "the author name(s), or empty string if not visible",
-  "theme": "the main topic/discipline in English (e.g. Mathematics, Computer Science, Physics, Chemistry, Biology, Medicine, Philosophy, History, Economics, Law, Psychology, Religion, Literature, Art, Music, Cooking, Sports, Photography, Engineering, Electronics, Networking, Programming, Machine Learning, Data Science, etc.)",
-  "language": "the main language of the book (fr, en, ar, de, es, etc.)",
+  "themes": [
+    {"theme": "primary topic", "confidence": 0.0 to 1.0, "reason": "why (cite TOC/title)"},
+    {"theme": "alt topic if ambiguous", "confidence": 0.0 to 1.0, "reason": "why"}
+  ],
+  "language": "main language (fr, en, ar, de, es, etc.)",
   "confidence": 0.0 to 1.0
 }
 
-Rules:
-- IMPORTANT: Look for the SPECIFIC title of this book, not the collection/series name (e.g. not "Lecture Notes in Computer Science" but the actual book title)
-- The title page is often on the 2nd or 3rd page, not the cover
-- If you cannot read the title clearly, set confidence below 0.3
-- If the images are not from a book, set all fields to empty strings and confidence to 0
-- Keep the title exactly as written (preserve original language and case)
-- For author, use "Firstname Lastname" format if possible
-- Be specific with the theme (e.g. "Machine Learning" not just "Computer Science")"""
+Rules for `themes`:
+- 1 to 3 candidates in English, ranked by confidence.
+- Use the table of contents / chapter titles when visible to identify
+  the technical discipline. The TOC is often more decisive than the cover.
+- Be SPECIFIC: prefer "Machine Learning" over "Computer Science",
+  "Topology" over "Mathematics", "Quantum Mechanics" over "Physics".
+- For ambiguous books (mathematical psychology, computational linguistics,
+  applied ethics, etc.), include BOTH candidate disciplines.
+- Each candidate has a 1-line `reason` citing what you saw in the pages.
+
+Other rules:
+- IMPORTANT: identify the SPECIFIC title of this book, not the
+  collection/series name (e.g. not "Lecture Notes in Computer Science"
+  but the actual book title — usually on page 2-3).
+- If you cannot read the title clearly, set top-level confidence < 0.3.
+- If the images are not from a book, set all fields to empty strings.
+- Preserve title exactly (original language and case)."""
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -241,13 +267,43 @@ def parse_vision_response(content: str) -> dict | None:
     try:
         result = json.loads(json_match.group())
 
-        # Valider et normaliser
+        # Normalize themes[] — support both new (themes array) and legacy
+        # (single 'theme' string) shapes for backward compat.
+        themes_list: list[dict] = []
+        raw_themes = result.get("themes")
+        if isinstance(raw_themes, list):
+            for item in raw_themes:
+                if not isinstance(item, dict):
+                    continue
+                t = str(item.get("theme", "")).strip()
+                if not t:
+                    continue
+                themes_list.append({
+                    "theme": t,
+                    "confidence": float(item.get("confidence", 0.0)),
+                    "reason": str(item.get("reason", "")).strip(),
+                })
+        # Legacy fallback: a single 'theme' string
+        if not themes_list:
+            t = str(result.get("theme", "")).strip()
+            if t:
+                themes_list.append({
+                    "theme": t,
+                    "confidence": float(result.get("confidence", 0.0)),
+                    "reason": "",
+                })
+
+        # Top theme exposed under 'theme' for backward compat with all
+        # existing callers (classifier, mapper, dashboard, etc.)
+        top_theme = themes_list[0]["theme"] if themes_list else ""
+
         return {
-            'title': str(result.get('title', '')).strip(),
-            'author': str(result.get('author', '')).strip(),
-            'theme': str(result.get('theme', '')).strip(),
-            'language': str(result.get('language', '')).strip(),
-            'confidence': float(result.get('confidence', 0.0)),
+            "title": str(result.get("title", "")).strip(),
+            "author": str(result.get("author", "")).strip(),
+            "theme": top_theme,
+            "themes": themes_list,
+            "language": str(result.get("language", "")).strip(),
+            "confidence": float(result.get("confidence", 0.0)),
         }
     except (json.JSONDecodeError, ValueError) as e:
         log.warning(f"  ⚠ JSON invalide: {e} — contenu: {content[:150]}")

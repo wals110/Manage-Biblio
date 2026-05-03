@@ -275,21 +275,53 @@ def classify_combined(
     confidence = vision_result.get('confidence', 0.0)
     title = vision_result.get('title', '')
 
-    # Priorité 1 : LLM theme si confiance >= CONFIDENCE_THRESHOLD
-    if confidence >= CONFIDENCE_THRESHOLD:
-        path = classify_by_theme(theme, theme_mapping)
-        if path:
-            # Sub-folder refinement: when the matched path is a top-level
-            # parent (e.g. "05-RELIGIONS" with subfolders like /ISLAM,
-            # /CHRISTIANISME), search title + filename for a more specific
-            # theme_mapping entry that points INTO that parent. This catches
-            # the very common case where Vision LLM returns "Religion" for
-            # an Islam-specific book, or "Mathematics" for a Logic book.
+    # Build the candidate list. New vision v2 prompt returns 'themes' as
+    # a ranked list of {theme, confidence, reason}. Legacy single-'theme'
+    # shape gives a 1-element list.
+    candidates: list[tuple[str, float]] = []
+    raw_themes = vision_result.get("themes")
+    if isinstance(raw_themes, list) and raw_themes:
+        for item in raw_themes:
+            if not isinstance(item, dict):
+                continue
+            t = str(item.get("theme", "")).strip()
+            if not t:
+                continue
+            c = float(item.get("confidence", confidence))
+            candidates.append((t, c))
+    elif theme:
+        candidates.append((theme, confidence))
+
+    # Priorité 1 : LLM theme si confiance >= CONFIDENCE_THRESHOLD.
+    # Try candidates in ranked order; stop at the first that maps to a
+    # SPECIFIC folder (more than 1 path component). If only generic /
+    # parent paths match, keep them as fallback and let later priorities
+    # (P2 keyword classifier) try to do better.
+    if confidence >= CONFIDENCE_THRESHOLD and candidates:
+        best_specific: tuple[str, str] | None = None  # (path, theme_used)
+        best_generic: tuple[str, str] | None = None
+        for cand_theme, _cand_conf in candidates:
+            path = classify_by_theme(cand_theme, theme_mapping)
+            if not path:
+                continue
             refined = _refine_to_subfolder(
-                path, theme_mapping, theme=theme, title=title, filename=filename)
-            if refined:
-                return (refined, confidence, "LLM (theme→refined)")
-            return (path, confidence, "LLM (theme)")
+                path, theme_mapping, theme=cand_theme, title=title,
+                filename=filename)
+            final_path = refined or path
+            is_specific = "/" in final_path
+            if is_specific:
+                best_specific = (final_path, cand_theme)
+                break
+            if best_generic is None:
+                best_generic = (final_path, cand_theme)
+
+        if best_specific is not None:
+            path, used_theme = best_specific
+            label = "LLM (theme→refined)" if used_theme != theme else "LLM (theme)"
+            return (path, confidence, label)
+        if best_generic is not None:
+            path, _ = best_generic
+            return (path, confidence, "LLM (theme-generic)")
 
     # Priorité 2 : Keyword classifier (titre LLM + thème + nom de fichier)
     # On combine toutes les infos textuelles disponibles pour maximiser
