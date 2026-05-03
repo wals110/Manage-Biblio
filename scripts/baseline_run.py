@@ -136,18 +136,23 @@ def run_predict(
                 vision_cache_path=vision_cache_path,
             )
         except Exception as e:
+            # On exception, defer to current location (no false disagreement).
             return {
                 "file_id": file_id(str(rel)),
                 "rel_path": str(rel),
                 "filename": pdf_path.name,
                 "current_folder": current_folder,
-                "predicted_folder": fallback,
+                "predicted_folder": current_folder or fallback,
                 "status": f"error: {e}",
                 "confidence": 0.0,
                 "title": "", "theme": "", "language": "",
             }
 
-        predicted = res.get("destination") or fallback
+        # Klodo "gave up" (no destination) → defer to current_folder so we
+        # don't create a false disagreement against the user's existing
+        # decision. Predicting fallback (_A-TRIER) here would mean "Klodo
+        # wants to demote this file" which is rarely the intent.
+        predicted = res.get("destination") or current_folder or fallback
         return {
             "file_id": file_id(str(rel)),
             "rel_path": str(rel),

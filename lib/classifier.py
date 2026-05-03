@@ -145,6 +145,98 @@ def load_keyword_classifier(categories_yaml_path: str) -> object | None:
         return None
 
 
+def _refine_to_subfolder(
+    matched_path: str,
+    theme_mapping: dict[str, str],
+    theme: str = "",
+    title: str = "",
+    filename: str = "",
+) -> str | None:
+    """If matched_path is a generic / catchall, search title + filename for
+    a more specific theme_mapping key that points to a related folder.
+
+    Only triggers when:
+    - The refinement key is STRICTLY LONGER than the original theme that
+      matched (otherwise we'd risk overriding a correctly-specific theme
+      with a less-specific keyword).
+    - The refined path is a CHILD of matched_path (≥3 char keyword) OR a
+      SIBLING under the same immediate parent (≥5 char keyword to limit
+      false positives on short collisions).
+
+    Cross-domain shifts (different top-level section) are NOT handled here
+    — those go through the keyword classifier (P2) or the LLM mapper (P3).
+
+    Examples:
+        '05-RELIGIONS', theme='Religion', title="L'Islam et le Graal"
+            → '05-RELIGIONS/ISLAM' (child, key='islam' (5) > 'religion' (8)?
+              5 < 8 so this WOULDN'T trigger. Hmm see below.)
+
+    Note on the strict-length rule: it's primarily for SIBLING scope, where
+    we risk regressions like 'quantum mechanics' (correct) being overridden
+    by 'mechanics' (sibling, shorter). For CHILD scope we keep the looser
+    "any keyword in title that maps to a child" because by definition the
+    child is more specific than the parent.
+    """
+    if not matched_path or not theme_mapping:
+        return None
+    text = (title + " " + filename).lower()
+    if not text.strip():
+        return None
+
+    theme_len = len(theme.strip()) if theme else 0
+    child_prefix = matched_path.rstrip("/") + "/"
+    parts = matched_path.split("/")
+    sibling_prefix = "/".join(parts[:-1]) + "/" if len(parts) > 1 else ""
+
+    # Catchall detection: top-level section, or last segment hints at
+    # being a fallback class. Catchalls allow looser sibling refinement
+    # because the matched theme is admittedly generic.
+    last = parts[-1].lower()
+    is_catchall = (
+        len(parts) == 1  # top-level (e.g. '05-RELIGIONS', '02-INFORMATIQUE')
+        or "general" in last
+        or "autres" in last
+        or last.endswith("-general")
+        or last.endswith("-other")
+        or last.endswith("-misc")
+    )
+
+    best_child: tuple[str, int] | None = None
+    best_sibling: tuple[str, int] | None = None
+    for key, mapped in theme_mapping.items():
+        if not isinstance(mapped, str):
+            continue
+        if mapped == matched_path:
+            continue
+        kl = key.lower().strip()
+        if not kl or kl not in text:
+            continue
+        # CHILD scope: refine to a strict subfolder. The child is more
+        # specific by definition, so we don't require the key to be longer
+        # than the original theme.
+        if mapped.startswith(child_prefix) and len(kl) >= 3:
+            if best_child is None or len(kl) > best_child[1]:
+                best_child = (mapped, len(kl))
+            continue
+        # SIBLING scope: when matched_path is a catchall (top-level section
+        # or *-Generales/*-Autres) we allow short keys, since the original
+        # theme is admittedly generic. Otherwise we require the new key to
+        # be strictly longer than the theme to avoid regressions like
+        # 'mechanics' (sibling) overriding the correctly-specific
+        # 'quantum mechanics'.
+        if (sibling_prefix and mapped.startswith(sibling_prefix)
+                and len(kl) >= 5
+                and (is_catchall or len(kl) > theme_len)):
+            if best_sibling is None or len(kl) > best_sibling[1]:
+                best_sibling = (mapped, len(kl))
+
+    if best_child:
+        return best_child[0]
+    if best_sibling:
+        return best_sibling[0]
+    return None
+
+
 def classify_combined(
     vision_result: dict[str, object],
     filename: str,
@@ -187,6 +279,16 @@ def classify_combined(
     if confidence >= CONFIDENCE_THRESHOLD:
         path = classify_by_theme(theme, theme_mapping)
         if path:
+            # Sub-folder refinement: when the matched path is a top-level
+            # parent (e.g. "05-RELIGIONS" with subfolders like /ISLAM,
+            # /CHRISTIANISME), search title + filename for a more specific
+            # theme_mapping entry that points INTO that parent. This catches
+            # the very common case where Vision LLM returns "Religion" for
+            # an Islam-specific book, or "Mathematics" for a Logic book.
+            refined = _refine_to_subfolder(
+                path, theme_mapping, theme=theme, title=title, filename=filename)
+            if refined:
+                return (refined, confidence, "LLM (theme→refined)")
             return (path, confidence, "LLM (theme)")
 
     # Priorité 2 : Keyword classifier (titre LLM + thème + nom de fichier)
