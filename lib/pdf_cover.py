@@ -32,13 +32,25 @@ def get_cover_image(
     pdf_path: str,
     dpi: int = PDF_DPI,
     n_pages: int = 1,
+    page_indices: tuple[int, ...] | None = None,
 ) -> list["Image.Image"] | None:
-    """Extraction mutualisée des N premières pages d'un PDF.
+    """Extraction mutualisée des pages d'un PDF.
+
+    Args:
+        n_pages: si page_indices=None, extrait les n_pages premières
+                 (comportement legacy, contigu).
+        page_indices: si fourni (1-based), extrait spécifiquement ces pages.
+                      Permet de récupérer des pages non-contiguës après
+                      smart page selection (lib/page_selector).
 
     Cache mémoire LRU intra-process. Retourne une liste d'images PIL
     ou None en cas d'échec.
     """
-    key = (str(pdf_path), dpi, n_pages)
+    if page_indices is not None:
+        page_indices = tuple(sorted(set(page_indices)))
+        key = (str(pdf_path), dpi, "idx", page_indices)
+    else:
+        key = (str(pdf_path), dpi, "n", n_pages)
 
     with _lock:
         hit = _cache.get(key)
@@ -54,14 +66,23 @@ def get_cover_image(
         return None
 
     try:
-        images = convert_from_path(
-            pdf_path,
-            first_page=1,
-            last_page=n_pages,
-            dpi=dpi,
-            fmt="png",
-            thread_count=PDF_EXTRACT_THREADS,
-        )
+        if page_indices is not None and len(page_indices) > 0:
+            # Extract the contiguous span covering all selected pages,
+            # then slice. Cheaper than N separate Poppler invocations.
+            first = page_indices[0]
+            last = page_indices[-1]
+            span = convert_from_path(
+                pdf_path, first_page=first, last_page=last,
+                dpi=dpi, fmt="png", thread_count=PDF_EXTRACT_THREADS,
+            )
+            # span[i] corresponds to page (first + i)
+            images = [span[i - first] for i in page_indices
+                      if 0 <= i - first < len(span)]
+        else:
+            images = convert_from_path(
+                pdf_path, first_page=1, last_page=n_pages,
+                dpi=dpi, fmt="png", thread_count=PDF_EXTRACT_THREADS,
+            )
     except Exception as e:
         log.error(f"  ⚠ Erreur extraction couverture: {e}")
         return None

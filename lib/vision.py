@@ -138,24 +138,47 @@ Other rules:
 # EXTRACTION COUVERTURE
 # ════════════════════════════════════════════════════════════════════════════
 
-def extract_cover_image(pdf_path: str, dpi: int = PDF_DPI,
-                        n_pages: int = 1) -> list['Image.Image'] | None:
+def extract_cover_image(
+    pdf_path: str,
+    dpi: int = PDF_DPI,
+    n_pages: int = 1,
+    n_candidates: int = 0,
+) -> list['Image.Image'] | None:
     """
-    Extrait les N premières pages du PDF comme images PIL.
+    Extrait les pages les plus informatives du PDF comme images PIL.
+
+    Modes:
+    - n_candidates <= n_pages : extraction contiguë des n_pages premières
+      (comportement legacy).
+    - n_candidates > n_pages : smart page selection — score les
+      n_candidates premières pages via pypdf (text density), retient les
+      n_pages les plus informatives. Evite d'envoyer des pages blanches
+      ou de garde au LLM, capte mieux la TOC.
 
     Passe par le cache mémoire intra-run `lib.pdf_cover.get_cover_image()`
-    pour mutualiser l'appel Poppler entre rename, classify et viewer Curation
-    (un seul `pdf2image.convert_from_path` par (pdf_path, dpi, n_pages)).
+    pour mutualiser l'appel Poppler entre rename, classify et viewer Curation.
 
     Args:
         pdf_path: Chemin vers le fichier PDF
         dpi: Résolution de l'extraction (par défaut 150 dpi)
-        n_pages: Nombre de pages à extraire (par défaut 1)
+        n_pages: Nombre de pages à retourner pour le LLM (par défaut 1)
+        n_candidates: Nombre de pages à scanner pour la sélection
+                      (>= n_pages active la smart selection ; 0/legacy = contiguë)
 
     Returns:
         Liste d'images PIL ou None si extraction échoue
     """
     from lib.pdf_cover import get_cover_image
+
+    if n_candidates and n_candidates > n_pages:
+        from lib.page_selector import select_top_pages
+        indices = select_top_pages(pdf_path, n_candidates=n_candidates,
+                                   n_keep=n_pages)
+        if indices:
+            return get_cover_image(pdf_path, dpi=dpi,
+                                   page_indices=tuple(indices))
+        # fallthrough: select_top_pages returned empty → legacy behavior
+
     return get_cover_image(pdf_path, dpi=dpi, n_pages=n_pages)
 
 
@@ -320,6 +343,7 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
                   verbose: bool = False,
                   max_retries: int = 3,
                   n_pages: int = 1,
+                  n_candidates: int = 0,
                   client: 'LLMClient | None' = None) -> dict | None:
     """
     Analyse complète d'une couverture de livre (une ou plusieurs pages).
@@ -360,7 +384,8 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
     # Étape 1: Extraire les pages
     if verbose:
         log.info("  → Extraction des pages...")
-    images = extract_cover_image(pdf_path, dpi=dpi, n_pages=n_pages)
+    images = extract_cover_image(pdf_path, dpi=dpi, n_pages=n_pages,
+                                 n_candidates=n_candidates)
     if not images:
         if verbose:
             log.info("  ✗ Échec extraction image")
@@ -405,6 +430,7 @@ def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
                          verbose: bool = False,
                          max_retries: int = 3,
                          n_pages: int = 1,
+                         n_candidates: int = 0,
                          client: 'LLMClient | None' = None) -> dict | None:
     """Version cachée de `analyze_cover()` — lookup JSON avant appel LLM.
 
@@ -448,7 +474,7 @@ def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
     result = analyze_cover(
         pdf_path, api_key=api_key, endpoint=endpoint, model=model,
         dpi=dpi, verbose=verbose, max_retries=max_retries,
-        n_pages=n_pages, client=client)
+        n_pages=n_pages, n_candidates=n_candidates, client=client)
 
     if (
         key is not None

@@ -99,6 +99,7 @@ def run_predict(
     theme_mapping = profile.theme_mapping
     min_confidence = profile.defaults.get("min_confidence", 0.5)
     n_pages = profile.defaults.get("pages", 1)
+    n_candidates = profile.defaults.get("candidates", 0)  # 0 = legacy contiguous
 
     cache_dir = Path(profile.cache_dir)
     vision_cache_path = str(cache_dir / "vision_cache.json")
@@ -133,6 +134,7 @@ def run_predict(
                 verbose=False,
                 min_confidence=min_confidence,
                 n_pages=n_pages,
+                n_candidates=n_candidates,
                 vision_cache_path=vision_cache_path,
             )
         except Exception as e:

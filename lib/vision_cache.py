@@ -25,7 +25,7 @@ from lib.logger import get_logger
 
 log = get_logger()
 
-PROMPT_VERSION = "v2"  # v2: prompt retourne themes[] (multi-candidats) au lieu d'un theme unique
+PROMPT_VERSION = "v3"  # v3: smart page selection (top-K par densité texte au lieu des N premières)
 _PDF_HEAD_BYTES = 64 * 1024
 
 _cache_lock = Lock()
