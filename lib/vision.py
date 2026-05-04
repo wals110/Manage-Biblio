@@ -42,7 +42,6 @@ import base64
 import io
 import json
 import os
-import re
 
 try:
     from PIL import Image
@@ -264,6 +263,31 @@ def call_vision_api(images_base64: object, api_key: str, endpoint: str,
     return parse_vision_response(content)
 
 
+def _extract_outermost_json(content: str) -> str | None:
+    """Find the first {...} block in `content` whose braces are balanced.
+
+    The previous regex-based approach failed when the JSON contained nested
+    objects (e.g. `themes: [{theme: ...}]`) — `\\{[^{}]*\\}` matched the
+    INNER theme object first instead of the outer wrapping one. This
+    counter-based scan returns the outermost JSON object reliably.
+    """
+    if not content:
+        return None
+    start = content.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    for i in range(start, len(content)):
+        c = content[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return content[start:i + 1]
+    return None
+
+
 def parse_vision_response(content: str) -> dict | None:
     """
     Parse la réponse JSON du LLM Vision.
@@ -277,18 +301,17 @@ def parse_vision_response(content: str) -> dict | None:
     Returns:
         Dict normalisé avec title, author, theme, language, confidence ou None
     """
-    # Extraire le JSON de la réponse (le LLM peut ajouter du texte autour)
-    json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
-    if not json_match:
-        # Essayer avec des accolades imbriquées
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-
-    if not json_match:
+    # Extraire le JSON outermost de la réponse (le LLM peut ajouter du
+    # texte autour). On compte les accolades pour trouver l'objet englobant
+    # — important depuis prompt v2 qui contient des objets imbriqués
+    # dans `themes: [{...}, {...}]`.
+    json_str = _extract_outermost_json(content)
+    if not json_str:
         log.warning(f"  ⚠ Pas de JSON dans la réponse: {content[:500]}")
         return None
 
     try:
-        result = json.loads(json_match.group())
+        result = json.loads(json_str)
 
         # Normalize themes[] — support both new (themes array) and legacy
         # (single 'theme' string) shapes for backward compat.
