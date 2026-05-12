@@ -15,6 +15,7 @@
                 <option value="{{ p.name }}" {% if p.name == profile %}selected{% endif %}>{{ p.name }}</option>
                 {% endfor %}
             </select>
+            <button id="tax-undo" class="btn-secondary" title="Annuler la dernière modification (restore backup)">↶ Annuler</button>
             <button id="tax-refresh" class="btn-secondary" title="Recharger le snapshot">↻</button>
         </div>
     </div>

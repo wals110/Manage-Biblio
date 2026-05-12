@@ -3356,3 +3356,39 @@ th {
     background: var(--blue, #58a6ff);
     color: white;
 }
+
+/* Mapped theme rows — inline edit/delete actions (Phase 2) */
+.tax-mapped-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.tax-mapped-key {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tax-mapped-action {
+    background: transparent;
+    border: 1px solid var(--border, #30363d);
+    color: var(--text-muted, #8b949e);
+    width: 22px; height: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.tax-mapped-item:hover .tax-mapped-action { opacity: 1; }
+.tax-mapped-action:hover {
+    background: rgba(255,255,255,0.06);
+    color: var(--text, #c9d1d9);
+}
+.tax-mapped-del:hover {
+    background: rgba(248, 81, 73, 0.2);
+    color: var(--red, #f85149);
+    border-color: var(--red, #f85149);
+}

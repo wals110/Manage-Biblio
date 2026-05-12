@@ -142,6 +142,36 @@
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
     return body;
   }
+  async function patchMapping(theme, folder) {
+    const r = await fetch('/api/taxonomy/mapping', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, theme, folder }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+  async function deleteMapping(theme) {
+    const r = await fetch('/api/taxonomy/mapping', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, theme }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+  async function postUndo() {
+    const r = await fetch('/api/taxonomy/undo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
 
   // ── Toast ────────────────────────────────────────────────────────────
 
@@ -586,8 +616,19 @@
     if (mappings.length === 0) {
       list.appendChild(el('li', { class: 'muted small' },
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
-    } else {
-      for (const t of mappings) list.appendChild(el('li', { class: 'tax-mapped-item', title: t }, [t]));
+      return;
+    }
+    for (const t of mappings) {
+      const editBtn = el('button', {
+        class: 'tax-mapped-action', title: 'Rediriger ce mapping vers un autre dossier',
+        onclick: e => { e.stopPropagation(); openMapPopover({ theme: t, count: '?', is_edit: true }, e.currentTarget); },
+      }, ['↗']);
+      const delBtn = el('button', {
+        class: 'tax-mapped-action tax-mapped-del', title: 'Supprimer ce mapping',
+        onclick: e => { e.stopPropagation(); confirmDeleteMapping(t); },
+      }, ['×']);
+      list.appendChild(el('li', { class: 'tax-mapped-item', title: t },
+        [el('span', { class: 'tax-mapped-key' }, [t]), editBtn, delBtn]));
     }
   }
 
@@ -645,17 +686,24 @@
   function openMapPopover(theme, anchorEl) {
     state.popover = { open: true, theme, anchorEl };
     const pop = $('#tax-map-popover');
-    $('#tax-map-popover-theme').textContent = `« ${theme.theme} »  (${theme.count} fichiers)`;
+    const isEdit = theme.is_edit === true;
+    pop.querySelector('.tax-map-popover-title').textContent =
+      isEdit ? 'Rediriger ce mapping' : 'Mapper le thème vers un dossier';
+    const subText = isEdit
+      ? `« ${theme.theme} »  (actuel : ${getActiveFolder() || 'racine'})`
+      : `« ${theme.theme} »  (${theme.count} fichiers)`;
+    $('#tax-map-popover-theme').textContent = subText;
+    $('#tax-map-popover-confirm').textContent = isEdit ? 'Rediriger' : 'Mapper';
     const input = $('#tax-map-popover-input');
-    input.value = '';
-    renderPopoverSuggestions('');
+    input.value = isEdit ? (getActiveFolder() || '') : '';
+    renderPopoverSuggestions(input.value);
     // Position near the anchor button
     const rect = anchorEl.getBoundingClientRect();
     pop.style.display = 'block';
     const popW = 360;
     pop.style.left = Math.min(window.innerWidth - popW - 12, rect.left - popW + 30) + 'px';
     pop.style.top  = (rect.bottom + 8) + 'px';
-    setTimeout(() => input.focus(), 50);
+    setTimeout(() => { input.focus(); input.select(); }, 50);
   }
   function closeMapPopover() {
     state.popover = { open: false, theme: null, anchorEl: null };
@@ -678,8 +726,10 @@
     const folder = $('#tax-map-popover-input').value.trim();
     if (!folder || !state.popover.theme) return;
     const theme = state.popover.theme.theme;
+    const isEdit = state.popover.theme.is_edit === true;
     closeMapPopover();
-    await doAddMapping(theme, folder);
+    if (isEdit) await doUpdateMapping(theme, folder);
+    else        await doAddMapping(theme, folder);
   }
 
   // ── Drag-drop & central mapping handler ──────────────────────────────
@@ -692,12 +742,47 @@
   }
   async function doAddMapping(theme, folder) {
     try {
-      const r = await postMapping(theme, folder);
-      // Look up impact count from snapshot
+      await postMapping(theme, folder);
       const themeRec = (state.snapshot.themes_llm || [])
         .find(t => t.theme.toLowerCase() === theme.toLowerCase());
       const impact = themeRec ? themeRec.count : '?';
       showToast(`✓ « ${theme} » → ${folder} · ${impact} fichier(s) au prochain reclassify`, 'success');
+      state.snapshot = await fetchSnapshot();
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+  async function doUpdateMapping(theme, folder) {
+    try {
+      const r = await patchMapping(theme, folder);
+      if (r.unchanged) {
+        showToast('Mapping inchangé (même cible)', 'info');
+        return;
+      }
+      showToast(`✓ « ${theme} » → ${folder} (avant : ${r.previous_folder})`, 'success');
+      state.snapshot = await fetchSnapshot();
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+  async function confirmDeleteMapping(theme) {
+    if (!window.confirm(`Supprimer le mapping « ${theme} » ?\nUtilise ↶ Annuler en cas d'erreur.`)) return;
+    try {
+      const r = await deleteMapping(theme);
+      showToast(`✓ « ${theme} » supprimé (était → ${r.previous_folder})`, 'success');
+      state.snapshot = await fetchSnapshot();
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+  async function doUndo() {
+    if (!window.confirm('Annuler la dernière modification du mapping ?\n(restore depuis le backup le plus récent)')) return;
+    try {
+      const r = await postUndo();
+      showToast(`↶ Restauré depuis ${r.restored_from}`, 'success');
       state.snapshot = await fetchSnapshot();
       renderAll();
     } catch (err) {
@@ -738,6 +823,7 @@
       try { state.snapshot = await fetchSnapshot(true); renderAll(); showToast('Snapshot rechargé', 'success'); }
       catch (e) { showToast('Erreur: ' + e.message, 'error'); }
     });
+    $('#tax-undo').addEventListener('click', doUndo);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
     });

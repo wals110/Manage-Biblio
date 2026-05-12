@@ -1620,6 +1620,51 @@ async def taxonomy_mapping_add_api(request: Request):
     return JSONResponse(result)
 
 
+@app.patch("/api/taxonomy/mapping")
+async def taxonomy_mapping_update_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    folder = body.get("folder") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.update_mapping(profile, theme, folder)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.delete("/api/taxonomy/mapping")
+async def taxonomy_mapping_delete_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.delete_mapping(profile, theme)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.post("/api/taxonomy/undo")
+async def taxonomy_undo_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.restore_last_backup(profile)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
 @app.get("/api/taxonomy/file/metadata")
 async def taxonomy_file_metadata_api(profile: str, path: str):
     from fastapi.responses import JSONResponse

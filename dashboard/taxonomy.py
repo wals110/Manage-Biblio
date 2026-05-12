@@ -624,11 +624,16 @@ def _check_lock_free(profile: str) -> None:
 
 def _backup_mapping(profile: str) -> Path | None:
     """Copy current theme_mapping.yaml to taxonomy-backups/<ts>.yaml.
-    Returns the backup file path, or None if no current mapping exists."""
+    Returns the backup file path, or None if no current mapping exists.
+
+    Microsecond precision in the timestamp avoids name collisions when
+    multiple writes happen within the same second (notably undo, which
+    backs up + restores in rapid succession).
+    """
     src = _mapping_path(profile)
     if not src.exists():
         return None
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     dst = _backup_dir(profile) / f"theme_mapping-{ts}.yaml"
     dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     # Rotation: keep 20 most recent
@@ -666,8 +671,8 @@ def _write_mapping(profile: str, mapping: dict[str, str]) -> None:
 def add_mapping(profile: str, theme: str, folder: str) -> dict:
     """Append a new theme→folder entry to theme_mapping.yaml.
 
-    Raises TaxonomyError(409) if the key already exists. Phase 2 will
-    expose an explicit update endpoint.
+    Raises TaxonomyError(409) if the key already exists. Use
+    update_mapping() to change the target of an existing key.
     """
     lock = _locks[profile]
     with lock:
@@ -692,4 +697,99 @@ def add_mapping(profile: str, theme: str, folder: str) -> dict:
             "theme": theme,
             "folder": folder,
             "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+        }
+
+
+def update_mapping(profile: str, theme: str, folder: str) -> dict:
+    """Change the target folder of an existing theme key.
+
+    Raises TaxonomyError(404) if the theme is not currently mapped.
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        theme = _validate_theme(theme)
+        folder = _validate_folder(profile, folder)
+
+        mapping = _load_mapping(profile)
+        if theme not in mapping:
+            raise TaxonomyError(f"aucun mapping pour '{theme}'", 404)
+        if mapping[theme] == folder:
+            return {"ok": True, "theme": theme, "folder": folder, "unchanged": True, "backup": None}
+
+        backup = _backup_mapping(profile)
+        old_folder = mapping[theme]
+        mapping[theme] = folder
+        _write_mapping(profile, mapping)
+        reset_cache(profile)
+
+        return {
+            "ok": True,
+            "theme": theme,
+            "folder": folder,
+            "previous_folder": old_folder,
+            "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+        }
+
+
+def delete_mapping(profile: str, theme: str) -> dict:
+    """Remove an existing theme key from theme_mapping.yaml.
+
+    Raises TaxonomyError(404) if the theme is not currently mapped.
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        theme = _validate_theme(theme)
+
+        mapping = _load_mapping(profile)
+        if theme not in mapping:
+            raise TaxonomyError(f"aucun mapping pour '{theme}'", 404)
+
+        backup = _backup_mapping(profile)
+        previous_folder = mapping.pop(theme)
+        _write_mapping(profile, mapping)
+        reset_cache(profile)
+
+        return {
+            "ok": True,
+            "theme": theme,
+            "previous_folder": previous_folder,
+            "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+        }
+
+
+def restore_last_backup(profile: str) -> dict:
+    """Restore the most recent backup of theme_mapping.yaml.
+
+    The backup that was restored is then deleted from the chain so that
+    a second undo goes one step further back (proper undo semantics).
+    No "redo" capability in Phase 2 — keep the chain simple and
+    predictable.
+
+    Raises TaxonomyError(404) if no backup is available.
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        backups = sorted(
+            _backup_dir(profile).glob("theme_mapping-*.yaml"),
+            key=lambda p: p.name,
+            reverse=True,
+        )
+        if not backups:
+            raise TaxonomyError("aucun backup disponible", 404)
+        last = backups[0]
+        content = last.read_text(encoding="utf-8")
+        _mapping_path(profile).write_text(content, encoding="utf-8")
+        # Remove the backup we just restored — next undo will pick the
+        # previous one in the chain.
+        try:
+            last.unlink()
+        except OSError:
+            pass
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "restored_from": last.name,
         }

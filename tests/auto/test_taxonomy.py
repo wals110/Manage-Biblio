@@ -397,5 +397,130 @@ class TestEndpoints(TaxonomyTestBase):
         self.assertIsNone(body["vision"])
 
 
+# ─── 4. Tests Phase 2 — update / delete / undo ───────────────────────────
+
+
+class TestUpdateDeleteUndo(TaxonomyTestBase):
+
+    def test_update_mapping_happy(self):
+        result = taxonomy.update_mapping(
+            self.profile_name, "physics", "01-SCIENCES/MATHEMATIQUES"
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["previous_folder"], "01-SCIENCES/PHYSIQUE")
+        m = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(m["physics"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_update_mapping_unknown_theme(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.update_mapping(
+                self.profile_name, "does_not_exist", "01-SCIENCES/PHYSIQUE"
+            )
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_update_mapping_unchanged_no_backup(self):
+        """Re-mapping vers la même cible ne doit pas créer de backup inutile."""
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        before = len(list(backup_dir.glob("*.yaml")))
+        r = taxonomy.update_mapping(
+            self.profile_name, "physics", "01-SCIENCES/PHYSIQUE"  # même cible
+        )
+        self.assertTrue(r["unchanged"])
+        after = len(list(backup_dir.glob("*.yaml")))
+        self.assertEqual(before, after)
+
+    def test_delete_mapping_happy(self):
+        result = taxonomy.delete_mapping(self.profile_name, "physics")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["previous_folder"], "01-SCIENCES/PHYSIQUE")
+        m = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertNotIn("physics", m)
+        # autres clés intactes
+        self.assertIn("algebra", m)
+
+    def test_delete_mapping_unknown_theme(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.delete_mapping(self.profile_name, "does_not_exist")
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_undo_restores_last_backup(self):
+        # Ajout d'un nouveau mapping → crée backup A
+        taxonomy.add_mapping(
+            self.profile_name, "thermodynamics", "01-SCIENCES/PHYSIQUE"
+        )
+        current = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertIn("thermodynamics", current)
+        # Undo → restore l'état d'avant ajout + supprime ce backup de la chaîne
+        r = taxonomy.restore_last_backup(self.profile_name)
+        self.assertTrue(r["ok"])
+        self.assertIn("restored_from", r)
+        restored = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertNotIn("thermodynamics", restored)
+        # Plus de backups disponibles (chain consommé)
+        backups = list((self.profile_dir / ".cache" / "taxonomy-backups").glob("*.yaml"))
+        self.assertEqual(len(backups), 0)
+
+    def test_undo_no_backup_returns_404(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.restore_last_backup(self.profile_name)
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_undo_chain_two_levels(self):
+        """Undo deux fois doit ramener à l'état avant les 2 modifications."""
+        original = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        # Ajout 1
+        taxonomy.add_mapping(self.profile_name, "thermo1", "01-SCIENCES/PHYSIQUE")
+        # Ajout 2
+        taxonomy.add_mapping(self.profile_name, "thermo2", "01-SCIENCES/PHYSIQUE")
+        # Undo 1 → enlève thermo2
+        taxonomy.restore_last_backup(self.profile_name)
+        intermediate = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertIn("thermo1", intermediate)
+        self.assertNotIn("thermo2", intermediate)
+        # Undo 2 → enlève thermo1
+        taxonomy.restore_last_backup(self.profile_name)
+        final = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(final, original)
+
+
+class TestUpdateDeleteUndoEndpoints(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_api_mapping_patch(self):
+        r = self.client.patch("/api/taxonomy/mapping", json={
+            "profile": self.profile_name,
+            "theme": "physics",
+            "folder": "01-SCIENCES/MATHEMATIQUES",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["previous_folder"], "01-SCIENCES/PHYSIQUE")
+
+    def test_api_mapping_delete(self):
+        r = self.client.request("DELETE", "/api/taxonomy/mapping", json={
+            "profile": self.profile_name, "theme": "physics",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["previous_folder"], "01-SCIENCES/PHYSIQUE")
+
+    def test_api_undo(self):
+        # add then undo via API
+        self.client.post("/api/taxonomy/mapping", json={
+            "profile": self.profile_name, "theme": "thermo", "folder": "01-SCIENCES/PHYSIQUE",
+        })
+        r = self.client.post("/api/taxonomy/undo", json={"profile": self.profile_name})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("restored_from", r.json())
+
+    def test_api_undo_no_backup_404(self):
+        r = self.client.post("/api/taxonomy/undo", json={"profile": self.profile_name})
+        self.assertEqual(r.status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()
