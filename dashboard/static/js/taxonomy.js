@@ -52,7 +52,31 @@
     // Treemap scale mode — 'sqrt' = lissé (defaut, mieux pour navigation),
     // 'linear' = proportion réelle.
     treemapScale: 'sqrt',
+
   };
+
+  // Touched folders / themes — derived from snapshot.stats (which diffs
+  // current mapping vs oldest backup). Cleared automatically when all
+  // backups are gone (undone to baseline). Survives refresh.
+  function touchedFoldersSet() {
+    return new Set((state.snapshot && state.snapshot.stats.touched_folders) || []);
+  }
+  function touchedThemesSet() {
+    return new Set((state.snapshot && state.snapshot.stats.touched_themes) || []);
+  }
+  // Path ancestors of touched folders — for "on-path" visual hint.
+  // Example: touched={'01-SCIENCES/MATHEMATIQUES/02-Analyse'}
+  // → ancestors={'01-SCIENCES', '01-SCIENCES/MATHEMATIQUES'}
+  function touchedAncestorsSet(touched) {
+    const out = new Set();
+    for (const p of touched) {
+      const parts = p.split('/');
+      for (let i = 1; i < parts.length; i++) {
+        out.add(parts.slice(0, i).join('/'));
+      }
+    }
+    return out;
+  }
 
   // ── DOM helpers ──────────────────────────────────────────────────────
 
@@ -202,9 +226,17 @@
     const hasFiles = (node.file_count || 0) > 0;
     const isExpandable = hasChildren || hasFiles;
     const isSelected = state.selection.type === 'folder' && state.selection.path === node.path;
+    const touched = touchedFoldersSet();
+    const ancestors = touchedAncestorsSet(touched);
+    const isTouched = touched.has(node.path);
+    const isOnPath = !isTouched && ancestors.has(node.path);
 
+    let classes = 'tax-tree-row';
+    if (isSelected) classes += ' selected';
+    if (isTouched) classes += ' touched';
+    else if (isOnPath) classes += ' on-path';
     const row = el('div', {
-      class: 'tax-tree-row' + (isSelected ? ' selected' : ''),
+      class: classes,
       style: `padding-left:${depth * 14 + 6}px;`,
       ondragover: e => { e.preventDefault(); row.classList.add('drop-target'); },
       ondragleave: () => row.classList.remove('drop-target'),
@@ -223,6 +255,14 @@
     row.appendChild(el('span', { class: 'tax-tree-icon' }, ['📁']));
     row.appendChild(el('span', { class: 'tax-tree-name', onclick: () => selectFolder(node.path) },
       [isRoot ? 'racine' : node.name]));
+    if (isTouched || isOnPath) {
+      row.appendChild(el('span', {
+        class: 'tax-touched-dot' + (isOnPath ? ' tax-touched-dot-hollow' : ''),
+        title: isTouched
+          ? 'Modifié — annulable via le bouton Annuler'
+          : 'Contient un dossier modifié',
+      }));
+    }
     row.appendChild(el('span', { class: 'tax-tree-count', title: 'fichiers directs' },
       [String(node.file_count)]));
 
@@ -347,11 +387,16 @@
     const highlightPath = state.selection.type === 'file'
       ? dirname(state.selection.path)
       : state.selection.path;
+    const touched = touchedFoldersSet();
+    const ancestors = touchedAncestorsSet(touched);
+    const isOnPathCell = d => !touched.has(d.data.path) && ancestors.has(d.data.path);
 
     cells.append('rect')
       .attr('class', d => 'tax-cell tax-cell-leaf' +
             (d.data._direct ? ' tax-cell-direct' : '') +
-            (d.data.path === highlightPath && !d.data._direct ? ' selected' : ''))
+            (d.data.path === highlightPath && !d.data._direct ? ' selected' : '') +
+            (touched.has(d.data.path) ? ' tax-cell-touched' : '') +
+            (isOnPathCell(d) ? ' tax-cell-onpath' : ''))
       .attr('width',  d => Math.max(0, d.x1 - d.x0))
       .attr('height', d => Math.max(0, d.y1 - d.y0))
       .attr('fill',   d => colorForPath(d.data.path, d.depth))
@@ -372,6 +417,17 @@
     cells.filter(d => (d.x1 - d.x0) > 50 && (d.y1 - d.y0) > 32)
       .append('text').attr('class', 'tax-cell-label tax-cell-count')
       .attr('x', 6).attr('y', 32).text(d => (d.data._realCount || 0) + ' fichiers');
+
+    // Corner badge for touched / on-path cells (top-right small circle)
+    const badgeCells = cells.filter(d =>
+      (touched.has(d.data.path) || isOnPathCell(d)) &&
+      (d.x1 - d.x0) > 26 && (d.y1 - d.y0) > 20 && !d.data._direct
+    );
+    badgeCells.append('circle')
+      .attr('cx', d => (d.x1 - d.x0) - 10)
+      .attr('cy', 10)
+      .attr('r', 4)
+      .attr('class', d => 'tax-cell-badge' + (touched.has(d.data.path) ? ' solid' : ' hollow'));
   }
 
   // Recursive file count for a tree node (incl. all descendants)
@@ -618,6 +674,7 @@
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
       return;
     }
+    const touched = touchedThemesSet();
     for (const t of mappings) {
       const editBtn = el('button', {
         class: 'tax-mapped-action', title: 'Rediriger ce mapping vers un autre dossier',
@@ -627,8 +684,14 @@
         class: 'tax-mapped-action tax-mapped-del', title: 'Supprimer ce mapping',
         onclick: e => { e.stopPropagation(); confirmDeleteMapping(t); },
       }, ['×']);
-      list.appendChild(el('li', { class: 'tax-mapped-item', title: t },
-        [el('span', { class: 'tax-mapped-key' }, [t]), editBtn, delBtn]));
+      const isTouched = touched.has(t);
+      const dot = isTouched
+        ? el('span', { class: 'tax-touched-dot', title: 'Modifié — annulable via le bouton Annuler' })
+        : null;
+      list.appendChild(el('li', {
+        class: 'tax-mapped-item' + (isTouched ? ' touched' : ''),
+        title: t,
+      }, [el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]));
     }
   }
 
@@ -800,6 +863,24 @@
       `<span class="dot"></span><span><strong>${s.total_themes_llm}</strong> thèmes LLM</span>` +
       `<span class="dot"></span><span class="orphan-badge"><strong>${s.orphans}</strong> orphelins</span>` +
       `<span class="dot"></span><span><strong>${s.mapped}</strong> mappés</span>`;
+    renderUndoState();
+  }
+
+  function renderUndoState() {
+    const btn = $('#tax-undo');
+    const badge = $('#tax-undo-badge');
+    const count = (state.snapshot && state.snapshot.stats && state.snapshot.stats.backup_count) || 0;
+    if (count > 0) {
+      btn.disabled = false;
+      btn.title = `Annuler la dernière modification — ${count} étape${count > 1 ? 's' : ''} d'historique disponible${count > 1 ? 's' : ''}`;
+      badge.textContent = String(count);
+      badge.style.display = '';
+    } else {
+      btn.disabled = true;
+      btn.title = 'Aucune modification à annuler';
+      badge.textContent = '';
+      badge.style.display = 'none';
+    }
   }
   function renderAll() {
     renderStats(); renderTree(); renderTreemap(); renderBreadcrumb();

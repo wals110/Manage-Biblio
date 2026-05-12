@@ -324,6 +324,37 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
     themes_llm, themes_stats = _aggregate_themes_llm(profile, mapping)
     mapping_by_folder = _mapping_reverse(mapping)
 
+    backup_dir = _profile_dir(profile) / ".cache" / "taxonomy-backups"
+    backup_files = []
+    if backup_dir.exists():
+        backup_files = sorted(backup_dir.glob("theme_mapping-*.yaml"), key=lambda p: p.name)
+    backup_count = len(backup_files)
+
+    # Touched indicator: diff between current mapping and the OLDEST backup.
+    # The oldest backup represents the "last clean baseline" — everything
+    # that differs since has been modified in subsequent writes.
+    # Empty when no backups (= no pending changes).
+    touched_themes: set[str] = set()
+    touched_folders: set[str] = set()
+    if backup_files:
+        oldest = backup_files[0]
+        try:
+            baseline = yaml.safe_load(oldest.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            baseline = {}
+        baseline_map: dict[str, str] = {
+            str(k): v for k, v in baseline.items() if isinstance(v, str)
+        }
+        for key in set(mapping.keys()) | set(baseline_map.keys()):
+            cur = mapping.get(key)
+            base = baseline_map.get(key)
+            if cur != base:
+                touched_themes.add(key)
+                if cur:
+                    touched_folders.add(cur)
+                if base:
+                    touched_folders.add(base)
+
     snap = {
         "profile": profile,
         "tree": tree,
@@ -335,6 +366,9 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
             "tree_nodes": len(folders),
             "total_files": int(sum(counts.values())),
             "target_exists": bool(target and target.exists()),
+            "backup_count": backup_count,
+            "touched_folders": sorted(touched_folders),
+            "touched_themes": sorted(touched_themes),
         },
     }
     with _cache_lock:

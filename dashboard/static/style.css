@@ -3392,3 +3392,152 @@ th {
     color: var(--red, #f85149);
     border-color: var(--red, #f85149);
 }
+
+/* Taxonomy toolbar — Linear/Vercel style: icon + text label,
+   soft surface at rest, hover lift, primary blue accent on Undo */
+.tax-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.tax-toolbar .filter-label {
+    color: var(--text-muted, #8b949e);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    margin-right: 4px;
+}
+.tax-toolbar-divider {
+    display: inline-block;
+    width: 1px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 6px;
+    vertical-align: middle;
+}
+.tax-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 7px;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s, box-shadow 0.15s;
+}
+.tax-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+.tax-icon-btn:active {
+    transform: translateY(1px);
+    background: rgba(255, 255, 255, 0.13);
+}
+.tax-icon-btn:focus-visible {
+    outline: 2px solid var(--blue, #58a6ff);
+    outline-offset: 1px;
+}
+.tax-icon-btn:disabled,
+.tax-icon-btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.04);
+}
+.tax-icon-btn:disabled:hover,
+.tax-icon-btn[disabled]:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.04);
+    box-shadow: none;
+    transform: none;
+}
+.tax-icon-btn:disabled svg,
+.tax-icon-btn[disabled] svg {
+    color: var(--text-muted, #8b949e);
+}
+.tax-icon-btn svg {
+    display: block;
+    color: var(--text-muted, #8b949e);
+    pointer-events: none;
+    transition: color 0.15s;
+}
+.tax-icon-btn:hover:not(:disabled) svg {
+    color: var(--text, #c9d1d9);
+}
+.tax-undo-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: 2px;
+    background: var(--blue, #58a6ff);
+    color: white;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+/* Variant icon-only (no text label, square shape) */
+.tax-icon-btn.tax-icon-only {
+    padding: 0;
+    width: 32px;
+    justify-content: center;
+}
+
+/* Touched folder indicators — folders modified since the oldest backup
+   (= "baseline" state). Two flavors:
+   - Solid dot ● for the touched folder itself
+   - Hollow dot ○ for any ancestor folder on the path
+   Both also get a subtle blue tint on the row name. */
+.tax-touched-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--blue, #58a6ff);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
+    flex-shrink: 0;
+    margin: 0 4px;
+}
+.tax-touched-dot-hollow {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--blue, #58a6ff), 0 0 0 2px rgba(88, 166, 255, 0.08);
+}
+/* Tree row tint when on the path of a touched folder */
+.tax-tree-row.touched .tax-tree-name {
+    color: var(--blue, #58a6ff);
+    font-weight: 500;
+}
+.tax-tree-row.on-path .tax-tree-name {
+    color: rgba(121, 192, 255, 0.85);
+}
+
+/* Treemap — touched cell highlight + dashed border for on-path + corner badge */
+.tax-cell-touched {
+    stroke: var(--blue, #58a6ff) !important;
+    stroke-width: 2.5px !important;
+    filter: drop-shadow(0 0 3px rgba(88, 166, 255, 0.5));
+}
+.tax-cell-onpath {
+    stroke: rgba(88, 166, 255, 0.55) !important;
+    stroke-width: 1.5px !important;
+    stroke-dasharray: 4 3 !important;
+}
+.tax-cell-badge.solid {
+    fill: var(--blue, #58a6ff);
+    stroke: rgba(255, 255, 255, 0.4);
+    stroke-width: 1;
+}
+.tax-cell-badge.hollow {
+    fill: transparent;
+    stroke: var(--blue, #58a6ff);
+    stroke-width: 1.5;
+}
