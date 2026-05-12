@@ -1,0 +1,776 @@
+/* Taxonomy tab — Phase 1 redesigned.
+   Layout:
+     [Arbre] [Viewer + LLM Card + Treemap (single-level)] [Themes mapped + LLM universe]
+   Selection rules:
+     - folder selected   → treemap shows direct children of THAT folder
+     - file selected     → treemap shows direct children of file's GRANDPARENT
+                           (= siblings of the folder containing the file)
+                           Viewer + LLM card become visible.
+*/
+
+(function () {
+  'use strict';
+
+  const SECTION_COLORS = {
+    '01-SCIENCES':   '#1f6feb',
+    '02-INFORMATIQUE': '#8957e5',
+    '03-INGENIERIE': '#f78166',
+    '04-SHS':        '#3fb950',
+    '05-RELIGIONS':  '#d29922',
+    '06-MEDECINE':   '#f85149',
+    '07-LANGUES':    '#56d4dd',
+    '07-VIE':        '#56d4dd',
+    '08-LOISIRS':    '#db61a2',
+    '09-BUSINESS':   '#a371f7',
+    '_A-TRIER':      '#6e7681',
+  };
+  const FILE_PAGE = 50;       // tree file pagination
+  const MAX_PAGES = 5;        // viewer multipage cap (existing thumbnail infra limit)
+
+  const state = {
+    profile: null,
+    snapshot: null,
+
+    // Selection: type='folder'|'file'|null, path = relative path within target.
+    selection: { type: null, path: '' },
+
+    expanded: new Set(),
+    filesByPath: new Map(),    // cache key = "path#offset"
+
+    // Viewer
+    viewerMeta: null,
+    viewerCurrentPage: 1,
+    viewerOpenedPages: new Set(),  // pages user has actually generated/loaded
+
+    // LLM panel
+    search: '',
+    orphOnly: false,
+
+    // Popover for "+ Mapper"
+    popover: { open: false, theme: null, anchorEl: null },
+
+    // Treemap scale mode — 'sqrt' = lissé (defaut, mieux pour navigation),
+    // 'linear' = proportion réelle.
+    treemapScale: 'sqrt',
+  };
+
+  // ── DOM helpers ──────────────────────────────────────────────────────
+
+  function $(sel) { return document.querySelector(sel); }
+  function el(tag, props, children) {
+    const e = document.createElement(tag);
+    if (props) for (const k in props) {
+      if (k === 'class') e.className = props[k];
+      else if (k.startsWith('on')) e.addEventListener(k.slice(2), props[k]);
+      else e.setAttribute(k, props[k]);
+    }
+    if (children) for (const c of children) {
+      if (c == null) continue;
+      e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+  function sectionOf(path) { return path ? path.split('/')[0] : ''; }
+  function dirname(p) { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.substring(0, i); }
+  function basename(p) { const i = p.lastIndexOf('/'); return i < 0 ? p : p.substring(i + 1); }
+
+  function colorForPath(path, depth) {
+    const base = SECTION_COLORS[sectionOf(path)] || '#6e7681';
+    return d3.color(base).darker(Math.min(0.3, (depth - 1) * 0.12)).toString();
+  }
+  function findNode(root, path) {
+    if (!path) return root;
+    if (root.path === path) return root;
+    if (!root.children) return null;
+    for (const c of root.children) {
+      const found = findNode(c, path);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // The folder context shown in the treemap, mapped panel, etc.
+  // Folder selected   → that folder
+  // File selected     → file's grandparent (so we see the siblings of its parent)
+  // No selection      → root ('')
+  function getActiveFolder() {
+    if (state.selection.type === 'folder') return state.selection.path;
+    if (state.selection.type === 'file') {
+      const parent = dirname(state.selection.path);     // folder containing the file
+      return dirname(parent);                           // grandparent = section context
+    }
+    return '';
+  }
+
+  // ── API ──────────────────────────────────────────────────────────────
+
+  async function fetchSnapshot(force) {
+    const url = `/api/taxonomy/snapshot?profile=${encodeURIComponent(state.profile)}${force ? '&force=true' : ''}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('snapshot HTTP ' + r.status);
+    return r.json();
+  }
+  async function fetchFiles(path, offset, limit) {
+    const url = `/api/taxonomy/folder/files?profile=${encodeURIComponent(state.profile)}` +
+                `&path=${encodeURIComponent(path)}&offset=${offset}&limit=${limit}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('files HTTP ' + r.status);
+    return r.json();
+  }
+  async function fetchFileMetadata(path) {
+    const url = `/api/taxonomy/file/metadata?profile=${encodeURIComponent(state.profile)}` +
+                `&path=${encodeURIComponent(path)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('metadata HTTP ' + r.status);
+    return r.json();
+  }
+  function thumbnailURL(path, page) {
+    return `/api/taxonomy/file/thumbnail?profile=${encodeURIComponent(state.profile)}` +
+           `&path=${encodeURIComponent(path)}&page=${page}`;
+  }
+  async function postMapping(theme, folder) {
+    const r = await fetch('/api/taxonomy/mapping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, theme, folder }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────
+
+  function showToast(msg, type) {
+    const t = $('#tax-toast');
+    t.textContent = msg;
+    t.className = 'tax-toast ' + (type || 'info');
+    t.style.display = 'block';
+    clearTimeout(showToast._tid);
+    showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
+  }
+
+  // ── Tree (column 1) ──────────────────────────────────────────────────
+
+  function renderTree() {
+    const root = state.snapshot.tree;
+    const container = $('#tax-tree');
+    container.innerHTML = '';
+    container.appendChild(renderTreeNode(root, 0));
+    $('#tax-tree-sub').textContent =
+      `${state.snapshot.stats.tree_nodes} dossiers · ${state.snapshot.stats.total_files} fichiers`;
+  }
+
+  function renderTreeNode(node, depth) {
+    const isRoot = !node.path;
+    const isExpanded = state.expanded.has(node.path) || isRoot;
+    const hasChildren = node.children && node.children.length > 0;
+    const hasFiles = (node.file_count || 0) > 0;
+    const isExpandable = hasChildren || hasFiles;
+    const isSelected = state.selection.type === 'folder' && state.selection.path === node.path;
+
+    const row = el('div', {
+      class: 'tax-tree-row' + (isSelected ? ' selected' : ''),
+      style: `padding-left:${depth * 14 + 6}px;`,
+      ondragover: e => { e.preventDefault(); row.classList.add('drop-target'); },
+      ondragleave: () => row.classList.remove('drop-target'),
+      ondrop: e => { row.classList.remove('drop-target'); onDropOnFolder(e, node.path); },
+    });
+    row.dataset.path = node.path;
+
+    if (isExpandable) {
+      row.appendChild(el('span', {
+        class: 'tax-tree-chevron' + (isExpanded ? ' expanded' : ''),
+        onclick: e => { e.stopPropagation(); toggleExpand(node.path); },
+      }, [isExpanded ? '▼' : '▶']));
+    } else {
+      row.appendChild(el('span', { class: 'tax-tree-chevron-empty' }));
+    }
+    row.appendChild(el('span', { class: 'tax-tree-icon' }, ['📁']));
+    row.appendChild(el('span', { class: 'tax-tree-name', onclick: () => selectFolder(node.path) },
+      [isRoot ? 'racine' : node.name]));
+    row.appendChild(el('span', { class: 'tax-tree-count', title: 'fichiers directs' },
+      [String(node.file_count)]));
+
+    const wrap = el('div', { class: 'tax-tree-node' }, [row]);
+
+    if (isExpanded && isExpandable) {
+      const childWrap = el('div', { class: 'tax-tree-children' });
+      if (hasChildren) for (const c of node.children) childWrap.appendChild(renderTreeNode(c, depth + 1));
+      if (hasFiles) {
+        const filesWrap = el('div', {
+          class: 'tax-tree-files',
+          style: `padding-left:${(depth + 1) * 14 + 6}px;`,
+        });
+        childWrap.appendChild(filesWrap);
+        lazyLoadFiles(node.path, filesWrap, 0);
+      }
+      wrap.appendChild(childWrap);
+    }
+    return wrap;
+  }
+
+  function toggleExpand(path) {
+    if (state.expanded.has(path)) state.expanded.delete(path);
+    else state.expanded.add(path);
+    renderTree();
+  }
+
+  async function lazyLoadFiles(path, wrap, offset) {
+    const cacheKey = path + '#' + offset;
+    let data;
+    if (state.filesByPath.has(cacheKey)) {
+      data = state.filesByPath.get(cacheKey);
+    } else {
+      wrap.appendChild(el('div', { class: 'muted small' }, ['Chargement fichiers…']));
+      try { data = await fetchFiles(path, offset, FILE_PAGE); state.filesByPath.set(cacheKey, data); }
+      catch (e) { wrap.innerHTML = ''; wrap.appendChild(el('div', { class: 'small text-error' },
+        ['Erreur fichiers: ' + e.message])); return; }
+      wrap.innerHTML = '';
+    }
+    for (const f of data.files) {
+      const filePath = path ? path + '/' + f.name : f.name;
+      const isSel = state.selection.type === 'file' && state.selection.path === filePath;
+      wrap.appendChild(el('div', {
+        class: 'tax-tree-file' + (isSel ? ' selected' : ''),
+        title: f.name,
+        onclick: () => selectFile(filePath),
+      }, [el('span', { class: 'tax-tree-icon' }, ['📄']),
+          el('span', { class: 'tax-tree-name' }, [f.name])]));
+    }
+    const shown = offset + data.files.length;
+    if (shown < data.total) {
+      wrap.appendChild(el('div', {
+        class: 'tax-tree-more',
+        onclick: e => { e.stopPropagation(); e.currentTarget.remove(); lazyLoadFiles(path, wrap, shown); },
+      }, [`⋯ Afficher ${Math.min(FILE_PAGE, data.total - shown)} fichiers de plus (${shown}/${data.total})`]));
+    }
+  }
+
+  // ── Treemap (column 2 bottom) ─ single-level only ───────────────────
+
+  function renderTreemap() {
+    const container = $('#tax-treemap');
+    container.innerHTML = '';
+    const activePath = getActiveFolder();
+    const node = findNode(state.snapshot.tree, activePath);
+    if (!node) { container.appendChild(emptyMsg('Dossier introuvable.')); return; }
+    const w = container.clientWidth, h = container.clientHeight;
+    if (w <= 0 || h <= 0) return;
+
+    const kids = (node.children || []).filter(c => sumLeaves(c) > 0);
+    // Direct files of activeFolder (those not in any sub-folder) — virtual rectangle
+    const directCount = node.file_count || 0;
+    if (directCount > 0) {
+      kids.push({
+        name: '(directs)',
+        path: node.path,           // map to the active folder itself
+        file_count: directCount,
+        children: [],
+        _direct: true,             // flag for styling / drag-drop handling
+      });
+    }
+    if (kids.length === 0) {
+      container.appendChild(emptyMsg(
+        node.children && node.children.length
+          ? 'Aucun fichier dans ce sous-arbre.'
+          : 'Aucun sous-dossier — explore les fichiers via l\'arbre.'));
+      return;
+    }
+
+    // Build flat hierarchy: virtual root + the kids (1 level)
+    const root = d3.hierarchy({ name: activePath || 'racine', children: kids })
+      .sum(d => d.children && d.children.length ? 0 : (d.file_count || 0));
+
+    // 1) Compute real count + apply scale function for layout area.
+    const scaleFn = state.treemapScale === 'sqrt' ? Math.sqrt : (v => v);
+    root.each(d => {
+      if (d.depth === 1) {
+        const raw = d.data._direct ? d.data.file_count : sumLeaves(d.data);
+        d.data._realCount = raw;
+        d.value = scaleFn(raw) || 0.01;
+      }
+    });
+
+    // 2) En mode "Lissé" : floor à 8% de la somme courante pour que chaque
+    //    rectangle reste cliquable même sur des écarts extrêmes.
+    if (state.treemapScale === 'sqrt') {
+      const sum = root.children.reduce((s, c) => s + c.value, 0);
+      const floor = sum * 0.08;
+      root.children.forEach(c => { if (c.value < floor) c.value = floor; });
+      // Re-sum parent (d3 va lire root.value pour le layout)
+      root.value = root.children.reduce((s, c) => s + c.value, 0);
+    }
+
+    d3.treemap().size([w, h]).paddingInner(3).round(true)
+      .tile(d3.treemapSquarify.ratio(1.6))(root);
+
+    const svg = d3.select(container).append('svg').attr('width', w).attr('height', h);
+    const cells = svg.selectAll('g').data(root.descendants().filter(d => d.depth === 1))
+      .enter().append('g').attr('transform', d => `translate(${d.x0},${d.y0})`);
+
+    // Highlight target: if file selected, highlight its parent folder rectangle.
+    const highlightPath = state.selection.type === 'file'
+      ? dirname(state.selection.path)
+      : state.selection.path;
+
+    cells.append('rect')
+      .attr('class', d => 'tax-cell tax-cell-leaf' +
+            (d.data._direct ? ' tax-cell-direct' : '') +
+            (d.data.path === highlightPath && !d.data._direct ? ' selected' : ''))
+      .attr('width',  d => Math.max(0, d.x1 - d.x0))
+      .attr('height', d => Math.max(0, d.y1 - d.y0))
+      .attr('fill',   d => colorForPath(d.data.path, d.depth))
+      .attr('fill-opacity', d => d.data._direct ? 0.35 : 1)
+      .attr('stroke-dasharray', d => d.data._direct ? '5,3' : null)
+      .on('mouseenter', (e, d) => showTooltip(e, d))
+      .on('mousemove', moveTooltip).on('mouseleave', hideTooltip)
+      .on('click', (e, d) => selectFolder(d.data.path))
+      .on('dragover', (e) => { e.preventDefault(); e.currentTarget.classList.add('drop-target'); })
+      .on('dragleave', (e) => e.currentTarget.classList.remove('drop-target'))
+      .on('drop', (e, d) => { e.currentTarget.classList.remove('drop-target');
+                              onDropOnFolder(e, d.data.path); });
+
+    cells.filter(d => (d.x1 - d.x0) > 50 && (d.y1 - d.y0) > 16)
+      .append('text').attr('class', 'tax-cell-label')
+      .attr('x', 6).attr('y', 16).text(d => d.data.name);
+
+    cells.filter(d => (d.x1 - d.x0) > 50 && (d.y1 - d.y0) > 32)
+      .append('text').attr('class', 'tax-cell-label tax-cell-count')
+      .attr('x', 6).attr('y', 32).text(d => (d.data._realCount || 0) + ' fichiers');
+  }
+
+  // Recursive file count for a tree node (incl. all descendants)
+  function sumLeaves(node) {
+    if (!node) return 0;
+    let s = node.file_count || 0;
+    if (node.children) for (const c of node.children) s += sumLeaves(c);
+    return s;
+  }
+
+  function emptyMsg(text) {
+    return el('div', { class: 'muted', style: 'padding:24px;' }, [text]);
+  }
+
+  function showTooltip(e, d) {
+    const tip = $('#tax-tooltip');
+    tip.style.display = 'block';
+    const mappings = (state.snapshot.mapping_by_folder[d.data.path] || []).length;
+    const count = d.data._realCount != null ? d.data._realCount : d.value;
+    tip.innerHTML =
+      `<strong>${escapeHtml(d.data.path || 'racine')}</strong><br>` +
+      `${count} fichiers · ${mappings} thèmes mappés`;
+    moveTooltip(e);
+  }
+  function moveTooltip(e) {
+    const tip = $('#tax-tooltip');
+    tip.style.left = (e.pageX + 14) + 'px';
+    tip.style.top  = (e.pageY + 14) + 'px';
+  }
+  function hideTooltip() { $('#tax-tooltip').style.display = 'none'; }
+
+  function renderBreadcrumb() {
+    const bc = $('#tax-breadcrumb');
+    bc.innerHTML = '';
+    const path = getActiveFolder();
+    bc.appendChild(el('a', { class: 'tax-crumb', onclick: () => selectFolder('') }, ['racine']));
+    if (!path) return;
+    const parts = path.split('/');
+    let acc = '';
+    for (const p of parts) {
+      acc = acc ? acc + '/' + p : p;
+      const at = acc;
+      bc.appendChild(document.createTextNode(' / '));
+      bc.appendChild(el('a', { class: 'tax-crumb', onclick: () => selectFolder(at) }, [p]));
+    }
+  }
+
+  // ── Viewer + LLM Card (column 2 top + middle) ────────────────────────
+
+  async function renderFileSection() {
+    const viewer = $('#tax-viewer-body');
+    const pager = $('#tax-viewer-pager');
+    const card = $('#tax-llm-card');
+    const cardBody = $('#tax-llm-card-body');
+    const cardSub = $('#tax-llm-card-sub');
+    const viewerSub = $('#tax-viewer-sub');
+
+    if (state.selection.type !== 'file') {
+      viewer.innerHTML = '<div class="tax-viewer-empty">📄 Aucun fichier sélectionné</div>';
+      pager.style.display = 'none';
+      cardSub.textContent = '';
+      $('#tax-llm-card-body').innerHTML =
+        '<div class="muted small">Sélectionne un fichier pour voir son analyse LLM</div>';
+      viewerSub.textContent = 'Sélectionne un fichier dans l\'arbre';
+      return;
+    }
+    const path = state.selection.path;
+    viewerSub.textContent = basename(path);
+    viewer.innerHTML = '<div class="tax-viewer-loading">Chargement…</div>';
+
+    let meta;
+    try { meta = await fetchFileMetadata(path); }
+    catch (e) {
+      viewer.innerHTML = `<div class="tax-viewer-empty">Erreur: ${escapeHtml(e.message)}</div>`;
+      card.style.display = 'none';
+      return;
+    }
+    state.viewerMeta = meta;
+    state.viewerCurrentPage = 1;
+    state.viewerOpenedPages = new Set([1]);
+
+    renderViewer();
+    renderLLMCard(meta);
+    cardSub.textContent = path;
+  }
+
+  function renderViewer() {
+    const viewer = $('#tax-viewer-body');
+    const pager = $('#tax-viewer-pager');
+    const path = state.selection.path;
+    const totalPages = (state.viewerMeta && state.viewerMeta.file && state.viewerMeta.file.page_count_estimate) || 1;
+
+    viewer.innerHTML = '';
+    const img = el('img', {
+      class: 'tax-viewer-img',
+      src: thumbnailURL(path, state.viewerCurrentPage),
+      alt: `page ${state.viewerCurrentPage}`,
+      onerror: () => { img.replaceWith(el('div', { class: 'tax-viewer-empty' }, ['Aperçu indisponible'])); },
+    });
+    viewer.appendChild(img);
+
+    // Pager — cover only by default, "+ Voir pages" button
+    pager.innerHTML = '';
+    pager.style.display = 'flex';
+    if (totalPages <= 1) {
+      pager.appendChild(el('span', { class: 'muted small' }, ['1 page disponible']));
+      return;
+    }
+    // If user hasn't requested multipage yet, show single page + button
+    if (state.viewerOpenedPages.size === 1 && state.viewerCurrentPage === 1) {
+      pager.appendChild(el('span', { class: 'muted small' }, [`Page 1 sur ${totalPages}`]));
+      pager.appendChild(el('button', {
+        class: 'btn-secondary',
+        onclick: () => {
+          for (let i = 1; i <= totalPages; i++) state.viewerOpenedPages.add(i);
+          renderViewer();
+        },
+      }, [`+ Voir pages 2-${totalPages}`]));
+      return;
+    }
+    // Multipage strip
+    pager.appendChild(el('button', {
+      class: 'btn-icon', title: 'page précédente',
+      onclick: () => goToPage(state.viewerCurrentPage - 1),
+    }, ['◀']));
+    for (let i = 1; i <= totalPages; i++) {
+      const thumb = el('div', {
+        class: 'tax-thumb' + (i === state.viewerCurrentPage ? ' active' : ''),
+        onclick: () => goToPage(i),
+      }, [el('img', { src: thumbnailURL(path, i), alt: `pg${i}` })]);
+      pager.appendChild(thumb);
+    }
+    pager.appendChild(el('button', {
+      class: 'btn-icon', title: 'page suivante',
+      onclick: () => goToPage(state.viewerCurrentPage + 1),
+    }, ['▶']));
+    pager.appendChild(el('span', { class: 'muted small' },
+      [`pg ${state.viewerCurrentPage}/${totalPages}`]));
+  }
+
+  function goToPage(p) {
+    const total = (state.viewerMeta && state.viewerMeta.file.page_count_estimate) || 1;
+    if (p < 1 || p > total) return;
+    state.viewerCurrentPage = p;
+    state.viewerOpenedPages.add(p);
+    renderViewer();
+  }
+
+  function renderLLMCard(meta) {
+    const body = $('#tax-llm-card-body');
+    body.innerHTML = '';
+    if (!meta.vision) {
+      body.appendChild(el('div', { class: 'muted' },
+        ['🔍 Pas d\'analyse LLM en cache pour ce fichier.']));
+      return;
+    }
+    const v = meta.vision;
+    body.appendChild(el('div', { class: 'tax-llm-meta-title' }, [v.title || '(sans titre)']));
+    if (v.author) body.appendChild(el('div', { class: 'tax-llm-meta-author' }, [v.author]));
+    const badges = el('div', { class: 'tax-llm-meta-badges' });
+    if (v.language) badges.appendChild(el('span', { class: 'badge' }, [v.language.toUpperCase()]));
+    badges.appendChild(el('span', { class: 'badge' }, [`conf ${(v.confidence * 100).toFixed(0)}%`]));
+    body.appendChild(badges);
+
+    body.appendChild(el('div', { class: 'tax-llm-meta-h' }, ['Thèmes détectés']));
+    const themes = el('ul', { class: 'tax-llm-meta-themes' });
+    v.themes.forEach((t, idx) => {
+      const dest = t.mapped_to || '(orphelin)';
+      themes.appendChild(el('li', null, [
+        el('span', { class: idx === 0 ? 'dot-primary' : 'dot-secondary' }, [idx === 0 ? '●' : '○']),
+        ' ',
+        el('strong', null, [t.theme]),
+        '  ',
+        el('span', { class: 'muted small' }, [`conf ${(t.confidence * 100).toFixed(0)}%`]),
+        '  → ',
+        el('code', null, [dest]),
+      ]));
+    });
+    body.appendChild(themes);
+
+    body.appendChild(el('div', { class: 'tax-llm-meta-h' }, ['Localisation']));
+    body.appendChild(el('div', null, [
+      '📁 Actuel : ', el('code', null, [meta.file.current_folder || '(racine)']),
+    ]));
+    if (meta.prediction) {
+      body.appendChild(el('div', null, [
+        '🎯 Prédiction theme-only : ',
+        el('code', null, [meta.prediction.dest]),
+        ' ', el('span', { class: 'muted small' }, [`(via "${meta.prediction.used_theme}")`]),
+      ]));
+      body.appendChild(el('div', { class: 'muted small', style: 'margin-top:4px;' },
+        [meta.prediction.label]));
+    } else {
+      body.appendChild(el('div', { class: 'muted' },
+        ['🎯 Aucune prédiction theme-only — tous les thèmes sont orphelins.']));
+    }
+  }
+
+  // ── Selection (synchronizes everything) ──────────────────────────────
+
+  function selectFolder(path) {
+    state.selection = { type: path === '' ? null : 'folder', path: path || '' };
+    if (path) {
+      const parts = path.split('/');
+      let acc = '';
+      for (const p of parts) { acc = acc ? acc + '/' + p : p; state.expanded.add(acc); }
+    }
+    rerenderAfterSelection();
+  }
+  function selectFile(path) {
+    state.selection = { type: 'file', path };
+    // Expand all ancestors for visibility
+    const parent = dirname(path);
+    if (parent) {
+      const parts = parent.split('/');
+      let acc = '';
+      for (const p of parts) { acc = acc ? acc + '/' + p : p; state.expanded.add(acc); }
+    }
+    rerenderAfterSelection();
+  }
+  function rerenderAfterSelection() {
+    renderTree();
+    renderTreemap();
+    renderBreadcrumb();
+    renderMappedPanel();
+    renderFileSection();
+  }
+
+  // ── Mapped themes panel (column 3 top) ───────────────────────────────
+
+  function renderMappedPanel() {
+    const sub = $('#tax-mapped-sub');
+    const list = $('#tax-mapped-list');
+    list.innerHTML = '';
+    const path = getActiveFolder();
+    if (state.selection.type === null) {
+      sub.textContent = 'Sélectionne un dossier ou un fichier';
+      return;
+    }
+    const mappings = state.snapshot.mapping_by_folder[path] || [];
+    sub.textContent = `${path || 'racine'} · ${mappings.length} clé(s)`;
+    if (mappings.length === 0) {
+      list.appendChild(el('li', { class: 'muted small' },
+        ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
+    } else {
+      for (const t of mappings) list.appendChild(el('li', { class: 'tax-mapped-item', title: t }, [t]));
+    }
+  }
+
+  // ── LLM universe panel (column 3 bottom) ─────────────────────────────
+
+  function renderLLMPanel() {
+    const sub = $('#tax-llm-sub');
+    const list = $('#tax-llm-list');
+    list.innerHTML = '';
+    const all = state.snapshot.themes_llm || [];
+    let filtered = all;
+    if (state.orphOnly) filtered = filtered.filter(t => t.is_orphan);
+    if (state.search) {
+      const q = state.search;
+      filtered = filtered.filter(t => t.theme.toLowerCase().includes(q));
+    }
+    sub.textContent = `${filtered.length}/${all.length} affichés`;
+    const MAX = 300;
+    for (const t of filtered.slice(0, MAX)) {
+      const mainLine = el('div', { class: 'tax-llm-item-main' }, [
+        el('span', { class: 'tax-llm-name' }, [t.theme]),
+        el('span', { class: 'tax-llm-count' }, [String(t.count)]),
+        el('button', {
+          class: 'tax-llm-map-btn',
+          title: t.is_orphan ? 'Mapper ce thème (orphelin)' : 'Re-mapper ce thème',
+          onclick: e => { e.stopPropagation(); openMapPopover(t, e.currentTarget); },
+        }, ['+']),
+      ]);
+      // Ligne 2 : destination actuelle si mappé, sinon badge orphelin
+      const subLine = el('div', { class: 'tax-llm-item-sub' }, [
+        t.is_orphan
+          ? el('span', { class: 'tax-llm-orph-tag' }, ['orphelin'])
+          : el('span', { class: 'tax-llm-dest', title: t.mapped_to }, ['→ ' + t.mapped_to]),
+      ]);
+      const row = el('div', {
+        class: 'tax-llm-item' + (t.is_orphan ? ' orphan' : ''),
+        draggable: 'true',
+        title: (t.sample_titles && t.sample_titles.length
+                ? 'Échantillon : ' + t.sample_titles.join(' / ') : ''),
+        ondragstart: e => {
+          e.dataTransfer.setData('text/plain', t.theme);
+          e.dataTransfer.effectAllowed = 'copy';
+        },
+      }, [mainLine, subLine]);
+      list.appendChild(row);
+    }
+    if (filtered.length > MAX) {
+      list.appendChild(el('div', { class: 'muted small', style: 'padding:8px;' },
+        [`(${filtered.length - MAX} de plus — affine la recherche)`]));
+    }
+  }
+
+  // ── "+ Mapper" popover with folder autocomplete ──────────────────────
+
+  function openMapPopover(theme, anchorEl) {
+    state.popover = { open: true, theme, anchorEl };
+    const pop = $('#tax-map-popover');
+    $('#tax-map-popover-theme').textContent = `« ${theme.theme} »  (${theme.count} fichiers)`;
+    const input = $('#tax-map-popover-input');
+    input.value = '';
+    renderPopoverSuggestions('');
+    // Position near the anchor button
+    const rect = anchorEl.getBoundingClientRect();
+    pop.style.display = 'block';
+    const popW = 360;
+    pop.style.left = Math.min(window.innerWidth - popW - 12, rect.left - popW + 30) + 'px';
+    pop.style.top  = (rect.bottom + 8) + 'px';
+    setTimeout(() => input.focus(), 50);
+  }
+  function closeMapPopover() {
+    state.popover = { open: false, theme: null, anchorEl: null };
+    $('#tax-map-popover').style.display = 'none';
+  }
+  function renderPopoverSuggestions(query) {
+    const folders = state.snapshot.folders || [];
+    const q = (query || '').toLowerCase();
+    const matches = folders.filter(f => !q || f.toLowerCase().includes(q)).slice(0, 8);
+    const wrap = $('#tax-map-popover-suggestions');
+    wrap.innerHTML = '';
+    for (const f of matches) {
+      wrap.appendChild(el('div', {
+        class: 'tax-map-suggestion', onclick: () => { $('#tax-map-popover-input').value = f; },
+      }, [f]));
+    }
+    if (!matches.length) wrap.appendChild(el('div', { class: 'muted small' }, ['Aucun dossier ne correspond']));
+  }
+  async function confirmMapPopover() {
+    const folder = $('#tax-map-popover-input').value.trim();
+    if (!folder || !state.popover.theme) return;
+    const theme = state.popover.theme.theme;
+    closeMapPopover();
+    await doAddMapping(theme, folder);
+  }
+
+  // ── Drag-drop & central mapping handler ──────────────────────────────
+
+  async function onDropOnFolder(e, folder) {
+    e.preventDefault();
+    const theme = e.dataTransfer.getData('text/plain');
+    if (!theme || folder == null) return;
+    await doAddMapping(theme, folder);
+  }
+  async function doAddMapping(theme, folder) {
+    try {
+      const r = await postMapping(theme, folder);
+      // Look up impact count from snapshot
+      const themeRec = (state.snapshot.themes_llm || [])
+        .find(t => t.theme.toLowerCase() === theme.toLowerCase());
+      const impact = themeRec ? themeRec.count : '?';
+      showToast(`✓ « ${theme} » → ${folder} · ${impact} fichier(s) au prochain reclassify`, 'success');
+      state.snapshot = await fetchSnapshot();
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+
+  // ── Header stats ─────────────────────────────────────────────────────
+
+  function renderStats() {
+    const s = state.snapshot.stats;
+    $('#tax-stats').innerHTML =
+      `<span><strong>${s.total_files}</strong> fichiers</span>` +
+      `<span class="dot"></span><span><strong>${s.tree_nodes}</strong> dossiers</span>` +
+      `<span class="dot"></span><span><strong>${s.total_themes_llm}</strong> thèmes LLM</span>` +
+      `<span class="dot"></span><span class="orphan-badge"><strong>${s.orphans}</strong> orphelins</span>` +
+      `<span class="dot"></span><span><strong>${s.mapped}</strong> mappés</span>`;
+  }
+  function renderAll() {
+    renderStats(); renderTree(); renderTreemap(); renderBreadcrumb();
+    renderMappedPanel(); renderLLMPanel(); renderFileSection();
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────
+
+  async function init() {
+    const sel = $('#tax-profile-select');
+    state.profile = sel.value;
+    sel.addEventListener('change', async () => {
+      state.profile = sel.value;
+      state.selection = { type: null, path: '' };
+      state.expanded = new Set();
+      state.filesByPath = new Map();
+      await loadAndRender();
+    });
+    $('#tax-refresh').addEventListener('click', async () => {
+      state.filesByPath = new Map();
+      try { state.snapshot = await fetchSnapshot(true); renderAll(); showToast('Snapshot rechargé', 'success'); }
+      catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    });
+    $('#tax-llm-search').addEventListener('input', e => {
+      state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
+    });
+    $('#tax-llm-orph-only').addEventListener('change', e => {
+      state.orphOnly = e.target.checked; renderLLMPanel();
+    });
+    // Treemap scale toggle (Lissé / Réel)
+    document.querySelectorAll('#tax-treemap-scale button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.treemapScale = btn.dataset.scale;
+        document.querySelectorAll('#tax-treemap-scale button').forEach(b =>
+          b.classList.toggle('active', b.dataset.scale === state.treemapScale));
+        renderTreemap();
+      });
+    });
+    $('#tax-map-popover-input').addEventListener('input', e => renderPopoverSuggestions(e.target.value));
+    $('#tax-map-popover-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmMapPopover(); }
+      if (e.key === 'Escape') closeMapPopover();
+    });
+    $('#tax-map-popover-cancel').addEventListener('click', closeMapPopover);
+    $('#tax-map-popover-confirm').addEventListener('click', confirmMapPopover);
+    document.addEventListener('click', e => {
+      if (state.popover.open && !e.target.closest('#tax-map-popover')
+          && !e.target.classList.contains('tax-llm-map-btn')) closeMapPopover();
+    });
+    window.addEventListener('resize', () => { renderTreemap(); });
+    await loadAndRender();
+  }
+  async function loadAndRender() {
+    $('#tax-stats').innerHTML = '<span class="muted">Chargement…</span>';
+    try { state.snapshot = await fetchSnapshot(); renderAll(); }
+    catch (e) { $('#tax-stats').innerHTML = `<span class="text-error">Erreur: ${escapeHtml(e.message)}</span>`; }
+  }
+  document.addEventListener('DOMContentLoaded', init);
+})();

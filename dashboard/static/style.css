@@ -2812,3 +2812,547 @@ th {
     opacity: 0.4;
     cursor: not-allowed;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Taxonomy tab — tree / treemap / themes (Phase 1)
+   ════════════════════════════════════════════════════════════════════ */
+
+.tax-header {
+    margin-bottom: 16px;
+}
+.tax-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.tax-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tax-stats {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-muted, #8b949e);
+    flex-wrap: wrap;
+}
+.tax-stats strong { color: var(--text, #c9d1d9); }
+.tax-stats .dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--border, #30363d);
+    display: inline-block;
+}
+.tax-stats .orphan-badge { color: var(--orange, #d97706); }
+.tax-stats .orphan-badge strong { color: var(--orange, #d97706); }
+
+.tax-grid {
+    display: grid;
+    grid-template-columns: 30fr 45fr 25fr;
+    gap: 12px;
+    height: calc(100vh - 160px);
+    min-height: 600px;
+}
+
+.tax-col {
+    background: var(--card, #161b22);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.tax-col-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border, #30363d);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+.tax-col-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text, #c9d1d9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.tax-col-sub {
+    font-size: 11px;
+    color: var(--text-muted, #8b949e);
+}
+
+/* Tree column */
+.tax-tree-scroll {
+    overflow: auto;
+    flex: 1;
+    padding: 6px 4px;
+}
+.tax-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 13px;
+    border-radius: 4px;
+    cursor: default;
+}
+.tax-tree-row:hover { background: rgba(255,255,255,0.04); }
+.tax-tree-row.selected { background: rgba(31, 111, 235, 0.18); }
+.tax-tree-row.drop-target {
+    background: rgba(63, 185, 80, 0.2);
+    outline: 2px dashed var(--green, #3fb950);
+    outline-offset: -2px;
+}
+.tax-tree-chevron, .tax-tree-chevron-empty {
+    width: 14px;
+    color: var(--text-muted, #8b949e);
+    cursor: pointer;
+    user-select: none;
+    font-size: 10px;
+}
+.tax-tree-icon { font-size: 12px; }
+.tax-tree-name {
+    flex: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tax-tree-count {
+    font-size: 11px;
+    color: var(--text-muted, #8b949e);
+    background: rgba(255,255,255,0.05);
+    padding: 1px 6px;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+.tax-tree-file {
+    display: flex;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-tree-files {
+    /* padding-left set inline based on depth so files align under their parent */
+}
+.tax-tree-more {
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--blue, #58a6ff);
+    cursor: pointer;
+}
+.tax-tree-more:hover { text-decoration: underline; }
+
+/* Treemap column */
+.tax-treemap-wrap {
+    flex: 1;
+    min-height: 200px;
+    position: relative;
+    overflow: hidden;
+}
+.tax-treemap-wrap svg { display: block; }
+.tax-cell {
+    stroke: var(--bg, #0d1117);
+    stroke-width: 1.5px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.tax-cell:hover { opacity: 0.85; }
+.tax-cell.selected { stroke: #fff; stroke-width: 2.5px; }
+.tax-cell.drop-target { stroke: var(--green, #3fb950); stroke-width: 3px; }
+.tax-cell-label {
+    font-size: 11px;
+    font-weight: 500;
+    fill: #fff;
+    pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+}
+.tax-cell-count {
+    font-size: 10px;
+    opacity: 0.85;
+}
+.tax-breadcrumb { font-size: 12px; color: var(--text-muted, #8b949e); }
+.tax-crumb { color: var(--blue, #58a6ff); cursor: pointer; }
+.tax-crumb:hover { text-decoration: underline; }
+
+/* Themes column (split: mapped + LLM) */
+.tax-col-themes { gap: 0; }
+.tax-themes-mapped, .tax-themes-llm {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+.tax-themes-mapped {
+    border-bottom: 1px solid var(--border, #30363d);
+    max-height: 45%;
+}
+.tax-mapped-list {
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    overflow: auto;
+    flex: 1;
+}
+.tax-mapped-item {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tax-mapped-item:hover { background: rgba(255,255,255,0.04); }
+
+.tax-llm-filters {
+    padding: 8px;
+    border-bottom: 1px solid var(--border, #30363d);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-llm-list {
+    overflow: auto;
+    flex: 1;
+    padding: 4px;
+}
+.tax-llm-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: grab;
+}
+.tax-llm-item:hover { background: rgba(255,255,255,0.05); }
+.tax-llm-item:active { cursor: grabbing; }
+.tax-llm-item.orphan { border-left: 2px solid var(--orange, #d97706); }
+.tax-llm-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tax-llm-count {
+    font-size: 11px;
+    color: var(--text-muted, #8b949e);
+    background: rgba(255,255,255,0.06);
+    padding: 1px 6px;
+    border-radius: 10px;
+}
+
+/* Tooltip */
+.tax-tooltip {
+    position: absolute;
+    background: var(--card, #161b22);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    max-width: 280px;
+    z-index: 1000;
+}
+.tax-tooltip strong { color: var(--blue, #58a6ff); }
+
+/* Toast */
+.tax-toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 2000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.tax-toast.info { background: var(--card, #161b22); border: 1px solid var(--border, #30363d); }
+.tax-toast.success { background: rgba(63, 185, 80, 0.18); border: 1px solid var(--green, #3fb950); }
+.tax-toast.error { background: rgba(248, 81, 73, 0.18); border: 1px solid var(--red, #f85149); }
+
+.muted { color: var(--text-muted, #8b949e); }
+.small { font-size: 11px; }
+
+/* Treemap nested — parent headers vs leaves */
+.tax-cell-parent {
+    stroke-width: 1.5px;
+    pointer-events: all;
+    cursor: pointer;
+}
+.tax-cell-leaf {
+    stroke: var(--bg, #0d1117);
+    stroke-width: 1px;
+}
+.tax-cell-parent-label {
+    font-size: 11px;
+    font-weight: 600;
+    fill: #c9d1d9;
+    pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Taxonomy — center column stack (viewer / LLM card / treemap)
+   Grid avec proportions fixes = pas de "saut" quand la sélection change.
+   55% viewer maximisé / 20% LLM card / 25% treemap */
+.tax-col-center {
+    display: grid;
+    grid-template-rows: 55% 20% 25%;
+    min-height: 0;
+}
+.tax-viewer {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--border, #30363d);
+    min-height: 0;
+    overflow: hidden;
+}
+.tax-viewer-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg, #0d1117);
+    overflow: hidden;
+    min-height: 0;
+}
+.tax-viewer-empty {
+    color: var(--text-muted, #8b949e);
+    font-size: 13px;
+    padding: 24px;
+    text-align: center;
+}
+.tax-viewer-loading { color: var(--text-muted, #8b949e); padding: 24px; }
+.tax-viewer-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.tax-viewer-pager {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--border, #30363d);
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+.tax-thumb {
+    width: 36px; height: 48px;
+    border: 1px solid var(--border, #30363d);
+    border-radius: 3px;
+    overflow: hidden;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: var(--card, #161b22);
+}
+.tax-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tax-thumb.active { border-color: var(--blue, #58a6ff); box-shadow: 0 0 0 1px var(--blue, #58a6ff); }
+.btn-icon {
+    background: transparent;
+    border: 1px solid var(--border, #30363d);
+    color: var(--text, #c9d1d9);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.btn-icon:hover { background: rgba(255,255,255,0.05); }
+
+/* LLM analysis card — height fixed by grid row, always visible */
+.tax-llm-card {
+    border-bottom: 1px solid var(--border, #30363d);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+.tax-llm-card-body {
+    padding: 10px 14px;
+    overflow: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+.tax-llm-meta-title {
+    font-weight: 600;
+    color: var(--text, #c9d1d9);
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+.tax-llm-meta-author {
+    color: var(--text-muted, #8b949e);
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+.tax-llm-meta-badges { display: flex; gap: 6px; margin-bottom: 10px; }
+.tax-llm-meta-badges .badge {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-muted, #8b949e);
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.tax-llm-meta-h {
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    color: var(--text-muted, #8b949e);
+    margin: 8px 0 4px;
+}
+.tax-llm-meta-themes {
+    margin: 0; padding: 0; list-style: none;
+}
+.tax-llm-meta-themes li { margin-bottom: 3px; }
+.tax-llm-meta-themes code, .tax-llm-card-body code {
+    background: rgba(255,255,255,0.06);
+    color: var(--blue, #58a6ff);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+}
+.dot-primary { color: var(--green, #3fb950); }
+.dot-secondary { color: var(--text-muted, #8b949e); }
+
+/* Treemap section (bottom) — height fixed by grid row */
+.tax-treemap-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* "+ Mapper" button on LLM theme rows */
+.tax-llm-map-btn {
+    background: transparent;
+    border: 1px solid var(--border, #30363d);
+    color: var(--text-muted, #8b949e);
+    width: 22px; height: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.tax-llm-item:hover .tax-llm-map-btn { opacity: 1; }
+.tax-llm-map-btn:hover { background: rgba(255,255,255,0.06); color: var(--text, #c9d1d9); }
+
+/* Popover */
+.tax-map-popover {
+    position: fixed;
+    width: 360px;
+    background: var(--card, #161b22);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+    z-index: 3000;
+    font-size: 12.5px;
+}
+.tax-map-popover-title {
+    font-weight: 600;
+    color: var(--text, #c9d1d9);
+    margin-bottom: 6px;
+}
+.tax-map-popover-theme {
+    color: var(--text-muted, #8b949e);
+    font-size: 11.5px;
+    margin-bottom: 8px;
+}
+#tax-map-popover-input { width: 100%; margin-bottom: 8px; }
+.tax-map-popover-suggestions {
+    max-height: 200px;
+    overflow: auto;
+    margin-bottom: 8px;
+}
+.tax-map-suggestion {
+    padding: 5px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+}
+.tax-map-suggestion:hover { background: rgba(255,255,255,0.06); }
+.tax-map-popover-actions {
+    display: flex; gap: 8px; justify-content: flex-end;
+}
+
+/* LLM theme rows — 2 lignes : nom+count+btn / destination */
+.tax-llm-item {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 5px 8px 6px;
+}
+.tax-llm-item-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.tax-llm-item-sub {
+    padding-left: 0;
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.3;
+}
+.tax-llm-dest {
+    color: var(--blue, #58a6ff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 100%;
+}
+.tax-llm-orph-tag {
+    color: var(--orange, #d97706);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(217, 119, 6, 0.12);
+    padding: 1px 6px;
+    border-radius: 8px;
+}
+
+/* Treemap cell — "(directs)" virtual rectangle styling */
+.tax-cell-direct {
+    cursor: default;
+}
+.tax-cell-direct + text, /* labels of direct rect get muted color */
+.tax-cell-direct ~ text {
+    font-style: italic;
+    opacity: 0.85;
+}
+.tax-cell.selected {
+    stroke: #fff;
+    stroke-width: 3px;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,0.5));
+}
+
+/* Toggle Lissé / Réel pour treemap */
+.tax-treemap-scale {
+    display: inline-flex;
+    margin-left: 12px;
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.tax-treemap-scale button {
+    background: transparent;
+    color: var(--text-muted, #8b949e);
+    border: none;
+    padding: 2px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    border-right: 1px solid var(--border, #30363d);
+}
+.tax-treemap-scale button:last-child { border-right: none; }
+.tax-treemap-scale button:hover { background: rgba(255,255,255,0.05); }
+.tax-treemap-scale button.active {
+    background: var(--blue, #58a6ff);
+    color: white;
+}

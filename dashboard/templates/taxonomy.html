@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% set active = "taxonomy" %}
+{% block title %}Taxonomie — Arborescence & thèmes{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+<header class="tax-header">
+    <div class="tax-title-row">
+        <h1 class="page-title" style="margin:0;">Taxonomie</h1>
+        <div class="tax-toolbar">
+            <label class="filter-label">Profil :</label>
+            <select id="tax-profile-select" class="filter-select">
+                {% for p in profiles %}
+                <option value="{{ p.name }}" {% if p.name == profile %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <button id="tax-refresh" class="btn-secondary" title="Recharger le snapshot">↻</button>
+        </div>
+    </div>
+    <div class="tax-stats" id="tax-stats">
+        <span class="muted">Chargement…</span>
+    </div>
+</header>
+
+<div class="tax-grid" id="tax-grid">
+    <!-- Colonne 1 — Arbre -->
+    <section class="tax-col tax-col-tree">
+        <header class="tax-col-header">
+            <h2 class="tax-col-title">Arborescence</h2>
+            <span class="tax-col-sub" id="tax-tree-sub"></span>
+        </header>
+        <div class="tax-tree-scroll">
+            <div id="tax-tree" class="tax-tree"></div>
+        </div>
+    </section>
+
+    <!-- Colonne 2 — Viewer + Analyse LLM + Treemap -->
+    <section class="tax-col tax-col-center">
+        <!-- Viewer PDF -->
+        <div class="tax-viewer" id="tax-viewer">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Viewer</h2>
+                <span class="tax-col-sub" id="tax-viewer-sub">Sélectionne un fichier dans l'arbre</span>
+            </header>
+            <div class="tax-viewer-body" id="tax-viewer-body">
+                <div class="tax-viewer-empty">📄 Aucun fichier sélectionné</div>
+            </div>
+            <div class="tax-viewer-pager" id="tax-viewer-pager" style="display:none;"></div>
+        </div>
+
+        <!-- Card analyse LLM (toujours visible — placeholder si pas de fichier) -->
+        <div class="tax-llm-card" id="tax-llm-card">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">🔍 Analyse LLM</h2>
+                <span class="tax-col-sub" id="tax-llm-card-sub"></span>
+            </header>
+            <div class="tax-llm-card-body" id="tax-llm-card-body">
+                <div class="muted small">Sélectionne un fichier pour voir son analyse LLM</div>
+            </div>
+        </div>
+
+        <!-- Treemap 1 niveau -->
+        <div class="tax-treemap-section">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Treemap</h2>
+                <div class="tax-breadcrumb" id="tax-breadcrumb"></div>
+                <div class="tax-treemap-scale" id="tax-treemap-scale" title="Mode d'échelle du treemap">
+                    <button data-scale="sqrt"   class="active">Lissé</button>
+                    <button data-scale="linear">Réel</button>
+                </div>
+            </header>
+            <div id="tax-treemap" class="tax-treemap-wrap"></div>
+        </div>
+    </section>
+
+    <!-- Colonne 3 — Thèmes mappés + LLM universe -->
+    <section class="tax-col tax-col-themes">
+        <div class="tax-themes-mapped">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Thèmes mappés</h2>
+                <span class="tax-col-sub" id="tax-mapped-sub">Sélectionne un dossier</span>
+            </header>
+            <ul id="tax-mapped-list" class="tax-mapped-list"></ul>
+        </div>
+        <div class="tax-themes-llm">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Thèmes LLM</h2>
+                <span class="tax-col-sub" id="tax-llm-sub"></span>
+            </header>
+            <div class="tax-llm-filters">
+                <input id="tax-llm-search" type="text" placeholder="🔍 rechercher…" class="filter-select" style="flex:1;">
+                <label><input type="checkbox" id="tax-llm-orph-only"> orphelins</label>
+            </div>
+            <div id="tax-llm-list" class="tax-llm-list"></div>
+        </div>
+    </section>
+</div>
+
+<!-- Popover "+ Mapper" -->
+<div id="tax-map-popover" class="tax-map-popover" style="display:none;">
+    <div class="tax-map-popover-title">Mapper le thème vers un dossier</div>
+    <div class="tax-map-popover-theme" id="tax-map-popover-theme"></div>
+    <input id="tax-map-popover-input" type="text"
+           class="filter-select" placeholder="tape un chemin… (ex: 01-SCIENCES/PHYSIQUE)"
+           autocomplete="off">
+    <div id="tax-map-popover-suggestions" class="tax-map-popover-suggestions"></div>
+    <div class="tax-map-popover-actions">
+        <button id="tax-map-popover-cancel" class="btn-secondary">Annuler</button>
+        <button id="tax-map-popover-confirm" class="btn-primary">Mapper</button>
+    </div>
+</div>
+
+<div id="tax-tooltip" class="tax-tooltip" style="display:none;"></div>
+<div id="tax-toast" class="tax-toast" style="display:none;"></div>
+
+<script src="/static/js/taxonomy.js"></script>
+{% endblock %}

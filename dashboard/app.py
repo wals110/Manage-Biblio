@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import baseline, data
+from dashboard import baseline, data, taxonomy
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -1553,3 +1553,85 @@ async def baseline_stats_api(profile: str, run_id: str | None = None):
     if run is None:
         return JSONResponse({"exists": False})
     return JSONResponse(baseline.stats(profile, run["run_id"]))
+
+
+# ─── Taxonomy ────────────────────────────────────────────────────────────
+
+
+@app.get("/taxonomy")
+async def taxonomy_page(request: Request, profile: str | None = None):
+    """Interactive viewer of tree.yaml + theme_mapping.yaml + LLM themes."""
+    profiles = taxonomy.list_profiles()
+    if not profile and profiles:
+        profile = profiles[0]["name"]
+    return templates.TemplateResponse(
+        request,
+        "taxonomy.html",
+        {
+            "active": "taxonomy",
+            "profile": profile,
+            "profiles": profiles,
+        },
+    )
+
+
+@app.get("/api/taxonomy/profiles")
+async def taxonomy_profiles_api():
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"profiles": taxonomy.list_profiles()})
+
+
+@app.get("/api/taxonomy/snapshot")
+async def taxonomy_snapshot_api(profile: str, force: bool = False):
+    from fastapi.responses import JSONResponse
+    try:
+        snap = taxonomy.get_snapshot(profile, force_reload=force)
+    except Exception as exc:  # pragma: no cover — defensive
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(snap)
+
+
+@app.get("/api/taxonomy/folder/files")
+async def taxonomy_files_api(
+    profile: str,
+    path: str = "",
+    offset: int = 0,
+    limit: int = 50,
+):
+    from fastapi.responses import JSONResponse
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return JSONResponse(taxonomy.list_files_in_folder(profile, path, offset, limit))
+
+
+@app.post("/api/taxonomy/mapping")
+async def taxonomy_mapping_add_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    folder = body.get("folder") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.add_mapping(profile, theme, folder)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.get("/api/taxonomy/file/metadata")
+async def taxonomy_file_metadata_api(profile: str, path: str):
+    from fastapi.responses import JSONResponse
+    meta = taxonomy.get_file_metadata(profile, path)
+    meta["file"]["page_count_estimate"] = taxonomy.get_file_page_count(profile, path)
+    return JSONResponse(meta)
+
+
+@app.get("/api/taxonomy/file/thumbnail")
+async def taxonomy_file_thumbnail_api(profile: str, path: str, page: int = 1):
+    from fastapi.responses import FileResponse, JSONResponse
+    img, mime = taxonomy.get_thumbnail(profile, path, page)
+    if img is None:
+        return JSONResponse({"error": mime or "indisponible"}, status_code=404)
+    return FileResponse(img, media_type=mime or "image/jpeg")
