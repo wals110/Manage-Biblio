@@ -75,19 +75,40 @@ def classify_by_theme(
     if not theme or not theme_mapping:
         return None
 
-    theme_lower = theme.lower().strip()
+    # Strip parenthetical / bracketed clarifications from the theme
+    # before matching. The vision LLM (prompt v2) sometimes returns
+    # themes like "Neural Networks (Computer Science)" — the parenthetical
+    # is meant as disambiguation but our longest-substring rule rewards
+    # the GENERIC clarification (16-char "computer science" → /Fondamentaux-CS)
+    # over the specific TOPIC (14-char "neural network" → /Deep-Learning).
+    # Stripping it makes the matcher focus on the primary noun phrase.
+    import re as _re
+    theme_clean = _re.sub(r"[\(\[][^\)\]]*[\)\]]", "", theme).strip()
+    theme_lower = (theme_clean or theme).lower().strip()
 
-    # 1. Exact match (case-insensitive)
-    for key, path in theme_mapping.items():
-        if key.lower() == theme_lower:
-            return path
+    # 1. Exact match (case-insensitive) — try cleaned form first, fallback raw
+    for candidate in (theme_clean, theme):
+        if not candidate:
+            continue
+        cand = candidate.lower().strip()
+        for key, path in theme_mapping.items():
+            if key.lower() == cand:
+                return path
 
-    # 2. Substring match (longest wins)
+    # 2. Substring match (longest wins) — on cleaned theme
+    # Mono-mot (sans espace) → match par mot entier (évite "art" dans
+    # "p**art**icle" ou "stochastic P**art**ial Differential…").
+    # Multi-mots (phrase) → substring (les espaces forment déjà des bornes).
     best_match = None
     best_length = 0
     for key, path in theme_mapping.items():
         key_lower = key.lower()
-        if key_lower in theme_lower and len(key_lower) > best_length:
+        if ' ' in key_lower:
+            matched = key_lower in theme_lower
+        else:
+            pattern = r'(?<![a-zà-ÿ])' + _re.escape(key_lower) + r'(?![a-zà-ÿ])'
+            matched = bool(_re.search(pattern, theme_lower))
+        if matched and len(key_lower) > best_length:
             best_match = path
             best_length = len(key_lower)
 

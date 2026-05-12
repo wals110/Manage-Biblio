@@ -232,14 +232,14 @@ class KeywordClassifier:
                 })
 
     def _keyword_matches(self, kw: str, text_lower: str) -> bool:
-        """Vérifie si un mot-clé matche dans le texte, avec gestion
-        des mots-clés courts qui nécessitent un match par mot entier."""
-        if kw in self.WORD_BOUNDARY_KEYWORDS or len(kw) <= 3:
-            # Match par mot entier uniquement
+        """Vérifie si un mot-clé matche dans le texte.
+        Mono-mot (sans espace) → match par mot entier (évite tran**sport**→sport,
+        per**fusion**→fusion, **Spring**er→spring).
+        Multi-mots (phrase) → substring (les espaces forment déjà des bornes)."""
+        if ' ' not in kw:
             pattern = r'(?<![a-zà-ÿ])' + re.escape(kw) + r'(?![a-zà-ÿ])'
             return bool(re.search(pattern, text_lower))
-        else:
-            return kw in text_lower
+        return kw in text_lower
 
     def classify(self, text: str, current_dir: str = '') -> list[tuple[str, float, str]]:
         """
