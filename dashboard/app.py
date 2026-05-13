@@ -1665,6 +1665,22 @@ async def taxonomy_undo_api(request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/taxonomy/folder")
+async def taxonomy_folder_create_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    parent = body.get("parent") or ""
+    name = body.get("name") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.create_folder(profile, parent, name)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
 @app.get("/api/taxonomy/file/metadata")
 async def taxonomy_file_metadata_api(profile: str, path: str):
     from fastapi.responses import JSONResponse

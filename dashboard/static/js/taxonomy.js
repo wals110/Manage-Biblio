@@ -196,6 +196,16 @@
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
     return body;
   }
+  async function postCreateFolder(parent, name) {
+    const r = await fetch('/api/taxonomy/folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, parent, name }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
 
   // ── Toast ────────────────────────────────────────────────────────────
 
@@ -265,6 +275,11 @@
     }
     row.appendChild(el('span', { class: 'tax-tree-count', title: 'fichiers directs' },
       [String(node.file_count)]));
+    row.appendChild(el('button', {
+      class: 'tax-tree-add-btn',
+      title: 'Créer un sous-dossier',
+      onclick: e => { e.stopPropagation(); openCreateFolderPopover(node.path, e.currentTarget); },
+    }, ['+']));
 
     const wrap = el('div', { class: 'tax-tree-node' }, [row]);
 
@@ -841,6 +856,42 @@
       showToast('✗ ' + err.message, 'error');
     }
   }
+  // ── Create folder popover ────────────────────────────────────────────
+
+  function openCreateFolderPopover(parent, anchorEl) {
+    const pop = $('#tax-newfolder-popover');
+    const input = $('#tax-newfolder-input');
+    $('#tax-newfolder-parent').textContent = parent ? parent : '(racine)';
+    input.value = '';
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = 340;
+    pop.style.display = 'block';
+    pop.style.left = Math.min(window.innerWidth - popW - 12,
+                              Math.max(12, rect.right - popW)) + 'px';
+    pop.style.top  = (rect.bottom + 8) + 'px';
+    pop.dataset.parent = parent;
+    setTimeout(() => input.focus(), 50);
+  }
+  function closeCreateFolderPopover() {
+    $('#tax-newfolder-popover').style.display = 'none';
+  }
+  async function confirmCreateFolder() {
+    const pop = $('#tax-newfolder-popover');
+    const name = $('#tax-newfolder-input').value.trim();
+    if (!name) return;
+    const parent = pop.dataset.parent || '';
+    closeCreateFolderPopover();
+    try {
+      const r = await postCreateFolder(parent, name);
+      showToast(`✓ Dossier créé : ${r.path}`, 'success');
+      state.snapshot = await fetchSnapshot();
+      state.expanded.add(parent);  // expand parent to reveal new child
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+
   async function doUndo() {
     if (!window.confirm('Annuler la dernière modification du mapping ?\n(restore depuis le backup le plus récent)')) return;
     try {
@@ -927,9 +978,22 @@
     });
     $('#tax-map-popover-cancel').addEventListener('click', closeMapPopover);
     $('#tax-map-popover-confirm').addEventListener('click', confirmMapPopover);
+    // Create-folder popover
+    $('#tax-newfolder-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmCreateFolder(); }
+      if (e.key === 'Escape') closeCreateFolderPopover();
+    });
+    $('#tax-newfolder-cancel').addEventListener('click', closeCreateFolderPopover);
+    $('#tax-newfolder-confirm').addEventListener('click', confirmCreateFolder);
     document.addEventListener('click', e => {
       if (state.popover.open && !e.target.closest('#tax-map-popover')
           && !e.target.classList.contains('tax-llm-map-btn')) closeMapPopover();
+      const newFolderPop = $('#tax-newfolder-popover');
+      if (newFolderPop.style.display === 'block'
+          && !e.target.closest('#tax-newfolder-popover')
+          && !e.target.classList.contains('tax-tree-add-btn')) {
+        closeCreateFolderPopover();
+      }
     });
     window.addEventListener('resize', () => { renderTreemap(); });
     await loadAndRender();

@@ -127,6 +127,22 @@
     </div>
 </div>
 
+<!-- Popover "+ sous-dossier" (Phase 3 Étape A) -->
+<div id="tax-newfolder-popover" class="tax-map-popover" style="display:none;">
+    <div class="tax-map-popover-title">Créer un sous-dossier</div>
+    <div class="tax-map-popover-theme">
+        <span class="muted">dans</span>
+        <code id="tax-newfolder-parent"></code>
+    </div>
+    <input id="tax-newfolder-input" type="text"
+           placeholder="Nom du nouveau dossier" autocomplete="off">
+    <div class="tax-newfolder-hint">Autorisés : lettres, chiffres, espaces, et <code>-_.&amp;()</code></div>
+    <div class="tax-map-popover-actions">
+        <button id="tax-newfolder-cancel" class="btn-secondary">Annuler</button>
+        <button id="tax-newfolder-confirm" class="btn-primary">Créer</button>
+    </div>
+</div>
+
 <div id="tax-tooltip" class="tax-tooltip" style="display:none;"></div>
 <div id="tax-toast" class="tax-toast" style="display:none;"></div>
 

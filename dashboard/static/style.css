@@ -3243,45 +3243,127 @@ th {
 .tax-llm-item:hover .tax-llm-map-btn { opacity: 1; }
 .tax-llm-map-btn:hover { background: rgba(255,255,255,0.06); color: var(--text, #c9d1d9); }
 
-/* Popover */
+/* Popover — used for both "+ Mapper" and "+ sous-dossier" */
 .tax-map-popover {
     position: fixed;
-    width: 360px;
+    width: 380px;
     background: var(--card, #161b22);
-    border: 1px solid var(--border, #30363d);
-    border-radius: 8px;
-    padding: 12px;
-    box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55),
+                0 2px 6px rgba(0, 0, 0, 0.3);
     z-index: 3000;
-    font-size: 12.5px;
+    font-size: 13px;
+    backdrop-filter: blur(6px);
 }
 .tax-map-popover-title {
     font-weight: 600;
+    font-size: 14px;
     color: var(--text, #c9d1d9);
-    margin-bottom: 6px;
+    margin-bottom: 10px;
+    letter-spacing: 0.1px;
 }
 .tax-map-popover-theme {
     color: var(--text-muted, #8b949e);
-    font-size: 11.5px;
-    margin-bottom: 8px;
+    font-size: 12px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
 }
-#tax-map-popover-input { width: 100%; margin-bottom: 8px; }
+.tax-map-popover-theme code,
+.tax-map-popover-theme span:not(.muted) {
+    background: rgba(88, 166, 255, 0.10);
+    color: var(--blue, #58a6ff);
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11.5px;
+    border: 1px solid rgba(88, 166, 255, 0.18);
+}
+#tax-map-popover-input,
+#tax-newfolder-input {
+    width: 100%;
+    height: 34px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--text, #c9d1d9);
+    font-size: 13px;
+    margin-bottom: 6px;
+    transition: border-color 0.15s, background 0.15s;
+}
+#tax-map-popover-input:focus,
+#tax-newfolder-input:focus {
+    outline: none;
+    border-color: var(--blue, #58a6ff);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+}
+.tax-newfolder-hint {
+    margin: 0 0 14px 2px;
+    font-size: 11.5px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-newfolder-hint code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--text, #c9d1d9);
+}
 .tax-map-popover-suggestions {
-    max-height: 200px;
+    max-height: 220px;
     overflow: auto;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
 }
 .tax-map-suggestion {
-    padding: 5px 8px;
+    padding: 6px 10px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 5px;
     color: var(--text, #c9d1d9);
-    font-size: 12px;
+    font-size: 12.5px;
 }
-.tax-map-suggestion:hover { background: rgba(255,255,255,0.06); }
+.tax-map-suggestion:hover { background: rgba(88, 166, 255, 0.08); }
 .tax-map-popover-actions {
-    display: flex; gap: 8px; justify-content: flex-end;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 4px;
 }
+.tax-map-popover-actions button {
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.tax-map-popover-actions .btn-secondary {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-muted, #8b949e);
+}
+.tax-map-popover-actions .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text, #c9d1d9);
+    border-color: rgba(255, 255, 255, 0.20);
+}
+.tax-map-popover-actions .btn-primary {
+    background: var(--blue, #58a6ff);
+    border: 1px solid var(--blue, #58a6ff);
+    color: #0d1117;
+}
+.tax-map-popover-actions .btn-primary:hover {
+    background: #79c0ff;
+    border-color: #79c0ff;
+}
+.tax-map-popover-actions button:active { transform: translateY(1px); }
 
 /* LLM theme rows — 2 lignes : nom+count+btn / destination */
 .tax-llm-item {
@@ -3540,4 +3622,36 @@ th {
     fill: transparent;
     stroke: var(--blue, #58a6ff);
     stroke-width: 1.5;
+}
+
+/* Create-folder button on tree rows (Phase 3 Étape A) */
+.tax-tree-add-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-muted, #8b949e);
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0;
+    margin-left: 4px;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+.tax-tree-row:hover .tax-tree-add-btn {
+    opacity: 0.7;
+}
+.tax-tree-add-btn:hover {
+    opacity: 1 !important;
+    background: rgba(88, 166, 255, 0.18);
+    color: var(--blue, #58a6ff);
+    border-color: var(--blue, #58a6ff);
+}
+.tax-newfolder-hint {
+    margin: -4px 0 8px;
+    font-size: 11px;
 }

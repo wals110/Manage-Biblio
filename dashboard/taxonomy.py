@@ -325,19 +325,21 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
     mapping_by_folder = _mapping_reverse(mapping)
 
     backup_dir = _profile_dir(profile) / ".cache" / "taxonomy-backups"
-    backup_files = []
+    mapping_backups: list[Path] = []
+    tree_backups: list[Path] = []
     if backup_dir.exists():
-        backup_files = sorted(backup_dir.glob("theme_mapping-*.yaml"), key=lambda p: p.name)
-    backup_count = len(backup_files)
+        mapping_backups = sorted(backup_dir.glob("theme_mapping-*.yaml"), key=lambda p: p.name)
+        tree_backups = sorted(backup_dir.glob("tree-*.yaml"), key=lambda p: p.name)
+    backup_count = len(mapping_backups) + len(tree_backups)
 
-    # Touched indicator: diff between current mapping and the OLDEST backup.
-    # The oldest backup represents the "last clean baseline" — everything
-    # that differs since has been modified in subsequent writes.
+    # Touched indicator: diff vs the OLDEST backup of each type.
     # Empty when no backups (= no pending changes).
     touched_themes: set[str] = set()
     touched_folders: set[str] = set()
-    if backup_files:
-        oldest = backup_files[0]
+
+    # Mapping diff
+    if mapping_backups:
+        oldest = mapping_backups[0]
         try:
             baseline = yaml.safe_load(oldest.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError:
@@ -354,6 +356,18 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
                     touched_folders.add(cur)
                 if base:
                     touched_folders.add(base)
+
+    # Tree diff — folders added/removed since the oldest tree backup
+    if tree_backups:
+        oldest_tree = tree_backups[0]
+        try:
+            baseline_tree = yaml.safe_load(oldest_tree.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            baseline_tree = {}
+        baseline_folders = set(baseline_tree.get("folders", []) or [])
+        current_set = set(folders)
+        for f in current_set ^ baseline_folders:   # symmetric diff
+            touched_folders.add(f)
 
     snap = {
         "profile": profile,
@@ -793,37 +807,223 @@ def delete_mapping(profile: str, theme: str) -> dict:
         }
 
 
-def restore_last_backup(profile: str) -> dict:
-    """Restore the most recent backup of theme_mapping.yaml.
+# ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────
 
-    The backup that was restored is then deleted from the chain so that
-    a second undo goes one step further back (proper undo semantics).
-    No "redo" capability in Phase 2 — keep the chain simple and
-    predictable.
+
+_FOLDER_NAME_MAX = 100
+# Allow letters (incl. accents), digits, spaces, and basic separators commonly
+# used in the existing tree.yaml (- _ ( ) . &). Refuse everything that could
+# break the filesystem or YAML parsing.
+_FOLDER_NAME_RE = re.compile(r"^[A-Za-zÀ-ÿ0-9 _.\-&()]+$")
+
+
+def _validate_folder_name(name: str) -> str:
+    n = name.strip()
+    if not n:
+        raise TaxonomyError("nom de dossier vide", 400)
+    if len(n) > _FOLDER_NAME_MAX:
+        raise TaxonomyError(f"nom trop long (> {_FOLDER_NAME_MAX} chars)", 400)
+    if "/" in n or "\\" in n:
+        raise TaxonomyError("le nom ne peut pas contenir / ou \\", 400)
+    if n in (".", ".."):
+        raise TaxonomyError("nom de dossier invalide", 400)
+    if n.startswith("."):
+        raise TaxonomyError("le nom ne peut pas commencer par '.' (réservé aux dossiers cachés)", 400)
+    if not _FOLDER_NAME_RE.match(n):
+        raise TaxonomyError(
+            "le nom contient des caractères non autorisés (autorisés : lettres, chiffres, espaces, -_.&())",
+            400,
+        )
+    return n
+
+
+def _backup_tree(profile: str) -> Path | None:
+    """Snapshot tree.yaml before any edit. Same backup dir as theme_mapping
+    but with a different filename prefix to keep the chains separate."""
+    src = _tree_path(profile)
+    if not src.exists():
+        return None
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    dst = _backup_dir(profile) / f"tree-{ts}.yaml"
+    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    # Rotation: keep 20 most recent tree backups (separate from mapping)
+    backups = sorted(
+        _backup_dir(profile).glob("tree-*.yaml"),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    for old in backups[20:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return dst
+
+
+def _write_tree(profile: str, folders: list[str]) -> None:
+    """Atomically write tree.yaml from a sorted folder list."""
+    path = _tree_path(profile)
+    payload = yaml.safe_dump(
+        {"folders": sorted(set(folders))},
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+    )
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    tmp.replace(path)
+
+
+def create_folder(profile: str, parent: str, name: str) -> dict:
+    """Add a new sub-folder to tree.yaml and create it on the filesystem.
+
+    parent="" means top-level (e.g. a new section).
+    Refuses if:
+      - parent doesn't exist in tree.yaml (and parent != "")
+      - name is invalid (empty, contains /, etc.)
+      - new path already exists in tree.yaml (409)
+      - filesystem path already exists (409)
+      - taxonomy.lock present (423)
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        name = _validate_folder_name(name)
+        parent = (parent or "").strip().strip("/")
+
+        folders = _load_tree(profile)
+        if parent and parent not in folders:
+            raise TaxonomyError(f"dossier parent inexistant : {parent}", 400)
+        new_path = f"{parent}/{name}" if parent else name
+        if new_path in folders:
+            raise TaxonomyError(
+                f"le dossier '{new_path}' existe déjà dans tree.yaml", 409,
+            )
+
+        target = _profile_target_path(profile)
+        if target is None:
+            raise TaxonomyError("profil sans target configuré", 400)
+        fs_path = target / new_path
+        if fs_path.exists():
+            raise TaxonomyError(
+                f"le dossier existe déjà sur le disque : {fs_path}", 409,
+            )
+
+        # Backup tree.yaml, create filesystem dir, update tree.yaml.
+        backup = _backup_tree(profile)
+        try:
+            fs_path.mkdir(parents=True, exist_ok=False)
+        except OSError as exc:
+            raise TaxonomyError(f"erreur création dossier : {exc}", 500) from exc
+        folders.append(new_path)
+        _write_tree(profile, folders)
+        reset_cache(profile)
+
+        return {
+            "ok": True,
+            "path": new_path,
+            "fs_path": str(fs_path),
+            "backup": (
+                str(backup.relative_to(data.get_project_root()))
+                if backup else None
+            ),
+        }
+
+
+def _backup_timestamp(path: Path) -> str:
+    """Extract the timestamp portion of a backup filename.
+
+    Works for both 'theme_mapping-YYYYMMDD-HHMMSS-FFFFFF.yaml' and
+    'tree-YYYYMMDD-HHMMSS-FFFFFF.yaml' shapes.
+    """
+    stem = path.stem
+    if "-" not in stem:
+        return ""
+    return stem.split("-", 1)[1]
+
+
+def _restore_tree_from_backup(profile: str, backup_path: Path) -> dict:
+    """Restore tree.yaml from backup_path, deleting filesystem folders
+    that were added since (only if they are empty on disk)."""
+    backup_content = backup_path.read_text(encoding="utf-8")
+    try:
+        backup_data = yaml.safe_load(backup_content) or {}
+    except yaml.YAMLError:
+        backup_data = {}
+    backup_folders = set(backup_data.get("folders", []) or [])
+    current_folders = set(_load_tree(profile))
+    # Folders added since the backup — try to remove them from disk.
+    added = current_folders - backup_folders
+    target = _profile_target_path(profile)
+    deleted: list[str] = []
+    kept_non_empty: list[str] = []
+    if target is not None:
+        # Reverse-sort to delete deepest first (in case of nested adds)
+        for folder in sorted(added, reverse=True):
+            fs = target / folder
+            if not fs.exists():
+                continue
+            try:
+                fs.rmdir()  # rmdir refuses non-empty dirs (safe)
+                deleted.append(folder)
+            except OSError:
+                kept_non_empty.append(folder)
+    # Restore tree.yaml content
+    _tree_path(profile).write_text(backup_content, encoding="utf-8")
+    return {
+        "type": "tree",
+        "restored_from": backup_path.name,
+        "deleted_folders": deleted,
+        "kept_non_empty": kept_non_empty,
+    }
+
+
+def _restore_mapping_from_backup(profile: str, backup_path: Path) -> dict:
+    content = backup_path.read_text(encoding="utf-8")
+    _mapping_path(profile).write_text(content, encoding="utf-8")
+    return {
+        "type": "mapping",
+        "restored_from": backup_path.name,
+    }
+
+
+def restore_last_backup(profile: str) -> dict:
+    """Restore the most recent backup of EITHER theme_mapping.yaml or
+    tree.yaml, picking by timestamp regardless of type.
+
+    When restoring a tree backup, empty filesystem folders that were
+    added since the backup are also removed (non-empty ones are kept
+    with a clear notice).
+
+    The restored backup file is deleted so that a second undo goes one
+    step further back. No "redo" — the chain is consumed.
 
     Raises TaxonomyError(404) if no backup is available.
     """
     lock = _locks[profile]
     with lock:
         _check_lock_free(profile)
-        backups = sorted(
-            _backup_dir(profile).glob("theme_mapping-*.yaml"),
-            key=lambda p: p.name,
-            reverse=True,
+        backup_dir = _backup_dir(profile)
+        all_backups: list[Path] = (
+            list(backup_dir.glob("theme_mapping-*.yaml"))
+            + list(backup_dir.glob("tree-*.yaml"))
         )
-        if not backups:
+        if not all_backups:
             raise TaxonomyError("aucun backup disponible", 404)
-        last = backups[0]
-        content = last.read_text(encoding="utf-8")
-        _mapping_path(profile).write_text(content, encoding="utf-8")
-        # Remove the backup we just restored — next undo will pick the
-        # previous one in the chain.
+        all_backups.sort(key=_backup_timestamp, reverse=True)
+        last = all_backups[0]
+
+        if last.name.startswith("theme_mapping-"):
+            result = _restore_mapping_from_backup(profile, last)
+        elif last.name.startswith("tree-"):
+            result = _restore_tree_from_backup(profile, last)
+        else:
+            raise TaxonomyError(f"backup type inconnu : {last.name}", 500)
+
         try:
             last.unlink()
         except OSError:
             pass
         reset_cache(profile)
-        return {
-            "ok": True,
-            "restored_from": last.name,
-        }
+        result["ok"] = True
+        return result

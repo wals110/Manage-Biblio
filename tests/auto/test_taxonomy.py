@@ -522,5 +522,165 @@ class TestUpdateDeleteUndoEndpoints(TaxonomyTestBase):
         self.assertEqual(r.status_code, 404)
 
 
+# ─── 5. Tests Phase 3 Étape A — create folder ────────────────────────────
+
+
+class TestCreateFolder(TaxonomyTestBase):
+
+    def test_create_folder_top_level_happy(self):
+        r = taxonomy.create_folder(self.profile_name, "", "99-NEW-SECTION")
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["path"], "99-NEW-SECTION")
+        self.assertTrue((self.target / "99-NEW-SECTION").is_dir())
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("99-NEW-SECTION", tree["folders"])
+
+    def test_create_folder_sub_happy(self):
+        r = taxonomy.create_folder(
+            self.profile_name, "01-SCIENCES", "NEW-DOMAIN"
+        )
+        self.assertEqual(r["path"], "01-SCIENCES/NEW-DOMAIN")
+        self.assertTrue((self.target / "01-SCIENCES/NEW-DOMAIN").is_dir())
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("01-SCIENCES/NEW-DOMAIN", tree["folders"])
+
+    def test_create_folder_unknown_parent(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "99-NO-SECTION", "X")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_create_folder_duplicate_tree(self):
+        # 01-SCIENCES/PHYSIQUE est déjà dans le tree
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "01-SCIENCES", "PHYSIQUE")
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_create_folder_fs_exists_but_not_in_tree(self):
+        """Si le dossier existe sur disque mais pas dans tree.yaml,
+        on refuse pour éviter de "récupérer" un dossier orphelin."""
+        (self.target / "ORPHAN-DIR").mkdir()
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "", "ORPHAN-DIR")
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_create_folder_empty_name(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "", "   ")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_create_folder_invalid_slash(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "", "foo/bar")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_create_folder_invalid_dotdot(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "", "..")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_create_folder_invalid_hidden(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "", ".hidden")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_create_folder_respects_lock(self):
+        (self.profile_dir / ".cache" / "taxonomy.lock").write_text("locked")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.create_folder(self.profile_name, "", "X-NEW")
+        self.assertEqual(ctx.exception.status, 423)
+
+    def test_create_folder_creates_tree_backup(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = len(list(backup_dir.glob("tree-*.yaml"))) if backup_dir.exists() else 0
+        taxonomy.create_folder(self.profile_name, "", "X-NEW")
+        after = len(list(backup_dir.glob("tree-*.yaml")))
+        self.assertEqual(after, before + 1)
+
+
+class TestUndoTreeOps(TaxonomyTestBase):
+    """Phase 3 Étape A — extend undo to cover folder creation."""
+
+    def test_undo_create_folder_removes_empty_dir(self):
+        # Create a folder, then undo
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "TEST-UNDO")
+        self.assertTrue((self.target / "01-SCIENCES/TEST-UNDO").is_dir())
+        # Undo
+        u = taxonomy.restore_last_backup(self.profile_name)
+        self.assertEqual(u["type"], "tree")
+        self.assertIn("01-SCIENCES/TEST-UNDO", u["deleted_folders"])
+        # Filesystem dir removed
+        self.assertFalse((self.target / "01-SCIENCES/TEST-UNDO").exists())
+        # tree.yaml reverted
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertNotIn("01-SCIENCES/TEST-UNDO", tree["folders"])
+
+    def test_undo_create_folder_keeps_non_empty_dir(self):
+        # Create folder, add a file, undo → folder is kept non-empty
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "KEEP-ME")
+        (self.target / "01-SCIENCES/KEEP-ME/data.pdf").write_bytes(b"data")
+        u = taxonomy.restore_last_backup(self.profile_name)
+        self.assertIn("01-SCIENCES/KEEP-ME", u["kept_non_empty"])
+        # tree.yaml still reverted
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertNotIn("01-SCIENCES/KEEP-ME", tree["folders"])
+        # FS dir is still there (with the file inside)
+        self.assertTrue((self.target / "01-SCIENCES/KEEP-ME").is_dir())
+
+    def test_undo_picks_most_recent_by_timestamp_across_types(self):
+        # mapping op first, then folder op — undo should rollback folder op first
+        taxonomy.add_mapping(
+            self.profile_name, "newtheme", "01-SCIENCES/PHYSIQUE"
+        )
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "CHAIN-TEST")
+        # Most recent = the folder op
+        u1 = taxonomy.restore_last_backup(self.profile_name)
+        self.assertEqual(u1["type"], "tree")
+        # Now the mapping op
+        u2 = taxonomy.restore_last_backup(self.profile_name)
+        self.assertEqual(u2["type"], "mapping")
+        # State should equal original
+        m = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertNotIn("newtheme", m)
+
+    def test_backup_count_includes_both_types(self):
+        taxonomy.add_mapping(
+            self.profile_name, "x_theme", "01-SCIENCES/PHYSIQUE"
+        )
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "CNT-TEST")
+        snap = taxonomy.get_snapshot(self.profile_name, force_reload=True)
+        self.assertEqual(snap["stats"]["backup_count"], 2)
+
+    def test_touched_includes_tree_added_folder(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "T-TEST")
+        snap = taxonomy.get_snapshot(self.profile_name, force_reload=True)
+        self.assertIn("01-SCIENCES/T-TEST", snap["stats"]["touched_folders"])
+
+
+class TestCreateFolderEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_api_folder_create_happy(self):
+        r = self.client.post("/api/taxonomy/folder", json={
+            "profile": self.profile_name,
+            "parent": "01-SCIENCES",
+            "name": "NEW-SUB",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["path"], "01-SCIENCES/NEW-SUB")
+
+    def test_api_folder_create_409(self):
+        r = self.client.post("/api/taxonomy/folder", json={
+            "profile": self.profile_name,
+            "parent": "01-SCIENCES",
+            "name": "PHYSIQUE",  # existe déjà
+        })
+        self.assertEqual(r.status_code, 409)
+
+
 if __name__ == "__main__":
     unittest.main()
