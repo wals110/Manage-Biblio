@@ -682,5 +682,144 @@ class TestCreateFolderEndpoint(TaxonomyTestBase):
         self.assertEqual(r.status_code, 409)
 
 
+# ─── 6. Tests Phase 2 B — Impact preview ─────────────────────────────────
+
+
+class TestImpactPreview(TaxonomyTestBase):
+
+    def _seed_cache_with_themes(self, theme_to_titles: dict[str, list[str]]):
+        """Helper: write a minimal vision_cache.json with the given theme→titles."""
+        cache = {}
+        i = 0
+        for theme, titles in theme_to_titles.items():
+            for title in titles:
+                cache[f"k{i}"] = {
+                    "result": {
+                        "title": title,
+                        "themes": [{"theme": theme, "confidence": 0.9}],
+                    },
+                    "model": "x",
+                    "prompt_version": "v3",
+                }
+                i += 1
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text(json.dumps(cache))
+        taxonomy.reset_cache()
+
+    def test_preview_add_no_existing_files(self):
+        # Mapping ajouté pour un thème qu'aucun fichier n'a → 0 impact
+        self._seed_cache_with_themes({"Unrelated Theme": ["Foo"]})
+        p = taxonomy.preview_mapping_impact(
+            self.profile_name, "BrandNew", "01-SCIENCES/PHYSIQUE", "add"
+        )
+        self.assertEqual(p["n_files_affected"], 0)
+        self.assertEqual(p["cross_section_changes"], 0)
+
+    def test_preview_add_affects_files(self):
+        self._seed_cache_with_themes({
+            "newtheme": ["Book A", "Book B", "Book C"],
+        })
+        p = taxonomy.preview_mapping_impact(
+            self.profile_name, "newtheme", "01-SCIENCES/PHYSIQUE", "add"
+        )
+        self.assertEqual(p["n_files_affected"], 3)
+        self.assertEqual(p["new_dest"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(len(p["examples"]), 3)
+
+    def test_preview_delete_affects_existing_mappings(self):
+        # mapping 'physics' → /PHYSIQUE existe déjà ; on simule sa suppression
+        self._seed_cache_with_themes({
+            "physics": ["Quantum Book", "Mech Book"],
+        })
+        p = taxonomy.preview_mapping_impact(
+            self.profile_name, "physics", None, "delete"
+        )
+        # Les fichiers tagués 'physics' ne seraient plus classés
+        self.assertEqual(p["n_files_affected"], 2)
+        self.assertEqual(p["current_dest"], "01-SCIENCES/PHYSIQUE")
+        self.assertIsNone(p["new_dest"])
+
+    def test_preview_cross_section_counted(self):
+        # mapping qui ferait passer un livre d'une section à une autre
+        self._seed_cache_with_themes({
+            "physics": ["Book X"],   # actuellement → /01-SCIENCES/PHYSIQUE
+        })
+        # On simule un re-mapping de physics vers une autre section
+        p = taxonomy.preview_mapping_impact(
+            self.profile_name, "physics", "02-INFORMATIQUE", "update"
+        )
+        self.assertEqual(p["n_files_affected"], 1)
+        self.assertEqual(p["cross_section_changes"], 1)
+
+    def test_preview_invalid_action(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.preview_mapping_impact(
+                self.profile_name, "x", "/y", "bogus_action"
+            )
+        self.assertEqual(ctx.exception.status, 400)
+
+
+class TestImpactPreviewEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_api_preview_happy(self):
+        r = self.client.post("/api/taxonomy/mapping/preview", json={
+            "profile": self.profile_name,
+            "theme": "BrandNewTheme",
+            "folder": "01-SCIENCES/PHYSIQUE",
+            "action": "add",
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        for key in ("n_files_affected", "cross_section_changes", "examples", "new_dest"):
+            self.assertIn(key, body)
+
+
+# ─── 7. Tests Phase 2 C — Recalc pipeline complet ────────────────────────
+
+
+class TestFullPipeline(TaxonomyTestBase):
+
+    def test_full_pipeline_falls_back_when_no_cache(self):
+        # No vision cache file → returns null prediction
+        r = taxonomy.get_file_metadata_full_pipeline(
+            self.profile_name, "01-SCIENCES/PHYSIQUE/mechanics.pdf"
+        )
+        self.assertTrue(r["ok"])
+        self.assertIsNone(r["prediction"])
+
+    def test_full_pipeline_returns_prediction_when_cached(self):
+        # Set up a vision cache entry for the file
+        from lib import vision_cache as vc
+        pdf_rel = "01-SCIENCES/PHYSIQUE/mechanics.pdf"
+        pdf_abs = self.target / pdf_rel
+        key = vc.compute_cache_key(
+            str(pdf_abs), model="Qwen/Qwen3-VL-32B-Instruct", n_pages=2
+        )
+        cache = {
+            key: {
+                "result": {
+                    "title": "Classical Mechanics",
+                    "themes": [
+                        {"theme": "physics", "confidence": 0.9, "reason": "test"},
+                    ],
+                    "confidence": 0.9,
+                },
+                "model": "Qwen/Qwen3-VL-32B-Instruct",
+                "prompt_version": "v3",
+            },
+        }
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text(json.dumps(cache))
+        taxonomy.reset_cache()
+        r = taxonomy.get_file_metadata_full_pipeline(self.profile_name, pdf_rel)
+        self.assertTrue(r["ok"])
+        self.assertIsNotNone(r["prediction"])
+        self.assertEqual(r["prediction"]["dest"], "01-SCIENCES/PHYSIQUE")
+
+
 if __name__ == "__main__":
     unittest.main()

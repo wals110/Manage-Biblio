@@ -1681,6 +1681,25 @@ async def taxonomy_folder_create_api(request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/taxonomy/mapping/preview")
+async def taxonomy_mapping_preview_api(request: Request):
+    """Dry-run: simulate the effect of an add/update/delete on the cache
+    without writing anything. Returns counts + sample examples."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    folder = body.get("folder")  # None for delete
+    action = body.get("action") or "add"
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.preview_mapping_impact(profile, theme, folder, action)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
 @app.get("/api/taxonomy/file/metadata")
 async def taxonomy_file_metadata_api(profile: str, path: str):
     from fastapi.responses import JSONResponse
@@ -1696,3 +1715,11 @@ async def taxonomy_file_thumbnail_api(profile: str, path: str, page: int = 1):
     if img is None:
         return JSONResponse({"error": mime or "indisponible"}, status_code=404)
     return FileResponse(img, media_type=mime or "image/jpeg")
+
+
+@app.get("/api/taxonomy/file/full_pipeline")
+async def taxonomy_file_full_pipeline_api(profile: str, path: str):
+    """Recompute the prediction with the full classifier (KeywordClassifier
+    included). Doesn't call the LLM Mapper to avoid token spending."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.get_file_metadata_full_pipeline(profile, path))

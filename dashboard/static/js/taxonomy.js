@@ -152,6 +152,13 @@
     if (!r.ok) throw new Error('metadata HTTP ' + r.status);
     return r.json();
   }
+  async function fetchFileFullPipeline(path) {
+    const url = `/api/taxonomy/file/full_pipeline?profile=${encodeURIComponent(state.profile)}` +
+                `&path=${encodeURIComponent(path)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('full_pipeline HTTP ' + r.status);
+    return r.json();
+  }
   function thumbnailURL(path, page) {
     return `/api/taxonomy/file/thumbnail?profile=${encodeURIComponent(state.profile)}` +
            `&path=${encodeURIComponent(path)}&page=${page}`;
@@ -201,6 +208,16 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile: state.profile, parent, name }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+  async function fetchPreview(action, theme, folder) {
+    const r = await fetch('/api/taxonomy/mapping/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, action, theme, folder }),
     });
     const body = await r.json();
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
@@ -522,7 +539,11 @@
     }
     state.viewerMeta = meta;
     state.viewerCurrentPage = 1;
-    state.viewerOpenedPages = new Set([1]);
+    // Multipage permanent : on charge en parallèle toutes les pages
+    // disponibles dès la sélection (le browser parallélise les <img>).
+    const totalPages = (meta.file && meta.file.page_count_estimate) || 1;
+    state.viewerOpenedPages = new Set();
+    for (let i = 1; i <= totalPages; i++) state.viewerOpenedPages.add(i);
 
     renderViewer();
     renderLLMCard(meta);
@@ -544,39 +565,28 @@
     });
     viewer.appendChild(img);
 
-    // Pager — cover only by default, "+ Voir pages" button
+    // Pager — multipage strip permanent
     pager.innerHTML = '';
     pager.style.display = 'flex';
     if (totalPages <= 1) {
       pager.appendChild(el('span', { class: 'muted small' }, ['1 page disponible']));
       return;
     }
-    // If user hasn't requested multipage yet, show single page + button
-    if (state.viewerOpenedPages.size === 1 && state.viewerCurrentPage === 1) {
-      pager.appendChild(el('span', { class: 'muted small' }, [`Page 1 sur ${totalPages}`]));
-      pager.appendChild(el('button', {
-        class: 'btn-secondary',
-        onclick: () => {
-          for (let i = 1; i <= totalPages; i++) state.viewerOpenedPages.add(i);
-          renderViewer();
-        },
-      }, [`+ Voir pages 2-${totalPages}`]));
-      return;
-    }
-    // Multipage strip
+    // Strip thumbs visible direct + flèches nav + indicator
     pager.appendChild(el('button', {
-      class: 'btn-icon', title: 'page précédente',
+      class: 'btn-icon', title: 'page précédente (Cmd+←)',
       onclick: () => goToPage(state.viewerCurrentPage - 1),
     }, ['◀']));
     for (let i = 1; i <= totalPages; i++) {
       const thumb = el('div', {
         class: 'tax-thumb' + (i === state.viewerCurrentPage ? ' active' : ''),
         onclick: () => goToPage(i),
-      }, [el('img', { src: thumbnailURL(path, i), alt: `pg${i}` })]);
+        title: `Page ${i}`,
+      }, [el('img', { src: thumbnailURL(path, i), alt: `pg${i}`, loading: 'lazy' })]);
       pager.appendChild(thumb);
     }
     pager.appendChild(el('button', {
-      class: 'btn-icon', title: 'page suivante',
+      class: 'btn-icon', title: 'page suivante (Cmd+→)',
       onclick: () => goToPage(state.viewerCurrentPage + 1),
     }, ['▶']));
     pager.appendChild(el('span', { class: 'muted small' },
@@ -638,6 +648,42 @@
     } else {
       body.appendChild(el('div', { class: 'muted' },
         ['🎯 Aucune prédiction theme-only — tous les thèmes sont orphelins.']));
+    }
+    // Bouton "Pipeline complet" (Phase 2 C) — recalcul avec KeywordClassifier
+    const fullBtn = el('button', {
+      class: 'tax-llm-full-btn',
+      title: 'Calcule la prédiction avec le pipeline complet (KeywordClassifier inclus)',
+      onclick: () => loadFullPipelinePrediction(fullBtn),
+    }, ['Voir prédiction pipeline complet →']);
+    body.appendChild(fullBtn);
+  }
+
+  async function loadFullPipelinePrediction(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Calcul en cours…';
+    try {
+      const r = await fetchFileFullPipeline(state.selection.path);
+      btn.remove();
+      const body = $('#tax-llm-card-body');
+      const wrap = el('div', { class: 'tax-llm-full-result' });
+      if (r.prediction) {
+        wrap.appendChild(el('div', null, [
+          '⚙ Pipeline complet : ',
+          el('code', null, [r.prediction.dest]),
+        ]));
+        wrap.appendChild(el('div', { class: 'muted small', style: 'margin-top:4px;' },
+          [`source : ${r.prediction.source} · score : ${r.prediction.score.toFixed(2)}`]));
+        wrap.appendChild(el('div', { class: 'muted small', style: 'margin-top:2px;' },
+          [r.prediction.label]));
+      } else {
+        wrap.appendChild(el('div', { class: 'muted' },
+          ['⚙ Pipeline complet : aucune destination trouvée (theme_mapping + KeywordClassifier ont tous deux échoué)']));
+      }
+      body.appendChild(wrap);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Voir prédiction pipeline complet →';
+      showToast('Erreur pipeline complet : ' + e.message, 'error');
     }
   }
 
@@ -818,7 +864,70 @@
     if (!theme || folder == null) return;
     await doAddMapping(theme, folder);
   }
+  // ── Impact preview modal ─────────────────────────────────────────────
+
+  // Threshold: confirm if > 50 files affected OR any cross-section change.
+  function _needsConfirm(p) {
+    return (p.n_files_affected > 50) || (p.cross_section_changes > 0);
+  }
+
+  function showImpactModal(action, theme, folder, preview) {
+    return new Promise(resolve => {
+      const modal = $('#tax-impact-modal');
+      const body = $('#tax-impact-body');
+      const actionLabel = action === 'add' ? 'Ajouter ce mapping'
+                        : action === 'update' ? 'Rediriger ce mapping'
+                        : 'Supprimer ce mapping';
+      const lines = [];
+      lines.push(`<div class="tax-impact-action">${actionLabel} : <code>${escapeHtml(theme)}</code>` +
+                 (folder ? ` → <code>${escapeHtml(folder)}</code>` : '') + `</div>`);
+      lines.push(`<div class="tax-impact-stats">`);
+      lines.push(`<div class="tax-impact-stat"><span class="num">${preview.n_files_affected}</span>` +
+                 `<span class="lbl">fichier(s) reclassifiés</span></div>`);
+      if (preview.cross_section_changes > 0) {
+        lines.push(`<div class="tax-impact-stat warn"><span class="num">${preview.cross_section_changes}</span>` +
+                   `<span class="lbl">changement(s) de section ⚠</span></div>`);
+      }
+      lines.push(`</div>`);
+      if (preview.examples && preview.examples.length) {
+        lines.push(`<div class="tax-impact-examples-title">Exemples :</div>`);
+        lines.push(`<ul class="tax-impact-examples">`);
+        for (const ex of preview.examples) {
+          lines.push(`<li><span class="title">${escapeHtml(ex.title || '(sans titre)')}</span>` +
+                     `<div class="path"><code>${escapeHtml(ex.current_dest || '∅')}</code>` +
+                     ` → <code>${escapeHtml(ex.new_dest || '∅')}</code></div></li>`);
+        }
+        lines.push(`</ul>`);
+      }
+      body.innerHTML = lines.join('');
+      modal.style.display = 'flex';
+      const cleanup = (ok) => {
+        modal.style.display = 'none';
+        $('#tax-impact-cancel').onclick = null;
+        $('#tax-impact-confirm').onclick = null;
+        resolve(ok);
+      };
+      $('#tax-impact-cancel').onclick = () => cleanup(false);
+      $('#tax-impact-confirm').onclick = () => cleanup(true);
+    });
+  }
+
+  // Wrap any write op: preview → conditional modal → action.
+  // Returns true if op should proceed.
+  async function previewAndConfirm(action, theme, folder) {
+    let preview;
+    try {
+      preview = await fetchPreview(action, theme, folder);
+    } catch (e) {
+      console.warn('preview failed, proceeding without confirm:', e);
+      return true;
+    }
+    if (!_needsConfirm(preview)) return true;
+    return await showImpactModal(action, theme, folder, preview);
+  }
+
   async function doAddMapping(theme, folder) {
+    if (!(await previewAndConfirm('add', theme, folder))) return;
     try {
       await postMapping(theme, folder);
       const themeRec = (state.snapshot.themes_llm || [])
@@ -832,6 +941,7 @@
     }
   }
   async function doUpdateMapping(theme, folder) {
+    if (!(await previewAndConfirm('update', theme, folder))) return;
     try {
       const r = await patchMapping(theme, folder);
       if (r.unchanged) {
@@ -846,7 +956,16 @@
     }
   }
   async function confirmDeleteMapping(theme) {
-    if (!window.confirm(`Supprimer le mapping « ${theme} » ?\nUtilise ↶ Annuler en cas d'erreur.`)) return;
+    // Preview always asked for delete (high-impact action by nature)
+    let preview;
+    try {
+      preview = await fetchPreview('delete', theme, null);
+    } catch (e) { /* fallback to simple confirm */ }
+    if (preview && _needsConfirm(preview)) {
+      if (!(await showImpactModal('delete', theme, null, preview))) return;
+    } else if (!window.confirm(`Supprimer le mapping « ${theme} » ?\nUtilise ↶ Annuler en cas d'erreur.`)) {
+      return;
+    }
     try {
       const r = await deleteMapping(theme);
       showToast(`✓ « ${theme} » supprimé (était → ${r.previous_folder})`, 'success');
@@ -996,6 +1115,16 @@
       }
     });
     window.addEventListener('resize', () => { renderTreemap(); });
+    // Keyboard shortcuts for viewer pagination (Cmd/Ctrl + ← / →)
+    document.addEventListener('keydown', e => {
+      if (state.selection.type !== 'file') return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      // Avoid hijacking when an input/textarea is focused
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPage(state.viewerCurrentPage - 1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goToPage(state.viewerCurrentPage + 1); }
+    });
     await loadAndRender();
   }
   async function loadAndRender() {

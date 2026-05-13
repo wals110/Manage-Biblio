@@ -3655,3 +3655,162 @@ th {
     margin: -4px 0 8px;
     font-size: 11px;
 }
+
+/* Impact preview modal (Phase 2 B) — confirms high-impact writes */
+.tax-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 4000;
+    backdrop-filter: blur(2px);
+}
+.tax-modal {
+    background: var(--card, #161b22);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+    width: 520px;
+    max-width: 92vw;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+}
+.tax-modal-title {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border, #30363d);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text, #c9d1d9);
+}
+.tax-modal-body {
+    padding: 16px 20px;
+    overflow: auto;
+    flex: 1;
+}
+.tax-modal-body code {
+    background: rgba(88, 166, 255, 0.10);
+    color: var(--blue, #58a6ff);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11.5px;
+    border: 1px solid rgba(88, 166, 255, 0.18);
+}
+.tax-impact-action { margin-bottom: 14px; }
+.tax-impact-stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.tax-impact-stat {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+.tax-impact-stat .num {
+    display: block;
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--blue, #58a6ff);
+    line-height: 1.1;
+}
+.tax-impact-stat .lbl {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted, #8b949e);
+    margin-top: 4px;
+}
+.tax-impact-stat.warn { border-color: rgba(255, 145, 67, 0.4); }
+.tax-impact-stat.warn .num { color: #ff9143; }
+.tax-impact-examples-title {
+    color: var(--text-muted, #8b949e);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 8px 0 6px;
+}
+.tax-impact-examples {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.tax-impact-examples li {
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.tax-impact-examples .title {
+    font-weight: 500;
+    color: var(--text, #c9d1d9);
+}
+.tax-impact-examples .path {
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-modal-actions {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border, #30363d);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.tax-modal-actions button {
+    height: 32px;
+    padding: 0 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+}
+.tax-modal-actions .btn-secondary {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-muted, #8b949e);
+}
+.tax-modal-actions .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text, #c9d1d9);
+}
+.tax-modal-actions .btn-primary {
+    background: var(--blue, #58a6ff);
+    border: 1px solid var(--blue, #58a6ff);
+    color: #0d1117;
+}
+.tax-modal-actions .btn-primary:hover { background: #79c0ff; border-color: #79c0ff; }
+.tax-modal-actions button:active { transform: translateY(1px); }
+
+/* "Voir prédiction pipeline complet" button (Phase 2 C) */
+.tax-llm-full-btn {
+    margin-top: 10px;
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.16);
+    color: var(--text-muted, #8b949e);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.tax-llm-full-btn:hover {
+    background: rgba(88, 166, 255, 0.06);
+    border-color: rgba(88, 166, 255, 0.3);
+    color: var(--blue, #58a6ff);
+}
+.tax-llm-full-btn:disabled { opacity: 0.5; cursor: wait; }
+.tax-llm-full-result {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}

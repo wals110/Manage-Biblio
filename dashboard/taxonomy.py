@@ -36,7 +36,7 @@ import yaml
 
 from dashboard import data
 from lib import vision_cache
-from lib.classifier import classify_by_theme
+from lib.classifier import classify_by_theme, classify_combined, load_keyword_classifier
 
 # Filter weak LLM signals before populating the themes universe.
 _MIN_CONFIDENCE = 0.5
@@ -465,6 +465,66 @@ def _load_profile_yaml(profile: str) -> dict:
         return {}
 
 
+def get_file_metadata_full_pipeline(profile: str, rel_path: str) -> dict:
+    """Recompute the prediction using the FULL classify_combined pipeline:
+      1. classify_by_theme (theme_mapping)
+      2. KeywordClassifier (categories.yaml)
+      3. LLM Mapper is NOT called here (we don't want to spend tokens on
+         a UI preview — only theme_mapping + keywords are computed)
+
+    Returns:
+      {ok, prediction: {dest, source, score, theme_used}} or {ok, prediction: None}
+    """
+    target = _profile_target_path(profile)
+    if target is None:
+        return {"ok": False, "error": "profil sans target configuré"}
+    abs_path = target / rel_path
+    if not abs_path.exists():
+        return {"ok": False, "error": "fichier introuvable"}
+
+    cfg = _load_profile_yaml(profile)
+    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    cache_path = _vision_cache_path(profile)
+    if not cache_path.exists():
+        return {"ok": True, "prediction": None}
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"ok": True, "prediction": None}
+
+    key = vision_cache.compute_cache_key(str(abs_path), model=model, n_pages=n_pages)
+    if not key:
+        return {"ok": True, "prediction": None}
+    result = vision_cache.lookup(cache, key)
+    if not isinstance(result, dict):
+        return {"ok": True, "prediction": None}
+
+    mapping = _load_mapping(profile)
+    # Load the KeywordClassifier from categories.yaml (étape 2 of pipeline)
+    categories_path = _profile_dir(profile) / "categories.yaml"
+    classifier = load_keyword_classifier(str(categories_path)) if categories_path.exists() else None
+
+    dest, score, source = classify_combined(
+        result, abs_path.name, mapping,
+        classifier=classifier,
+        llm_mapper=None,             # do NOT spend LLM tokens for UI
+        pdf_path=str(abs_path),
+    )
+    if not dest:
+        return {"ok": True, "prediction": None}
+    return {
+        "ok": True,
+        "prediction": {
+            "dest": dest,
+            "source": source,
+            "score": float(score) if score else 0.0,
+            "label": "classify_combined (étapes 1+2 du pipeline — KeywordClassifier inclus, LLM Mapper exclu)",
+        },
+    }
+
+
 def get_file_metadata(profile: str, rel_path: str) -> dict:
     """Return LLM metadata + theme-only predictions for a file.
 
@@ -627,6 +687,134 @@ def get_file_page_count(profile: str, rel_path: str) -> int:
 
 
 # ─── Errors ───────────────────────────────────────────────────────────────
+
+
+# ─── Impact preview — dry-run before mapping write ────────────────────────
+
+
+def preview_mapping_impact(
+    profile: str,
+    theme: str,
+    folder: str | None,
+    action: str = "add",
+) -> dict:
+    """Simulate the effect of an add/update/delete mapping operation on the
+    current vision cache, without writing anything.
+
+    Returns:
+        {
+            "n_files_affected": int,
+            "cross_section_changes": int,
+            "examples": [{title, current_dest, new_dest}, ...],  # up to 5
+            "current_dest": str | None,  # what the theme currently resolves to
+            "new_dest": str | None,
+        }
+
+    action='add'    → theme expected to be new; new_dest = folder
+    action='update' → theme expected to exist; new_dest = folder
+    action='delete' → folder ignored; new_dest = None (theme removed)
+    """
+    if action not in ("add", "update", "delete"):
+        raise TaxonomyError(f"action invalide : {action}", 400)
+    theme = theme.strip()
+    if not theme:
+        raise TaxonomyError("theme vide", 400)
+
+    mapping = _load_mapping(profile)
+    new_mapping = dict(mapping)
+    if action == "delete":
+        new_mapping.pop(theme, None)
+    else:
+        new_mapping[theme] = folder
+
+    current_dest = classify_by_theme(theme, mapping)
+    new_dest = classify_by_theme(theme, new_mapping)
+
+    cache_path = _vision_cache_path(profile)
+    if not cache_path.exists():
+        return {
+            "n_files_affected": 0,
+            "cross_section_changes": 0,
+            "examples": [],
+            "current_dest": current_dest,
+            "new_dest": new_dest,
+        }
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "n_files_affected": 0,
+            "cross_section_changes": 0,
+            "examples": [],
+            "current_dest": current_dest,
+            "new_dest": new_dest,
+        }
+
+    n_affected = 0
+    cross_section = 0
+    examples: list[dict] = []
+    for entry in cache.values():
+        if not isinstance(entry, dict):
+            continue
+        result = entry.get("result") if isinstance(entry.get("result"), dict) else {}
+        # Build the same candidate iteration as classify_combined would.
+        candidates: list[str] = []
+        themes_arr = result.get("themes")
+        if isinstance(themes_arr, list) and themes_arr:
+            for it in themes_arr:
+                if not isinstance(it, dict):
+                    continue
+                t = str(it.get("theme") or "").strip()
+                if not t:
+                    continue
+                conf = float(it.get("confidence") or 0.0)
+                if conf < _MIN_CONFIDENCE:
+                    continue
+                candidates.append(t)
+        else:
+            t = str(result.get("theme") or "").strip()
+            if t and float(result.get("confidence") or 0.0) >= _MIN_CONFIDENCE:
+                candidates.append(t)
+        if not candidates:
+            continue
+
+        # Resolve to first specific (with '/') destination, else first generic.
+        def _resolve(cands: list[str], m: dict[str, str]) -> str | None:
+            best_specific = None
+            best_generic = None
+            for c in cands:
+                p = classify_by_theme(c, m)
+                if not p:
+                    continue
+                if "/" in p:
+                    return p
+                if best_generic is None:
+                    best_generic = p
+            return best_specific or best_generic
+
+        cur = _resolve(candidates, mapping)
+        new = _resolve(candidates, new_mapping)
+        if cur == new:
+            continue
+        n_affected += 1
+        cur_sect = (cur or "").split("/")[0]
+        new_sect = (new or "").split("/")[0]
+        if cur_sect != new_sect:
+            cross_section += 1
+        if len(examples) < 5:
+            examples.append({
+                "title": result.get("title") or "(sans titre)",
+                "current_dest": cur,
+                "new_dest": new,
+            })
+
+    return {
+        "n_files_affected": n_affected,
+        "cross_section_changes": cross_section,
+        "examples": examples,
+        "current_dest": current_dest,
+        "new_dest": new_dest,
+    }
 
 
 class TaxonomyError(Exception):
