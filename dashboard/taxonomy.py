@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 import time
@@ -1114,6 +1115,172 @@ def create_folder(profile: str, parent: str, name: str) -> dict:
             "backup": (
                 str(backup.relative_to(data.get_project_root()))
                 if backup else None
+            ),
+        }
+
+
+def delete_folder_preview(profile: str, path: str) -> dict:
+    """Stats about what a `delete_folder(path)` would remove.
+
+    Counts (read-only, no side effect):
+      - n_files : files inside the folder + its descendants on disk
+      - n_subfolders : tree.yaml entries under `path` (excluding path itself)
+      - n_mappings : theme_mapping.yaml keys whose value points to `path`
+        or any descendant of it
+      - fs_size_bytes : total size on disk (informative)
+
+    Returns {ok, path, n_files, n_subfolders, n_mappings, fs_size_bytes,
+             is_empty (bool)}.
+    """
+    path = (path or "").strip().strip("/")
+    if not path:
+        raise TaxonomyError("path vide", 400)
+    folders = _load_tree(profile)
+    if path not in folders:
+        raise TaxonomyError(f"dossier inexistant dans tree.yaml : {path}", 400)
+
+    prefix = path + "/"
+    n_subfolders = sum(1 for f in folders if f.startswith(prefix))
+    mapping = _load_mapping(profile)
+    n_mappings = sum(
+        1 for v in mapping.values()
+        if v == path or v.startswith(prefix)
+    )
+
+    target = _profile_target_path(profile)
+    n_files = 0
+    fs_size = 0
+    if target is not None:
+        fs = target / path
+        if fs.is_dir():
+            for root, dirs, files in os.walk(fs):
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for fname in files:
+                    if fname.startswith("."):
+                        continue
+                    n_files += 1
+                    try:
+                        fs_size += (Path(root) / fname).stat().st_size
+                    except OSError:
+                        pass
+
+    return {
+        "ok": True,
+        "path": path,
+        "n_files": n_files,
+        "n_subfolders": n_subfolders,
+        "n_mappings": n_mappings,
+        "fs_size_bytes": fs_size,
+        "is_empty": (n_files == 0 and n_subfolders == 0 and n_mappings == 0),
+    }
+
+
+def delete_folder(profile: str, path: str, force: bool = False) -> dict:
+    """Delete a folder from tree.yaml + theme_mapping.yaml + filesystem.
+
+    Two modes:
+      - Safe (force=False, default): refuses if the folder is non-empty
+        on disk OR contains subfolders OR has mappings pointing to it.
+        Raises TaxonomyError(409) with the same stats as
+        delete_folder_preview(), so the caller can show a confirmation
+        modal and resubmit with force=True.
+      - Force (force=True): performs shutil.rmtree() on the filesystem
+        and cascades the deletion through tree.yaml (path + descendants)
+        and theme_mapping.yaml (any value targeting path or descendants
+        is removed — those themes become orphans).
+
+    Backups: tree.yaml AND theme_mapping.yaml are snapshotted before
+    write (rotated chain, recoverable via the Annuler button). The
+    deleted files on disk are NOT recoverable through undo —
+    shutil.rmtree() is irreversible.
+
+    Refuses also when:
+      - path absent from tree.yaml (400)
+      - path is empty (400)
+      - taxonomy.lock present (423)
+    """
+    import shutil
+
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        path = (path or "").strip().strip("/")
+        if not path:
+            raise TaxonomyError("path vide", 400)
+        folders = _load_tree(profile)
+        if path not in folders:
+            raise TaxonomyError(f"dossier inexistant dans tree.yaml : {path}", 400)
+
+        # Compute the same stats as the preview so we can refuse with them
+        preview = delete_folder_preview(profile, path)
+        if not preview["is_empty"] and not force:
+            err = TaxonomyError(
+                f"dossier non vide : {preview['n_files']} fichier(s), "
+                f"{preview['n_subfolders']} sous-dossier(s), "
+                f"{preview['n_mappings']} mapping(s) — force=True requis",
+                409,
+            )
+            err.preview = preview  # type: ignore[attr-defined]
+            raise err
+
+        prefix = path + "/"
+        new_folders = [f for f in folders if f != path and not f.startswith(prefix)]
+
+        mapping = _load_mapping(profile)
+        new_mapping = {}
+        removed_mappings: list[str] = []
+        for theme, folder in mapping.items():
+            if folder == path or folder.startswith(prefix):
+                removed_mappings.append(theme)
+                continue
+            new_mapping[theme] = folder
+
+        # Backups before any write
+        tree_backup = _backup_tree(profile)
+        mapping_backup = _backup_mapping(profile) if removed_mappings else None
+
+        # Filesystem first — irreversible. If it fails we abort cleanly.
+        target = _profile_target_path(profile)
+        fs_deleted = False
+        if target is not None:
+            fs = target / path
+            if fs.exists():
+                try:
+                    if force:
+                        shutil.rmtree(fs)
+                    else:
+                        fs.rmdir()  # raises OSError if non-empty (already excluded above)
+                    fs_deleted = True
+                except OSError as exc:
+                    raise TaxonomyError(
+                        f"erreur suppression filesystem : {exc}", 500
+                    ) from exc
+
+        try:
+            _write_tree(profile, new_folders)
+            if removed_mappings:
+                _write_mapping(profile, new_mapping)
+        except Exception:
+            # We can't undelete the files (rmtree is destructive). The
+            # YAMLs at least are still recoverable through their backups.
+            raise
+
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "path": path,
+            "n_files_deleted": preview["n_files"] if force else 0,
+            "n_subfolders_deleted": preview["n_subfolders"],
+            "n_mappings_removed": len(removed_mappings),
+            "fs_deleted": fs_deleted,
+            "force": bool(force),
+            "tree_backup": (
+                str(tree_backup.relative_to(data.get_project_root()))
+                if tree_backup else None
+            ),
+            "mapping_backup": (
+                str(mapping_backup.relative_to(data.get_project_root()))
+                if mapping_backup else None
             ),
         }
 

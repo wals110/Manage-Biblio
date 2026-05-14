@@ -3913,3 +3913,79 @@ th {
     border-radius: 8px;
     flex-shrink: 0;
 }
+
+/* Delete folder button + modal (Phase 3 D) */
+.tax-tree-delete-btn {
+    margin-left: 2px;
+}
+.tax-tree-delete-btn:hover {
+    background: rgba(248, 81, 73, 0.18);
+    color: var(--red, #f85149);
+    border-color: var(--red, #f85149);
+}
+.tax-modal-danger .tax-modal-title {
+    color: var(--red, #f85149);
+}
+.tax-modal-danger .tax-modal-title code {
+    background: rgba(248, 81, 73, 0.10);
+    color: var(--red, #f85149);
+    border: 1px solid rgba(248, 81, 73, 0.30);
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+}
+.tax-delete-warn {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(248, 81, 73, 0.08);
+    border: 1px solid rgba(248, 81, 73, 0.25);
+    border-radius: 6px;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.tax-delete-typecheck {
+    margin-top: 14px;
+    font-size: 12.5px;
+    color: var(--text-muted, #8b949e);
+}
+#tax-delete-typecheck-input {
+    width: 100%;
+    margin-top: 6px;
+    height: 32px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    box-sizing: border-box;
+}
+#tax-delete-typecheck-input:focus {
+    outline: none;
+    border-color: var(--red, #f85149);
+    box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.14);
+}
+.btn-danger {
+    height: 32px;
+    padding: 0 16px;
+    background: var(--red, #f85149);
+    border: 1px solid var(--red, #f85149);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+}
+.btn-danger:hover:not(:disabled) {
+    background: #ff6a62;
+    border-color: #ff6a62;
+}
+.btn-danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.btn-danger:active:not(:disabled) { transform: translateY(1px); }

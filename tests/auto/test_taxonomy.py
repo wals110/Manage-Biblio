@@ -1092,5 +1092,161 @@ class TestMoveFolderEndpoint(TaxonomyTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+# ─── 10. Tests Phase 3 D — delete folder ─────────────────────────────────
+
+
+class TestDeleteFolder(TaxonomyTestBase):
+
+    def test_delete_preview_counts(self):
+        # Set up a folder with files + sub + mapping
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "TO-DELETE")
+        (self.target / "01-SCIENCES/TO-DELETE/file1.pdf").write_bytes(b"x" * 1024)
+        (self.target / "01-SCIENCES/TO-DELETE/file2.pdf").write_bytes(b"y" * 2048)
+        taxonomy.create_folder(
+            self.profile_name, "01-SCIENCES/TO-DELETE", "sub"
+        )
+        # Add a mapping to it
+        taxonomy.add_mapping(
+            self.profile_name, "to_delete_theme", "01-SCIENCES/TO-DELETE"
+        )
+        taxonomy.reset_cache()
+
+        p = taxonomy.delete_folder_preview(
+            self.profile_name, "01-SCIENCES/TO-DELETE"
+        )
+        self.assertEqual(p["n_files"], 2)
+        self.assertEqual(p["n_subfolders"], 1)
+        self.assertEqual(p["n_mappings"], 1)
+        self.assertFalse(p["is_empty"])
+        self.assertEqual(p["fs_size_bytes"], 1024 + 2048)
+
+    def test_delete_empty_folder_no_force(self):
+        # Create an empty folder + no mapping
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "EMPTY")
+        taxonomy.reset_cache()
+        r = taxonomy.delete_folder(
+            self.profile_name, "01-SCIENCES/EMPTY", force=False
+        )
+        self.assertTrue(r["ok"])
+        self.assertFalse((self.target / "01-SCIENCES/EMPTY").exists())
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertNotIn("01-SCIENCES/EMPTY", tree["folders"])
+
+    def test_delete_non_empty_refused_without_force(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "FULL")
+        (self.target / "01-SCIENCES/FULL/data.pdf").write_bytes(b"data")
+        taxonomy.reset_cache()
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.delete_folder(
+                self.profile_name, "01-SCIENCES/FULL", force=False
+            )
+        self.assertEqual(ctx.exception.status, 409)
+        # FS et tree.yaml inchangés
+        self.assertTrue((self.target / "01-SCIENCES/FULL/data.pdf").is_file())
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("01-SCIENCES/FULL", tree["folders"])
+
+    def test_delete_non_empty_with_force(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "FORCE-DEL")
+        (self.target / "01-SCIENCES/FORCE-DEL/a.pdf").write_bytes(b"a")
+        taxonomy.create_folder(
+            self.profile_name, "01-SCIENCES/FORCE-DEL", "sub"
+        )
+        (self.target / "01-SCIENCES/FORCE-DEL/sub/b.pdf").write_bytes(b"b")
+        taxonomy.add_mapping(
+            self.profile_name, "force_theme", "01-SCIENCES/FORCE-DEL/sub"
+        )
+        taxonomy.reset_cache()
+
+        r = taxonomy.delete_folder(
+            self.profile_name, "01-SCIENCES/FORCE-DEL", force=True
+        )
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["n_files_deleted"], 2)
+        self.assertEqual(r["n_subfolders_deleted"], 1)
+        self.assertEqual(r["n_mappings_removed"], 1)
+        # FS purgé
+        self.assertFalse((self.target / "01-SCIENCES/FORCE-DEL").exists())
+        # tree.yaml purgé
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertNotIn("01-SCIENCES/FORCE-DEL", tree["folders"])
+        self.assertNotIn("01-SCIENCES/FORCE-DEL/sub", tree["folders"])
+        # mapping cassé retiré
+        mapping = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertNotIn("force_theme", mapping)
+
+    def test_delete_unknown_path(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.delete_folder(self.profile_name, "DOES-NOT-EXIST")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_delete_respects_lock(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "LOCK-TEST")
+        taxonomy.reset_cache()
+        (self.profile_dir / ".cache" / "taxonomy.lock").write_text("locked")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.delete_folder(self.profile_name, "01-SCIENCES/LOCK-TEST")
+        self.assertEqual(ctx.exception.status, 423)
+
+    def test_delete_creates_backups(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "BAK-TEST")
+        taxonomy.add_mapping(
+            self.profile_name, "bak_theme", "01-SCIENCES/BAK-TEST"
+        )
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before_tree = len(list(backup_dir.glob("tree-*.yaml")))
+        before_map = len(list(backup_dir.glob("theme_mapping-*.yaml")))
+        # Mapping makes it non-empty → need force
+        taxonomy.delete_folder(
+            self.profile_name, "01-SCIENCES/BAK-TEST", force=True
+        )
+        after_tree = len(list(backup_dir.glob("tree-*.yaml")))
+        after_map = len(list(backup_dir.glob("theme_mapping-*.yaml")))
+        self.assertGreater(after_tree, before_tree)
+        self.assertGreater(after_map, before_map)
+
+
+class TestDeleteFolderEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_api_delete_preview(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "API-PREVIEW")
+        (self.target / "01-SCIENCES/API-PREVIEW/x.pdf").write_bytes(b"x")
+        r = self.client.get(
+            f"/api/taxonomy/folder/delete-preview"
+            f"?profile={self.profile_name}&path=01-SCIENCES/API-PREVIEW"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_files"], 1)
+
+    def test_api_delete_non_empty_returns_preview_in_409(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "API-NONEMPTY")
+        (self.target / "01-SCIENCES/API-NONEMPTY/x.pdf").write_bytes(b"x")
+        r = self.client.request("DELETE", "/api/taxonomy/folder", json={
+            "profile": self.profile_name,
+            "path": "01-SCIENCES/API-NONEMPTY",
+            "force": False,
+        })
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("preview", r.json())
+        self.assertEqual(r.json()["preview"]["n_files"], 1)
+
+    def test_api_delete_force_happy(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES", "API-FORCE")
+        (self.target / "01-SCIENCES/API-FORCE/x.pdf").write_bytes(b"x")
+        r = self.client.request("DELETE", "/api/taxonomy/folder", json={
+            "profile": self.profile_name,
+            "path": "01-SCIENCES/API-FORCE",
+            "force": True,
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_files_deleted"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

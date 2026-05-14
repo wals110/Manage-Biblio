@@ -1714,6 +1714,38 @@ async def taxonomy_folder_move_api(request: Request):
     return JSONResponse(result)
 
 
+@app.get("/api/taxonomy/folder/delete-preview")
+async def taxonomy_folder_delete_preview_api(profile: str, path: str):
+    """Read-only: what would `delete_folder(path)` remove ?"""
+    from fastapi.responses import JSONResponse
+    try:
+        return JSONResponse(taxonomy.delete_folder_preview(profile, path))
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.delete("/api/taxonomy/folder")
+async def taxonomy_folder_delete_api(request: Request):
+    """Delete a folder (force=True required for non-empty)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    path = body.get("path") or ""
+    force = bool(body.get("force") or False)
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.delete_folder(profile, path, force=force)
+    except taxonomy.TaxonomyError as exc:
+        payload = {"error": str(exc)}
+        # Surface the preview stats when refusing for non-empty so the
+        # client can show its confirm modal without a second round-trip.
+        if hasattr(exc, "preview"):
+            payload["preview"] = exc.preview  # type: ignore[attr-defined]
+        return JSONResponse(payload, status_code=exc.status)
+    return JSONResponse(result)
+
+
 @app.post("/api/taxonomy/mapping/preview")
 async def taxonomy_mapping_preview_api(request: Request):
     """Dry-run: simulate the effect of an add/update/delete on the cache

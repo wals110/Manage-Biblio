@@ -237,6 +237,29 @@
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
     return body;
   }
+  async function fetchDeletePreview(path) {
+    const url = `/api/taxonomy/folder/delete-preview?profile=${encodeURIComponent(state.profile)}` +
+                `&path=${encodeURIComponent(path)}`;
+    const r = await fetch(url);
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+  async function deleteFolder(path, force) {
+    const r = await fetch('/api/taxonomy/folder', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, path, force: !!force }),
+    });
+    const body = await r.json();
+    if (!r.ok) {
+      const err = new Error(body.error || ('HTTP ' + r.status));
+      err.status = r.status;
+      err.preview = body.preview;
+      throw err;
+    }
+    return body;
+  }
   async function fetchPreview(action, theme, folder) {
     const r = await fetch('/api/taxonomy/mapping/preview', {
       method: 'POST',
@@ -391,6 +414,14 @@
           openMovePopover(node.path, e.currentTarget);
         },
       }, ['⤴']));
+      row.appendChild(el('button', {
+        class: 'tax-tree-add-btn tax-tree-delete-btn',
+        title: 'Supprimer ce dossier',
+        onclick: e => {
+          e.stopPropagation();
+          startDeleteFolder(node.path);
+        },
+      }, ['🗑']));
     }
 
     const wrap = el('div', { class: 'tax-tree-node' }, [row]);
@@ -1145,6 +1176,103 @@
       showToast('✗ ' + err.message, 'error');
     }
   }
+  // ── Delete folder (with preview + strong confirmation) ──────────────
+
+  async function startDeleteFolder(path) {
+    let preview;
+    try {
+      preview = await fetchDeletePreview(path);
+    } catch (e) {
+      showToast('✗ ' + e.message, 'error');
+      return;
+    }
+    if (preview.is_empty) {
+      // Simple cas : dossier vide (FS + tree + mapping)
+      if (!window.confirm(`Supprimer le dossier vide "${path}" ?`)) return;
+      try {
+        const r = await deleteFolder(path, false);
+        showToast(`✓ Supprimé : ${path}`, 'success');
+        await refreshAfterDelete(path);
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+      return;
+    }
+    // Non-vide → modal détaillé avec dry-run + confirmation par retype
+    openDeleteModal(path, preview);
+  }
+
+  function openDeleteModal(path, preview) {
+    const modal = $('#tax-delete-modal');
+    const body = $('#tax-delete-body');
+    $('#tax-delete-path').textContent = path;
+    const sizeMb = (preview.fs_size_bytes / 1024 / 1024).toFixed(1);
+    body.innerHTML =
+      `<div class="tax-impact-stats">` +
+        `<div class="tax-impact-stat warn"><span class="num">${preview.n_files}</span>` +
+          `<span class="lbl">fichier(s) effacé(s) (${sizeMb} MB)</span></div>` +
+        `<div class="tax-impact-stat"><span class="num">${preview.n_subfolders}</span>` +
+          `<span class="lbl">sous-dossier(s) effacé(s)</span></div>` +
+        `<div class="tax-impact-stat"><span class="num">${preview.n_mappings}</span>` +
+          `<span class="lbl">mapping(s) cassé(s) (deviendront orphelins)</span></div>` +
+      `</div>` +
+      `<div class="tax-delete-warn">⚠️ <strong>Action irréversible</strong> côté filesystem.` +
+        ` Le bouton Annuler peut restaurer tree.yaml et theme_mapping.yaml mais ` +
+        `<strong>PAS</strong> les fichiers PDF supprimés.</div>` +
+      `<div class="tax-delete-typecheck">` +
+        `Pour confirmer, retape exactement le chemin du dossier :` +
+        `<input id="tax-delete-typecheck-input" type="text" autocomplete="off" placeholder="${escapeHtml(path)}">` +
+      `</div>`;
+    modal.style.display = 'flex';
+    const input = $('#tax-delete-typecheck-input');
+    const confirmBtn = $('#tax-delete-confirm');
+    confirmBtn.disabled = true;
+    input.value = '';
+    input.addEventListener('input', () => {
+      confirmBtn.disabled = (input.value.trim() !== path);
+    });
+    setTimeout(() => input.focus(), 50);
+    const cleanup = (ok) => {
+      modal.style.display = 'none';
+      $('#tax-delete-cancel').onclick = null;
+      confirmBtn.onclick = null;
+      if (ok) doDeleteFolderForce(path);
+    };
+    $('#tax-delete-cancel').onclick = () => cleanup(false);
+    confirmBtn.onclick = () => cleanup(true);
+  }
+
+  async function doDeleteFolderForce(path) {
+    try {
+      const r = await deleteFolder(path, true);
+      showToast(
+        `✓ Supprimé : ${path} · ${r.n_files_deleted} fichier(s), ${r.n_mappings_removed} mapping(s) retiré(s)`,
+        'success',
+      );
+      await refreshAfterDelete(path);
+    } catch (e) {
+      showToast('✗ ' + e.message, 'error');
+    }
+  }
+
+  async function refreshAfterDelete(path) {
+    // Drop expanded/selection state for the deleted subtree
+    const newExpanded = new Set();
+    for (const p of state.expanded) {
+      if (p !== path && !p.startsWith(path + '/')) newExpanded.add(p);
+    }
+    state.expanded = newExpanded;
+    if (state.selection.type) {
+      if (state.selection.path === path
+          || state.selection.path.startsWith(path + '/')) {
+        state.selection = { type: null, path: '' };
+      }
+    }
+    state.filesByPath = new Map();
+    state.snapshot = await fetchSnapshot();
+    renderAll();
+  }
+
   // ── Move folder popover ──────────────────────────────────────────────
 
   function openMovePopover(path, anchorEl) {
