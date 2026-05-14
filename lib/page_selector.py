@@ -94,12 +94,20 @@ def select_top_pages(
     pages out of the first n_candidates. Returns sorted indices for
     natural reading order.
 
+    Page 1 is ALWAYS included — it's the cover/title page, and most title
+    pages have low text density (a single large title), which means the
+    text-density heuristic would otherwise skip it. We then fill the
+    remaining n_keep-1 slots with the densest pages from pages 2..N.
+    Without this, files like Springer Lecture Notes, slides, and many
+    monographs return empty titles from the LLM (it received TOC+intro
+    but not the cover).
+
     Behavior:
     - If pypdf yields no scores (scanned PDF, broken PDF, missing dep)
       → fall back to first n_keep pages.
     - If all scores are below min_score → likely a sparse document; fall
       back to first n_keep pages (the heuristic is unreliable here).
-    - Otherwise → pick top n_keep by score, return indices sorted asc.
+    - Otherwise → page 1 + top (n_keep-1) by score among pages 2..N.
 
     Args:
         n_candidates: how many initial pages to consider (typical 5)
@@ -121,7 +129,13 @@ def select_top_pages(
         # Whole document looks sparse / scanned — heuristic is noisy
         return list(range(1, n_keep + 1))
 
-    # Take top n_keep by score; ties broken by lower page index (earlier wins)
-    ranked = sorted(scores, key=lambda x: (-x[1], x[0]))
-    chosen = [idx for idx, _ in ranked[:n_keep]]
+    # Page 1 is the title page → always include. Then fill remaining slots
+    # with the densest pages from 2..N. Ties broken by lower page index.
+    chosen = {1}
+    rest = sorted((p for p in scores if p[0] != 1),
+                  key=lambda x: (-x[1], x[0]))
+    for idx, _ in rest:
+        if len(chosen) >= n_keep:
+            break
+        chosen.add(idx)
     return sorted(chosen)
