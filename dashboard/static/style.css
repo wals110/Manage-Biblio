@@ -2927,16 +2927,57 @@ th {
     font-size: 11px;
     color: var(--text-muted, #8b949e);
     background: rgba(255,255,255,0.05);
-    padding: 1px 6px;
+    padding: 1px 8px;
     border-radius: 10px;
+    flex-shrink: 0;
+    min-width: 36px;                          /* aligne 0 / 9 / 160 / 1234 */
+    text-align: right;
+    font-variant-numeric: tabular-nums;       /* chiffres tous à la même largeur */
+    box-sizing: border-box;
+}
+/* Fixed-width slot for the touched dot — empty when not touched, so the
+   count badge sits at the same X-coord on every row. */
+.tax-touched-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    flex-shrink: 0;
+}
+.tax-touched-slot .tax-touched-dot {
+    margin: 0;
+}
+/* Actions group — fixed-width container so the count never gets pushed
+   around regardless of how many buttons end up visible on hover. */
+.tax-tree-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    margin-left: 6px;
     flex-shrink: 0;
 }
 .tax-tree-file {
     display: flex;
     gap: 4px;
-    padding: 2px 8px;
+    padding: 3px 8px;
     font-size: 12px;
     color: var(--text-muted, #8b949e);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.1s, color 0.1s;
+}
+.tax-tree-file:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text, #c9d1d9);
+}
+.tax-tree-file.selected {
+    background: rgba(31, 111, 235, 0.18);
+    color: var(--text, #c9d1d9);
+}
+.tax-tree-file.selected .tax-tree-name {
+    color: var(--blue, #58a6ff);
+    font-weight: 500;
 }
 .tax-tree-files {
     /* padding-left set inline based on depth so files align under their parent */
@@ -3074,6 +3115,65 @@ th {
 .tax-toast.info { background: var(--card, #161b22); border: 1px solid var(--border, #30363d); }
 .tax-toast.success { background: rgba(63, 185, 80, 0.18); border: 1px solid var(--green, #3fb950); }
 .tax-toast.error { background: rgba(248, 81, 73, 0.18); border: 1px solid var(--red, #f85149); }
+
+/* Busy overlay — slim animated bar at top + transparent backdrop that
+   captures clicks (Linear/YouTube style). The backdrop uses
+   pointer-events:auto so it blocks clicks but the page still scrolls
+   and text remains selectable on elements above (no actual content lock). */
+.tax-busy {
+    position: fixed;
+    inset: 0;
+    z-index: 1900;
+    pointer-events: none;
+    display: none;
+}
+.tax-busy.is-active {
+    display: block;
+    pointer-events: auto;        /* swallows clicks at capture phase */
+    background: rgba(0, 0, 0, 0.04);
+    cursor: progress;
+}
+.tax-busy-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    overflow: hidden;
+    background: rgba(88, 166, 255, 0.18);
+}
+.tax-busy-bar::before {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 35%;
+    background: linear-gradient(90deg,
+        rgba(88,166,255,0) 0%,
+        rgba(88,166,255,0.95) 50%,
+        rgba(88,166,255,0) 100%);
+    animation: tax-busy-slide 1.1s infinite linear;
+}
+@keyframes tax-busy-slide {
+    0%   { left: -35%; }
+    100% { left: 100%; }
+}
+.tax-busy-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 12px;
+    border-radius: 4px;
+    background: rgba(13, 17, 23, 0.85);
+    border: 1px solid var(--border, #30363d);
+    font-size: 11px;
+    color: var(--text, #c9d1d9);
+    pointer-events: none;
+}
+/* Source button locking — visual hint while write is in-flight */
+[data-busy="1"] {
+    opacity: 0.55;
+    pointer-events: none;
+    cursor: progress !important;
+}
 
 .muted { color: var(--text-muted, #8b949e); }
 .small { font-size: 11px; }
@@ -3476,6 +3576,102 @@ th {
     background: rgba(248, 81, 73, 0.2);
     color: var(--red, #f85149);
     border-color: var(--red, #f85149);
+}
+
+/* Mapped theme — selected state (clicked to inspect its files) */
+.tax-mapped-item {
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+.tax-mapped-item.selected {
+    background: rgba(88, 166, 255, 0.12);
+    border-left: 2px solid var(--blue, #58a6ff);
+    padding-left: 4px;
+}
+.tax-mapped-item.selected .tax-mapped-action { opacity: 1; }
+
+/* Inline expand under a selected mapped theme — tabs + file list */
+.tax-mapped-expand {
+    list-style: none;
+    margin: 2px 0 8px 14px;
+    padding: 8px;
+    background: rgba(13, 17, 23, 0.5);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+}
+.tax-mapped-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--border, #30363d);
+}
+.tax-mapped-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #8b949e);
+    padding: 4px 8px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 11px;
+    border-radius: 4px 4px 0 0;
+}
+.tax-mapped-tab:hover { color: var(--text, #c9d1d9); background: rgba(255,255,255,0.03); }
+.tax-mapped-tab.active {
+    color: var(--blue, #58a6ff);
+    border-bottom-color: var(--blue, #58a6ff);
+}
+.tax-mapped-files {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.tax-mapped-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+.tax-mapped-file:hover { background: rgba(255,255,255,0.05); }
+.tax-mapped-file-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text, #c9d1d9);
+}
+.tax-mapped-file-folder {
+    color: var(--text-muted, #8b949e);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40%;
+}
+.tax-mapped-file-conf {
+    color: var(--text-muted, #8b949e);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+.tax-mapped-file-toptheme {
+    color: var(--blue, #58a6ff);
+    font-size: 10px;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 35%;
+    opacity: 0.85;
+}
+.tax-mapped-empty, .tax-mapped-more {
+    padding: 6px;
+    text-align: center;
 }
 
 /* Taxonomy toolbar — Linear/Vercel style: icon + text label,

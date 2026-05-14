@@ -1248,5 +1248,288 @@ class TestDeleteFolderEndpoint(TaxonomyTestBase):
         self.assertEqual(r.json()["n_files_deleted"], 1)
 
 
+class TestThemeFiles(TaxonomyTestBase):
+    """theme_files() — reverse lookup theme → list of files."""
+
+    def setUp(self):
+        super().setUp()
+        # Build a vision_cache that references our placeholder PDFs by the
+        # real cache_key derived from their head bytes.
+        from lib import vision_cache as vc
+        cache = {}
+        # mechanics.pdf has theme "physics" (conf 0.9)
+        # quantum.pdf  has themes "physics" (0.7) + "quantum mechanics" (0.95)
+        # algebra.pdf  has theme "algebra" (0.8)
+        # intro.pdf    has theme "physics" but conf 0.3 (filtered out)
+        files = {
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf": [("physics", 0.9)],
+            "01-SCIENCES/PHYSIQUE/quantum.pdf": [
+                ("physics", 0.7), ("quantum mechanics", 0.95),
+            ],
+            "01-SCIENCES/MATHEMATIQUES/algebra.pdf": [("algebra", 0.8)],
+            "01-SCIENCES/intro.pdf": [("physics", 0.3)],
+        }
+        for rel, themes in files.items():
+            abs_path = self.target / rel
+            # Give each file unique bytes so they don't collide on hash
+            abs_path.write_bytes(f"%PDF-1.4 {rel}".encode())
+            key = vc.compute_cache_key(
+                str(abs_path),
+                model="Qwen/Qwen3-VL-32B-Instruct",
+                n_pages=2,
+            )
+            self.assertIsNotNone(key, f"cache key not computable for {rel}")
+            cache[key] = {
+                "result": {
+                    "title": f"Title of {Path(rel).stem}",
+                    "themes": [{"theme": t, "confidence": c} for t, c in themes],
+                },
+                "model": "Qwen/Qwen3-VL-32B-Instruct",
+                "prompt_version": "v3",
+            }
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+
+    def test_future_files_returned_for_mapped_theme(self):
+        # Future is now "files predicted to land in this mapping's folder".
+        # Both mechanics.pdf and quantum.pdf resolve to 01-SCIENCES/PHYSIQUE
+        # via their top theme (physics 0.9 / quantum mechanics 0.95). intro
+        # is filtered by MIN_CONFIDENCE.
+        r = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        self.assertEqual(r["n_future"], 2)
+        paths = {f["rel_path"] for f in r["future"]}
+        self.assertIn("01-SCIENCES/PHYSIQUE/mechanics.pdf", paths)
+        self.assertIn("01-SCIENCES/PHYSIQUE/quantum.pdf", paths)
+        # Each future item carries the top theme that drove the prediction.
+        for f in r["future"]:
+            self.assertIn("top_theme", f)
+            self.assertIn("top_confidence", f)
+        # Sorted by top_confidence desc → quantum (0.95) before mechanics (0.9)
+        self.assertEqual(r["future"][0]["top_confidence"], 0.95)
+
+    def test_future_case_insensitive(self):
+        r_lower = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        r_upper = taxonomy.theme_files(self.profile_name, "PHYSICS", limit=10)
+        self.assertEqual(r_lower["n_future"], r_upper["n_future"])
+
+    def test_current_files_from_mapped_folder(self):
+        # "physics" is mapped to 01-SCIENCES/PHYSIQUE → both PDFs there
+        r = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        self.assertEqual(r["mapped_folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(r["n_current"], 2)
+        names = {Path(f["rel_path"]).name for f in r["current"]}
+        self.assertEqual(names, {"mechanics.pdf", "quantum.pdf"})
+
+    def test_by_folder_future_aggregation(self):
+        # Both physics-tagged files live in 01-SCIENCES/PHYSIQUE
+        r = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        self.assertEqual(r["by_folder_future"].get("01-SCIENCES/PHYSIQUE"), 2)
+
+    def test_current_excludes_file_in_folder_without_theme(self):
+        """A file living in the mapped folder but lacking the theme in its
+        vision_cache must NOT appear in `current` (intersection semantics)."""
+        from lib import vision_cache as vc
+        # Add a file in 01-SCIENCES/PHYSIQUE that has only "biology" in cache.
+        rel = "01-SCIENCES/PHYSIQUE/foreign.pdf"
+        abs_path = self.target / rel
+        abs_path.write_bytes(b"%PDF-1.4 unique-foreign")
+        key = vc.compute_cache_key(
+            str(abs_path), model="Qwen/Qwen3-VL-32B-Instruct", n_pages=2,
+        )
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache = json.loads(cache_path.read_text())
+        cache[key] = {
+            "result": {
+                "title": "Foreign book",
+                "themes": [{"theme": "biology", "confidence": 0.9}],
+            },
+            "model": "Qwen/Qwen3-VL-32B-Instruct",
+            "prompt_version": "v3",
+        }
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+        r = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        # foreign.pdf is in the folder but its only theme is "biology" → exclude
+        self.assertEqual(r["n_current"], 2)
+        names = {Path(f["rel_path"]).name for f in r["current"]}
+        self.assertNotIn("foreign.pdf", names)
+
+    def test_two_themes_to_same_folder_have_distinct_current(self):
+        """If two themes map to the same folder, their `current` lists
+        only intersect on files that carry BOTH themes."""
+        # Map "algebra" also to 01-SCIENCES/PHYSIQUE (in addition to physics)
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({
+            "physics": "01-SCIENCES/PHYSIQUE",
+            "quantum mechanics": "01-SCIENCES/PHYSIQUE",  # also same folder
+        }))
+        taxonomy.reset_cache(self.profile_name)
+        r_phys = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        r_quant = taxonomy.theme_files(self.profile_name, "quantum mechanics", limit=10)
+        # Same mapped folder, but distinct current sets:
+        #   physics → mechanics.pdf + quantum.pdf (both have physics ≥0.5)
+        #   quantum mechanics → only quantum.pdf
+        self.assertEqual(r_phys["n_current"], 2)
+        self.assertEqual(r_quant["n_current"], 1)
+        self.assertEqual(
+            {Path(f["rel_path"]).name for f in r_quant["current"]},
+            {"quantum.pdf"},
+        )
+
+    def test_unmapped_theme_has_no_future_and_no_current(self):
+        # Drop "quantum mechanics" from the mapping (now an orphan theme).
+        # Substring resolution also fails: "quantum" / "mechanics" aren't
+        # standalone keys in the mapping below.
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({"physics": "01-SCIENCES/PHYSIQUE"}))
+        taxonomy.reset_cache(self.profile_name)
+        r = taxonomy.theme_files(self.profile_name, "quantum mechanics", limit=10)
+        # No mapping → no predicted folder → no future/current. Consistent
+        # with reality: an unmapped theme does nothing at reclassify.
+        self.assertIsNone(r["mapped_folder"])
+        self.assertEqual(r["n_future"], 0)
+        self.assertEqual(r["n_current"], 0)
+        self.assertEqual(r["future"], [])
+        self.assertEqual(r["current"], [])
+
+    def test_unknown_theme_returns_empty(self):
+        r = taxonomy.theme_files(self.profile_name, "completely-unknown-xyz", limit=10)
+        self.assertEqual(r["n_future"], 0)
+        self.assertEqual(r["n_current"], 0)
+        self.assertEqual(r["future"], [])
+        self.assertEqual(r["current"], [])
+
+    def test_blank_theme_returns_empty(self):
+        r = taxonomy.theme_files(self.profile_name, "   ", limit=10)
+        self.assertEqual(r["n_future"], 0)
+        self.assertEqual(r["n_current"], 0)
+
+    def test_limit_clamps_future_list(self):
+        r = taxonomy.theme_files(self.profile_name, "physics", limit=1)
+        self.assertEqual(r["n_future"], 2)         # total count unaffected
+        self.assertEqual(len(r["future"]), 1)       # but page is clamped
+
+    def test_index_cached_after_first_call(self):
+        import time
+        # First (cold) call builds the index
+        t0 = time.time()
+        taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        cold = time.time() - t0
+        # Second call should hit the cache (much faster than cold; we
+        # only assert it's strictly faster + under a generous bound).
+        t0 = time.time()
+        taxonomy.theme_files(self.profile_name, "algebra", limit=10)
+        warm = time.time() - t0
+        self.assertLess(warm, max(cold, 0.05))
+
+    def test_future_includes_substring_match_resolutions(self):
+        """A file whose top theme resolves to the mapped folder via
+        SUBSTRING (longest-wins) — not exact match — must appear in
+        `Impact futur`. Mirrors the real classifier behavior."""
+        from lib import vision_cache as vc
+        # Setup: file with top theme "Quantum Field Physics" which is NOT
+        # an exact mapping key, but resolves via substring "physics".
+        rel = "01-SCIENCES/PHYSIQUE/qft.pdf"
+        (self.target / rel).write_bytes(b"%PDF-1.4 qft-unique")
+        key = vc.compute_cache_key(
+            str(self.target / rel),
+            model="Qwen/Qwen3-VL-32B-Instruct",
+            n_pages=2,
+        )
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache = json.loads(cache_path.read_text())
+        cache[key] = {
+            "result": {
+                "title": "Quantum Field Theory",
+                "themes": [{"theme": "Quantum Field Physics", "confidence": 0.92}],
+            },
+            "model": "Qwen/Qwen3-VL-32B-Instruct",
+            "prompt_version": "v3",
+        }
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+        # Click on "physics" — qft.pdf must appear because its top theme
+        # "Quantum Field Physics" resolves to 01-SCIENCES/PHYSIQUE via
+        # substring match on the "physics" key.
+        r = taxonomy.theme_files(self.profile_name, "physics", limit=10)
+        paths = {f["rel_path"] for f in r["future"]}
+        self.assertIn("01-SCIENCES/PHYSIQUE/qft.pdf", paths)
+        # The future item carries the actual top theme, NOT the mapping key
+        qft = next(f for f in r["future"] if "qft.pdf" in f["rel_path"])
+        self.assertEqual(qft["top_theme"], "Quantum Field Physics")
+
+    def test_dedup_same_theme_twice_in_entry(self):
+        """A file listing the same theme in `themes[]` AND legacy `theme`
+        must count only once, with the highest confidence retained."""
+        from lib import vision_cache as vc
+        # Map "AI" so the dup file resolves to a folder
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({
+            "physics": "01-SCIENCES/PHYSIQUE",
+            "quantum mechanics": "01-SCIENCES/PHYSIQUE",
+            "algebra": "01-SCIENCES/MATHEMATIQUES",
+            "AI": "02-INFORMATIQUE",
+        }))
+        rel = "02-INFORMATIQUE/dup.pdf"
+        (self.target / "02-INFORMATIQUE").mkdir(parents=True, exist_ok=True)
+        (self.target / rel).write_bytes(b"%PDF-1.4 dup-file")
+        key = vc.compute_cache_key(
+            str(self.target / rel),
+            model="Qwen/Qwen3-VL-32B-Instruct",
+            n_pages=2,
+        )
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache = json.loads(cache_path.read_text())
+        cache[key] = {
+            "result": {
+                "title": "Dup",
+                "themes": [{"theme": "AI", "confidence": 0.6}],
+                "theme": "AI",
+                "confidence": 0.85,
+            },
+            "model": "Qwen/Qwen3-VL-32B-Instruct",
+            "prompt_version": "v3",
+        }
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+        r = taxonomy.theme_files(self.profile_name, "AI", limit=10)
+        self.assertEqual(r["n_future"], 1)
+        # top_confidence keeps the max (0.85 > 0.6)
+        self.assertEqual(r["future"][0]["top_confidence"], 0.85)
+
+
+class TestThemeFilesEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_blank_theme_rejected(self):
+        r = self.client.get(
+            f"/api/taxonomy/theme/files?profile={self.profile_name}&theme="
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_endpoint_unknown_theme_returns_empty(self):
+        r = self.client.get(
+            f"/api/taxonomy/theme/files?profile={self.profile_name}&theme=ghost"
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_future"], 0)
+        self.assertEqual(body["future"], [])
+
+    def test_endpoint_limit_clamped(self):
+        r = self.client.get(
+            f"/api/taxonomy/theme/files?profile={self.profile_name}"
+            f"&theme=physics&limit=99999"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["limit"], 500)
+
+
 if __name__ == "__main__":
     unittest.main()

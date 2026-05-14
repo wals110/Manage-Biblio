@@ -192,6 +192,24 @@
     </div>
 </div>
 
+<!-- Generic confirm modal (replaces native window.confirm) -->
+<div id="tax-confirm-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal">
+        <div class="tax-modal-title" id="tax-confirm-title"></div>
+        <div class="tax-modal-body" id="tax-confirm-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-confirm-cancel" class="btn-secondary">Annuler</button>
+            <button id="tax-confirm-ok" class="btn-primary">Confirmer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Busy overlay (Phase 3 polish) — slim bar + click blocker during writes -->
+<div id="tax-busy" class="tax-busy" aria-hidden="true">
+    <div class="tax-busy-bar"></div>
+    <div class="tax-busy-label" id="tax-busy-label">Mise à jour…</div>
+</div>
+
 <div id="tax-tooltip" class="tax-tooltip" style="display:none;"></div>
 <div id="tax-toast" class="tax-toast" style="display:none;"></div>
 

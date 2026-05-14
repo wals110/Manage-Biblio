@@ -1604,6 +1604,24 @@ async def taxonomy_files_api(
     return JSONResponse(taxonomy.list_files_in_folder(profile, path, offset, limit))
 
 
+@app.get("/api/taxonomy/theme/files")
+async def taxonomy_theme_files_api(
+    profile: str,
+    theme: str,
+    limit: int = 50,
+):
+    """For a given theme, return:
+      - future: files in vision_cache that carry this theme (potential
+                reclassify targets)
+      - current: files actually in the folder mapped to this theme now
+    """
+    from fastapi.responses import JSONResponse
+    if not theme.strip():
+        return JSONResponse({"error": "theme requis"}, status_code=400)
+    limit = max(1, min(limit, 500))
+    return JSONResponse(taxonomy.theme_files(profile, theme, limit=limit))
+
+
 @app.post("/api/taxonomy/mapping")
 async def taxonomy_mapping_add_api(request: Request):
     from fastapi.responses import JSONResponse

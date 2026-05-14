@@ -57,6 +57,14 @@
     // path contains the query (case-insensitive). Parent ancestors of
     // matching nodes are kept visible to preserve hierarchy.
     treeSearch: '',
+
+    // Mapped panel — when an item is clicked, fetches the list of files
+    // concerned (future = vision_cache theme, current = files in target folder).
+    // selectedMappedTheme stores the lowercased theme key for highlight.
+    // mappedFilesByTheme caches the fetched payload per theme.
+    selectedMappedTheme: null,
+    mappedFilesByTheme: new Map(),
+    mappedFilesTab: 'future',  // 'future' | 'current'
   };
 
   // Touched folders / themes — derived from snapshot.stats (which diffs
@@ -140,6 +148,11 @@
     const url = `/api/taxonomy/snapshot?profile=${encodeURIComponent(state.profile)}${force ? '&force=true' : ''}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error('snapshot HTTP ' + r.status);
+    // Any snapshot refetch invalidates the theme→files cache (mappings,
+    // folder contents, vision_cache may all have changed under a write).
+    if (state.mappedFilesByTheme && state.mappedFilesByTheme.size > 0) {
+      state.mappedFilesByTheme.clear();
+    }
     return r.json();
   }
   async function fetchFiles(path, offset, limit) {
@@ -260,6 +273,14 @@
     }
     return body;
   }
+  async function fetchThemeFiles(theme, limit) {
+    const url = `/api/taxonomy/theme/files?profile=${encodeURIComponent(state.profile)}`
+              + `&theme=${encodeURIComponent(theme)}&limit=${limit || 50}`;
+    const r = await fetch(url);
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
   async function fetchPreview(action, theme, folder) {
     const r = await fetch('/api/taxonomy/mapping/preview', {
       method: 'POST',
@@ -281,6 +302,117 @@
     clearTimeout(showToast._tid);
     showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
   }
+
+  // ── Busy overlay ─────────────────────────────────────────────────────
+  // Locks the UI during async write actions (snapshot refetch takes 2-3s
+  // and the user shouldn't be able to fire concurrent writes).
+  //
+  //   await withBusy("Mise à jour…", async () => { … });
+  //
+  // Guarantees:
+  //   - overlay shown immediately (no delay → no double-click window),
+  //   - setBusy(false) ALWAYS called via finally,
+  //   - 30s safety timeout: if the action hangs, the overlay forces itself
+  //     off with an error toast so the user isn't trapped.
+  //   - clicks captured at the document level while active are swallowed
+  //     (defense in depth; the backdrop's pointer-events also blocks them).
+
+  const _busy = { depth: 0, safety: null };
+
+  function setBusy(active, label) {
+    const overlay = $('#tax-busy');
+    if (!overlay) return;
+    if (active) {
+      _busy.depth += 1;
+      if (label) $('#tax-busy-label').textContent = label;
+      overlay.classList.add('is-active');
+      overlay.setAttribute('aria-hidden', 'false');
+    } else {
+      _busy.depth = Math.max(0, _busy.depth - 1);
+      if (_busy.depth === 0) {
+        overlay.classList.remove('is-active');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+    }
+  }
+
+  async function withBusy(label, fn) {
+    setBusy(true, label || 'Mise à jour…');
+    const safety = setTimeout(() => {
+      // Force-release if the action hangs longer than 30s.
+      _busy.depth = 0;
+      const overlay = $('#tax-busy');
+      if (overlay) {
+        overlay.classList.remove('is-active');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+      showToast('Action trop longue — vérifie l’état de l’application', 'error');
+    }, 30_000);
+    try {
+      return await fn();
+    } finally {
+      clearTimeout(safety);
+      setBusy(false);
+    }
+  }
+
+  // ── Confirm modal ────────────────────────────────────────────────────
+  // Drop-in replacement for window.confirm() that matches the rest of the
+  // app's modal style. Returns a Promise<boolean>.
+  //
+  //   const ok = await showConfirm({
+  //     title: "Annuler la modification ?",
+  //     body: "Restauration depuis le backup le plus récent.",
+  //     confirmLabel: "Annuler la modif",
+  //     cancelLabel: "Garder",
+  //     variant: "primary" | "danger",
+  //   });
+
+  function showConfirm({title, body, confirmLabel, cancelLabel, variant}) {
+    return new Promise((resolve) => {
+      const modal = $('#tax-confirm-modal');
+      const okBtn = $('#tax-confirm-ok');
+      const cancelBtn = $('#tax-confirm-cancel');
+      $('#tax-confirm-title').textContent = title || 'Confirmer ?';
+      $('#tax-confirm-body').textContent = body || '';
+      okBtn.textContent = confirmLabel || 'Confirmer';
+      cancelBtn.textContent = cancelLabel || 'Annuler';
+      okBtn.className = (variant === 'danger') ? 'btn-danger' : 'btn-primary';
+      modal.style.display = 'flex';
+
+      function cleanup(result) {
+        modal.style.display = 'none';
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+        if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
+      }
+      okBtn.onclick = () => cleanup(true);
+      cancelBtn.onclick = () => cleanup(false);
+      document.addEventListener('keydown', onKey);
+      // Focus the primary action so Enter validates by default
+      setTimeout(() => okBtn.focus(), 50);
+    });
+  }
+
+  // Click swallower: any click that lands on the overlay itself is killed
+  // at capture phase before propagation. Without this, a click on a
+  // *transparent* part of the backdrop could still bubble into the page.
+  document.addEventListener('click', (e) => {
+    const overlay = $('#tax-busy');
+    if (overlay && overlay.classList.contains('is-active')) {
+      if (e.target === overlay
+          || e.target.classList.contains('tax-busy-bar')
+          || e.target.classList.contains('tax-busy-label')) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }
+  }, true);
 
   // ── Tree (column 1) ──────────────────────────────────────────────────
 
@@ -382,23 +514,32 @@
     row.appendChild(el('span', { class: 'tax-tree-icon' }, ['📁']));
     row.appendChild(el('span', { class: 'tax-tree-name', onclick: () => selectFolder(node.path) },
       [isRoot ? 'racine' : node.name]));
+
+    // Fixed-width slot for the touched dot — kept empty when no dot so
+    // every row's count badge sits at the same X-coord.
+    const dotSlot = el('span', { class: 'tax-touched-slot' });
     if (isTouched || isOnPath) {
-      row.appendChild(el('span', {
+      dotSlot.appendChild(el('span', {
         class: 'tax-touched-dot' + (isOnPath ? ' tax-touched-dot-hollow' : ''),
         title: isTouched
           ? 'Modifié — annulable via le bouton Annuler'
           : 'Contient un dossier modifié',
       }));
     }
+    row.appendChild(dotSlot);
+
     row.appendChild(el('span', { class: 'tax-tree-count', title: 'fichiers directs' },
       [String(node.file_count)]));
-    row.appendChild(el('button', {
+
+    // Actions grouped — fixed area, hidden until hover, right-aligned end.
+    const actions = el('span', { class: 'tax-tree-actions' });
+    actions.appendChild(el('button', {
       class: 'tax-tree-add-btn',
       title: 'Créer un sous-dossier',
       onclick: e => { e.stopPropagation(); openCreateFolderPopover(node.path, e.currentTarget); },
     }, ['+']));
     if (!isRoot) {
-      row.appendChild(el('button', {
+      actions.appendChild(el('button', {
         class: 'tax-tree-add-btn tax-tree-rename-btn',
         title: 'Renommer ce dossier',
         onclick: e => {
@@ -406,7 +547,7 @@
           openRenamePopover(node.path, node.name, e.currentTarget);
         },
       }, ['✎']));
-      row.appendChild(el('button', {
+      actions.appendChild(el('button', {
         class: 'tax-tree-add-btn tax-tree-move-btn',
         title: 'Déplacer ce dossier vers un autre parent',
         onclick: e => {
@@ -414,7 +555,7 @@
           openMovePopover(node.path, e.currentTarget);
         },
       }, ['⤴']));
-      row.appendChild(el('button', {
+      actions.appendChild(el('button', {
         class: 'tax-tree-add-btn tax-tree-delete-btn',
         title: 'Supprimer ce dossier',
         onclick: e => {
@@ -423,6 +564,7 @@
         },
       }, ['🗑']));
     }
+    row.appendChild(actions);
 
     const wrap = el('div', { class: 'tax-tree-node' }, [row]);
 
@@ -856,17 +998,31 @@
     const sub = $('#tax-mapped-sub');
     const list = $('#tax-mapped-list');
     list.innerHTML = '';
-    const path = getActiveFolder();
     if (state.selection.type === null) {
       sub.textContent = 'Sélectionne un dossier ou un fichier';
+      state.selectedMappedTheme = null;
       return;
     }
+    // For a file selection, show the mappings of the folder that DIRECTLY
+    // contains it (not getActiveFolder() — that returns the grandparent,
+    // which is the right context for the treemap but not for the mapped
+    // themes panel).
+    const path = state.selection.type === 'file'
+      ? dirname(state.selection.path)
+      : state.selection.path;
     const mappings = state.snapshot.mapping_by_folder[path] || [];
     sub.textContent = `${path || 'racine'} · ${mappings.length} clé(s)`;
     if (mappings.length === 0) {
       list.appendChild(el('li', { class: 'muted small' },
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
+      state.selectedMappedTheme = null;
       return;
+    }
+    // If the currently selected theme isn't in the visible mappings,
+    // drop the selection (avoids stale highlight after a context switch).
+    if (state.selectedMappedTheme
+        && !mappings.some(m => m.toLowerCase() === state.selectedMappedTheme)) {
+      state.selectedMappedTheme = null;
     }
     const touched = touchedThemesSet();
     for (const t of mappings) {
@@ -879,14 +1035,143 @@
         onclick: e => { e.stopPropagation(); confirmDeleteMapping(t); },
       }, ['×']);
       const isTouched = touched.has(t);
+      const isSelected = state.selectedMappedTheme === t.toLowerCase();
       const dot = isTouched
         ? el('span', { class: 'tax-touched-dot', title: 'Modifié — annulable via le bouton Annuler' })
         : null;
-      list.appendChild(el('li', {
-        class: 'tax-mapped-item' + (isTouched ? ' touched' : ''),
-        title: t,
-      }, [el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]));
+      const item = el('li', {
+        class: 'tax-mapped-item'
+               + (isTouched ? ' touched' : '')
+               + (isSelected ? ' selected' : ''),
+        title: t + ' — clic pour voir les fichiers concernés',
+        onclick: () => toggleMappedThemeSelection(t),
+      }, [el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]);
+      list.appendChild(item);
+      if (isSelected) list.appendChild(renderMappedFilesExpand(t));
     }
+  }
+
+  function toggleMappedThemeSelection(theme) {
+    const key = theme.toLowerCase();
+    if (state.selectedMappedTheme === key) {
+      state.selectedMappedTheme = null;
+    } else {
+      state.selectedMappedTheme = key;
+      // Cache miss → fetch + re-render once received
+      if (!state.mappedFilesByTheme.has(key)) {
+        withBusy('Recherche des fichiers concernés…', async () => {
+          try {
+            const data = await fetchThemeFiles(theme, 50);
+            state.mappedFilesByTheme.set(key, data);
+          } catch (err) {
+            state.mappedFilesByTheme.set(key, { error: err.message });
+          }
+          renderMappedPanel();
+        });
+      }
+    }
+    renderMappedPanel();
+  }
+
+  function renderMappedFilesExpand(theme) {
+    const key = theme.toLowerCase();
+    const data = state.mappedFilesByTheme.get(key);
+    const wrap = el('li', { class: 'tax-mapped-expand' });
+    if (!data) {
+      wrap.appendChild(el('div', { class: 'muted small' }, ['Chargement…']));
+      return wrap;
+    }
+    if (data.error) {
+      wrap.appendChild(el('div', { class: 'error small' }, ['✗ ' + data.error]));
+      return wrap;
+    }
+    const tab = state.mappedFilesTab || 'future';
+    const tabs = el('div', { class: 'tax-mapped-tabs' }, [
+      el('button', {
+        class: 'tax-mapped-tab' + (tab === 'future' ? ' active' : ''),
+        onclick: e => { e.stopPropagation(); state.mappedFilesTab = 'future'; renderMappedPanel(); },
+        title: 'Fichiers ayant ce thème dans le LLM cache (impact au prochain reclassify)',
+      }, [`Impact futur (${data.n_future})`]),
+      el('button', {
+        class: 'tax-mapped-tab' + (tab === 'current' ? ' active' : ''),
+        onclick: e => { e.stopPropagation(); state.mappedFilesTab = 'current'; renderMappedPanel(); },
+        title: 'Fichiers actuellement présents dans le dossier mappé',
+      }, [`Actuellement (${data.n_current})`]),
+    ]);
+    wrap.appendChild(tabs);
+
+    const items = tab === 'future' ? data.future : data.current;
+    const n_total = tab === 'future' ? data.n_future : data.n_current;
+    if (!items || items.length === 0) {
+      wrap.appendChild(el('div', { class: 'muted small tax-mapped-empty' },
+        [tab === 'future'
+          ? 'Aucun fichier avec ce thème dans le cache vision.'
+          : (data.mapped_folder
+            ? `Dossier « ${data.mapped_folder} » vide.`
+            : 'Aucun dossier mappé pour ce thème.')]));
+      return wrap;
+    }
+    const listEl = el('ul', { class: 'tax-mapped-files' });
+    for (const f of items) {
+      const name = basename(f.rel_path);
+      const folder = f.current_folder || '(racine)';
+      // Future items carry top_theme + top_confidence (the theme that
+      // drove the prediction). Current items carry confidence (this
+      // theme's confidence on the file).
+      const conf = (f.top_confidence != null) ? f.top_confidence
+                : (f.confidence != null) ? f.confidence
+                : null;
+      const confEl = (conf != null)
+        ? el('span', { class: 'tax-mapped-file-conf', title: 'Confidence LLM' },
+                   [conf.toFixed(2)])
+        : null;
+      const children = [
+        el('span', { class: 'tax-mapped-file-name' }, [name]),
+      ];
+      // For future items, show the top theme that drove the prediction
+      // (often differs from the clicked theme key — e.g. clicked "physics"
+      // but resolved via "Mathematical Physics" substring match).
+      if (f.top_theme && f.top_theme.toLowerCase() !== (state.selectedMappedTheme || '')) {
+        children.push(el('span', {
+          class: 'tax-mapped-file-toptheme',
+          title: `Prédit via le thème top du fichier`,
+        }, ['« ' + f.top_theme + ' »']));
+      }
+      children.push(el('span', { class: 'tax-mapped-file-folder' }, [folder]));
+      if (confEl) children.push(confEl);
+      listEl.appendChild(el('li', {
+        class: 'tax-mapped-file',
+        title: f.rel_path,
+        onclick: e => { e.stopPropagation(); openFileFromPath(f.rel_path); },
+      }, children));
+    }
+    wrap.appendChild(listEl);
+    if (items.length < n_total) {
+      wrap.appendChild(el('div', { class: 'muted small tax-mapped-more' },
+        [`+${n_total - items.length} autres fichiers — affinage à venir`]));
+    }
+    return wrap;
+  }
+
+  // Helper: navigate to a file by relative path (expand parents + select)
+  function openFileFromPath(relPath) {
+    const parent = dirname(relPath);
+    // Expand all ancestors so the file becomes visible
+    let p = parent;
+    while (p) {
+      state.expanded.add(p);
+      const j = p.lastIndexOf('/');
+      if (j < 0) break;
+      p = p.substring(0, j);
+    }
+    state.expanded.add(parent);
+    state.selection = { type: 'file', path: relPath };
+    rerenderAfterSelection();
+  }
+
+  function basename(p) {
+    const i = p.lastIndexOf('/');
+    return i < 0 ? p : p.substring(i + 1);
   }
 
   // ── LLM universe panel (column 3 bottom) ─────────────────────────────
@@ -1050,7 +1335,8 @@
   async function previewAndConfirm(action, theme, folder) {
     let preview;
     try {
-      preview = await fetchPreview(action, theme, folder);
+      preview = await withBusy('Analyse de l’impact…',
+                               () => fetchPreview(action, theme, folder));
     } catch (e) {
       console.warn('preview failed, proceeding without confirm:', e);
       return true;
@@ -1061,52 +1347,65 @@
 
   async function doAddMapping(theme, folder) {
     if (!(await previewAndConfirm('add', theme, folder))) return;
-    try {
-      await postMapping(theme, folder);
-      const themeRec = (state.snapshot.themes_llm || [])
-        .find(t => t.theme.toLowerCase() === theme.toLowerCase());
-      const impact = themeRec ? themeRec.count : '?';
-      showToast(`✓ « ${theme} » → ${folder} · ${impact} fichier(s) au prochain reclassify`, 'success');
-      state.snapshot = await fetchSnapshot();
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    await withBusy(`Mapping « ${theme} » → ${folder}…`, async () => {
+      try {
+        await postMapping(theme, folder);
+        const themeRec = (state.snapshot.themes_llm || [])
+          .find(t => t.theme.toLowerCase() === theme.toLowerCase());
+        const impact = themeRec ? themeRec.count : '?';
+        showToast(`✓ « ${theme} » → ${folder} · ${impact} fichier(s) au prochain reclassify`, 'success');
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
   }
   async function doUpdateMapping(theme, folder) {
     if (!(await previewAndConfirm('update', theme, folder))) return;
-    try {
-      const r = await patchMapping(theme, folder);
-      if (r.unchanged) {
-        showToast('Mapping inchangé (même cible)', 'info');
-        return;
+    await withBusy(`Mise à jour « ${theme} »…`, async () => {
+      try {
+        const r = await patchMapping(theme, folder);
+        if (r.unchanged) {
+          showToast('Mapping inchangé (même cible)', 'info');
+          return;
+        }
+        showToast(`✓ « ${theme} » → ${folder} (avant : ${r.previous_folder})`, 'success');
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
       }
-      showToast(`✓ « ${theme} » → ${folder} (avant : ${r.previous_folder})`, 'success');
-      state.snapshot = await fetchSnapshot();
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    });
   }
   async function confirmDeleteMapping(theme) {
     // Preview always asked for delete (high-impact action by nature)
     let preview;
     try {
-      preview = await fetchPreview('delete', theme, null);
+      preview = await withBusy('Analyse de l’impact…',
+                               () => fetchPreview('delete', theme, null));
     } catch (e) { /* fallback to simple confirm */ }
     if (preview && _needsConfirm(preview)) {
       if (!(await showImpactModal('delete', theme, null, preview))) return;
-    } else if (!window.confirm(`Supprimer le mapping « ${theme} » ?\nUtilise ↶ Annuler en cas d'erreur.`)) {
-      return;
+    } else {
+      const ok = await showConfirm({
+        title: `Supprimer le mapping « ${theme} » ?`,
+        body: "Utilise « Annuler » dans la barre du haut en cas d'erreur.",
+        confirmLabel: 'Supprimer',
+        variant: 'danger',
+      });
+      if (!ok) return;
     }
-    try {
-      const r = await deleteMapping(theme);
-      showToast(`✓ « ${theme} » supprimé (était → ${r.previous_folder})`, 'success');
-      state.snapshot = await fetchSnapshot();
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    await withBusy(`Suppression « ${theme} »…`, async () => {
+      try {
+        const r = await deleteMapping(theme);
+        showToast(`✓ « ${theme} » supprimé (était → ${r.previous_folder})`, 'success');
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
   }
   // ── Create folder popover ────────────────────────────────────────────
 
@@ -1166,36 +1465,47 @@
     }
     const parent = pop.dataset.parent || '';
     closeCreateFolderPopover();
-    try {
-      const r = await postCreateFolder(parent, name);
-      showToast(`✓ Dossier créé : ${r.path}`, 'success');
-      state.snapshot = await fetchSnapshot();
-      state.expanded.add(parent);
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    await withBusy(`Création « ${name} »…`, async () => {
+      try {
+        const r = await postCreateFolder(parent, name);
+        showToast(`✓ Dossier créé : ${r.path}`, 'success');
+        state.snapshot = await fetchSnapshot();
+        state.expanded.add(parent);
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
   }
   // ── Delete folder (with preview + strong confirmation) ──────────────
 
   async function startDeleteFolder(path) {
     let preview;
     try {
-      preview = await fetchDeletePreview(path);
+      preview = await withBusy('Analyse du contenu…',
+                               () => fetchDeletePreview(path));
     } catch (e) {
       showToast('✗ ' + e.message, 'error');
       return;
     }
     if (preview.is_empty) {
       // Simple cas : dossier vide (FS + tree + mapping)
-      if (!window.confirm(`Supprimer le dossier vide "${path}" ?`)) return;
-      try {
-        const r = await deleteFolder(path, false);
-        showToast(`✓ Supprimé : ${path}`, 'success');
-        await refreshAfterDelete(path);
-      } catch (e) {
-        showToast('✗ ' + e.message, 'error');
-      }
+      const ok = await showConfirm({
+        title: 'Supprimer ce dossier vide ?',
+        body: path,
+        confirmLabel: 'Supprimer',
+        variant: 'danger',
+      });
+      if (!ok) return;
+      await withBusy(`Suppression « ${path} »…`, async () => {
+        try {
+          await deleteFolder(path, false);
+          showToast(`✓ Supprimé : ${path}`, 'success');
+          await refreshAfterDelete(path);
+        } catch (e) {
+          showToast('✗ ' + e.message, 'error');
+        }
+      });
       return;
     }
     // Non-vide → modal détaillé avec dry-run + confirmation par retype
@@ -1243,16 +1553,18 @@
   }
 
   async function doDeleteFolderForce(path) {
-    try {
-      const r = await deleteFolder(path, true);
-      showToast(
-        `✓ Supprimé : ${path} · ${r.n_files_deleted} fichier(s), ${r.n_mappings_removed} mapping(s) retiré(s)`,
-        'success',
-      );
-      await refreshAfterDelete(path);
-    } catch (e) {
-      showToast('✗ ' + e.message, 'error');
-    }
+    await withBusy(`Suppression « ${path} »…`, async () => {
+      try {
+        const r = await deleteFolder(path, true);
+        showToast(
+          `✓ Supprimé : ${path} · ${r.n_files_deleted} fichier(s), ${r.n_mappings_removed} mapping(s) retiré(s)`,
+          'success',
+        );
+        await refreshAfterDelete(path);
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
   }
 
   async function refreshAfterDelete(path) {
@@ -1363,81 +1675,93 @@
     const oldPath = pop.dataset.path;
     const newParent = $('#tax-movefolder-input').value.trim();
     closeMovePopover();
-    try {
-      const r = await postMoveFolder(oldPath, newParent);
-      if (r.unchanged) {
-        showToast('Emplacement inchangé', 'info');
-        return;
-      }
-      showToast(
-        `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
-        'success',
-      );
-      // Rewrite expanded set + selection prefixes
-      const newExpanded = new Set();
-      for (const p of state.expanded) {
-        if (p === oldPath) newExpanded.add(r.new_path);
-        else if (p.startsWith(oldPath + '/')) newExpanded.add(r.new_path + p.slice(oldPath.length));
-        else newExpanded.add(p);
-      }
-      state.expanded = newExpanded;
-      if (state.selection.type) {
-        if (state.selection.path === oldPath || state.selection.path.startsWith(oldPath + '/')) {
-          state.selection.path = r.new_path + state.selection.path.slice(oldPath.length);
+    await withBusy(`Déplacement « ${oldPath} »…`, async () => {
+      try {
+        const r = await postMoveFolder(oldPath, newParent);
+        if (r.unchanged) {
+          showToast('Emplacement inchangé', 'info');
+          return;
         }
+        showToast(
+          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+          'success',
+        );
+        // Rewrite expanded set + selection prefixes
+        const newExpanded = new Set();
+        for (const p of state.expanded) {
+          if (p === oldPath) newExpanded.add(r.new_path);
+          else if (p.startsWith(oldPath + '/')) newExpanded.add(r.new_path + p.slice(oldPath.length));
+          else newExpanded.add(p);
+        }
+        state.expanded = newExpanded;
+        if (state.selection.type) {
+          if (state.selection.path === oldPath || state.selection.path.startsWith(oldPath + '/')) {
+            state.selection.path = r.new_path + state.selection.path.slice(oldPath.length);
+          }
+        }
+        state.filesByPath = new Map();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
       }
-      state.filesByPath = new Map();
-      state.snapshot = await fetchSnapshot();
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    });
   }
 
   async function doRenameFolder(oldPath, newName) {
     closeCreateFolderPopover();
-    try {
-      const r = await patchRenameFolder(oldPath, newName);
-      if (r.unchanged) {
-        showToast('Nom inchangé', 'info');
-        return;
-      }
-      showToast(
-        `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
-        'success',
-      );
-      // Update expanded set: replace old prefix with new
-      const newExpanded = new Set();
-      for (const p of state.expanded) {
-        if (p === oldPath) newExpanded.add(r.new_path);
-        else if (p.startsWith(oldPath + '/')) newExpanded.add(r.new_path + p.slice(oldPath.length));
-        else newExpanded.add(p);
-      }
-      state.expanded = newExpanded;
-      // Update selection if it was inside the renamed subtree
-      if (state.selection.type) {
-        if (state.selection.path === oldPath || state.selection.path.startsWith(oldPath + '/')) {
-          state.selection.path = r.new_path + state.selection.path.slice(oldPath.length);
+    await withBusy(`Renommage « ${oldPath} »…`, async () => {
+      try {
+        const r = await patchRenameFolder(oldPath, newName);
+        if (r.unchanged) {
+          showToast('Nom inchangé', 'info');
+          return;
         }
+        showToast(
+          `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+          'success',
+        );
+        // Update expanded set: replace old prefix with new
+        const newExpanded = new Set();
+        for (const p of state.expanded) {
+          if (p === oldPath) newExpanded.add(r.new_path);
+          else if (p.startsWith(oldPath + '/')) newExpanded.add(r.new_path + p.slice(oldPath.length));
+          else newExpanded.add(p);
+        }
+        state.expanded = newExpanded;
+        // Update selection if it was inside the renamed subtree
+        if (state.selection.type) {
+          if (state.selection.path === oldPath || state.selection.path.startsWith(oldPath + '/')) {
+            state.selection.path = r.new_path + state.selection.path.slice(oldPath.length);
+          }
+        }
+        state.filesByPath = new Map();   // file lists are keyed by path
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
       }
-      state.filesByPath = new Map();   // file lists are keyed by path
-      state.snapshot = await fetchSnapshot();
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    });
   }
 
   async function doUndo() {
-    if (!window.confirm('Annuler la dernière modification du mapping ?\n(restore depuis le backup le plus récent)')) return;
-    try {
-      const r = await postUndo();
-      showToast(`↶ Restauré depuis ${r.restored_from}`, 'success');
-      state.snapshot = await fetchSnapshot();
-      renderAll();
-    } catch (err) {
-      showToast('✗ ' + err.message, 'error');
-    }
+    const ok = await showConfirm({
+      title: 'Annuler la dernière modification ?',
+      body: 'Restauration depuis le backup le plus récent.',
+      confirmLabel: 'Annuler la modif',
+      cancelLabel: 'Garder',
+    });
+    if (!ok) return;
+    await withBusy('Restauration…', async () => {
+      try {
+        const r = await postUndo();
+        showToast(`↶ Restauré depuis ${r.restored_from}`, 'success');
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
   }
 
   // ── Header stats ─────────────────────────────────────────────────────
@@ -1479,18 +1803,18 @@
   async function init() {
     const sel = $('#tax-profile-select');
     state.profile = sel.value;
-    sel.addEventListener('change', async () => {
+    sel.addEventListener('change', () => withBusy(`Chargement profil « ${sel.value} »…`, async () => {
       state.profile = sel.value;
       state.selection = { type: null, path: '' };
       state.expanded = new Set();
       state.filesByPath = new Map();
       await loadAndRender();
-    });
-    $('#tax-refresh').addEventListener('click', async () => {
+    }));
+    $('#tax-refresh').addEventListener('click', () => withBusy('Rechargement…', async () => {
       state.filesByPath = new Map();
       try { state.snapshot = await fetchSnapshot(true); renderAll(); showToast('Snapshot rechargé', 'success'); }
       catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-    });
+    }));
     $('#tax-undo').addEventListener('click', doUndo);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();

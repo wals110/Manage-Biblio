@@ -49,6 +49,12 @@ _FILES_CACHE_TTL = 300
 # the slow part; the snapshot stays valid until a write invalidates it.
 _snapshot_cache: dict[str, dict] = {}
 _files_cache: dict[tuple[str, str], tuple[float, list[dict]]] = {}
+# {profile -> {theme_lower: [{rel_path, title, current_folder, confidence}]}}
+_theme_files_index_cache: dict[str, dict[str, list[dict]]] = {}
+# {profile -> {predicted_folder: [{rel_path, title, current_folder, top_theme, top_confidence}]}}
+# Computed from the file's TOP theme (max confidence) resolved via classify_by_theme.
+# Depends on `theme_mapping.yaml` → invalidated together with the rest on writes.
+_folder_predicted_index_cache: dict[str, dict[str, list[dict]]] = {}
 _locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
 _cache_lock = threading.Lock()
 
@@ -397,8 +403,12 @@ def reset_cache(profile: str | None = None) -> None:
         if profile is None:
             _snapshot_cache.clear()
             _files_cache.clear()
+            _theme_files_index_cache.clear()
+            _folder_predicted_index_cache.clear()
         else:
             _snapshot_cache.pop(profile, None)
+            _theme_files_index_cache.pop(profile, None)
+            _folder_predicted_index_cache.pop(profile, None)
             # Drop files cache entries for this profile
             keys = [k for k in _files_cache if k[0] == profile]
             for k in keys:
@@ -448,6 +458,239 @@ def list_files_in_folder(
     total = len(all_files)
     page = all_files[offset: offset + limit]
     return {"files": page, "total": total, "offset": offset, "limit": limit}
+
+
+# ─── Theme → files reverse index ──────────────────────────────────────────
+#
+# vision_cache.json is keyed by an MD5 of the file's head bytes; there is
+# no reverse mapping from theme → list-of-files. We build one lazily by
+# walking the target filesystem, hashing each PDF/EPUB, and looking up the
+# cache. The result is kept in-memory and invalidated together with the
+# snapshot on writes.
+
+_FILE_EXTS = (".pdf", ".epub")
+
+
+def _build_indexes(profile: str) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """Walk the target FS, hash each file, return (theme_index, folder_index).
+
+    - theme_index : {theme_lower: [{rel_path, title, current_folder, confidence}]}
+                    one entry per (file × theme≥MIN_CONFIDENCE). Used by the
+                    "Actuellement" tab (intersection theme × mapped folder).
+
+    - folder_index: {predicted_folder: [{rel_path, title, current_folder,
+                                          top_theme, top_confidence}]}
+                    one entry per file, indexed by the predicted folder using
+                    classify_by_theme(top_theme, mapping). Used by the
+                    "Impact futur" tab — reflects what would actually happen
+                    at the next reclassify (including substring matches).
+    """
+    target = _profile_target_path(profile)
+    if target is None or not target.exists():
+        return {}, {}
+
+    cache_path = _vision_cache_path(profile)
+    if not cache_path.exists():
+        return {}, {}
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}, {}
+    if not isinstance(cache, dict):
+        return {}, {}
+
+    mapping = _load_mapping(profile)
+    cfg = _load_profile_yaml(profile)
+    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    # Enumerate every candidate file under target/
+    file_list: list[tuple[str, str]] = []
+    target_str = str(target)
+    for root, dirs, files in os.walk(target_str):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if f.startswith(".") or not f.lower().endswith(_FILE_EXTS):
+                continue
+            abs_path = os.path.join(root, f)
+            try:
+                rel = os.path.relpath(abs_path, target_str)
+            except ValueError:
+                continue
+            file_list.append((abs_path, rel.replace("\\", "/")))
+
+    if not file_list:
+        return {}, {}
+
+    def _process(item: tuple[str, str]) -> tuple[str, str, list[tuple[str, float]]] | None:
+        abs_path, rel = item
+        key = vision_cache.compute_cache_key(abs_path, model=model, n_pages=n_pages)
+        if not key:
+            return None
+        entry = cache.get(key)
+        if not isinstance(entry, dict):
+            return None
+        result = entry.get("result")
+        if not isinstance(result, dict):
+            return None
+        themes: list[tuple[str, float]] = []
+        arr = result.get("themes")
+        if isinstance(arr, list):
+            for it in arr:
+                if not isinstance(it, dict):
+                    continue
+                t = _normalize_theme(str(it.get("theme") or ""))
+                c = float(it.get("confidence") or 0.0)
+                if t and c >= _MIN_CONFIDENCE:
+                    themes.append((t, c))
+        legacy = _normalize_theme(str(result.get("theme") or ""))
+        if legacy:
+            c = float(result.get("confidence") or 0.0)
+            if c >= _MIN_CONFIDENCE:
+                themes.append((legacy, c))
+        if not themes:
+            return None
+        title = str(result.get("title") or "").strip()
+        return rel, title, themes
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    theme_index: dict[str, list[dict]] = defaultdict(list)
+    folder_index: dict[str, list[dict]] = defaultdict(list)
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for res in ex.map(_process, file_list):
+            if res is None:
+                continue
+            rel, title, themes = res
+            i = rel.rfind("/")
+            current_folder = rel[:i] if i >= 0 else ""
+
+            # Dedup themes per file (same theme can appear in `themes[]` AND
+            # legacy `result.theme`) — keep the highest confidence.
+            best: dict[str, float] = {}
+            best_original: dict[str, str] = {}
+            for theme, conf in themes:
+                k = theme.lower()
+                if conf > best.get(k, -1.0):
+                    best[k] = conf
+                    best_original[k] = theme
+            for k, conf in best.items():
+                theme_index[k].append({
+                    "rel_path": rel,
+                    "title": title,
+                    "current_folder": current_folder,
+                    "confidence": round(conf, 3),
+                })
+
+            # Predicted folder = classify_by_theme(top_theme, mapping).
+            # Mirrors how the pipeline actually classifies a file at
+            # reclassify time (top theme by confidence wins).
+            top_theme_key = max(best, key=lambda k: best[k]) if best else None
+            if top_theme_key:
+                top_conf = best[top_theme_key]
+                top_label = best_original[top_theme_key]
+                predicted = classify_by_theme(top_label, mapping)
+                if predicted:
+                    folder_index[predicted].append({
+                        "rel_path": rel,
+                        "title": title,
+                        "current_folder": current_folder,
+                        "top_theme": top_label,
+                        "top_confidence": round(top_conf, 3),
+                    })
+
+    for items in theme_index.values():
+        items.sort(key=lambda r: (-r["confidence"], r["rel_path"].lower()))
+    for items in folder_index.values():
+        items.sort(key=lambda r: (-r["top_confidence"], r["rel_path"].lower()))
+    return dict(theme_index), dict(folder_index)
+
+
+def _get_indexes(profile: str) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """Return (theme_index, folder_index), built on first access and cached."""
+    with _cache_lock:
+        t_idx = _theme_files_index_cache.get(profile)
+        f_idx = _folder_predicted_index_cache.get(profile)
+    if t_idx is not None and f_idx is not None:
+        return t_idx, f_idx
+    # Build outside the lock (slow operation, multiple seconds on cold cache).
+    t_idx, f_idx = _build_indexes(profile)
+    with _cache_lock:
+        _theme_files_index_cache[profile] = t_idx
+        _folder_predicted_index_cache[profile] = f_idx
+    return t_idx, f_idx
+
+
+def theme_files(profile: str, theme: str, limit: int = 50) -> dict:
+    """Return file lists for a mapped theme.
+
+    Two views:
+      - future:  files whose vision_cache contains this theme (where they
+                 *would* go on the next reclassify, based on theme_mapping).
+      - current: files **actually classified via this theme**, i.e. the
+                 intersection of (files in the mapped folder) and (files
+                 with this theme in vision_cache). A different theme also
+                 mapped to the same folder will NOT pollute this list.
+
+    Both lists are capped at `limit` items; the full per-folder breakdown
+    is returned via `by_folder_future` / `by_folder_current` so the UI
+    can render badges on the tree.
+    """
+    theme_norm = _normalize_theme(theme or "")
+    theme_key = theme_norm.lower()
+    empty = {
+        "theme": theme,
+        "n_future": 0,
+        "n_current": 0,
+        "future": [],
+        "current": [],
+        "by_folder_future": {},
+        "by_folder_current": {},
+        "mapped_folder": None,
+        "limit": limit,
+    }
+    if not theme_key:
+        return empty
+
+    theme_idx, folder_idx = _get_indexes(profile)
+    mapping = _load_mapping(profile)
+    mapped_folder = classify_by_theme(theme_norm, mapping)
+
+    # FUTURE = files predicted to land in `mapped_folder` at the next
+    # reclassify, regardless of which theme key triggered the resolution.
+    # This includes substring matches (e.g. "Optics and Light Physics" →
+    # `physics` → 01-SCIENCES/PHYSIQUE) — what the pipeline actually does.
+    future_all = folder_idx.get(mapped_folder, []) if mapped_folder else []
+    by_folder_future: dict[str, int] = {}
+    for f in future_all:
+        cf = f["current_folder"] or "(racine)"
+        by_folder_future[cf] = by_folder_future.get(cf, 0) + 1
+
+    # CURRENT = files that this theme ACTUALLY contributed to classify:
+    # (a) in the mapped folder right now AND (b) carry this theme in their
+    # vision_cache (≥ MIN_CONFIDENCE). Strict exact-theme intersection,
+    # distinguishes two themes mapped to the same folder.
+    current_all: list[dict] = []
+    by_folder_current: dict[str, int] = {}
+    if mapped_folder:
+        theme_files_list = theme_idx.get(theme_key, [])
+        current_all = [f for f in theme_files_list
+                       if f["current_folder"] == mapped_folder]
+        current_all.sort(key=lambda r: r["rel_path"].lower())
+        if current_all:
+            by_folder_current[mapped_folder] = len(current_all)
+
+    return {
+        "theme": theme_norm,
+        "n_future": len(future_all),
+        "n_current": len(current_all),
+        "future": future_all[:limit],
+        "current": current_all[:limit],
+        "by_folder_future": by_folder_future,
+        "by_folder_current": by_folder_current,
+        "mapped_folder": mapped_folder,
+        "limit": limit,
+    }
 
 
 # ─── Mapping writes (add only — Phase 1) ──────────────────────────────────
