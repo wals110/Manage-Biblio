@@ -2908,6 +2908,70 @@ th {
     outline: 2px dashed var(--green, #3fb950);
     outline-offset: -2px;
 }
+
+/* Spotlight mode — driven by a selected mapped theme in column 3.
+   - dim   : non-concerned rows fade into the background
+   - on-path : ancestors of concerned rows (stay legible, no highlight)
+   - affected : holds at least one concerned file (badge visible)
+   - target  : the mapping's destination folder (strong blue border)
+   When a search is active, the spotlight is suppressed (search wins). */
+.tax-tree-row.spotlight-dim {
+    opacity: 0.32;
+}
+.tax-tree-row.spotlight-dim:hover { opacity: 0.55; }
+.tax-tree-row.spotlight-on-path {
+    opacity: 0.88;
+}
+.tax-tree-row.spotlight-affected {
+    background: rgba(88, 166, 255, 0.06);
+}
+.tax-tree-row.spotlight-target {
+    background: rgba(88, 166, 255, 0.18);
+    box-shadow: inset 2px 0 0 var(--blue, #58a6ff);
+}
+.tax-tree-spotlight-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    padding: 1px 6px;
+    background: rgba(88, 166, 255, 0.18);
+    border: 1px solid rgba(88, 166, 255, 0.4);
+    color: var(--blue, #58a6ff);
+    border-radius: 8px;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.tax-tree-row.spotlight-target .tax-tree-spotlight-badge {
+    background: rgba(88, 166, 255, 0.3);
+    border-color: var(--blue, #58a6ff);
+    color: #fff;
+}
+
+/* Spotlight subtitle — shown in #tax-tree-sub when a mapped theme is
+   focused. Holds the descriptor + an explicit exit button (×). */
+.tax-spotlight-sub {
+    color: var(--blue, #58a6ff);
+    font-weight: 500;
+}
+.tax-spotlight-exit {
+    margin-left: 6px;
+    padding: 0 6px;
+    height: 18px;
+    line-height: 16px;
+    background: transparent;
+    border: 1px solid rgba(88, 166, 255, 0.4);
+    color: var(--blue, #58a6ff);
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.tax-spotlight-exit:hover {
+    background: rgba(88, 166, 255, 0.18);
+    border-color: var(--blue, #58a6ff);
+}
 .tax-tree-chevron, .tax-tree-chevron-empty {
     width: 14px;
     color: var(--text-muted, #8b949e);
@@ -2979,6 +3043,28 @@ th {
     color: var(--blue, #58a6ff);
     font-weight: 500;
 }
+
+/* Spotlight on individual file rows when a mapped theme is selected. */
+.tax-tree-file.spotlight-file-affected {
+    background: rgba(88, 166, 255, 0.08);
+    color: var(--text, #c9d1d9);
+}
+.tax-tree-file.spotlight-file-affected:hover {
+    background: rgba(88, 166, 255, 0.18);
+}
+.tax-tree-file.spotlight-file-affected .tax-tree-name {
+    color: var(--blue, #58a6ff);
+}
+.tax-tree-file-pin {
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.85;
+    flex-shrink: 0;
+}
+.tax-tree-file.spotlight-file-dim {
+    opacity: 0.32;
+}
+.tax-tree-file.spotlight-file-dim:hover { opacity: 0.55; }
 .tax-tree-files {
     /* padding-left set inline based on depth so files align under their parent */
 }
@@ -3317,6 +3403,22 @@ th {
 }
 .dot-primary { color: var(--green, #3fb950); }
 .dot-secondary { color: var(--text-muted, #8b949e); }
+
+/* "Pourquoi ici ?" reasoning — best-effort reconstruction of why the
+   file ended up in its current folder. Visual cue varies by certainty:
+   consistent (green), secondary_theme (yellow), ancestor_match (blue),
+   no_theme_match (gray). */
+.tax-llm-reason {
+    padding: 4px 8px;
+    border-left: 2px solid var(--border, #30363d);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+}
+.tax-llm-reason-consistent     { border-left-color: var(--green, #3fb950); }
+.tax-llm-reason-secondary_theme { border-left-color: #d29922; }
+.tax-llm-reason-ancestor_match { border-left-color: var(--blue, #58a6ff); }
+.tax-llm-reason-no_theme_match { border-left-color: var(--text-muted, #8b949e); }
 
 /* Treemap section (bottom) — height fixed by grid row */
 .tax-treemap-section {

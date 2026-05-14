@@ -869,6 +869,62 @@ def get_file_metadata(profile: str, rel_path: str) -> dict:
             "used_theme": chosen["theme"],
             "label": "classify_by_theme (étape 1/4 du pipeline) — KeywordClassifier/Mapper non inclus",
         }
+
+    # Best-effort explanation of the file's CURRENT location. The pipeline
+    # doesn't log per-file decisions, so we reconstruct the most likely
+    # reason by cross-referencing the detected themes with today's mapping.
+    current_folder = out["file"]["current_folder"]
+    reason: dict = {"kind": "unknown", "via_theme": None, "explanation": ""}
+    if themes_out and current_folder:
+        # 1. Exact: does any theme map to the current folder?
+        exact_matches = [t for t in themes_out
+                         if t["mapped_to"] == current_folder]
+        # 2. Ancestor: does any theme map to an ancestor of current folder?
+        ancestor_matches = [t for t in themes_out
+                            if t["mapped_to"]
+                            and current_folder.startswith(t["mapped_to"] + "/")]
+        if exact_matches:
+            sorted_m = sorted(exact_matches,
+                              key=lambda r: -r["confidence"])
+            top = sorted_m[0]
+            top_overall = sorted(themes_out,
+                                 key=lambda r: -r["confidence"])[0]
+            if top["theme"] == top_overall["theme"]:
+                reason["kind"] = "consistent"
+                reason["explanation"] = (
+                    f"Cohérent : le pipeline confirmerait ce dossier via le "
+                    f"thème top « {top['theme']} » (conf {int(top['confidence']*100)}%)."
+                )
+            else:
+                reason["kind"] = "secondary_theme"
+                reason["explanation"] = (
+                    f"Probablement classé via le thème secondaire "
+                    f"« {top['theme']} » (conf {int(top['confidence']*100)}%) — "
+                    f"le thème top « {top_overall['theme']} » pointe ailleurs."
+                )
+            reason["via_theme"] = top["theme"]
+        elif ancestor_matches:
+            sorted_a = sorted(ancestor_matches,
+                              key=lambda r: -r["confidence"])
+            top = sorted_a[0]
+            reason["kind"] = "ancestor_match"
+            reason["via_theme"] = top["theme"]
+            reason["explanation"] = (
+                f"Le thème « {top['theme']} » pointe vers « {top['mapped_to']} » — "
+                f"le fichier est dans un sous-dossier, probablement raffiné par "
+                f"une étape ultérieure (KeywordClassifier ou tri manuel)."
+            )
+        else:
+            reason["kind"] = "no_theme_match"
+            reason["explanation"] = (
+                "Aucun thème détecté ne pointe vers ce dossier ni un ancêtre. "
+                "Classement probable par KeywordClassifier (étape 2), LLM Mapper "
+                "(étape 3) ou déplacement manuel."
+            )
+    elif not themes_out:
+        reason["kind"] = "no_themes"
+        reason["explanation"] = "Pas d'analyse LLM disponible pour ce fichier."
+    out["classification_reason"] = reason
     return out
 
 

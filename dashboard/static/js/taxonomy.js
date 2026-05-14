@@ -422,16 +422,93 @@
     container.innerHTML = '';
     // Precompute visible nodes when a search is active
     const filter = computeTreeSearchFilter();
-    container.appendChild(renderTreeNode(root, 0, filter));
+    // Compute spotlight from the currently expanded mapped theme. Search
+    // takes precedence (filter is exclusive); the spotlight only kicks in
+    // when no search is active.
+    const spotlight = filter ? null : computeThemeSpotlight();
+    container.appendChild(renderTreeNode(root, 0, filter, spotlight));
     const total = state.snapshot.stats.tree_nodes;
     const total_files = state.snapshot.stats.total_files;
+    const subEl = $('#tax-tree-sub');
+    subEl.innerHTML = '';
     if (filter) {
-      $('#tax-tree-sub').textContent =
-        `${filter.matchCount} match(es) sur ${total} dossiers`;
+      subEl.textContent = `${filter.matchCount} match(es) sur ${total} dossiers`;
+    } else if (spotlight) {
+      const tab = spotlight.mode === 'future' ? 'futur' : 'actuel';
+      subEl.appendChild(el('span', { class: 'tax-spotlight-sub' }, [
+        `🔦 ${spotlight.affectedCount} dossier(s) — ${tab} de « ${spotlight.theme} »`,
+      ]));
+      subEl.appendChild(el('button', {
+        class: 'tax-spotlight-exit',
+        title: 'Quitter le mode focus',
+        onclick: e => { e.stopPropagation(); clearSpotlight(); },
+      }, ['×']));
     } else {
-      $('#tax-tree-sub').textContent =
-        `${total} dossiers · ${total_files} fichiers`;
+      subEl.textContent = `${total} dossiers · ${total_files} fichiers`;
     }
+  }
+
+  function clearSpotlight() {
+    if (!state.selectedMappedTheme) return;
+    state.selectedMappedTheme = null;
+    renderMappedPanel();
+    renderTree();
+  }
+
+  /**
+   * Build a "spotlight" view of the tree highlighting folders affected by
+   * the currently expanded mapped theme. Returns null if no theme is
+   * selected or the data isn't loaded yet.
+   *
+   * Shape: {
+   *   theme: <clicked theme>,
+   *   mode: 'future' | 'current',
+   *   counts: Map<path, number>,      // count badge per folder
+   *   ancestors: Set<path>,            // kept fully visible
+   *   mappedFolder: <path | null>,     // target of the mapping (highlight)
+   *   affectedCount: <number>,
+   * }
+   */
+  function computeThemeSpotlight() {
+    const key = state.selectedMappedTheme;
+    if (!key) return null;
+    const data = state.mappedFilesByTheme.get(key);
+    if (!data || data.error) return null;
+    const mode = state.mappedFilesTab || 'future';
+    const rawCounts = (mode === 'future') ? data.by_folder_future
+                                          : data.by_folder_current;
+    if (!rawCounts) return null;
+
+    const counts = new Map();
+    const ancestors = new Set();
+    for (const [folder, n] of Object.entries(rawCounts)) {
+      // The backend uses "(racine)" for files at the target root — normalize
+      // to empty string here so it matches state.snapshot tree paths.
+      const path = (folder === '(racine)') ? '' : folder;
+      counts.set(path, n);
+      // Collect every ancestor so the path stays visible through dimming
+      let p = path;
+      while (p) {
+        const j = p.lastIndexOf('/');
+        p = j < 0 ? '' : p.substring(0, j);
+        ancestors.add(p);
+      }
+    }
+    // Build a per-file set for the row-level marking in the tree.
+    // Fetched with limit=500 → covers >99% of themes; rare cases above
+    // that just lose individual-file highlights but keep folder badges.
+    const items = (mode === 'future') ? (data.future || []) : (data.current || []);
+    const affectedFiles = new Set(items.map(it => it.rel_path));
+    return {
+      theme: data.theme || key,
+      mode,
+      counts,
+      ancestors,
+      mappedFolder: data.mapped_folder || null,
+      affectedCount: counts.size,
+      affectedFiles,
+      totalAffected: (mode === 'future') ? data.n_future : data.n_current,
+    };
   }
 
   /**
@@ -474,13 +551,14 @@
     return { visible, matchCount, autoExpand };
   }
 
-  function renderTreeNode(node, depth, filter) {
+  function renderTreeNode(node, depth, filter, spotlight) {
     const isRoot = !node.path;
-    // When a search filter is active, expand any node whose descendants match
-    // so the matches are visible without manual chevron clicks.
+    // When a search filter or spotlight is active, expand any ancestor of
+    // a match so the relevant rows are visible without manual chevrons.
     const isExpanded = isRoot
       || state.expanded.has(node.path)
-      || (filter && filter.autoExpand.has(node.path));
+      || (filter && filter.autoExpand.has(node.path))
+      || (spotlight && spotlight.ancestors.has(node.path));
     const hasChildren = node.children && node.children.length > 0;
     const hasFiles = (node.file_count || 0) > 0;
     const isExpandable = hasChildren || hasFiles;
@@ -490,10 +568,35 @@
     const isTouched = touched.has(node.path);
     const isOnPath = !isTouched && ancestors.has(node.path);
 
+    // Spotlight classification: a node is "concerned" if it has a count
+    // (= contains affected files directly), or it's the mapping's target
+    // folder. Ancestors are "on-path" — kept visible without highlight.
+    // Other nodes are dimmed.
+    let spotlightClass = '';
+    let spotlightCount = null;
+    if (spotlight) {
+      const count = spotlight.counts.get(node.path);
+      const isMappedTarget = spotlight.mappedFolder
+                             && node.path === spotlight.mappedFolder;
+      const isOnSpotlightPath = spotlight.ancestors.has(node.path);
+      if (count != null) {
+        spotlightClass = ' spotlight-affected';
+        spotlightCount = count;
+      } else if (isMappedTarget) {
+        spotlightClass = ' spotlight-target';
+      } else if (isOnSpotlightPath || isRoot) {
+        spotlightClass = ' spotlight-on-path';
+      } else {
+        spotlightClass = ' spotlight-dim';
+      }
+      if (isMappedTarget) spotlightClass += ' spotlight-target';
+    }
+
     let classes = 'tax-tree-row';
     if (isSelected) classes += ' selected';
     if (isTouched) classes += ' touched';
     else if (isOnPath) classes += ' on-path';
+    classes += spotlightClass;
     const row = el('div', {
       class: classes,
       style: `padding-left:${depth * 14 + 6}px;`,
@@ -530,6 +633,16 @@
 
     row.appendChild(el('span', { class: 'tax-tree-count', title: 'fichiers directs' },
       [String(node.file_count)]));
+
+    // Spotlight badge — shows the count of files concerned by the selected
+    // mapped theme that live directly in this folder (for the active tab).
+    if (spotlightCount != null) {
+      const tabLabel = spotlight.mode === 'future' ? 'futurs' : 'actuels';
+      row.appendChild(el('span', {
+        class: 'tax-tree-spotlight-badge',
+        title: `${spotlightCount} fichier(s) ${tabLabel} dans ce dossier`,
+      }, ['📍 ' + spotlightCount]));
+    }
 
     // Actions grouped — fixed area, hidden until hover, right-aligned end.
     const actions = el('span', { class: 'tax-tree-actions' });
@@ -574,7 +687,7 @@
         for (const c of node.children) {
           // Skip children that don't belong to the visible set when filter is active
           if (filter && !filter.visible.has(c.path)) continue;
-          childWrap.appendChild(renderTreeNode(c, depth + 1, filter));
+          childWrap.appendChild(renderTreeNode(c, depth + 1, filter, spotlight));
         }
       }
       // Don't lazy-load files when filtering — search is folder-only
@@ -609,15 +722,33 @@
         ['Erreur fichiers: ' + e.message])); return; }
       wrap.innerHTML = '';
     }
+    const spotlight = computeThemeSpotlight();
     for (const f of data.files) {
       const filePath = path ? path + '/' + f.name : f.name;
       const isSel = state.selection.type === 'file' && state.selection.path === filePath;
+      // Mark files belonging to the currently spotlighted theme so the
+      // user can scan from the folder badge down to the actual rows.
+      const isSpotlit = spotlight && spotlight.affectedFiles.has(filePath);
+      const isDimmed = spotlight && !isSpotlit;
+      let cls = 'tax-tree-file';
+      if (isSel) cls += ' selected';
+      if (isSpotlit) cls += ' spotlight-file-affected';
+      else if (isDimmed) cls += ' spotlight-file-dim';
+      const children = [
+        el('span', { class: 'tax-tree-icon' }, ['📄']),
+        el('span', { class: 'tax-tree-name' }, [f.name]),
+      ];
+      if (isSpotlit) {
+        children.push(el('span', {
+          class: 'tax-tree-file-pin',
+          title: `Concerné par « ${spotlight.theme} » (${spotlight.mode === 'future' ? 'futur' : 'actuel'})`,
+        }, ['📍']));
+      }
       wrap.appendChild(el('div', {
-        class: 'tax-tree-file' + (isSel ? ' selected' : ''),
+        class: cls,
         title: f.name,
         onclick: () => selectFile(filePath),
-      }, [el('span', { class: 'tax-tree-icon' }, ['📄']),
-          el('span', { class: 'tax-tree-name' }, [f.name])]));
+      }, children));
     }
     const shown = offset + data.files.length;
     if (shown < data.total) {
@@ -912,6 +1043,26 @@
     body.appendChild(el('div', null, [
       '📁 Actuel : ', el('code', null, [meta.file.current_folder || '(racine)']),
     ]));
+    // Best-effort explanation of WHY the file is in its current folder
+    // (the pipeline doesn't log per-file decisions; this is reconstructed
+    // by matching the detected themes against the current mapping).
+    if (meta.classification_reason && meta.classification_reason.kind !== 'no_themes') {
+      const r = meta.classification_reason;
+      const iconByKind = {
+        consistent: '✅',
+        secondary_theme: '🔄',
+        ancestor_match: '🌿',
+        no_theme_match: '❓',
+      };
+      const icon = iconByKind[r.kind] || 'ℹ️';
+      body.appendChild(el('div', {
+        class: 'tax-llm-reason tax-llm-reason-' + r.kind,
+        style: 'margin-top:4px;',
+      }, [
+        icon + ' Pourquoi ici ? ',
+        el('span', { class: 'muted small' }, [r.explanation]),
+      ]));
+    }
     if (meta.prediction) {
       body.appendChild(el('div', null, [
         '🎯 Prédiction theme-only : ',
@@ -998,32 +1149,42 @@
     const sub = $('#tax-mapped-sub');
     const list = $('#tax-mapped-list');
     list.innerHTML = '';
-    if (state.selection.type === null) {
-      sub.textContent = 'Sélectionne un dossier ou un fichier';
-      state.selectedMappedTheme = null;
-      return;
+
+    // Path resolution — two modes:
+    //   1. Spotlight active → freeze the panel on the spotlit theme's
+    //      mapped folder (preserves the visual link to the tree spotlight).
+    //   2. No spotlight → follow the current selection (file → its parent,
+    //      folder → itself).
+    let path = null;
+    let frozenBySpotlight = false;
+    if (state.selectedMappedTheme) {
+      const data = state.mappedFilesByTheme.get(state.selectedMappedTheme);
+      if (data && !data.error && data.mapped_folder != null) {
+        path = data.mapped_folder;
+        frozenBySpotlight = true;
+      }
     }
-    // For a file selection, show the mappings of the folder that DIRECTLY
-    // contains it (not getActiveFolder() — that returns the grandparent,
-    // which is the right context for the treemap but not for the mapped
-    // themes panel).
-    const path = state.selection.type === 'file'
-      ? dirname(state.selection.path)
-      : state.selection.path;
+    if (path === null) {
+      if (state.selection.type === null) {
+        sub.textContent = 'Sélectionne un dossier ou un fichier';
+        return;
+      }
+      path = state.selection.type === 'file'
+        ? dirname(state.selection.path)
+        : state.selection.path;
+    }
     const mappings = state.snapshot.mapping_by_folder[path] || [];
-    sub.textContent = `${path || 'racine'} · ${mappings.length} clé(s)`;
+    const suffix = frozenBySpotlight ? ' (focus thème)' : '';
+    sub.textContent = `${path || 'racine'} · ${mappings.length} clé(s)${suffix}`;
     if (mappings.length === 0) {
       list.appendChild(el('li', { class: 'muted small' },
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
-      state.selectedMappedTheme = null;
       return;
     }
-    // If the currently selected theme isn't in the visible mappings,
-    // drop the selection (avoids stale highlight after a context switch).
-    if (state.selectedMappedTheme
-        && !mappings.some(m => m.toLowerCase() === state.selectedMappedTheme)) {
-      state.selectedMappedTheme = null;
-    }
+    // selectedMappedTheme is the SPOTLIGHT state — independent from the
+    // current selection. We keep it alive even when navigating to a folder
+    // that doesn't contain the spotlit theme. The user exits via the
+    // 🔦× button in the tree subtitle.
     const touched = touchedThemesSet();
     for (const t of mappings) {
       const editBtn = el('button', {
@@ -1061,16 +1222,21 @@
       if (!state.mappedFilesByTheme.has(key)) {
         withBusy('Recherche des fichiers concernés…', async () => {
           try {
-            const data = await fetchThemeFiles(theme, 50);
+            // Fetch with a high limit so the spotlight can mark individual
+            // files in the tree (the inline expand still only displays the
+            // first ~50). 500 covers >99% of themes in practice.
+            const data = await fetchThemeFiles(theme, 500);
             state.mappedFilesByTheme.set(key, data);
           } catch (err) {
             state.mappedFilesByTheme.set(key, { error: err.message });
           }
           renderMappedPanel();
+          renderTree();   // spotlight depends on the just-fetched data
         });
       }
     }
     renderMappedPanel();
+    renderTree();         // refresh spotlight on selection toggle
   }
 
   function renderMappedFilesExpand(theme) {
@@ -1089,12 +1255,20 @@
     const tabs = el('div', { class: 'tax-mapped-tabs' }, [
       el('button', {
         class: 'tax-mapped-tab' + (tab === 'future' ? ' active' : ''),
-        onclick: e => { e.stopPropagation(); state.mappedFilesTab = 'future'; renderMappedPanel(); },
+        onclick: e => {
+          e.stopPropagation();
+          state.mappedFilesTab = 'future';
+          renderMappedPanel(); renderTree();
+        },
         title: 'Fichiers ayant ce thème dans le LLM cache (impact au prochain reclassify)',
       }, [`Impact futur (${data.n_future})`]),
       el('button', {
         class: 'tax-mapped-tab' + (tab === 'current' ? ' active' : ''),
-        onclick: e => { e.stopPropagation(); state.mappedFilesTab = 'current'; renderMappedPanel(); },
+        onclick: e => {
+          e.stopPropagation();
+          state.mappedFilesTab = 'current';
+          renderMappedPanel(); renderTree();
+        },
         title: 'Fichiers actuellement présents dans le dossier mappé',
       }, [`Actuellement (${data.n_current})`]),
     ]);
@@ -1808,6 +1982,7 @@
       state.selection = { type: null, path: '' };
       state.expanded = new Set();
       state.filesByPath = new Map();
+      state.selectedMappedTheme = null;   // spotlight is per-profile
       await loadAndRender();
     }));
     $('#tax-refresh').addEventListener('click', () => withBusy('Rechargement…', async () => {
