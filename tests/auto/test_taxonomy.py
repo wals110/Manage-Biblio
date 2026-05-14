@@ -821,5 +821,136 @@ class TestFullPipeline(TaxonomyTestBase):
         self.assertEqual(r["prediction"]["dest"], "01-SCIENCES/PHYSIQUE")
 
 
+# ─── 8. Tests Phase 3 B — rename folder ──────────────────────────────────
+
+
+class TestRenameFolder(TaxonomyTestBase):
+
+    def test_rename_happy_cascade(self):
+        # Avant : tree a /01-SCIENCES/PHYSIQUE et sa hiérarchie
+        # Mapping : physics → /01-SCIENCES/PHYSIQUE
+        r = taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS"
+        )
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["old_path"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(r["new_path"], "01-SCIENCES/PHYS")
+        # 1 entrée tree (PHYSIQUE) — pas de descendants dans la fixture de base
+        self.assertEqual(r["n_tree_entries_renamed"], 1)
+        # 2 mappings (physics + quantum mechanics)
+        self.assertEqual(r["n_mappings_updated"], 2)
+        self.assertTrue(r["fs_renamed"])
+
+        # Vérifie tree.yaml
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("01-SCIENCES/PHYS", tree["folders"])
+        self.assertNotIn("01-SCIENCES/PHYSIQUE", tree["folders"])
+        # Vérifie mapping
+        mapping = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(mapping["physics"], "01-SCIENCES/PHYS")
+        self.assertEqual(mapping["quantum mechanics"], "01-SCIENCES/PHYS")
+        # Mappings vers d'autres folders intacts
+        self.assertEqual(mapping["algebra"], "01-SCIENCES/MATHEMATIQUES")
+        # FS
+        self.assertTrue((self.target / "01-SCIENCES/PHYS").is_dir())
+        self.assertFalse((self.target / "01-SCIENCES/PHYSIQUE").exists())
+
+    def test_rename_cascade_descendants(self):
+        """Si le dossier renommé a des sous-dossiers, ils sont cascadés."""
+        # Crée un descendant
+        taxonomy.create_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "Mecanique"
+        )
+        taxonomy.reset_cache()
+        r = taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS"
+        )
+        self.assertEqual(r["n_tree_entries_renamed"], 2)  # PHYSIQUE + Mecanique
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("01-SCIENCES/PHYS/Mecanique", tree["folders"])
+
+    def test_rename_unknown_path(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.rename_folder(self.profile_name, "99-NOPE", "X")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_rename_target_exists(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            # PHYSIQUE existe et MATHEMATIQUES aussi → conflit
+            taxonomy.rename_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE", "MATHEMATIQUES"
+            )
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_rename_invalid_name(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.rename_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE", "foo/bar"
+            )
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_rename_same_name_noop(self):
+        r = taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYSIQUE"
+        )
+        self.assertTrue(r.get("unchanged"))
+
+    def test_rename_respects_lock(self):
+        (self.profile_dir / ".cache" / "taxonomy.lock").write_text("locked")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.rename_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS"
+            )
+        self.assertEqual(ctx.exception.status, 423)
+
+    def test_rename_then_undo_restores_state(self):
+        """Le rename produit 2 backups (tree + mapping). Undo restore mapping
+        d'abord (le plus récent par timestamp), puis le tree au 2e undo."""
+        taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS"
+        )
+        # Undo le mapping
+        taxonomy.restore_last_backup(self.profile_name)
+        mapping = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        # Mapping restauré (pointe à nouveau vers PHYSIQUE)
+        self.assertEqual(mapping["physics"], "01-SCIENCES/PHYSIQUE")
+        # Mais tree.yaml a toujours PHYS (n'a pas encore été undo)
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("01-SCIENCES/PHYS", tree["folders"])
+        # Second undo : restaure tree.yaml — note: l'undo ne renomme PAS le fs
+        # car le fs new_path est non-vide (il existe) ; on accepte que ce soit
+        # un cas "partiel" qui requiert manual cleanup
+        taxonomy.restore_last_backup(self.profile_name)
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("01-SCIENCES/PHYSIQUE", tree["folders"])
+
+
+class TestRenameFolderEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_api_rename_happy(self):
+        r = self.client.patch("/api/taxonomy/folder", json={
+            "profile": self.profile_name,
+            "path": "01-SCIENCES/PHYSIQUE",
+            "new_name": "PHYS",
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["new_path"], "01-SCIENCES/PHYS")
+
+    def test_api_rename_unknown_path_400(self):
+        r = self.client.patch("/api/taxonomy/folder", json={
+            "profile": self.profile_name,
+            "path": "DOES-NOT-EXIST",
+            "new_name": "X",
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

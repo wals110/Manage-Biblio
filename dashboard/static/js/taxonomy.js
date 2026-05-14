@@ -213,6 +213,16 @@
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
     return body;
   }
+  async function patchRenameFolder(path, new_name) {
+    const r = await fetch('/api/taxonomy/folder', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, path, new_name }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
   async function fetchPreview(action, theme, folder) {
     const r = await fetch('/api/taxonomy/mapping/preview', {
       method: 'POST',
@@ -297,6 +307,16 @@
       title: 'Créer un sous-dossier',
       onclick: e => { e.stopPropagation(); openCreateFolderPopover(node.path, e.currentTarget); },
     }, ['+']));
+    if (!isRoot) {
+      row.appendChild(el('button', {
+        class: 'tax-tree-add-btn tax-tree-rename-btn',
+        title: 'Renommer ce dossier',
+        onclick: e => {
+          e.stopPropagation();
+          openRenamePopover(node.path, node.name, e.currentTarget);
+        },
+      }, ['✎']));
+    }
 
     const wrap = el('div', { class: 'tax-tree-node' }, [row]);
 
@@ -980,8 +1000,13 @@
   function openCreateFolderPopover(parent, anchorEl) {
     const pop = $('#tax-newfolder-popover');
     const input = $('#tax-newfolder-input');
+    pop.querySelector('.tax-map-popover-title').textContent = 'Créer un sous-dossier';
+    pop.querySelector('.tax-map-popover-theme').innerHTML =
+      `<span class="muted">dans</span> <code id="tax-newfolder-parent"></code>`;
     $('#tax-newfolder-parent').textContent = parent ? parent : '(racine)';
+    $('#tax-newfolder-confirm').textContent = 'Créer';
     input.value = '';
+    input.placeholder = 'Nom du nouveau dossier';
     const rect = anchorEl.getBoundingClientRect();
     const popW = 340;
     pop.style.display = 'block';
@@ -989,7 +1014,30 @@
                               Math.max(12, rect.right - popW)) + 'px';
     pop.style.top  = (rect.bottom + 8) + 'px';
     pop.dataset.parent = parent;
+    pop.dataset.mode = 'create';
+    pop.dataset.path = '';
     setTimeout(() => input.focus(), 50);
+  }
+  function openRenamePopover(path, currentName, anchorEl) {
+    const pop = $('#tax-newfolder-popover');
+    const input = $('#tax-newfolder-input');
+    pop.querySelector('.tax-map-popover-title').textContent = 'Renommer ce dossier';
+    pop.querySelector('.tax-map-popover-theme').innerHTML =
+      `<span class="muted">renommer</span> <code id="tax-newfolder-parent"></code>`;
+    $('#tax-newfolder-parent').textContent = path;
+    $('#tax-newfolder-confirm').textContent = 'Renommer';
+    input.value = currentName;
+    input.placeholder = 'Nouveau nom';
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = 340;
+    pop.style.display = 'block';
+    pop.style.left = Math.min(window.innerWidth - popW - 12,
+                              Math.max(12, rect.right - popW)) + 'px';
+    pop.style.top  = (rect.bottom + 8) + 'px';
+    pop.dataset.mode = 'rename';
+    pop.dataset.path = path;
+    pop.dataset.parent = '';
+    setTimeout(() => { input.focus(); input.select(); }, 50);
   }
   function closeCreateFolderPopover() {
     $('#tax-newfolder-popover').style.display = 'none';
@@ -998,13 +1046,51 @@
     const pop = $('#tax-newfolder-popover');
     const name = $('#tax-newfolder-input').value.trim();
     if (!name) return;
+    const mode = pop.dataset.mode || 'create';
+    if (mode === 'rename') {
+      await doRenameFolder(pop.dataset.path, name);
+      return;
+    }
     const parent = pop.dataset.parent || '';
     closeCreateFolderPopover();
     try {
       const r = await postCreateFolder(parent, name);
       showToast(`✓ Dossier créé : ${r.path}`, 'success');
       state.snapshot = await fetchSnapshot();
-      state.expanded.add(parent);  // expand parent to reveal new child
+      state.expanded.add(parent);
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+  async function doRenameFolder(oldPath, newName) {
+    closeCreateFolderPopover();
+    try {
+      const r = await patchRenameFolder(oldPath, newName);
+      if (r.unchanged) {
+        showToast('Nom inchangé', 'info');
+        return;
+      }
+      showToast(
+        `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+        'success',
+      );
+      // Update expanded set: replace old prefix with new
+      const newExpanded = new Set();
+      for (const p of state.expanded) {
+        if (p === oldPath) newExpanded.add(r.new_path);
+        else if (p.startsWith(oldPath + '/')) newExpanded.add(r.new_path + p.slice(oldPath.length));
+        else newExpanded.add(p);
+      }
+      state.expanded = newExpanded;
+      // Update selection if it was inside the renamed subtree
+      if (state.selection.type) {
+        if (state.selection.path === oldPath || state.selection.path.startsWith(oldPath + '/')) {
+          state.selection.path = r.new_path + state.selection.path.slice(oldPath.length);
+        }
+      }
+      state.filesByPath = new Map();   // file lists are keyed by path
+      state.snapshot = await fetchSnapshot();
       renderAll();
     } catch (err) {
       showToast('✗ ' + err.message, 'error');

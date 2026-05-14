@@ -1681,6 +1681,22 @@ async def taxonomy_folder_create_api(request: Request):
     return JSONResponse(result)
 
 
+@app.patch("/api/taxonomy/folder")
+async def taxonomy_folder_rename_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    old_path = body.get("path") or ""
+    new_name = body.get("new_name") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.rename_folder(profile, old_path, new_name)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
 @app.post("/api/taxonomy/mapping/preview")
 async def taxonomy_mapping_preview_api(request: Request):
     """Dry-run: simulate the effect of an add/update/delete on the cache

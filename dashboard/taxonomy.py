@@ -1118,6 +1118,133 @@ def create_folder(profile: str, parent: str, name: str) -> dict:
         }
 
 
+def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
+    """Rename a folder (change its basename, parent unchanged).
+
+    Cascades the rename through three sources of truth:
+      - tree.yaml : the entry + every descendant entry (prefix replace)
+      - theme_mapping.yaml : every mapping value that points to the old
+        path or any of its descendants
+      - filesystem : os.rename() on the actual directory
+
+    Refuses when:
+      - old_path is empty or doesn't exist in tree.yaml (400)
+      - new_name is invalid (slash, '..', empty) (400)
+      - new_path already exists in tree.yaml (409)
+      - new filesystem path already exists (409)
+      - taxonomy.lock present (423)
+
+    Returns dict with: ok, old_path, new_path, n_tree_entries_renamed,
+    n_mappings_updated, fs_renamed (bool), backups.
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        old_path = (old_path or "").strip().strip("/")
+        if not old_path:
+            raise TaxonomyError("old_path vide", 400)
+        new_name = _validate_folder_name(new_name)
+        if "/" in new_name:
+            raise TaxonomyError("le nouveau nom ne peut pas contenir /", 400)
+
+        folders = _load_tree(profile)
+        if old_path not in folders:
+            raise TaxonomyError(f"dossier inexistant dans tree.yaml : {old_path}", 400)
+
+        parent = "/".join(old_path.split("/")[:-1])
+        new_path = f"{parent}/{new_name}" if parent else new_name
+        if old_path == new_path:
+            return {"ok": True, "unchanged": True, "old_path": old_path, "new_path": new_path}
+        if new_path in folders:
+            raise TaxonomyError(
+                f"le dossier '{new_path}' existe déjà dans tree.yaml", 409,
+            )
+
+        target = _profile_target_path(profile)
+        if target is None:
+            raise TaxonomyError("profil sans target configuré", 400)
+        old_fs = target / old_path
+        new_fs = target / new_path
+        if new_fs.exists():
+            raise TaxonomyError(
+                f"chemin déjà présent sur le disque : {new_fs}", 409,
+            )
+
+        # Compute new tree (rename old_path and any descendant prefix)
+        prefix = old_path + "/"
+        new_folders: list[str] = []
+        n_renamed = 0
+        for f in folders:
+            if f == old_path:
+                new_folders.append(new_path)
+                n_renamed += 1
+            elif f.startswith(prefix):
+                new_folders.append(new_path + "/" + f[len(prefix):])
+                n_renamed += 1
+            else:
+                new_folders.append(f)
+
+        # Compute new mapping (cascade prefix on values)
+        mapping = _load_mapping(profile)
+        new_mapping: dict[str, str] = {}
+        n_mappings_updated = 0
+        for theme, folder in mapping.items():
+            if folder == old_path:
+                new_mapping[theme] = new_path
+                n_mappings_updated += 1
+            elif folder.startswith(prefix):
+                new_mapping[theme] = new_path + "/" + folder[len(prefix):]
+                n_mappings_updated += 1
+            else:
+                new_mapping[theme] = folder
+
+        # Backups before any write
+        tree_backup = _backup_tree(profile)
+        mapping_backup = _backup_mapping(profile) if n_mappings_updated > 0 else None
+
+        # Filesystem rename FIRST — if this fails we abort cleanly without
+        # touching the YAMLs. If it succeeds, we then write YAMLs and roll
+        # back the FS rename if a YAML write blows up.
+        fs_renamed = False
+        if old_fs.exists():
+            try:
+                old_fs.rename(new_fs)
+                fs_renamed = True
+            except OSError as exc:
+                raise TaxonomyError(f"erreur rename filesystem : {exc}", 500) from exc
+
+        try:
+            _write_tree(profile, new_folders)
+            if n_mappings_updated > 0:
+                _write_mapping(profile, new_mapping)
+        except Exception:
+            # Best-effort rollback of the FS rename
+            if fs_renamed:
+                try:
+                    new_fs.rename(old_fs)
+                except OSError:
+                    pass
+            raise
+
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "old_path": old_path,
+            "new_path": new_path,
+            "n_tree_entries_renamed": n_renamed,
+            "n_mappings_updated": n_mappings_updated,
+            "fs_renamed": fs_renamed,
+            "tree_backup": (
+                str(tree_backup.relative_to(data.get_project_root()))
+                if tree_backup else None
+            ),
+            "mapping_backup": (
+                str(mapping_backup.relative_to(data.get_project_root()))
+                if mapping_backup else None
+            ),
+        }
+
+
 def _backup_timestamp(path: Path) -> str:
     """Extract the timestamp portion of a backup filename.
 
