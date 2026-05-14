@@ -903,6 +903,41 @@ class TestRenameFolder(TaxonomyTestBase):
             )
         self.assertEqual(ctx.exception.status, 423)
 
+    def test_undo_rename_reverses_filesystem(self):
+        """Le 2e undo après un rename doit aussi renommer le FS en sens
+        inverse pour que tree.yaml et le disque restent cohérents."""
+        taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS-NEW"
+        )
+        self.assertTrue((self.target / "01-SCIENCES/PHYS-NEW").is_dir())
+        self.assertFalse((self.target / "01-SCIENCES/PHYSIQUE").exists())
+        # Undo mapping
+        taxonomy.restore_last_backup(self.profile_name)
+        # Undo tree → doit aussi renommer FS PHYS-NEW → PHYSIQUE
+        r = taxonomy.restore_last_backup(self.profile_name)
+        self.assertEqual(r["type"], "tree")
+        self.assertEqual(len(r["fs_renamed"]), 1)
+        self.assertEqual(r["fs_renamed"][0]["from"], "01-SCIENCES/PHYS-NEW")
+        self.assertEqual(r["fs_renamed"][0]["to"], "01-SCIENCES/PHYSIQUE")
+        # FS reconcilié avec tree.yaml
+        self.assertTrue((self.target / "01-SCIENCES/PHYSIQUE").is_dir())
+        self.assertFalse((self.target / "01-SCIENCES/PHYS-NEW").exists())
+
+    def test_undo_rename_preserves_files_inside(self):
+        """Le FS rename inverse préserve les fichiers à l'intérieur du dossier."""
+        # Ajouter un fichier dans PHYSIQUE
+        (self.target / "01-SCIENCES/PHYSIQUE/important.pdf").write_bytes(b"data")
+        taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS2"
+        )
+        # Vérifier que le fichier a suivi le rename
+        self.assertTrue((self.target / "01-SCIENCES/PHYS2/important.pdf").is_file())
+        # Undo mapping + tree
+        taxonomy.restore_last_backup(self.profile_name)
+        taxonomy.restore_last_backup(self.profile_name)
+        # Fichier doit être de retour avec PHYSIQUE
+        self.assertTrue((self.target / "01-SCIENCES/PHYSIQUE/important.pdf").is_file())
+
     def test_rename_then_undo_restores_state(self):
         """Le rename produit 2 backups (tree + mapping). Undo restore mapping
         d'abord (le plus récent par timestamp), puis le tree au 2e undo."""

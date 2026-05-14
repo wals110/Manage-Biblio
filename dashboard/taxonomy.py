@@ -1258,8 +1258,17 @@ def _backup_timestamp(path: Path) -> str:
 
 
 def _restore_tree_from_backup(profile: str, backup_path: Path) -> dict:
-    """Restore tree.yaml from backup_path, deleting filesystem folders
-    that were added since (only if they are empty on disk)."""
+    """Restore tree.yaml from backup_path, with filesystem reconciliation.
+
+    Three classes of differences between current and backup get handled:
+      1. Renamed folders (path-in-backup absent from current AND a same-
+         parent path-in-current absent from backup) → filesystem renamed
+         in reverse so tree.yaml and disk stay coherent.
+      2. Folders only in current (added since backup) AND now empty on
+         disk → rmdir.
+      3. Folders only in current but non-empty → left as orphan on disk,
+         reported in `kept_non_empty` for the caller.
+    """
     backup_content = backup_path.read_text(encoding="utf-8")
     try:
         backup_data = yaml.safe_load(backup_content) or {}
@@ -1267,22 +1276,59 @@ def _restore_tree_from_backup(profile: str, backup_path: Path) -> dict:
         backup_data = {}
     backup_folders = set(backup_data.get("folders", []) or [])
     current_folders = set(_load_tree(profile))
-    # Folders added since the backup — try to remove them from disk.
-    added = current_folders - backup_folders
+
+    added = current_folders - backup_folders        # in current, not backup
+    removed = backup_folders - current_folders      # in backup, not current
     target = _profile_target_path(profile)
+
     deleted: list[str] = []
     kept_non_empty: list[str] = []
+    fs_renamed: list[dict] = []
+
     if target is not None:
-        # Reverse-sort to delete deepest first (in case of nested adds)
-        for folder in sorted(added, reverse=True):
+        # 1) Detect rename pairs (process shallowest paths first so a
+        #    top-level rename absorbs all its descendants).
+        added_remaining = set(added)
+        removed_remaining = set(removed)
+        for old in sorted(removed_remaining, key=lambda p: (p.count("/"), p)):
+            if old not in removed_remaining:
+                continue
+            parent = "/".join(old.split("/")[:-1])
+            candidates = [
+                a for a in added_remaining
+                if "/".join(a.split("/")[:-1]) == parent
+            ]
+            if len(candidates) != 1:
+                continue  # ambiguous or no match — not a rename pair
+            new = candidates[0]
+            old_fs = target / old
+            new_fs = target / new
+            # Only perform the FS rename if it makes sense
+            if new_fs.exists() and not old_fs.exists():
+                try:
+                    new_fs.rename(old_fs)
+                    fs_renamed.append({"from": new, "to": old})
+                except OSError:
+                    pass  # leave it, will surface as orphan
+            # Remove this pair + descendants from both sets
+            old_prefix = old + "/"
+            new_prefix = new + "/"
+            removed_remaining -= {f for f in removed_remaining
+                                  if f == old or f.startswith(old_prefix)}
+            added_remaining -= {f for f in added_remaining
+                                if f == new or f.startswith(new_prefix)}
+
+        # 2-3) Remaining `added_remaining` are real adds — rmdir if empty
+        for folder in sorted(added_remaining, reverse=True):
             fs = target / folder
             if not fs.exists():
                 continue
             try:
-                fs.rmdir()  # rmdir refuses non-empty dirs (safe)
+                fs.rmdir()
                 deleted.append(folder)
             except OSError:
                 kept_non_empty.append(folder)
+
     # Restore tree.yaml content
     _tree_path(profile).write_text(backup_content, encoding="utf-8")
     return {
@@ -1290,6 +1336,7 @@ def _restore_tree_from_backup(profile: str, backup_path: Path) -> dict:
         "restored_from": backup_path.name,
         "deleted_folders": deleted,
         "kept_non_empty": kept_non_empty,
+        "fs_renamed": fs_renamed,
     }
 
 
