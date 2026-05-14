@@ -53,6 +53,10 @@
     // 'linear' = proportion réelle.
     treemapScale: 'sqrt',
 
+    // Tree search — when non-empty, the tree is filtered to nodes whose
+    // path contains the query (case-insensitive). Parent ancestors of
+    // matching nodes are kept visible to preserve hierarchy.
+    treeSearch: '',
   };
 
   // Touched folders / themes — derived from snapshot.stats (which diffs
@@ -261,14 +265,67 @@
     const root = state.snapshot.tree;
     const container = $('#tax-tree');
     container.innerHTML = '';
-    container.appendChild(renderTreeNode(root, 0));
-    $('#tax-tree-sub').textContent =
-      `${state.snapshot.stats.tree_nodes} dossiers · ${state.snapshot.stats.total_files} fichiers`;
+    // Precompute visible nodes when a search is active
+    const filter = computeTreeSearchFilter();
+    container.appendChild(renderTreeNode(root, 0, filter));
+    const total = state.snapshot.stats.tree_nodes;
+    const total_files = state.snapshot.stats.total_files;
+    if (filter) {
+      $('#tax-tree-sub').textContent =
+        `${filter.matchCount} match(es) sur ${total} dossiers`;
+    } else {
+      $('#tax-tree-sub').textContent =
+        `${total} dossiers · ${total_files} fichiers`;
+    }
   }
 
-  function renderTreeNode(node, depth) {
+  /**
+   * Walk the tree and compute the set of paths to keep visible when the
+   * tree search box is non-empty. A node is kept if:
+   *   - its own path matches the query, OR
+   *   - one of its descendants matches (so we can drill down to a match)
+   *
+   * Returns null when no search is active (skip filtering).
+   * Returns { visible: Set<path>, matchCount, autoExpand: Set<path> }
+   * otherwise. autoExpand contains paths to force-expand so matches are
+   * visible without the user having to click chevrons.
+   */
+  function computeTreeSearchFilter() {
+    const q = (state.treeSearch || '').trim().toLowerCase();
+    if (!q) return null;
+    const visible = new Set();
+    const autoExpand = new Set();
+    let matchCount = 0;
+    function walk(node) {
+      // A node "matches" if its own path (or name) contains the query
+      const path = (node.path || '').toLowerCase();
+      const name = (node.name || '').toLowerCase();
+      const selfMatches = path.includes(q) || name.includes(q);
+      let descendantMatches = false;
+      if (node.children) {
+        for (const c of node.children) {
+          if (walk(c)) descendantMatches = true;
+        }
+      }
+      if (selfMatches || descendantMatches) {
+        visible.add(node.path);
+        if (descendantMatches) autoExpand.add(node.path);
+        if (selfMatches) matchCount++;
+        return true;
+      }
+      return false;
+    }
+    walk(state.snapshot.tree);
+    return { visible, matchCount, autoExpand };
+  }
+
+  function renderTreeNode(node, depth, filter) {
     const isRoot = !node.path;
-    const isExpanded = state.expanded.has(node.path) || isRoot;
+    // When a search filter is active, expand any node whose descendants match
+    // so the matches are visible without manual chevron clicks.
+    const isExpanded = isRoot
+      || state.expanded.has(node.path)
+      || (filter && filter.autoExpand.has(node.path));
     const hasChildren = node.children && node.children.length > 0;
     const hasFiles = (node.file_count || 0) > 0;
     const isExpandable = hasChildren || hasFiles;
@@ -340,8 +397,15 @@
 
     if (isExpanded && isExpandable) {
       const childWrap = el('div', { class: 'tax-tree-children' });
-      if (hasChildren) for (const c of node.children) childWrap.appendChild(renderTreeNode(c, depth + 1));
-      if (hasFiles) {
+      if (hasChildren) {
+        for (const c of node.children) {
+          // Skip children that don't belong to the visible set when filter is active
+          if (filter && !filter.visible.has(c.path)) continue;
+          childWrap.appendChild(renderTreeNode(c, depth + 1, filter));
+        }
+      }
+      // Don't lazy-load files when filtering — search is folder-only
+      if (hasFiles && !filter) {
         const filesWrap = el('div', {
           class: 'tax-tree-files',
           style: `padding-left:${(depth + 1) * 14 + 6}px;`,
@@ -1102,15 +1166,37 @@
     $('#tax-movefolder-popover').style.display = 'none';
   }
   function renderMoveSuggestions(query, sourcePath) {
+    const MAX = 30;
     const wrap = $('#tax-movefolder-suggestions');
     wrap.innerHTML = '';
     const folders = (state.snapshot && state.snapshot.folders) || [];
-    const q = (query || '').toLowerCase();
+    const q = (query || '').toLowerCase().trim();
     // Forbid moving INTO the source itself or any descendant
     const forbidden = (p) => p === sourcePath || p.startsWith(sourcePath + '/');
-    const matches = folders
-      .filter(f => !forbidden(f) && (!q || f.toLowerCase().includes(q)))
-      .slice(0, 8);
+
+    // Score each candidate. Score = 0 → filtered out. Forbidden entries
+    // keep their score but get a flag so we can render them grayed out.
+    //   3 = basename starts with q
+    //   2 = basename contains q
+    //   1 = path contains q (or no query)
+    const scored = [];
+    for (const f of folders) {
+      const basename = (f.split('/').pop() || '').toLowerCase();
+      const path = f.toLowerCase();
+      let score = 0;
+      if (!q) score = 1;
+      else if (basename.startsWith(q)) score = 3;
+      else if (basename.includes(q)) score = 2;
+      else if (path.includes(q)) score = 1;
+      if (score === 0) continue;
+      scored.push({ score, path: f, forbidden: forbidden(f) });
+    }
+    // Sort: allowed first (selectable on top), then score, then path
+    scored.sort((a, b) => {
+      if (a.forbidden !== b.forbidden) return a.forbidden ? 1 : -1;
+      return (b.score - a.score) || a.path.localeCompare(b.path);
+    });
+
     // Always offer "racine" as a possibility (empty parent)
     if (!q || 'racine'.includes(q) || '(racine)'.includes(q)) {
       wrap.appendChild(el('div', {
@@ -1118,14 +1204,30 @@
         onclick: () => { $('#tax-movefolder-input').value = ''; confirmMovePopover(); },
       }, ['(racine — top-level)']));
     }
-    for (const f of matches) {
-      wrap.appendChild(el('div', {
-        class: 'tax-map-suggestion',
-        onclick: () => { $('#tax-movefolder-input').value = f; },
-      }, [f]));
+    const shown = scored.slice(0, MAX);
+    for (const s of shown) {
+      if (s.forbidden) {
+        // Non-clickable, grayed-out entry with explicit tooltip
+        wrap.appendChild(el('div', {
+          class: 'tax-map-suggestion forbidden',
+          title: `Exclu : ce dossier est à l'intérieur de "${sourcePath}" (déplacement = cycle)`,
+        }, [
+          el('span', null, [s.path]),
+          el('span', { class: 'tax-map-suggestion-badge' }, ['cycle']),
+        ]));
+      } else {
+        wrap.appendChild(el('div', {
+          class: 'tax-map-suggestion',
+          onclick: () => { $('#tax-movefolder-input').value = s.path; },
+        }, [s.path]));
+      }
     }
-    if (!matches.length && q) {
-      wrap.appendChild(el('div', { class: 'muted small' }, ['Aucun dossier ne correspond']));
+    if (q && scored.length === 0) {
+      wrap.appendChild(el('div', { class: 'muted small', style: 'padding:6px 10px;' },
+        ['Aucun dossier ne correspond']));
+    } else if (scored.length > MAX) {
+      wrap.appendChild(el('div', { class: 'muted small', style: 'padding:6px 10px;' },
+        [`+${scored.length - MAX} autres résultats — affine la recherche`]));
     }
   }
   async function confirmMovePopover() {
@@ -1267,6 +1369,38 @@
     });
     $('#tax-llm-orph-only').addEventListener('change', e => {
       state.orphOnly = e.target.checked; renderLLMPanel();
+    });
+    // Tree search box — filters the tree to nodes matching the query
+    const treeSearchInput = $('#tax-tree-search');
+    const treeSearchWrap = treeSearchInput.parentElement;
+    const treeSearchClear = $('#tax-tree-search-clear');
+    let _treeSearchTimer = null;
+    function _updateTreeSearchClearVisibility() {
+      treeSearchWrap.classList.toggle('has-value', treeSearchInput.value.length > 0);
+    }
+    treeSearchInput.addEventListener('input', e => {
+      clearTimeout(_treeSearchTimer);
+      _updateTreeSearchClearVisibility();
+      const val = e.target.value;
+      _treeSearchTimer = setTimeout(() => {
+        state.treeSearch = val;
+        renderTree();
+      }, 120);
+    });
+    treeSearchInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.target.value = '';
+        state.treeSearch = '';
+        _updateTreeSearchClearVisibility();
+        renderTree();
+      }
+    });
+    treeSearchClear.addEventListener('click', () => {
+      treeSearchInput.value = '';
+      state.treeSearch = '';
+      _updateTreeSearchClearVisibility();
+      renderTree();
+      treeSearchInput.focus();
     });
     // Treemap scale toggle (Lissé / Réel)
     document.querySelectorAll('#tax-treemap-scale button').forEach(btn => {
