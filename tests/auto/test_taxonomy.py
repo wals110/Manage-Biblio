@@ -987,5 +987,110 @@ class TestRenameFolderEndpoint(TaxonomyTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+# ─── 9. Tests Phase 3 C — move folder ────────────────────────────────────
+
+
+class TestMoveFolder(TaxonomyTestBase):
+
+    def test_move_to_other_section(self):
+        # Crée un dossier-cible dans une autre section
+        taxonomy.create_folder(self.profile_name, "", "03-INGENIERIE")
+        taxonomy.reset_cache()
+        r = taxonomy.move_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "03-INGENIERIE"
+        )
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["new_path"], "03-INGENIERIE/PHYSIQUE")
+        # Cascade mappings
+        mapping = yaml.safe_load((self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(mapping["physics"], "03-INGENIERIE/PHYSIQUE")
+        # FS
+        self.assertTrue((self.target / "03-INGENIERIE/PHYSIQUE/mechanics.pdf").is_file())
+        self.assertFalse((self.target / "01-SCIENCES/PHYSIQUE").exists())
+
+    def test_move_to_root(self):
+        # Déplacer un dossier vers la racine (new_parent="")
+        r = taxonomy.move_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", ""
+        )
+        self.assertEqual(r["new_path"], "PHYSIQUE")
+        self.assertTrue((self.target / "PHYSIQUE").is_dir())
+
+    def test_move_unknown_parent(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.move_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE", "99-NOPE"
+            )
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_move_cycle_refused(self):
+        """Move A inside one of A's own descendants → refused."""
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES/PHYSIQUE", "Mecanique")
+        taxonomy.reset_cache()
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.move_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE",
+                "01-SCIENCES/PHYSIQUE/Mecanique",
+            )
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_move_target_exists(self):
+        # Déplacer vers un parent où un dossier homonyme existe déjà
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES/MATHEMATIQUES", "PHYSIQUE")
+        taxonomy.reset_cache()
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.move_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE",
+                "01-SCIENCES/MATHEMATIQUES",
+            )
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_move_unchanged_when_same_parent(self):
+        r = taxonomy.move_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "01-SCIENCES"
+        )
+        # Le nouveau path serait 01-SCIENCES/PHYSIQUE = identique
+        self.assertTrue(r.get("unchanged"))
+
+    def test_move_respects_lock(self):
+        (self.profile_dir / ".cache" / "taxonomy.lock").write_text("locked")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.move_folder(
+                self.profile_name, "01-SCIENCES/PHYSIQUE", "02-INFORMATIQUE"
+            )
+        self.assertEqual(ctx.exception.status, 423)
+
+
+class TestMoveFolderEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_api_move_happy(self):
+        # Prepare a target parent
+        self.client.post("/api/taxonomy/folder", json={
+            "profile": self.profile_name, "parent": "", "name": "TARGET-PARENT",
+        })
+        r = self.client.post("/api/taxonomy/folder/move", json={
+            "profile": self.profile_name,
+            "path": "01-SCIENCES/PHYSIQUE",
+            "new_parent": "TARGET-PARENT",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["new_path"], "TARGET-PARENT/PHYSIQUE")
+
+    def test_api_move_cycle_400(self):
+        taxonomy.create_folder(self.profile_name, "01-SCIENCES/PHYSIQUE", "Sub")
+        r = self.client.post("/api/taxonomy/folder/move", json={
+            "profile": self.profile_name,
+            "path": "01-SCIENCES/PHYSIQUE",
+            "new_parent": "01-SCIENCES/PHYSIQUE/Sub",
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1118,43 +1118,42 @@ def create_folder(profile: str, parent: str, name: str) -> dict:
         }
 
 
-def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
-    """Rename a folder (change its basename, parent unchanged).
+def _change_folder_path(profile: str, old_path: str, new_path: str) -> dict:
+    """Internal: change a folder's path from old_path to new_path.
 
-    Cascades the rename through three sources of truth:
-      - tree.yaml : the entry + every descendant entry (prefix replace)
-      - theme_mapping.yaml : every mapping value that points to the old
-        path or any of its descendants
-      - filesystem : os.rename() on the actual directory
+    Cascades through tree.yaml + theme_mapping.yaml + filesystem.
+    Shared engine for rename_folder (basename-only change) and
+    move_folder (parent change). Caller is responsible for
+    name-format validation before calling.
 
-    Refuses when:
-      - old_path is empty or doesn't exist in tree.yaml (400)
-      - new_name is invalid (slash, '..', empty) (400)
-      - new_path already exists in tree.yaml (409)
-      - new filesystem path already exists (409)
-      - taxonomy.lock present (423)
-
-    Returns dict with: ok, old_path, new_path, n_tree_entries_renamed,
-    n_mappings_updated, fs_renamed (bool), backups.
+    Enforces structural rules only:
+      - old_path exists in tree.yaml (400)
+      - new_path != old_path (no-op short-circuit)
+      - new_path is not a descendant of old_path (cycle, 400)
+      - new_path absent from tree.yaml (409)
+      - new filesystem path absent (409)
+      - taxonomy.lock free (423)
     """
     lock = _locks[profile]
     with lock:
         _check_lock_free(profile)
         old_path = (old_path or "").strip().strip("/")
-        if not old_path:
-            raise TaxonomyError("old_path vide", 400)
-        new_name = _validate_folder_name(new_name)
-        if "/" in new_name:
-            raise TaxonomyError("le nouveau nom ne peut pas contenir /", 400)
+        new_path = (new_path or "").strip().strip("/")
+        if not old_path or not new_path:
+            raise TaxonomyError("path vide", 400)
+        if old_path == new_path:
+            return {"ok": True, "unchanged": True,
+                    "old_path": old_path, "new_path": new_path}
 
         folders = _load_tree(profile)
         if old_path not in folders:
             raise TaxonomyError(f"dossier inexistant dans tree.yaml : {old_path}", 400)
 
-        parent = "/".join(old_path.split("/")[:-1])
-        new_path = f"{parent}/{new_name}" if parent else new_name
-        if old_path == new_path:
-            return {"ok": True, "unchanged": True, "old_path": old_path, "new_path": new_path}
+        # Cycle: new_path must not be inside old_path
+        if new_path.startswith(old_path + "/"):
+            raise TaxonomyError(
+                f"cycle interdit : '{new_path}' est dans '{old_path}'", 400,
+            )
         if new_path in folders:
             raise TaxonomyError(
                 f"le dossier '{new_path}' existe déjà dans tree.yaml", 409,
@@ -1169,8 +1168,11 @@ def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
             raise TaxonomyError(
                 f"chemin déjà présent sur le disque : {new_fs}", 409,
             )
+        # Ensure destination parent dir exists on disk (move may target a
+        # different parent — idempotent if already there)
+        new_fs.parent.mkdir(parents=True, exist_ok=True)
 
-        # Compute new tree (rename old_path and any descendant prefix)
+        # Compute new tree (cascade prefix on old_path)
         prefix = old_path + "/"
         new_folders: list[str] = []
         n_renamed = 0
@@ -1202,9 +1204,8 @@ def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
         tree_backup = _backup_tree(profile)
         mapping_backup = _backup_mapping(profile) if n_mappings_updated > 0 else None
 
-        # Filesystem rename FIRST — if this fails we abort cleanly without
-        # touching the YAMLs. If it succeeds, we then write YAMLs and roll
-        # back the FS rename if a YAML write blows up.
+        # FS rename first — abort cleanly on failure. Best-effort revert
+        # if a subsequent YAML write blows up.
         fs_renamed = False
         if old_fs.exists():
             try:
@@ -1218,7 +1219,6 @@ def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
             if n_mappings_updated > 0:
                 _write_mapping(profile, new_mapping)
         except Exception:
-            # Best-effort rollback of the FS rename
             if fs_renamed:
                 try:
                     new_fs.rename(old_fs)
@@ -1243,6 +1243,46 @@ def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
                 if mapping_backup else None
             ),
         }
+
+
+def rename_folder(profile: str, old_path: str, new_name: str) -> dict:
+    """Rename a folder (change basename, parent unchanged).
+
+    Refuses when:
+      - new_name is invalid (slash, '..', control chars) (400)
+      - + all structural rules of _change_folder_path
+    """
+    old_path = (old_path or "").strip().strip("/")
+    if not old_path:
+        raise TaxonomyError("old_path vide", 400)
+    new_name = _validate_folder_name(new_name)
+    if "/" in new_name:
+        raise TaxonomyError("le nouveau nom ne peut pas contenir /", 400)
+    parent = "/".join(old_path.split("/")[:-1])
+    new_path = f"{parent}/{new_name}" if parent else new_name
+    return _change_folder_path(profile, old_path, new_path)
+
+
+def move_folder(profile: str, old_path: str, new_parent: str) -> dict:
+    """Move a folder under a different parent (basename unchanged).
+
+    new_parent="" means the move target is the root (top-level).
+
+    Refuses (in addition to the structural rules of _change_folder_path):
+      - new_parent doesn't exist in tree.yaml (and isn't "") (400)
+      - moving into own descendant (cycle — caught by _change_folder_path)
+    """
+    old_path = (old_path or "").strip().strip("/")
+    if not old_path:
+        raise TaxonomyError("old_path vide", 400)
+    new_parent = (new_parent or "").strip().strip("/")
+    if new_parent:
+        folders = _load_tree(profile)
+        if new_parent not in folders:
+            raise TaxonomyError(f"dossier parent inexistant : {new_parent}", 400)
+    basename = old_path.split("/")[-1]
+    new_path = f"{new_parent}/{basename}" if new_parent else basename
+    return _change_folder_path(profile, old_path, new_path)
 
 
 def _backup_timestamp(path: Path) -> str:

@@ -223,6 +223,16 @@
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
     return body;
   }
+  async function postMoveFolder(path, new_parent) {
+    const r = await fetch('/api/taxonomy/folder/move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, path, new_parent }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
   async function fetchPreview(action, theme, folder) {
     const r = await fetch('/api/taxonomy/mapping/preview', {
       method: 'POST',
@@ -316,6 +326,14 @@
           openRenamePopover(node.path, node.name, e.currentTarget);
         },
       }, ['✎']));
+      row.appendChild(el('button', {
+        class: 'tax-tree-add-btn tax-tree-move-btn',
+        title: 'Déplacer ce dossier vers un autre parent',
+        onclick: e => {
+          e.stopPropagation();
+          openMovePopover(node.path, e.currentTarget);
+        },
+      }, ['⤴']));
     }
 
     const wrap = el('div', { class: 'tax-tree-node' }, [row]);
@@ -1063,6 +1081,89 @@
       showToast('✗ ' + err.message, 'error');
     }
   }
+  // ── Move folder popover ──────────────────────────────────────────────
+
+  function openMovePopover(path, anchorEl) {
+    const pop = $('#tax-movefolder-popover');
+    const input = $('#tax-movefolder-input');
+    $('#tax-movefolder-source').textContent = path;
+    input.value = '';
+    renderMoveSuggestions('', path);
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = 380;
+    pop.style.display = 'block';
+    pop.style.left = Math.min(window.innerWidth - popW - 12,
+                              Math.max(12, rect.right - popW)) + 'px';
+    pop.style.top  = (rect.bottom + 8) + 'px';
+    pop.dataset.path = path;
+    setTimeout(() => input.focus(), 50);
+  }
+  function closeMovePopover() {
+    $('#tax-movefolder-popover').style.display = 'none';
+  }
+  function renderMoveSuggestions(query, sourcePath) {
+    const wrap = $('#tax-movefolder-suggestions');
+    wrap.innerHTML = '';
+    const folders = (state.snapshot && state.snapshot.folders) || [];
+    const q = (query || '').toLowerCase();
+    // Forbid moving INTO the source itself or any descendant
+    const forbidden = (p) => p === sourcePath || p.startsWith(sourcePath + '/');
+    const matches = folders
+      .filter(f => !forbidden(f) && (!q || f.toLowerCase().includes(q)))
+      .slice(0, 8);
+    // Always offer "racine" as a possibility (empty parent)
+    if (!q || 'racine'.includes(q) || '(racine)'.includes(q)) {
+      wrap.appendChild(el('div', {
+        class: 'tax-map-suggestion',
+        onclick: () => { $('#tax-movefolder-input').value = ''; confirmMovePopover(); },
+      }, ['(racine — top-level)']));
+    }
+    for (const f of matches) {
+      wrap.appendChild(el('div', {
+        class: 'tax-map-suggestion',
+        onclick: () => { $('#tax-movefolder-input').value = f; },
+      }, [f]));
+    }
+    if (!matches.length && q) {
+      wrap.appendChild(el('div', { class: 'muted small' }, ['Aucun dossier ne correspond']));
+    }
+  }
+  async function confirmMovePopover() {
+    const pop = $('#tax-movefolder-popover');
+    const oldPath = pop.dataset.path;
+    const newParent = $('#tax-movefolder-input').value.trim();
+    closeMovePopover();
+    try {
+      const r = await postMoveFolder(oldPath, newParent);
+      if (r.unchanged) {
+        showToast('Emplacement inchangé', 'info');
+        return;
+      }
+      showToast(
+        `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+        'success',
+      );
+      // Rewrite expanded set + selection prefixes
+      const newExpanded = new Set();
+      for (const p of state.expanded) {
+        if (p === oldPath) newExpanded.add(r.new_path);
+        else if (p.startsWith(oldPath + '/')) newExpanded.add(r.new_path + p.slice(oldPath.length));
+        else newExpanded.add(p);
+      }
+      state.expanded = newExpanded;
+      if (state.selection.type) {
+        if (state.selection.path === oldPath || state.selection.path.startsWith(oldPath + '/')) {
+          state.selection.path = r.new_path + state.selection.path.slice(oldPath.length);
+        }
+      }
+      state.filesByPath = new Map();
+      state.snapshot = await fetchSnapshot();
+      renderAll();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+    }
+  }
+
   async function doRenameFolder(oldPath, newName) {
     closeCreateFolderPopover();
     try {
@@ -1190,6 +1291,17 @@
     });
     $('#tax-newfolder-cancel').addEventListener('click', closeCreateFolderPopover);
     $('#tax-newfolder-confirm').addEventListener('click', confirmCreateFolder);
+    // Move-folder popover
+    $('#tax-movefolder-input').addEventListener('input', e => {
+      const pop = $('#tax-movefolder-popover');
+      renderMoveSuggestions(e.target.value, pop.dataset.path || '');
+    });
+    $('#tax-movefolder-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmMovePopover(); }
+      if (e.key === 'Escape') closeMovePopover();
+    });
+    $('#tax-movefolder-cancel').addEventListener('click', closeMovePopover);
+    $('#tax-movefolder-confirm').addEventListener('click', confirmMovePopover);
     document.addEventListener('click', e => {
       if (state.popover.open && !e.target.closest('#tax-map-popover')
           && !e.target.classList.contains('tax-llm-map-btn')) closeMapPopover();
@@ -1198,6 +1310,12 @@
           && !e.target.closest('#tax-newfolder-popover')
           && !e.target.classList.contains('tax-tree-add-btn')) {
         closeCreateFolderPopover();
+      }
+      const movePop = $('#tax-movefolder-popover');
+      if (movePop.style.display === 'block'
+          && !e.target.closest('#tax-movefolder-popover')
+          && !e.target.classList.contains('tax-tree-move-btn')) {
+        closeMovePopover();
       }
     });
     window.addEventListener('resize', () => { renderTreemap(); });

@@ -3824,3 +3824,13 @@ th {
     color: var(--blue, #58a6ff);
     border-color: var(--blue, #58a6ff);
 }
+
+/* Tree row : bouton "move" (⤴) à côté du rename */
+.tax-tree-move-btn {
+    margin-left: 2px;
+}
+.tax-tree-move-btn:hover {
+    background: rgba(255, 145, 67, 0.18);
+    color: #ff9143;
+    border-color: #ff9143;
+}
