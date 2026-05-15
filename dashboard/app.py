@@ -1583,6 +1583,109 @@ async def categories_snapshot_api(profile: str, force: bool = False):
     return JSONResponse(categories.build_snapshot(profile, force_reload=force))
 
 
+def _categories_err(e: "object"):  # typing.TYPE_CHECKING-safe
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"error": str(e)}, status_code=getattr(e, "status", 400))
+
+
+@app.post("/api/categories/entry")
+async def categories_entry_add_api(request: Request):
+    """Create a new entry under a group in categories.yaml."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.add_entry(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            body.get("priorite", 5),
+            body.get("mots_cles") or [],
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.patch("/api/categories/entry")
+async def categories_entry_update_api(request: Request):
+    """Update an existing entry's path and/or priority."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.update_entry(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            new_chemin=body.get("new_chemin"),
+            new_priorite=body.get("new_priorite"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.delete("/api/categories/entry")
+async def categories_entry_delete_api(request: Request):
+    """Remove an entry."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.delete_entry(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.post("/api/categories/entry/keyword")
+async def categories_keyword_add_api(request: Request):
+    """Append a keyword to an entry's mots_cles list (dedups)."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.add_keyword(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            body.get("keyword"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.delete("/api/categories/entry/keyword")
+async def categories_keyword_delete_api(request: Request):
+    """Remove a keyword from an entry (case-insensitive match)."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.delete_keyword(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            body.get("keyword"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.post("/api/categories/undo")
+async def categories_undo_api(request: Request):
+    """Restore categories.yaml from the most recent backup."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.undo(body.get("profile")))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
 @app.get("/mockup/categories")
 async def mockup_categories_page(request: Request):
     """Static visual mockup for the proposed Mappings/Catégories sub-tab.

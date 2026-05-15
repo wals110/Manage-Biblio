@@ -2858,12 +2858,97 @@ th {
     color: white;
 }
 
-/* Catégories view — 3 columns matching the mappings layout proportions */
+/* Catégories info banner — collapsed pill by default, expands inline */
+.tax-cat-info-banner {
+    margin-bottom: 10px;
+    background: rgba(88, 166, 255, 0.04);
+    border: 1px solid rgba(88, 166, 255, 0.18);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.tax-cat-info-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+.tax-cat-info-toggle:hover { background: rgba(88, 166, 255, 0.06); }
+.tax-cat-info-icon { font-size: 14px; }
+.tax-cat-info-label { flex: 1; }
+.tax-cat-info-chevron {
+    font-size: 9px;
+    color: var(--text-muted, #8b949e);
+    transition: transform 0.15s;
+}
+.tax-cat-info-toggle.open .tax-cat-info-chevron { transform: rotate(90deg); }
+.tax-cat-info-body {
+    padding: 4px 18px 14px 38px;
+    border-top: 1px solid rgba(88, 166, 255, 0.12);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text, #c9d1d9);
+}
+.tax-cat-info-body p { margin: 8px 0; }
+.tax-cat-info-body code {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--blue, #58a6ff);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+.tax-cat-info-list {
+    margin: 8px 0;
+    padding-left: 18px;
+}
+.tax-cat-info-list li { margin: 3px 0; }
+
+/* Pipeline visual cues inside the banner */
+.tax-cat-pipeline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+}
+.tax-cat-pipeline-step {
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border, #30363d);
+    font-size: 11px;
+    color: var(--text-muted, #8b949e);
+    white-space: nowrap;
+}
+.tax-cat-pipeline-step-active {
+    background: rgba(88, 166, 255, 0.18);
+    border-color: var(--blue, #58a6ff);
+    color: var(--blue, #58a6ff);
+    font-weight: 600;
+}
+.tax-cat-pipeline-arrow {
+    color: var(--text-muted, #8b949e);
+    font-size: 11px;
+}
+
+/* Catégories view — 3 columns matching the mappings layout proportions.
+   210px = page header + stats + info-banner (collapsed) margin. */
 .tax-cat-grid {
     display: grid;
     grid-template-columns: 26% 36% 38%;
     gap: 12px;
-    height: calc(100vh - 160px);
+    height: calc(100vh - 210px);
 }
 .tax-cat-col {
     background: var(--card, #161b22);
@@ -2885,16 +2970,69 @@ th {
 
 /* Col 1 — groups + entries */
 .tax-cat-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-muted, #8b949e);
     padding: 8px 12px 4px;
     font-weight: 600;
-    cursor: pointer;
     user-select: none;
 }
-.tax-cat-group:hover { color: var(--text, #c9d1d9); }
+.tax-cat-group-title { cursor: pointer; flex: 1; }
+.tax-cat-group-title:hover { color: var(--text, #c9d1d9); }
+.tax-cat-group-add {
+    background: transparent;
+    border: 1px solid var(--border, #30363d);
+    color: var(--text-muted, #8b949e);
+    width: 20px;
+    height: 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.tax-cat-group:hover .tax-cat-group-add { opacity: 1; }
+.tax-cat-group-add:hover {
+    background: rgba(88, 166, 255, 0.12);
+    border-color: var(--blue, #58a6ff);
+    color: var(--blue, #58a6ff);
+}
+.tax-cat-newgroup {
+    padding: 10px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: 6px;
+}
+.tax-cat-newgroup button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    height: 30px;
+    padding: 0 12px;
+    background: rgba(88, 166, 255, 0.06);
+    border: 1px dashed rgba(88, 166, 255, 0.35);
+    border-radius: 6px;
+    color: var(--blue, #58a6ff);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.tax-cat-newgroup button:hover {
+    background: rgba(88, 166, 255, 0.14);
+    border-color: var(--blue, #58a6ff);
+    border-style: solid;
+}
+.tax-cat-newgroup button:active {
+    transform: translateY(1px);
+}
 .tax-cat-group-chevron {
     display: inline-block;
     width: 12px;

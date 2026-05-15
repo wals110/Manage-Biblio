@@ -44,6 +44,90 @@
     return r.json();
   }
 
+  async function postJSON(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, ...body }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+  async function patchJSON(url, body) {
+    const r = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, ...body }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+  async function deleteJSON(url, body) {
+    const r = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, ...body }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+
+  // ── Toast + busy overlay (minimal stand-ins) ─────────────────────────
+  // taxonomy.js has its own implementations inside its IIFE — we can't
+  // reach them. Reuse the SAME DOM nodes (#tax-toast, #tax-busy) so the
+  // UX is consistent across both views.
+
+  function showToast(msg, type) {
+    const t = $('#tax-toast');
+    if (!t) { console.log(msg); return; }
+    t.textContent = msg;
+    t.className = 'tax-toast ' + (type || 'info');
+    t.style.display = 'block';
+    clearTimeout(showToast._tid);
+    showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
+  }
+
+  async function withBusy(label, fn) {
+    const overlay = $('#tax-busy');
+    const lblEl = $('#tax-busy-label');
+    if (overlay) {
+      if (lblEl && label) lblEl.textContent = label;
+      overlay.classList.add('is-active');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+    const safety = setTimeout(() => {
+      if (overlay) {
+        overlay.classList.remove('is-active');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+      showToast('Action trop longue — vérifie l’état', 'error');
+    }, 30_000);
+    try {
+      return await fn();
+    } finally {
+      clearTimeout(safety);
+      if (overlay) {
+        overlay.classList.remove('is-active');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+    }
+  }
+
+  // Refresh snapshot + re-render. Selection is preserved if the path
+  // still exists; otherwise dropped.
+  async function reloadAfterWrite() {
+    state.snapshot = await fetchSnapshot(true);
+    if (state.selectedEntry) {
+      const e = findEntry(state.selectedEntry.group,
+                          state.selectedEntry.chemin);
+      if (!e) state.selectedEntry = null;
+    }
+    renderAll();
+  }
+
   // ── Sub-tab toggle ───────────────────────────────────────────────────
 
   function activateSubtab(view) {
@@ -99,15 +183,24 @@
       const collapsed = state.collapsedGroups.has(g.group);
       const header = el('div', {
         class: 'tax-cat-group' + (collapsed ? ' collapsed' : ''),
-        onclick: () => {
-          if (state.collapsedGroups.has(g.group)) state.collapsedGroups.delete(g.group);
-          else state.collapsedGroups.add(g.group);
-          renderTree();
-        },
       }, [
-        el('span', { class: 'tax-cat-group-chevron' }, [collapsed ? '▶' : '▼']),
-        ' ', g.group, ' ',
-        el('span', { class: 'muted small' }, [`(${g.n_entries})`]),
+        el('span', {
+          class: 'tax-cat-group-title',
+          onclick: () => {
+            if (state.collapsedGroups.has(g.group)) state.collapsedGroups.delete(g.group);
+            else state.collapsedGroups.add(g.group);
+            renderTree();
+          },
+        }, [
+          el('span', { class: 'tax-cat-group-chevron' }, [collapsed ? '▶' : '▼']),
+          ' ', g.group, ' ',
+          el('span', { class: 'muted small' }, [`(${g.n_entries})`]),
+        ]),
+        el('button', {
+          class: 'tax-cat-group-add',
+          title: `Créer une entry dans « ${g.group} »`,
+          onclick: e => { e.stopPropagation(); openAddEntryPopover(g.group); },
+        }, ['+']),
       ]);
       wrap.appendChild(header);
       if (collapsed) continue;
@@ -129,6 +222,13 @@
         ]));
       }
     }
+    // "New group" footer action
+    wrap.appendChild(el('div', { class: 'tax-cat-newgroup' }, [
+      el('button', {
+        class: 'btn-secondary',
+        onclick: () => openAddEntryPopover(null),
+      }, ['+ Créer une entry dans un nouveau groupe']),
+    ]));
   }
 
   function shortenPath(p) {
@@ -195,22 +295,24 @@
         ]),
       ]),
     ]));
-    // Phase A: actions are visible but disabled
+    // Actions
     wrap.appendChild(el('div', { class: 'tax-cat-field', style: 'border-bottom:none;' }, [
       el('label', null, ['Actions']),
-      el('div', { class: 'muted small', style: 'margin-bottom:6px;' },
-                 ['Édition disponible en Phase B.']),
-      el('button', { class: 'btn-secondary tax-cat-action', disabled: true,
-                     title: 'Disponible en Phase B' },
-                   ['Renommer chemin']),
+      el('button', {
+        class: 'btn-secondary tax-cat-action',
+        onclick: () => openRenamePopover(state.selectedEntry.group, e.chemin),
+      }, ['Renommer chemin']),
       ' ',
-      el('button', { class: 'btn-secondary tax-cat-action', disabled: true,
-                     title: 'Disponible en Phase B' },
-                   ['Modifier priorité']),
+      el('button', {
+        class: 'btn-secondary tax-cat-action',
+        onclick: () => openPriorityPopover(state.selectedEntry.group,
+                                            e.chemin, e.priorite),
+      }, ['Modifier priorité']),
       ' ',
-      el('button', { class: 'btn-danger tax-cat-action', disabled: true,
-                     title: 'Disponible en Phase B' },
-                   ['Supprimer entry']),
+      el('button', {
+        class: 'btn-danger tax-cat-action',
+        onclick: () => deleteSelectedEntry(),
+      }, ['Supprimer entry']),
     ]));
   }
 
@@ -229,13 +331,23 @@
     const e = findEntry(state.selectedEntry.group, state.selectedEntry.chemin);
     if (!e) return;
     sub.textContent = `${e.n_keywords} mot-clé(s)`;
-    // Phase A: add input + × buttons are present but disabled / non-functional
-    wrap.appendChild(el('div', { class: 'tax-cat-kw-add' }, [
-      el('input', { type: 'text', placeholder: 'ajouter un mot-clé… (Phase B)',
-                    disabled: true }),
-      el('button', { class: 'btn-primary', disabled: true,
-                     title: 'Disponible en Phase B' }, ['+ Ajouter']),
-    ]));
+    // Add-keyword input — Enter validates, button also works
+    const input = el('input', {
+      type: 'text',
+      placeholder: 'ajouter un mot-clé… puis Entrée',
+    });
+    const addBtn = el('button', { class: 'btn-primary' }, ['+ Ajouter']);
+    const submitKeyword = () => {
+      const value = input.value.trim();
+      if (!value) return;
+      input.value = '';
+      addKeywordHandler(state.selectedEntry.group, e.chemin, value);
+    };
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); submitKeyword(); }
+    });
+    addBtn.addEventListener('click', submitKeyword);
+    wrap.appendChild(el('div', { class: 'tax-cat-kw-add' }, [input, addBtn]));
     if (e.n_keywords === 0) {
       wrap.appendChild(el('div', {
         class: 'muted small',
@@ -245,10 +357,18 @@
     }
     const list = el('div', { class: 'tax-cat-kw-list' });
     for (const k of e.mots_cles) {
-      list.appendChild(el('span', { class: 'tax-cat-kw' }, [
+      const chip = el('span', { class: 'tax-cat-kw' }, [
         k, ' ',
-        el('span', { class: 'tax-cat-kw-x', title: 'Disponible en Phase B' }, ['×']),
-      ]));
+        el('span', {
+          class: 'tax-cat-kw-x',
+          title: `Retirer « ${k} »`,
+          onclick: ev => {
+            ev.stopPropagation();
+            deleteKeywordHandler(state.selectedEntry.group, e.chemin, k);
+          },
+        }, ['×']),
+      ]);
+      list.appendChild(chip);
     }
     wrap.appendChild(list);
     wrap.appendChild(el('div', {
@@ -257,6 +377,206 @@
     }, [
       '💡 Phase C ajoutera la détection des mots-clés qu\'aucun fichier de la lib ne contient.',
     ]));
+  }
+
+  // ── Write handlers ───────────────────────────────────────────────────
+
+  async function addKeywordHandler(group, chemin, keyword) {
+    await withBusy(`Ajout « ${keyword} »…`, async () => {
+      try {
+        const r = await postJSON('/api/categories/entry/keyword',
+                                 { group, chemin, keyword });
+        if (r.unchanged) {
+          showToast('Mot-clé déjà présent (dedup)', 'info');
+        } else {
+          showToast(`✓ « ${keyword} » ajouté`, 'success');
+        }
+        await reloadAfterWrite();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
+  async function deleteKeywordHandler(group, chemin, keyword) {
+    await withBusy(`Suppression « ${keyword} »…`, async () => {
+      try {
+        await deleteJSON('/api/categories/entry/keyword',
+                         { group, chemin, keyword });
+        showToast(`✓ « ${keyword} » retiré`, 'success');
+        await reloadAfterWrite();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
+  // ── Inline mini-popover for path / priority / new-entry ──────────────
+  // Reuses the dashboard's "showConfirm-like" pattern but for a single
+  // text input. Simpler than spawning a full template-bound modal.
+
+  function showPrompt({title, label, initial, validator, confirmLabel}) {
+    return new Promise((resolve) => {
+      const back = document.createElement('div');
+      back.className = 'tax-modal-backdrop';
+      back.style.display = 'flex';
+      const modal = el('div', { class: 'tax-modal', style: 'width:480px;' }, [
+        el('div', { class: 'tax-modal-title' }, [title]),
+        el('div', { class: 'tax-modal-body', style: 'padding: 14px 16px;' }, [
+          el('label', { style: 'display:block; font-size:11px; color: var(--text-muted); margin-bottom:6px;' },
+                     [label || '']),
+        ]),
+      ]);
+      const input = el('input', {
+        type: 'text',
+        style: 'width:100%; background: var(--bg, #0d1117); border: 1px solid var(--border, #30363d); '
+             + 'border-radius:4px; padding:6px 10px; color: var(--text, #c9d1d9); font-size:13px;',
+      });
+      input.value = (initial != null) ? String(initial) : '';
+      const err = el('div', { class: 'muted small', style: 'margin-top:6px; min-height:14px;' }, ['']);
+      modal.querySelector('.tax-modal-body').appendChild(input);
+      modal.querySelector('.tax-modal-body').appendChild(err);
+      const cancelBtn = el('button', { class: 'btn-secondary' }, ['Annuler']);
+      const okBtn = el('button', { class: 'btn-primary' }, [confirmLabel || 'OK']);
+      modal.appendChild(el('div', { class: 'tax-modal-actions' }, [cancelBtn, okBtn]));
+      back.appendChild(modal);
+      document.body.appendChild(back);
+      setTimeout(() => input.focus(), 50);
+
+      function cleanup(val) {
+        back.remove();
+        document.removeEventListener('keydown', onKey);
+        resolve(val);
+      }
+      function tryOk() {
+        const value = input.value.trim();
+        if (validator) {
+          const msg = validator(value);
+          if (msg) { err.textContent = msg; return; }
+        }
+        cleanup(value);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(null); }
+        if (e.key === 'Enter')  { e.preventDefault(); tryOk(); }
+      }
+      cancelBtn.addEventListener('click', () => cleanup(null));
+      okBtn.addEventListener('click', tryOk);
+      document.addEventListener('keydown', onKey);
+    });
+  }
+
+  async function openRenamePopover(group, chemin) {
+    const value = await showPrompt({
+      title: 'Renommer le chemin de cette entry',
+      label: `Nouveau chemin (group « ${group} »)`,
+      initial: chemin,
+      confirmLabel: 'Renommer',
+      validator: v => v ? null : 'chemin vide',
+    });
+    if (!value || value === chemin) return;
+    await withBusy('Renommage…', async () => {
+      try {
+        await patchJSON('/api/categories/entry',
+                        { group, chemin, new_chemin: value });
+        showToast(`✓ Renommé : ${value}`, 'success');
+        state.selectedEntry = { group, chemin: value };
+        await reloadAfterWrite();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
+  async function openPriorityPopover(group, chemin, current) {
+    const value = await showPrompt({
+      title: 'Modifier la priorité de cette entry',
+      label: 'Priorité (1 = haute, 99 = basse)',
+      initial: current,
+      confirmLabel: 'Modifier',
+      validator: v => {
+        const n = parseInt(v, 10);
+        if (isNaN(n) || n < 1 || n > 99) return 'priorité hors plage (1-99)';
+        return null;
+      },
+    });
+    if (value == null) return;
+    const n = parseInt(value, 10);
+    if (n === current) return;
+    await withBusy('Mise à jour priorité…', async () => {
+      try {
+        await patchJSON('/api/categories/entry',
+                        { group, chemin, new_priorite: n });
+        showToast(`✓ Priorité : P${n}`, 'success');
+        await reloadAfterWrite();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
+  async function deleteSelectedEntry() {
+    const sel = state.selectedEntry;
+    if (!sel) return;
+    const e = findEntry(sel.group, sel.chemin);
+    if (!e) return;
+    const value = await showPrompt({
+      title: `Supprimer cette entry ?`,
+      label: `Tape « SUPPRIMER » pour confirmer la suppression de « ${sel.chemin} » (${e.n_keywords} mot(s)-clé(s)).`,
+      initial: '',
+      confirmLabel: 'Supprimer',
+      validator: v => v === 'SUPPRIMER' ? null : 'tape exactement SUPPRIMER',
+    });
+    if (value !== 'SUPPRIMER') return;
+    await withBusy('Suppression…', async () => {
+      try {
+        await deleteJSON('/api/categories/entry',
+                         { group: sel.group, chemin: sel.chemin });
+        showToast(`✓ Entry supprimée`, 'success');
+        state.selectedEntry = null;
+        await reloadAfterWrite();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
+  }
+
+  async function openAddEntryPopover(group) {
+    // Phase B: a 2-field mini-form via two prompts. Phase B+ could give
+    // it a richer modal. We keep it minimal but functional.
+    let g = group;
+    if (g == null) {
+      g = await showPrompt({
+        title: 'Créer une entry — choisir le groupe',
+        label: 'Nom du groupe (existant ou nouveau, ex: informatique)',
+        initial: '',
+        confirmLabel: 'Suivant →',
+        validator: v => v ? null : 'nom de groupe requis',
+      });
+      if (!g) return;
+    }
+    const chemin = await showPrompt({
+      title: `Créer une entry dans « ${g} »`,
+      label: 'Chemin cible (ex: 02-INFORMATIQUE/05-IA-ML/Computer-Vision)',
+      initial: '',
+      confirmLabel: 'Créer',
+      validator: v => v ? null : 'chemin requis',
+    });
+    if (!chemin) return;
+    await withBusy(`Création de l'entry…`, async () => {
+      try {
+        await postJSON('/api/categories/entry', {
+          group: g, chemin, priorite: 5, mots_cles: [],
+        });
+        showToast(`✓ Entry créée : ${chemin}`, 'success');
+        state.selectedEntry = { group: g, chemin };
+        // Ensure the group is expanded so the new entry is visible
+        state.collapsedGroups.delete(g);
+        await reloadAfterWrite();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
   }
 
   // ── Init ─────────────────────────────────────────────────────────────
@@ -283,6 +603,29 @@
     }
   }
 
+  // Hijack the shared "Annuler" button at the capture phase so that when
+  // the Catégories sub-tab is active it triggers categories.undo()
+  // instead of theme_mapping.undo(). taxonomy.js owns the same button.
+  function bindUndoInterceptor() {
+    const undoBtn = document.querySelector('#tax-undo');
+    if (!undoBtn) return;
+    undoBtn.addEventListener('click', async (e) => {
+      const active = document.querySelector('.tax-subtab.active');
+      if (!active || active.dataset.view !== 'categories') return; // let main handler run
+      e.stopPropagation();
+      e.preventDefault();
+      await withBusy('Restauration…', async () => {
+        try {
+          const r = await postJSON('/api/categories/undo', {});
+          showToast(`↶ Restauré (${r.restored_from})`, 'success');
+          await reloadAfterWrite();
+        } catch (err) {
+          showToast('✗ ' + err.message, 'error');
+        }
+      });
+    }, true);  // capture phase = runs before the bubble-phase mapping handler
+  }
+
   function init() {
     // Find profile from the main page's select
     const sel = document.querySelector('#tax-profile-select');
@@ -292,6 +635,17 @@
     document.querySelectorAll('.tax-subtab').forEach(b => {
       b.addEventListener('click', () => activateSubtab(b.dataset.view));
     });
+    // Wire the info banner toggle
+    const infoBtn = document.querySelector('.tax-cat-info-toggle');
+    const infoBody = document.querySelector('.tax-cat-info-body');
+    if (infoBtn && infoBody) {
+      infoBtn.addEventListener('click', () => {
+        const open = infoBody.hidden;
+        infoBody.hidden = !open;
+        infoBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        infoBtn.classList.toggle('open', open);
+      });
+    }
     // React to profile changes: drop our cache and reload if active
     sel.addEventListener('change', () => {
       state.profile = sel.value;
@@ -301,6 +655,7 @@
       const active = document.querySelector('.tax-subtab.active');
       if (active && active.dataset.view === 'categories') loadAndRender();
     });
+    bindUndoInterceptor();
   }
 
   if (document.readyState === 'loading') {

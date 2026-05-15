@@ -138,8 +138,43 @@
 </div>
 <!-- ────────────────────── End view: Mappings ────────────────────────────── -->
 
-<!-- ────────────────────── View: Catégories (Phase A — read-only) ────────── -->
+<!-- ────────────────────── View: Catégories ──────────────────────────────── -->
 <div class="tax-view tax-view-categories" data-view="categories" style="display:none;">
+    <div class="tax-cat-info-banner">
+        <button class="tax-cat-info-toggle" aria-expanded="false"
+                title="Afficher / masquer l'explication">
+            <span class="tax-cat-info-icon">ℹ️</span>
+            <span class="tax-cat-info-label">À quoi sert cette vue ?</span>
+            <span class="tax-cat-info-chevron">▶</span>
+        </button>
+        <div class="tax-cat-info-body" hidden>
+            <p>
+                <strong>categories.yaml</strong> est l'<strong>étape 2 du pipeline</strong> de
+                classification. C'est un filet de sécurité quand l'étape 1
+                (<code>theme_mapping.yaml</code>) ne résout pas le thème détecté par le LLM.
+            </p>
+            <div class="tax-cat-pipeline">
+                <span class="tax-cat-pipeline-step">1. theme_mapping</span>
+                <span class="tax-cat-pipeline-arrow">→</span>
+                <span class="tax-cat-pipeline-step tax-cat-pipeline-step-active">2. categories ← ici</span>
+                <span class="tax-cat-pipeline-arrow">→</span>
+                <span class="tax-cat-pipeline-step">3. LLM Mapper ($)</span>
+                <span class="tax-cat-pipeline-arrow">→</span>
+                <span class="tax-cat-pipeline-step">4. _A-TRIER</span>
+            </div>
+            <ul class="tax-cat-info-list">
+                <li><strong>Groupe</strong> (informatique, mathematique…) — clé top-level du YAML, sert juste à regrouper</li>
+                <li><strong>Entry</strong> — un <em>chemin cible</em> (dossier de destination) avec une <em>priorité</em> et une liste de <em>mots-clés</em></li>
+                <li><strong>Priorité</strong> — plus le nombre est <em>bas</em>, plus l'entry gagne quand plusieurs matchent (P1 bat P2)</li>
+                <li><strong>Mot-clé</strong> — substring cherché dans le <em>titre + filename + thème</em> du fichier (insensible à la casse)</li>
+            </ul>
+            <p class="muted small">
+                Exemple : un fichier <code>Hands-On GAN for Image Synthesis.pdf</code>
+                dont le thème LLM n'est pas mappé à l'étape 1 sera attrapé ici via le
+                mot-clé <code>GAN</code> et classé dans <code>05-IA-ML/Deep-Learning</code>.
+            </p>
+        </div>
+    </div>
     <div class="tax-cat-grid">
         <!-- Col 1 — Tree of groups + entries -->
         <section class="tax-col tax-cat-col">
