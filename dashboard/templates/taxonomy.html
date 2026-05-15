@@ -32,6 +32,11 @@
                     <path d="M21 3v5h-5"></path>
                 </svg>
             </button>
+            <button id="tax-audit" class="tax-icon-btn"
+                    title="Auditer les mappings dormants (jamais utilisés)" aria-label="Audit">
+                <span style="font-size:13px;">🧹</span>
+                <span>Audit</span>
+            </button>
         </div>
     </div>
     <div class="tax-stats" id="tax-stats">
@@ -200,6 +205,18 @@
         <div class="tax-modal-actions">
             <button id="tax-confirm-cancel" class="btn-secondary">Annuler</button>
             <button id="tax-confirm-ok" class="btn-primary">Confirmer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Dormant mappings audit modal (feature B) -->
+<div id="tax-audit-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:720px; max-width:96vw;">
+        <div class="tax-modal-title">🧹 Audit des mappings dormants</div>
+        <div class="tax-modal-body" id="tax-audit-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-audit-close" class="btn-secondary">Fermer</button>
+            <button id="tax-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
         </div>
     </div>
 </div>

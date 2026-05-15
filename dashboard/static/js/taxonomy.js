@@ -273,6 +273,22 @@
     }
     return body;
   }
+  async function fetchDormantMappings() {
+    const r = await fetch(`/api/taxonomy/dormant-mappings?profile=${encodeURIComponent(state.profile)}`);
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+  async function postBulkDeleteMappings(keys) {
+    const r = await fetch('/api/taxonomy/mappings/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, keys }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
   async function fetchThemeFiles(theme, limit) {
     const url = `/api/taxonomy/theme/files?profile=${encodeURIComponent(state.profile)}`
               + `&theme=${encodeURIComponent(theme)}&limit=${limit || 50}`;
@@ -396,6 +412,146 @@
       document.addEventListener('keydown', onKey);
       // Focus the primary action so Enter validates by default
       setTimeout(() => okBtn.focus(), 50);
+    });
+  }
+
+  // ── Audit modal — dormant mappings ───────────────────────────────────
+  // Lists mapping keys that no file's top theme resolves through, so the
+  // user can purge them in batch from theme_mapping.yaml.
+
+  const auditState = {
+    data: null,
+    selected: new Set(),   // mapping keys ticked for deletion
+  };
+
+  async function openAuditModal() {
+    const modal = $('#tax-audit-modal');
+    const body = $('#tax-audit-body');
+    body.innerHTML = '<div class="muted">Chargement…</div>';
+    modal.style.display = 'flex';
+    auditState.selected.clear();
+    await withBusy('Analyse des mappings dormants…', async () => {
+      try {
+        auditState.data = await fetchDormantMappings();
+      } catch (e) {
+        body.innerHTML = '<div class="error">✗ ' + e.message + '</div>';
+        return;
+      }
+      renderAuditBody();
+    });
+  }
+
+  function closeAuditModal() {
+    $('#tax-audit-modal').style.display = 'none';
+    auditState.data = null;
+    auditState.selected.clear();
+  }
+
+  function renderAuditBody() {
+    const body = $('#tax-audit-body');
+    body.innerHTML = '';
+    const data = auditState.data;
+    if (!data) return;
+    // Header line with stats
+    const header = el('div', { class: 'tax-audit-header' }, [
+      el('div', null, [
+        el('strong', null, [String(data.n_total)]), ' mappings · ',
+        el('strong', null, [String(data.n_active)]), ' actifs · ',
+        el('strong', { class: 'tax-audit-dormant-count' },
+                    [String(data.n_dormant)]), ' dormants',
+      ]),
+      el('div', { class: 'muted small' }, [
+        'Dormant = aucun fichier de la lib n\'a un top theme qui résout vers ce mapping. ',
+        'Supprimer ces clés ne changera la classification d\'aucun fichier.',
+      ]),
+    ]);
+    body.appendChild(header);
+    if (data.n_dormant === 0) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
+        '✅ Aucun mapping dormant. Tout est utilisé.',
+      ]));
+      updateAuditDeleteBtn();
+      return;
+    }
+    // Bulk selection controls
+    const controls = el('div', { class: 'tax-audit-controls' }, [
+      el('button', {
+        class: 'btn-secondary tax-audit-select-all',
+        onclick: () => {
+          for (const d of data.dormant) auditState.selected.add(d.key);
+          renderAuditBody();
+        },
+      }, [`Tout sélectionner (${data.n_dormant})`]),
+      el('button', {
+        class: 'btn-secondary',
+        onclick: () => { auditState.selected.clear(); renderAuditBody(); },
+      }, ['Tout désélectionner']),
+    ]);
+    body.appendChild(controls);
+    // Table of dormant items. Per-row toggle does NOT trigger a full
+    // re-render (that was breaking individual click toggling — the row
+    // got destroyed and rebuilt mid-click). Only the row class +
+    // delete-button counter are updated locally.
+    const list = el('div', { class: 'tax-audit-list' });
+    for (const d of data.dormant) {
+      const isChecked = auditState.selected.has(d.key);
+      const checkbox = el('input', { type: 'checkbox' });
+      checkbox.checked = isChecked;  // property, not attribute
+      const row = el('label', {
+        class: 'tax-audit-row' + (isChecked ? ' selected' : ''),
+      }, [
+        checkbox,
+        el('span', { class: 'tax-audit-key' }, [d.key]),
+        el('span', { class: 'tax-audit-arrow muted small' }, ['→']),
+        el('span', { class: 'tax-audit-folder' }, [d.folder]),
+      ]);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          auditState.selected.add(d.key);
+          row.classList.add('selected');
+        } else {
+          auditState.selected.delete(d.key);
+          row.classList.remove('selected');
+        }
+        updateAuditDeleteBtn();
+      });
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+    updateAuditDeleteBtn();
+  }
+
+  function updateAuditDeleteBtn() {
+    const btn = $('#tax-audit-delete');
+    const n = auditState.selected.size;
+    btn.textContent = `Supprimer la sélection (${n})`;
+    btn.disabled = (n === 0);
+  }
+
+  async function confirmAuditDelete() {
+    const keys = Array.from(auditState.selected);
+    if (!keys.length) return;
+    const ok = await showConfirm({
+      title: `Supprimer ${keys.length} mapping(s) dormant(s) ?`,
+      body: 'Un backup unique sera créé avant la suppression. '
+          + 'Réversible via le bouton Annuler.',
+      confirmLabel: `Supprimer ${keys.length} clé(s)`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await withBusy(`Suppression de ${keys.length} mapping(s)…`, async () => {
+      try {
+        const r = await postBulkDeleteMappings(keys);
+        showToast(`✓ ${r.n_deleted} mapping(s) supprimé(s)`, 'success');
+        if (r.not_found && r.not_found.length) {
+          showToast(`⚠ ${r.not_found.length} introuvable(s) ignoré(s)`, 'info');
+        }
+        closeAuditModal();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
     });
   }
 
@@ -1069,6 +1225,22 @@
         el('code', null, [meta.prediction.dest]),
         ' ', el('span', { class: 'muted small' }, [`(via "${meta.prediction.used_theme}")`]),
       ]));
+      // Heuristic banner: if the chosen theme isn't the file's top theme,
+      // explain why the dashboard preferred a different one.
+      // (The dashboard prefers a mapping with a "/" — i.e. a specific
+      // sub-folder — over a generic top-level destination.)
+      const topTheme = (v.themes && v.themes[0]) ? v.themes[0].theme : null;
+      if (topTheme && meta.prediction.used_theme !== topTheme) {
+        body.appendChild(el('div', {
+          class: 'tax-llm-heuristic',
+          style: 'margin-top:4px;',
+        }, [
+          'ℹ️ ',
+          el('span', { class: 'muted small' }, [
+            `Heuristique : « ${meta.prediction.used_theme} » a un mapping plus précis que le top thème « ${topTheme} » (sous-dossier vs racine).`,
+          ]),
+        ]));
+      }
       body.appendChild(el('div', { class: 'muted small', style: 'margin-top:4px;' },
         [meta.prediction.label]));
     } else {
@@ -1080,7 +1252,7 @@
       class: 'tax-llm-full-btn',
       title: 'Calcule la prédiction avec le pipeline complet (KeywordClassifier inclus)',
       onclick: () => loadFullPipelinePrediction(fullBtn),
-    }, ['Voir prédiction pipeline complet →']);
+    }, ['Voir prédiction pipeline (étapes 1+2) →']);
     body.appendChild(fullBtn);
   }
 
@@ -1094,7 +1266,7 @@
       const wrap = el('div', { class: 'tax-llm-full-result' });
       if (r.prediction) {
         wrap.appendChild(el('div', null, [
-          '⚙ Pipeline complet : ',
+          '⚙ Prédiction pipeline (étapes 1+2) : ',
           el('code', null, [r.prediction.dest]),
         ]));
         wrap.appendChild(el('div', { class: 'muted small', style: 'margin-top:4px;' },
@@ -1103,12 +1275,12 @@
           [r.prediction.label]));
       } else {
         wrap.appendChild(el('div', { class: 'muted' },
-          ['⚙ Pipeline complet : aucune destination trouvée (theme_mapping + KeywordClassifier ont tous deux échoué)']));
+          ['⚙ Prédiction pipeline (étapes 1+2) : aucune destination trouvée (theme_mapping + KeywordClassifier ont tous deux échoué)']));
       }
       body.appendChild(wrap);
     } catch (e) {
       btn.disabled = false;
-      btn.textContent = 'Voir prédiction pipeline complet →';
+      btn.textContent = 'Voir prédiction pipeline (étapes 1+2) →';
       showToast('Erreur pipeline complet : ' + e.message, 'error');
     }
   }
@@ -1286,6 +1458,13 @@
       return wrap;
     }
     const listEl = el('ul', { class: 'tax-mapped-files' });
+    // Column header — same grid as the rows so labels align with values.
+    listEl.appendChild(el('li', { class: 'tax-mapped-file tax-mapped-file-head' }, [
+      el('span', { class: 'tax-mapped-file-name' }, ['Fichier']),
+      el('span', { class: 'tax-mapped-file-toptheme' }, ['Top thème']),
+      el('span', { class: 'tax-mapped-file-folder' }, ['Dossier actuel']),
+      el('span', { class: 'tax-mapped-file-conf', title: 'Confidence LLM' }, ['Conf']),
+    ]));
     for (const f of items) {
       const name = basename(f.rel_path);
       const folder = f.current_folder || '(racine)';
@@ -1295,29 +1474,31 @@
       const conf = (f.top_confidence != null) ? f.top_confidence
                 : (f.confidence != null) ? f.confidence
                 : null;
-      const confEl = (conf != null)
-        ? el('span', { class: 'tax-mapped-file-conf', title: 'Confidence LLM' },
-                   [conf.toFixed(2)])
-        : null;
-      const children = [
-        el('span', { class: 'tax-mapped-file-name' }, [name]),
-      ];
       // For future items, show the top theme that drove the prediction
       // (often differs from the clicked theme key — e.g. clicked "physics"
-      // but resolved via "Mathematical Physics" substring match).
-      if (f.top_theme && f.top_theme.toLowerCase() !== (state.selectedMappedTheme || '')) {
-        children.push(el('span', {
-          class: 'tax-mapped-file-toptheme',
-          title: `Prédit via le thème top du fichier`,
-        }, ['« ' + f.top_theme + ' »']));
-      }
-      children.push(el('span', { class: 'tax-mapped-file-folder' }, [folder]));
-      if (confEl) children.push(confEl);
+      // but resolved via "Mathematical Physics" substring match). The slot
+      // is ALWAYS rendered (empty if not applicable) so the grid columns
+      // line up across rows.
+      const showTopTheme = f.top_theme
+        && f.top_theme.toLowerCase() !== (state.selectedMappedTheme || '');
+      const topThemeEl = el('span', {
+        class: 'tax-mapped-file-toptheme',
+        title: showTopTheme ? 'Prédit via le thème top du fichier' : '',
+      }, [showTopTheme ? '« ' + f.top_theme + ' »' : '']);
+      const confEl = el('span', {
+        class: 'tax-mapped-file-conf',
+        title: 'Confidence LLM',
+      }, [conf != null ? conf.toFixed(2) : '']);
       listEl.appendChild(el('li', {
         class: 'tax-mapped-file',
         title: f.rel_path,
         onclick: e => { e.stopPropagation(); openFileFromPath(f.rel_path); },
-      }, children));
+      }, [
+        el('span', { class: 'tax-mapped-file-name' }, [name]),
+        topThemeEl,
+        el('span', { class: 'tax-mapped-file-folder' }, [folder]),
+        confEl,
+      ]));
     }
     wrap.appendChild(listEl);
     if (items.length < n_total) {
@@ -1373,11 +1554,14 @@
           onclick: e => { e.stopPropagation(); openMapPopover(t, e.currentTarget); },
         }, ['+']),
       ]);
-      // Ligne 2 : destination actuelle si mappé, sinon badge orphelin
+      // Ligne 2 : destination actuelle si mappé, sinon badge orphelin.
+      // Both rendered as pill-style tags (blue vs orange) for symmetry —
+      // every theme tells you where it goes (or that it goes nowhere).
       const subLine = el('div', { class: 'tax-llm-item-sub' }, [
         t.is_orphan
           ? el('span', { class: 'tax-llm-orph-tag' }, ['orphelin'])
-          : el('span', { class: 'tax-llm-dest', title: t.mapped_to }, ['→ ' + t.mapped_to]),
+          : el('span', { class: 'tax-llm-dest-tag', title: t.mapped_to },
+                       [t.mapped_to]),
       ]);
       const row = el('div', {
         class: 'tax-llm-item' + (t.is_orphan ? ' orphan' : ''),
@@ -1991,6 +2175,9 @@
       catch (e) { showToast('Erreur: ' + e.message, 'error'); }
     }));
     $('#tax-undo').addEventListener('click', doUndo);
+    $('#tax-audit').addEventListener('click', openAuditModal);
+    $('#tax-audit-close').addEventListener('click', closeAuditModal);
+    $('#tax-audit-delete').addEventListener('click', confirmAuditDelete);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
     });

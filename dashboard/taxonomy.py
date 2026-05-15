@@ -1295,6 +1295,152 @@ def delete_mapping(profile: str, theme: str) -> dict:
         }
 
 
+# ─── Dormant mapping audit ────────────────────────────────────────────────
+#
+# A "dormant" mapping is a key in theme_mapping.yaml that no file's top
+# theme ever resolves through. Removing it would not change the placement
+# of any file at the next reclassify. Useful for cleaning up the YAML.
+
+
+def _resolve_with_key(
+    theme: str,
+    mapping: dict[str, str],
+    keys_by_len: list[str],
+) -> tuple[str | None, str | None]:
+    """Like classify_by_theme but also returns the winning mapping key.
+
+    Mirrors lib.classifier.classify_by_theme step-for-step. `keys_by_len`
+    must be the mapping keys pre-sorted by len(key) DESC so the longest
+    substring wins (kept outside to amortize across many calls).
+    """
+    if not theme or not mapping:
+        return None, None
+    theme_clean = re.sub(r"[\(\[][^\)\]]*[\)\]]", "", theme).strip()
+    theme_lower = (theme_clean or theme).lower().strip()
+
+    # 1. Exact (case-insensitive) — try cleaned form first, fallback raw
+    for candidate in (theme_clean, theme):
+        if not candidate:
+            continue
+        cand = candidate.lower().strip()
+        for k in keys_by_len:
+            if k.lower() == cand:
+                return mapping[k], k
+
+    # 2. Substring match, longest wins (keys already sorted DESC by length)
+    for k in keys_by_len:
+        k_lower = k.lower()
+        if " " in k_lower:
+            matched = k_lower in theme_lower
+        else:
+            pattern = r"(?<![a-zà-ÿ])" + re.escape(k_lower) + r"(?![a-zà-ÿ])"
+            matched = bool(re.search(pattern, theme_lower))
+        if matched:
+            return mapping[k], k
+
+    # 3. Reverse substring (theme in key) — also longest-first
+    for k in keys_by_len:
+        if theme_lower in k.lower():
+            return mapping[k], k
+
+    return None, None
+
+
+def dormant_mappings(profile: str) -> dict:
+    """Identify mapping keys whose removal wouldn't change any file's
+    classification at the next reclassify.
+
+    Returns:
+        {
+          dormant: [{key, folder}],         # mappings nobody uses
+          active:  {key: file_count},       # mappings used by ≥1 file
+          n_total, n_dormant, n_active,
+        }
+    """
+    mapping = _load_mapping(profile)
+    if not mapping:
+        return {"dormant": [], "active": {}, "n_total": 0,
+                "n_dormant": 0, "n_active": 0}
+
+    keys_by_len = sorted(mapping.keys(), key=lambda k: -len(k))
+
+    _, folder_index = _get_indexes(profile)
+
+    keys_used: dict[str, int] = {}
+    for items in folder_index.values():
+        for item in items:
+            top_theme = item.get("top_theme")
+            if not top_theme:
+                continue
+            _, k = _resolve_with_key(top_theme, mapping, keys_by_len)
+            if k is not None:
+                keys_used[k] = keys_used.get(k, 0) + 1
+
+    dormant: list[dict] = []
+    for k, folder in mapping.items():
+        if k not in keys_used:
+            dormant.append({"key": k, "folder": folder})
+    dormant.sort(key=lambda r: r["key"].lower())
+
+    return {
+        "dormant": dormant,
+        "active": keys_used,
+        "n_total": len(mapping),
+        "n_dormant": len(dormant),
+        "n_active": len(keys_used),
+    }
+
+
+def delete_mappings_bulk(profile: str, keys: list[str]) -> dict:
+    """Delete multiple mapping keys in one transaction.
+
+    A single backup is created before the batch; the lock is held for
+    the whole operation. Unknown keys are reported in `not_found`
+    rather than aborting (so a partial selection still proceeds).
+    """
+    if not isinstance(keys, list) or not keys:
+        raise TaxonomyError("liste de thèmes vide", 400)
+    keys = [_validate_theme(k) for k in keys]
+    # Dedup while keeping order for the response
+    seen = set()
+    deduped = []
+    for k in keys:
+        if k not in seen:
+            seen.add(k)
+            deduped.append(k)
+    keys = deduped
+
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        mapping = _load_mapping(profile)
+        deleted: list[dict] = []
+        not_found: list[str] = []
+        for k in keys:
+            if k in mapping:
+                deleted.append({"theme": k, "previous_folder": mapping.pop(k)})
+            else:
+                not_found.append(k)
+        if not deleted:
+            return {
+                "ok": True,
+                "deleted": [],
+                "not_found": not_found,
+                "n_deleted": 0,
+                "backup": None,
+            }
+        backup = _backup_mapping(profile)
+        _write_mapping(profile, mapping)
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "deleted": deleted,
+            "not_found": not_found,
+            "n_deleted": len(deleted),
+            "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+        }
+
+
 # ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────
 
 

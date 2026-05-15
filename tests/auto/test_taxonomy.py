@@ -1531,5 +1531,192 @@ class TestThemeFilesEndpoint(TaxonomyTestBase):
         self.assertEqual(r.json()["limit"], 500)
 
 
+class TestDormantMappings(TaxonomyTestBase):
+    """dormant_mappings() — detect mapping keys that no file triggers."""
+
+    def _seed_cache(self, files: dict[str, list[tuple[str, float]]]):
+        """Helper: write a vision_cache with the given file→themes layout
+        and reset the taxonomy cache. Each file gets unique PDF bytes so
+        cache keys don't collide."""
+        from lib import vision_cache as vc
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache: dict = {}
+        for rel, themes in files.items():
+            abs_path = self.target / rel
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            abs_path.write_bytes(f"%PDF-1.4 {rel}".encode())
+            key = vc.compute_cache_key(
+                str(abs_path),
+                model="Qwen/Qwen3-VL-32B-Instruct",
+                n_pages=2,
+            )
+            assert key
+            cache[key] = {
+                "result": {
+                    "title": Path(rel).stem,
+                    "themes": [{"theme": t, "confidence": c} for t, c in themes],
+                },
+                "model": "Qwen/Qwen3-VL-32B-Instruct",
+                "prompt_version": "v3",
+            }
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+
+    def test_unused_key_is_dormant(self):
+        # Mapping has "physics" (used) + "geography" (unused — no file)
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({
+            "physics": "01-SCIENCES/PHYSIQUE",
+            "geography": "01-SCIENCES",
+        }))
+        self._seed_cache({
+            "01-SCIENCES/PHYSIQUE/p.pdf": [("physics", 0.9)],
+        })
+        r = taxonomy.dormant_mappings(self.profile_name)
+        dormant_keys = [d["key"] for d in r["dormant"]]
+        self.assertIn("geography", dormant_keys)
+        self.assertNotIn("physics", dormant_keys)
+        self.assertEqual(r["active"].get("physics"), 1)
+        self.assertEqual(r["n_total"], 2)
+        self.assertEqual(r["n_dormant"], 1)
+
+    def test_substring_winner_marks_loser_dormant(self):
+        # "physics" (7 chars) beats "optics" (6 chars) on "Optics and Light Physics"
+        # → "optics" is dormant even though it's referenced by a theme.
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({
+            "physics": "01-SCIENCES/PHYSIQUE",
+            "optics":  "01-SCIENCES/PHYSIQUE/04-Optique",
+        }))
+        self._seed_cache({
+            "01-SCIENCES/PHYSIQUE/light.pdf":
+                [("Optics and Light Physics", 0.9)],
+        })
+        r = taxonomy.dormant_mappings(self.profile_name)
+        dormant_keys = [d["key"] for d in r["dormant"]]
+        # physics wins the longest-substring → optics is dormant
+        self.assertIn("optics", dormant_keys)
+        self.assertNotIn("physics", dormant_keys)
+
+    def test_exact_match_wins_over_substring(self):
+        # "Optics" exact match takes priority over "physics" substring
+        # when the theme is just "Optics".
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({
+            "physics": "01-SCIENCES/PHYSIQUE",
+            "optics":  "01-SCIENCES/PHYSIQUE/04-Optique",
+        }))
+        self._seed_cache({
+            "01-SCIENCES/PHYSIQUE/04-Optique/o.pdf": [("Optics", 0.9)],
+        })
+        r = taxonomy.dormant_mappings(self.profile_name)
+        dormant_keys = [d["key"] for d in r["dormant"]]
+        self.assertIn("physics", dormant_keys)
+        self.assertNotIn("optics", dormant_keys)
+
+    def test_dormant_includes_folder(self):
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump({
+            "geography": "01-SCIENCES",
+            "physics":   "01-SCIENCES/PHYSIQUE",
+        }))
+        self._seed_cache({
+            "01-SCIENCES/PHYSIQUE/p.pdf": [("physics", 0.9)],
+        })
+        r = taxonomy.dormant_mappings(self.profile_name)
+        geo = next(d for d in r["dormant"] if d["key"] == "geography")
+        self.assertEqual(geo["folder"], "01-SCIENCES")
+
+
+class TestBulkDeleteMapping(TaxonomyTestBase):
+
+    def test_bulk_delete_happy_path(self):
+        r = taxonomy.delete_mappings_bulk(self.profile_name,
+                                          ["physics", "algebra"])
+        self.assertEqual(r["n_deleted"], 2)
+        deleted_themes = {d["theme"] for d in r["deleted"]}
+        self.assertEqual(deleted_themes, {"physics", "algebra"})
+        self.assertEqual(r["not_found"], [])
+        self.assertIsNotNone(r["backup"])
+        # YAML actually updated
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertNotIn("physics", new_map)
+        self.assertNotIn("algebra", new_map)
+        self.assertIn("quantum mechanics", new_map)
+
+    def test_bulk_delete_reports_unknown_without_failing(self):
+        r = taxonomy.delete_mappings_bulk(self.profile_name,
+                                          ["physics", "does-not-exist"])
+        self.assertEqual(r["n_deleted"], 1)
+        self.assertEqual(r["not_found"], ["does-not-exist"])
+
+    def test_bulk_delete_empty_list_rejected(self):
+        with self.assertRaises(taxonomy.TaxonomyError):
+            taxonomy.delete_mappings_bulk(self.profile_name, [])
+
+    def test_bulk_delete_dedupes(self):
+        r = taxonomy.delete_mappings_bulk(
+            self.profile_name, ["physics", "physics", "physics"],
+        )
+        self.assertEqual(r["n_deleted"], 1)
+
+    def test_bulk_delete_creates_single_backup(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        taxonomy.delete_mappings_bulk(
+            self.profile_name, ["physics", "algebra", "quantum mechanics"],
+        )
+        after = list(backup_dir.glob("*.yaml"))
+        # Exactly one new backup file, regardless of how many keys were deleted.
+        self.assertEqual(len(after) - len(before), 1)
+
+    def test_bulk_delete_invalid_theme_rejected(self):
+        # Whitespace-only key violates _validate_theme
+        with self.assertRaises(taxonomy.TaxonomyError):
+            taxonomy.delete_mappings_bulk(self.profile_name, ["   "])
+
+
+class TestDormantAndBulkEndpoints(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_dormant_mappings(self):
+        r = self.client.get(
+            f"/api/taxonomy/dormant-mappings?profile={self.profile_name}"
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("dormant", body)
+        self.assertIn("active", body)
+        self.assertIn("n_total", body)
+
+    def test_endpoint_bulk_delete_happy(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-delete", json={
+            "profile": self.profile_name,
+            "keys": ["physics", "algebra"],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_deleted"], 2)
+
+    def test_endpoint_bulk_delete_requires_profile(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-delete", json={
+            "keys": ["physics"],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_endpoint_bulk_delete_empty_returns_400(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-delete", json={
+            "profile": self.profile_name,
+            "keys": [],
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

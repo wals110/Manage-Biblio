@@ -1622,6 +1622,29 @@ async def taxonomy_theme_files_api(
     return JSONResponse(taxonomy.theme_files(profile, theme, limit=limit))
 
 
+@app.get("/api/taxonomy/dormant-mappings")
+async def taxonomy_dormant_mappings_api(profile: str):
+    """List mapping keys that no file's top theme resolves through.
+    Removing them wouldn't change any file's classification."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.dormant_mappings(profile))
+
+
+@app.post("/api/taxonomy/mappings/bulk-delete")
+async def taxonomy_mappings_bulk_delete_api(request: Request):
+    """Delete multiple mappings in a single transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile")
+    keys = body.get("keys")
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(taxonomy.delete_mappings_bulk(profile, keys or []))
+    except taxonomy.TaxonomyError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status)
+
+
 @app.post("/api/taxonomy/mapping")
 async def taxonomy_mapping_add_api(request: Request):
     from fastapi.responses import JSONResponse
