@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% set active = "taxonomy" %}
+{% block title %}Mockup — Mappings/Catégories sub-tab{% endblock %}
+
+{% block content %}
+<style>
+  /* ---- mockup-only tweaks (no impact on the real app) ---- */
+  .mockup-banner {
+      background: rgba(217, 119, 6, 0.12);
+      border: 1px solid rgba(217, 119, 6, 0.4);
+      color: #d29922;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      text-align: center;
+  }
+  /* Sub-tab control in the header */
+  .mk-subtabs {
+      display: inline-flex;
+      margin-left: 14px;
+      border: 1px solid var(--border, #30363d);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  .mk-subtab {
+      background: transparent;
+      border: none;
+      color: var(--text-muted, #8b949e);
+      padding: 4px 14px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.1s, color 0.1s;
+  }
+  .mk-subtab:hover { background: rgba(255,255,255,0.04); color: var(--text, #c9d1d9); }
+  .mk-subtab.active {
+      background: var(--blue, #58a6ff);
+      color: white;
+  }
+  .mk-view { display: none; }
+  .mk-view.active { display: block; }
+
+  /* --- Catégories view layout --- */
+  .mk-cat-grid {
+      display: grid;
+      grid-template-columns: 26% 36% 38%;
+      gap: 12px;
+      height: 78vh;
+  }
+  .mk-cat-col {
+      background: var(--card, #161b22);
+      border: 1px solid var(--border, #30363d);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+  }
+  .mk-cat-col header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border, #30363d);
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+  }
+  .mk-cat-col header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text, #c9d1d9);
+  }
+  .mk-cat-col header .muted { font-size: 11px; }
+  .mk-cat-body { padding: 8px; overflow-y: auto; flex: 1; }
+
+  /* Column 1 — categories tree */
+  .mk-cat-group {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted, #8b949e);
+      padding: 8px 6px 4px;
+      font-weight: 600;
+  }
+  .mk-cat-entry {
+      padding: 4px 8px 4px 22px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text, #c9d1d9);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-left: 2px solid transparent;
+  }
+  .mk-cat-entry:hover { background: rgba(255,255,255,0.04); }
+  .mk-cat-entry.selected {
+      background: rgba(88, 166, 255, 0.12);
+      border-left-color: var(--blue, #58a6ff);
+  }
+  .mk-cat-entry-prio {
+      font-size: 9px;
+      color: var(--text-muted, #8b949e);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 4px;
+      float: right;
+      font-variant-numeric: tabular-nums;
+  }
+  .mk-cat-entry.dormant {
+      opacity: 0.55;
+  }
+  .mk-cat-entry.dormant::after {
+      content: "dormant";
+      font-size: 9px;
+      color: #d29922;
+      background: rgba(217, 119, 6, 0.12);
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      float: right;
+  }
+
+  /* Column 2 — entry details */
+  .mk-cat-detail-empty {
+      color: var(--text-muted, #8b949e);
+      padding: 30px;
+      text-align: center;
+      font-size: 12px;
+  }
+  .mk-cat-field { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .mk-cat-field label {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted, #8b949e);
+      margin-bottom: 4px;
+  }
+  .mk-cat-field .value {
+      font-size: 12px;
+      color: var(--text, #c9d1d9);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .mk-cat-field input[type="number"] {
+      background: var(--bg, #0d1117);
+      border: 1px solid var(--border, #30363d);
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: var(--text, #c9d1d9);
+      font-size: 12px;
+      width: 60px;
+  }
+  .mk-cat-stats {
+      display: flex;
+      gap: 12px;
+      padding: 8px 14px;
+      font-size: 11px;
+      color: var(--text-muted, #8b949e);
+  }
+  .mk-cat-stats strong { color: var(--text, #c9d1d9); margin-right: 3px; }
+
+  /* Column 3 — keywords (chips) */
+  .mk-cat-kw-add {
+      display: flex;
+      gap: 6px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border, #30363d);
+  }
+  .mk-cat-kw-add input {
+      flex: 1;
+      background: var(--bg, #0d1117);
+      border: 1px solid var(--border, #30363d);
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: var(--text, #c9d1d9);
+      font-size: 12px;
+  }
+  .mk-cat-kw-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 10px 14px;
+  }
+  .mk-cat-kw {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(88, 166, 255, 0.08);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      color: var(--text, #c9d1d9);
+      padding: 2px 6px 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .mk-cat-kw-x {
+      cursor: pointer;
+      color: var(--text-muted, #8b949e);
+      font-size: 10px;
+      padding: 0 2px;
+  }
+  .mk-cat-kw-x:hover { color: var(--red, #f85149); }
+  .mk-cat-kw.dim {
+      opacity: 0.5;
+      background: rgba(255, 255, 255, 0.02);
+      border-color: var(--border, #30363d);
+  }
+
+  /* --- Mappings view (placeholder so the toggle is meaningful) --- */
+  .mk-map-grid {
+      display: grid;
+      grid-template-columns: 30% 45% 25%;
+      gap: 12px;
+      height: 78vh;
+  }
+  .mk-map-col {
+      background: var(--card, #161b22);
+      border: 1px solid var(--border, #30363d);
+      border-radius: 8px;
+      padding: 14px;
+      color: var(--text-muted, #8b949e);
+      font-size: 12px;
+  }
+</style>
+
+<header class="tax-header">
+  <div class="mockup-banner">
+    🎨 Mockup statique — pas connecté aux données. But : valider le layout du sub-tab Mappings/Catégories.
+  </div>
+  <div class="tax-title-row">
+    <h1 class="page-title" style="margin:0;">Taxonomie</h1>
+    <div class="mk-subtabs" role="tablist">
+      <button class="mk-subtab active" data-view="mappings">Mappings</button>
+      <button class="mk-subtab" data-view="categories">Catégories</button>
+    </div>
+    <div class="tax-toolbar" style="margin-left:auto;">
+      <label class="filter-label">Profil</label>
+      <select class="filter-select" disabled><option>default</option></select>
+      <span class="tax-toolbar-divider"></span>
+      <button class="tax-icon-btn" disabled>↩ Annuler</button>
+      <button class="tax-icon-btn tax-icon-only" disabled>↻</button>
+      <button class="tax-icon-btn" disabled>🧹 Audit</button>
+    </div>
+  </div>
+  <div class="tax-stats">
+    <span data-stats-mappings>
+      <span><strong>18420</strong> fichiers</span>
+      <span class="dot"></span><span><strong>106</strong> dossiers</span>
+      <span class="dot"></span><span><strong>15107</strong> thèmes LLM</span>
+      <span class="dot"></span><span class="orphan-badge"><strong>6818</strong> orphelins</span>
+      <span class="dot"></span><span><strong>8289</strong> mappés</span>
+    </span>
+    <span data-stats-categories style="display:none;">
+      <span><strong>7</strong> catégories</span>
+      <span class="dot"></span><span><strong>58</strong> entries</span>
+      <span class="dot"></span><span><strong>760</strong> mots-clés</span>
+      <span class="dot"></span><span class="orphan-badge"><strong>4</strong> dormants</span>
+    </span>
+  </div>
+</header>
+
+<!-- =============== VIEW: Mappings (layout actuel, placeholder) =============== -->
+<div class="mk-view active" data-view="mappings">
+  <div class="mk-map-grid">
+    <div class="mk-map-col">
+      <div class="muted small">[ Arborescence + tree spotlight — vue actuelle inchangée ]</div>
+    </div>
+    <div class="mk-map-col">
+      <div class="muted small">[ Viewer PDF + Analyse LLM + Treemap — inchangé ]</div>
+    </div>
+    <div class="mk-map-col">
+      <div class="muted small">[ Thèmes mappés (+ expand impact futur / actuellement) ]<br>[ Thèmes LLM (universe) ]</div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== VIEW: Catégories (proposition) =============== -->
+<div class="mk-view" data-view="categories">
+  <div class="mk-cat-grid">
+
+    <!-- Col 1 — Tree par catégorie + entries -->
+    <section class="mk-cat-col">
+      <header>
+        <h2>Catégories</h2>
+        <span class="muted">7 groupes · 58 entries</span>
+      </header>
+      <div class="mk-cat-body">
+        <div class="mk-cat-group">▼ informatique</div>
+          <div class="mk-cat-entry">16-Conferences<span class="mk-cat-entry-prio">P1</span></div>
+          <div class="mk-cat-entry selected">05-IA-ML/Deep-Learning<span class="mk-cat-entry-prio">P2</span></div>
+          <div class="mk-cat-entry">03-Langages-Programmation/Python<span class="mk-cat-entry-prio">P3</span></div>
+          <div class="mk-cat-entry">14-Web<span class="mk-cat-entry-prio">P3</span></div>
+          <div class="mk-cat-entry dormant">12-IoT-Embarque/Robotique<span class="mk-cat-entry-prio">P5</span></div>
+          <div class="mk-cat-entry muted small" style="padding-left:22px;">… 21 entries de plus</div>
+        <div class="mk-cat-group">▼ mathematique</div>
+          <div class="mk-cat-entry">01-Algebre<span class="mk-cat-entry-prio">P2</span></div>
+          <div class="mk-cat-entry">02-Analyse<span class="mk-cat-entry-prio">P2</span></div>
+          <div class="mk-cat-entry">04-Probabilites-Statistiques<span class="mk-cat-entry-prio">P2</span></div>
+          <div class="mk-cat-entry muted small" style="padding-left:22px;">… 6 entries de plus</div>
+        <div class="mk-cat-group">▶ physique <span class="muted small">(7)</span></div>
+        <div class="mk-cat-group">▶ chimie <span class="muted small">(3)</span></div>
+        <div class="mk-cat-group">▶ religions <span class="muted small">(4)</span></div>
+        <div class="mk-cat-group">▶ loisirs <span class="muted small">(9)</span></div>
+      </div>
+    </section>
+
+    <!-- Col 2 — Détail entry sélectionnée -->
+    <section class="mk-cat-col">
+      <header>
+        <h2>Détail entry</h2>
+        <span class="muted">informatique → Deep-Learning</span>
+      </header>
+      <div class="mk-cat-body" style="padding:0;">
+        <div class="mk-cat-field">
+          <label>Chemin cible</label>
+          <span class="value">02-INFORMATIQUE/05-IA-ML/Deep-Learning</span>
+        </div>
+        <div class="mk-cat-field">
+          <label>Priorité</label>
+          <input type="number" value="2" min="1" max="9" disabled>
+          <span class="muted small" style="margin-left:8px;">(plus bas = plus prioritaire si plusieurs match)</span>
+        </div>
+        <div class="mk-cat-field">
+          <label>Couverture sur la lib</label>
+          <div class="mk-cat-stats">
+            <span><strong>342</strong> matches estimés</span>
+            <span><strong>15</strong> mots-clés actifs</span>
+            <span><strong>0</strong> mots-clés inutilisés</span>
+          </div>
+        </div>
+        <div class="mk-cat-field">
+          <label>Aperçu fichiers concernés</label>
+          <div class="muted small" style="font-size:11px;">
+            • A Brief Introduction to Neural Networks - David Kriesel.pdf<br>
+            • Deep Learning with Python - François Chollet.pdf<br>
+            • Hands-On Machine Learning - Aurélien Géron.pdf<br>
+            <span class="muted">+ 339 autres…</span>
+          </div>
+        </div>
+        <div class="mk-cat-field" style="border-bottom:none;">
+          <label>Actions</label>
+          <button class="btn-secondary" style="font-size:11px; margin-right:6px;">Renommer chemin</button>
+          <button class="btn-secondary" style="font-size:11px; margin-right:6px;">Déplacer entry</button>
+          <button class="btn-danger" style="font-size:11px;">Supprimer entry</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Col 3 — Mots-clés (chips) -->
+    <section class="mk-cat-col">
+      <header>
+        <h2>Mots-clés</h2>
+        <span class="muted">15 actifs · 0 dormants</span>
+      </header>
+      <div class="mk-cat-kw-add">
+        <input type="text" placeholder="ajouter un mot-clé… (ex: backpropagation)">
+        <button class="btn-primary" style="font-size:11px;">+ Ajouter</button>
+      </div>
+      <div class="mk-cat-kw-list">
+        <span class="mk-cat-kw">deep learning <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">neural network <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">convolutional <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">CNN <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">RNN <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">LSTM <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">GAN <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">transformer <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">backpropagation <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">tensorflow <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">pytorch <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">keras <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">perceptron <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">attention mechanism <span class="mk-cat-kw-x">×</span></span>
+        <span class="mk-cat-kw">embedding <span class="mk-cat-kw-x">×</span></span>
+      </div>
+      <div style="padding: 12px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted);">
+        💡 Un mot-clé est <strong>dormant</strong> si aucun fichier de la lib ne le contient dans son titre ou son nom. Bouton 🧹 Audit en haut pour les détecter.
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+  (function() {
+    const btns = document.querySelectorAll('.mk-subtab');
+    btns.forEach(b => b.addEventListener('click', () => {
+      const view = b.dataset.view;
+      btns.forEach(x => x.classList.toggle('active', x === b));
+      document.querySelectorAll('.mk-view').forEach(v =>
+        v.classList.toggle('active', v.dataset.view === view));
+      document.querySelector('[data-stats-mappings]').style.display =
+        (view === 'mappings') ? '' : 'none';
+      document.querySelector('[data-stats-categories]').style.display =
+        (view === 'categories') ? '' : 'none';
+    }));
+  })();
+</script>
+{% endblock %}

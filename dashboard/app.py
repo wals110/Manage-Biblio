@@ -1575,6 +1575,25 @@ async def taxonomy_page(request: Request, profile: str | None = None):
     )
 
 
+@app.get("/api/categories/snapshot")
+async def categories_snapshot_api(profile: str, force: bool = False):
+    """Return the parsed + aggregated view of categories.yaml for the UI."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    return JSONResponse(categories.build_snapshot(profile, force_reload=force))
+
+
+@app.get("/mockup/categories")
+async def mockup_categories_page(request: Request):
+    """Static visual mockup for the proposed Mappings/Catégories sub-tab.
+    Not wired to any data — purely a layout preview to validate UX."""
+    return templates.TemplateResponse(
+        request,
+        "mockup_categories.html",
+        {"active": "taxonomy"},
+    )
+
+
 @app.get("/api/taxonomy/profiles")
 async def taxonomy_profiles_api():
     from fastapi.responses import JSONResponse

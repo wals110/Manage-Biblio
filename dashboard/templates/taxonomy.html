@@ -8,6 +8,12 @@
 <header class="tax-header">
     <div class="tax-title-row">
         <h1 class="page-title" style="margin:0;">Taxonomie</h1>
+        <div class="tax-subtabs" role="tablist">
+            <button class="tax-subtab active" data-view="mappings"
+                    title="Mappings thème → dossier (theme_mapping.yaml)">Mappings</button>
+            <button class="tax-subtab" data-view="categories"
+                    title="Catégories + mots-clés (categories.yaml)">Catégories</button>
+        </div>
         <div class="tax-toolbar">
             <label class="filter-label">Profil</label>
             <select id="tax-profile-select" class="filter-select">
@@ -42,8 +48,13 @@
     <div class="tax-stats" id="tax-stats">
         <span class="muted">Chargement…</span>
     </div>
+    <div class="tax-stats" id="tax-stats-categories" style="display:none;">
+        <span class="muted">Chargement catégories…</span>
+    </div>
 </header>
 
+<!-- ─────────────────────── View: Mappings (default) ─────────────────────── -->
+<div class="tax-view tax-view-mappings active" data-view="mappings">
 <div class="tax-grid" id="tax-grid">
     <!-- Colonne 1 — Arbre -->
     <section class="tax-col tax-col-tree">
@@ -124,6 +135,49 @@
         </div>
     </section>
 </div>
+</div>
+<!-- ────────────────────── End view: Mappings ────────────────────────────── -->
+
+<!-- ────────────────────── View: Catégories (Phase A — read-only) ────────── -->
+<div class="tax-view tax-view-categories" data-view="categories" style="display:none;">
+    <div class="tax-cat-grid">
+        <!-- Col 1 — Tree of groups + entries -->
+        <section class="tax-col tax-cat-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Catégories</h2>
+                <span class="tax-col-sub" id="tax-cat-tree-sub"></span>
+            </header>
+            <div class="tax-cat-tree" id="tax-cat-tree"></div>
+        </section>
+
+        <!-- Col 2 — Detail of the selected entry -->
+        <section class="tax-col tax-cat-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Détail entry</h2>
+                <span class="tax-col-sub" id="tax-cat-detail-sub">Sélectionne une entry</span>
+            </header>
+            <div class="tax-cat-detail" id="tax-cat-detail">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Aucune entry sélectionnée — clic dans la colonne de gauche.
+                </div>
+            </div>
+        </section>
+
+        <!-- Col 3 — Keywords -->
+        <section class="tax-col tax-cat-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Mots-clés</h2>
+                <span class="tax-col-sub" id="tax-cat-kw-sub"></span>
+            </header>
+            <div class="tax-cat-kw-panel" id="tax-cat-kw">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Sélectionne une entry pour voir ses mots-clés.
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+<!-- ────────────────────── End view: Catégories ──────────────────────────── -->
 
 <!-- Popover "+ Mapper" -->
 <div id="tax-map-popover" class="tax-map-popover" style="display:none;">
@@ -231,4 +285,5 @@
 <div id="tax-toast" class="tax-toast" style="display:none;"></div>
 
 <script src="/static/js/taxonomy.js"></script>
+<script src="/static/js/taxonomy_categories.js"></script>
 {% endblock %}
