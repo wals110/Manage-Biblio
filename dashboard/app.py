@@ -1796,6 +1796,14 @@ async def taxonomy_reclassify_dryrun_api(profile: str, sample: int = 50):
     return JSONResponse(taxonomy.reclassify_dryrun(profile, sample_size=sample))
 
 
+@app.get("/api/taxonomy/mapping-conflicts")
+async def taxonomy_mapping_conflicts_api(profile: str):
+    """Extended audit: substring eclipses + same-folder duplicates.
+    Pure analysis, no writes."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.mapping_conflicts(profile))
+
+
 @app.get("/api/taxonomy/dormant-mappings")
 async def taxonomy_dormant_mappings_api(profile: str):
     """List mapping keys that no file's top theme resolves through.

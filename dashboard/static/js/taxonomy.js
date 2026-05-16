@@ -564,9 +564,19 @@
   // user can purge them in batch from theme_mapping.yaml.
 
   const auditState = {
-    data: null,
-    selected: new Set(),   // mapping keys ticked for deletion
+    data: null,           // dormant mappings response
+    conflicts: null,      // mapping_conflicts response (lazy-loaded)
+    selected: new Set(),  // mapping keys ticked for deletion (dormant tab only)
+    tab: 'dormants',      // 'dormants' | 'conflicts' | 'duplicates'
   };
+
+  async function fetchMappingConflicts() {
+    const r = await fetch(
+      `/api/taxonomy/mapping-conflicts?profile=${encodeURIComponent(state.profile)}`);
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
 
   async function openAuditModal() {
     const modal = $('#tax-audit-modal');
@@ -574,9 +584,16 @@
     body.innerHTML = '<div class="muted">Chargement…</div>';
     modal.style.display = 'flex';
     auditState.selected.clear();
-    await withBusy('Analyse des mappings dormants…', async () => {
+    auditState.tab = 'dormants';
+    await withBusy('Analyse des mappings…', async () => {
       try {
-        auditState.data = await fetchDormantMappings();
+        // Fetch both in parallel: dormants + conflicts/duplicates
+        const [dormants, conflicts] = await Promise.all([
+          fetchDormantMappings(),
+          fetchMappingConflicts(),
+        ]);
+        auditState.data = dormants;
+        auditState.conflicts = conflicts;
       } catch (e) {
         body.innerHTML = '<div class="error">✗ ' + e.message + '</div>';
         return;
@@ -588,6 +605,7 @@
   function closeAuditModal() {
     $('#tax-audit-modal').style.display = 'none';
     auditState.data = null;
+    auditState.conflicts = null;
     auditState.selected.clear();
   }
 
@@ -595,30 +613,56 @@
     const body = $('#tax-audit-body');
     body.innerHTML = '';
     const data = auditState.data;
+    const conf = auditState.conflicts;
     if (!data) return;
-    // Header line with stats
-    const header = el('div', { class: 'tax-audit-header' }, [
+    // Top header line with global stats
+    body.appendChild(el('div', { class: 'tax-audit-header' }, [
       el('div', null, [
         el('strong', null, [String(data.n_total)]), ' mappings · ',
         el('strong', null, [String(data.n_active)]), ' actifs · ',
         el('strong', { class: 'tax-audit-dormant-count' },
                     [String(data.n_dormant)]), ' dormants',
       ]),
-      el('div', { class: 'muted small' }, [
-        'Dormant = aucun fichier de la lib n\'a un top theme qui résout vers ce mapping. ',
-        'Supprimer ces clés ne changera la classification d\'aucun fichier.',
-      ]),
-    ]);
-    body.appendChild(header);
+    ]));
+    // Tabs
+    const tabs = el('div', { class: 'tax-audit-tabs' });
+    const tabDefs = [
+      { id: 'dormants',
+        label: `Dormants (${data.n_dormant})` },
+      { id: 'conflicts',
+        label: `Conflits substring (${conf ? conf.stats.n_substring_conflicts : 0})` },
+      { id: 'duplicates',
+        label: `Doublons (${conf ? conf.stats.n_duplicate_groups : 0})` },
+    ];
+    for (const t of tabDefs) {
+      tabs.appendChild(el('button', {
+        class: 'tax-audit-tab' + (auditState.tab === t.id ? ' active' : ''),
+        onclick: () => { auditState.tab = t.id; renderAuditBody(); },
+      }, [t.label]));
+    }
+    body.appendChild(tabs);
+
+    if (auditState.tab === 'dormants') renderAuditDormants();
+    else if (auditState.tab === 'conflicts') renderAuditSubstringConflicts();
+    else renderAuditDuplicates();
+    updateAuditDeleteBtn();
+  }
+
+  function renderAuditDormants() {
+    const body = $('#tax-audit-body');
+    const data = auditState.data;
+    body.appendChild(el('div', { class: 'muted small', style: 'padding:8px 16px;' }, [
+      'Dormant = aucun fichier de la lib n\'a un top theme qui résout vers ce mapping. ',
+      'Supprimer ces clés ne changera la classification d\'aucun fichier.',
+    ]));
     if (data.n_dormant === 0) {
       body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
         '✅ Aucun mapping dormant. Tout est utilisé.',
       ]));
-      updateAuditDeleteBtn();
       return;
     }
     // Bulk selection controls
-    const controls = el('div', { class: 'tax-audit-controls' }, [
+    body.appendChild(el('div', { class: 'tax-audit-controls' }, [
       el('button', {
         class: 'btn-secondary tax-audit-select-all',
         onclick: () => {
@@ -630,17 +674,12 @@
         class: 'btn-secondary',
         onclick: () => { auditState.selected.clear(); renderAuditBody(); },
       }, ['Tout désélectionner']),
-    ]);
-    body.appendChild(controls);
-    // Table of dormant items. Per-row toggle does NOT trigger a full
-    // re-render (that was breaking individual click toggling — the row
-    // got destroyed and rebuilt mid-click). Only the row class +
-    // delete-button counter are updated locally.
+    ]));
     const list = el('div', { class: 'tax-audit-list' });
     for (const d of data.dormant) {
       const isChecked = auditState.selected.has(d.key);
       const checkbox = el('input', { type: 'checkbox' });
-      checkbox.checked = isChecked;  // property, not attribute
+      checkbox.checked = isChecked;
       const row = el('label', {
         class: 'tax-audit-row' + (isChecked ? ' selected' : ''),
       }, [
@@ -662,11 +701,94 @@
       list.appendChild(row);
     }
     body.appendChild(list);
-    updateAuditDeleteBtn();
+  }
+
+  function renderAuditSubstringConflicts() {
+    const body = $('#tax-audit-body');
+    const conf = auditState.conflicts;
+    body.appendChild(el('div', { class: 'muted small', style: 'padding:8px 16px;' }, [
+      'Conflit substring = un mapping dormant éclipsé par une clé plus longue ',
+      'qui le contient comme sous-chaîne (longest-substring rule). ',
+      'Pour réveiller le perdant, renomme le gagnant plus spécifiquement.',
+    ]));
+    const items = conf.substring_conflicts;
+    if (items.length === 0) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
+        '✅ Aucun conflit substring détecté.',
+      ]));
+      return;
+    }
+    const list = el('div', { class: 'tax-audit-list' });
+    for (const c of items) {
+      list.appendChild(el('div', { class: 'tax-audit-conflict-row' }, [
+        el('div', { class: 'tax-audit-conflict-side' }, [
+          el('div', { class: 'tax-audit-conflict-label muted small' }, ['LOSER (dormant)']),
+          el('div', { class: 'tax-audit-key' }, [c.loser]),
+          el('div', { class: 'tax-audit-folder' }, [c.loser_folder]),
+        ]),
+        el('div', { class: 'tax-audit-conflict-arrow' }, ['eclipsé par →']),
+        el('div', { class: 'tax-audit-conflict-side tax-audit-conflict-winner' }, [
+          el('div', { class: 'tax-audit-conflict-label muted small' },
+                     [`WINNER (${c.winner_files} files)`]),
+          el('div', { class: 'tax-audit-key' }, [c.winner]),
+          el('div', { class: 'tax-audit-folder' }, [c.winner_folder]),
+        ]),
+      ]));
+    }
+    body.appendChild(list);
+  }
+
+  function renderAuditDuplicates() {
+    const body = $('#tax-audit-body');
+    const conf = auditState.conflicts;
+    body.appendChild(el('div', { class: 'muted small', style: 'padding:8px 16px;' }, [
+      'Doublon = plusieurs clés pointent vers le MÊME dossier. ',
+      'Pas un bug — différentes orthographes du même thème peuvent légitimement converger ',
+      '— mais à consolider si certaines clés n\'apportent rien.',
+    ]));
+    const groups = conf.duplicate_groups;
+    if (groups.length === 0) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
+        '✅ Aucun doublon. Chaque mapping pointe vers un dossier différent.',
+      ]));
+      return;
+    }
+    const list = el('div', { class: 'tax-audit-list' });
+    for (const g of groups) {
+      const groupEl = el('div', { class: 'tax-audit-duplicate-group' }, [
+        el('div', { class: 'tax-audit-duplicate-head' }, [
+          el('span', { class: 'tax-audit-folder' }, [g.folder]),
+          el('span', { class: 'tax-audit-duplicate-stats muted small' },
+                     [`${g.n_keys} clés · ${g.total_files} fichiers`]),
+        ]),
+      ]);
+      const keysEl = el('div', { class: 'tax-audit-duplicate-keys' });
+      for (const k of g.keys) {
+        const n = g.per_key[k] || 0;
+        keysEl.appendChild(el('span', {
+          class: 'tax-audit-duplicate-key'
+                 + (n === 0 ? ' tax-audit-duplicate-key-zero' : ''),
+          title: n === 0 ? 'aucun fichier' : `${n} fichier(s)`,
+        }, [
+          k, ' ',
+          el('span', { class: 'tax-audit-duplicate-key-count' }, [String(n)]),
+        ]));
+      }
+      groupEl.appendChild(keysEl);
+      list.appendChild(groupEl);
+    }
+    body.appendChild(list);
   }
 
   function updateAuditDeleteBtn() {
     const btn = $('#tax-audit-delete');
+    // Bulk delete only makes sense on the dormants tab. Hide for other tabs
+    // (substring conflicts + duplicates are pure information).
+    if (auditState.tab !== 'dormants') {
+      btn.style.display = 'none';
+      return;
+    }
+    btn.style.display = '';
     const n = auditState.selected.size;
     btn.textContent = `Supprimer la sélection (${n})`;
     btn.disabled = (n === 0);

@@ -1912,5 +1912,174 @@ class TestReclassifyDryrunEndpoint(TaxonomyTestBase):
         self.assertLessEqual(len(r.json()["sample_moves"]), 500)
 
 
+class TestMappingConflicts(TaxonomyTestBase):
+    """mapping_conflicts() — substring eclipses + same-folder duplicates."""
+
+    def _setup_with_files(self, mapping: dict, files: dict):
+        """Helper: replace the mapping + write a vision_cache so that the
+        folder_index has the expected per-file resolutions."""
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text(yaml.safe_dump(mapping, sort_keys=False))
+        # Each file gets unique bytes for a real cache_key
+        from lib import vision_cache as vc
+        cache: dict = {}
+        for rel, themes in files.items():
+            abs_path = self.target / rel
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            abs_path.write_bytes(f"%PDF-1.4 {rel}".encode())
+            key = vc.compute_cache_key(
+                str(abs_path),
+                model="Qwen/Qwen3-VL-32B-Instruct",
+                n_pages=2,
+            )
+            top_conf = max(c for _, c in themes)
+            cache[key] = {
+                "result": {
+                    "title": Path(rel).stem,
+                    "confidence": top_conf,
+                    "themes": [{"theme": t, "confidence": c} for t, c in themes],
+                },
+                "model": "Qwen/Qwen3-VL-32B-Instruct",
+                "prompt_version": "v3",
+            }
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+
+    def test_substring_eclipse_detected(self):
+        """A dormant key whose lowercase is substring of a longer ACTIVE
+        key must be flagged as eclipsed by that winner."""
+        self._setup_with_files(
+            mapping={
+                "physics": "01-SCIENCES/PHYSIQUE",
+                # "phys" is shorter and a substring of "physics"; no file
+                # triggers it standalone because the cache only has
+                # "Mathematical Physics" → "physics" wins.
+                "phys": "01-SCIENCES/AUTRES",
+            },
+            files={
+                "01-SCIENCES/PHYSIQUE/qft.pdf":
+                    [("Mathematical Physics", 0.95)],
+            },
+        )
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        conflicts = r["substring_conflicts"]
+        self.assertEqual(len(conflicts), 1)
+        c = conflicts[0]
+        self.assertEqual(c["loser"], "phys")
+        self.assertEqual(c["winner"], "physics")
+        self.assertEqual(c["winner_folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertGreater(c["winner_files"], 0)
+
+    def test_no_substring_eclipse_when_no_overlap(self):
+        """Dormants with no longer key containing them are NOT in the
+        substring_conflicts list — they're just unused."""
+        self._setup_with_files(
+            mapping={
+                "physics": "01-SCIENCES/PHYSIQUE",
+                "buddhism": "05-RELIGIONS",   # dormant + no overlap with anything
+            },
+            files={
+                "01-SCIENCES/PHYSIQUE/p.pdf": [("physics", 0.9)],
+            },
+        )
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        # buddhism is dormant (in dormant_mappings) but NOT in conflicts
+        keys_flagged = {c["loser"] for c in r["substring_conflicts"]}
+        self.assertNotIn("buddhism", keys_flagged)
+
+    def test_eclipse_picks_shortest_winner(self):
+        """When multiple longer keys contain the loser, the SHORTEST
+        winner (= most direct culprit) is reported."""
+        self._setup_with_files(
+            mapping={
+                "ml": "02-INFORMATIQUE/05-IA-ML/Machine-Learning",
+                "machine learning": "02-INFORMATIQUE/05-IA-ML/Machine-Learning",
+                "deep machine learning": "02-INFORMATIQUE/05-IA-ML/Deep-Learning",
+            },
+            files={
+                "02-INFO/Machine-Learning/ml1.pdf": [("machine learning", 0.9)],
+                "02-INFO/Deep-Learning/ml2.pdf": [("deep machine learning", 0.9)],
+            },
+        )
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        ml_conflicts = [c for c in r["substring_conflicts"]
+                        if c["loser"] == "ml"]
+        if ml_conflicts:
+            # winner must be the shortest active key containing "ml"
+            self.assertEqual(ml_conflicts[0]["winner"], "machine learning")
+
+    def test_duplicate_groups_detected(self):
+        """Multiple keys pointing to the same folder form a duplicate group."""
+        self._setup_with_files(
+            mapping={
+                "physics": "01-SCIENCES/PHYSIQUE",
+                "physique": "01-SCIENCES/PHYSIQUE",
+                "phys-domain": "01-SCIENCES/PHYSIQUE",
+                "algebra": "01-SCIENCES/MATHEMATIQUES",
+            },
+            files={"01-SCIENCES/PHYSIQUE/p.pdf": [("physics", 0.9)]},
+        )
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        groups = r["duplicate_groups"]
+        # Only PHYSIQUE has > 1 key
+        physique = [g for g in groups
+                    if g["folder"] == "01-SCIENCES/PHYSIQUE"]
+        self.assertEqual(len(physique), 1)
+        self.assertEqual(physique[0]["n_keys"], 3)
+        self.assertEqual(set(physique[0]["keys"]),
+                         {"physics", "physique", "phys-domain"})
+
+    def test_duplicate_groups_includes_per_key_counts(self):
+        self._setup_with_files(
+            mapping={
+                "physics": "01-SCIENCES/PHYSIQUE",
+                "physique": "01-SCIENCES/PHYSIQUE",
+            },
+            files={"01-SCIENCES/PHYSIQUE/p.pdf": [("physics", 0.9)]},
+        )
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        g = r["duplicate_groups"][0]
+        self.assertEqual(g["per_key"]["physics"], 1)
+        self.assertEqual(g["per_key"]["physique"], 0)
+
+    def test_singleton_folders_not_duplicates(self):
+        """A folder with only one mapping key isn't a duplicate group."""
+        self._setup_with_files(
+            mapping={"physics": "01-SCIENCES/PHYSIQUE"},
+            files={"01-SCIENCES/PHYSIQUE/p.pdf": [("physics", 0.9)]},
+        )
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        self.assertEqual(r["duplicate_groups"], [])
+
+    def test_empty_mapping_returns_empty_stats(self):
+        mp = self.profile_dir / "theme_mapping.yaml"
+        mp.write_text("{}")
+        taxonomy.reset_cache(self.profile_name)
+        r = taxonomy.mapping_conflicts(self.profile_name)
+        self.assertEqual(r["substring_conflicts"], [])
+        self.assertEqual(r["duplicate_groups"], [])
+        self.assertEqual(r["stats"]["n_substring_conflicts"], 0)
+        self.assertEqual(r["stats"]["n_duplicate_groups"], 0)
+
+
+class TestMappingConflictsEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_basic(self):
+        r = self.client.get(
+            f"/api/taxonomy/mapping-conflicts?profile={self.profile_name}")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("substring_conflicts", body)
+        self.assertIn("duplicate_groups", body)
+        self.assertIn("stats", body)
+
+
 if __name__ == "__main__":
     unittest.main()

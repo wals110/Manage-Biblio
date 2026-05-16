@@ -1625,6 +1625,107 @@ def dormant_mappings(profile: str) -> dict:
     }
 
 
+def mapping_conflicts(profile: str) -> dict:
+    """Extended mapping audit beyond strict dormants:
+
+    - substring_conflicts: a key that is unused because a LONGER key
+      contains its lowercased form as a substring (longest-substring
+      rule from classify_by_theme always picks the longer one first).
+      Helps explain *why* a key is dormant — the user can decide to
+      delete the loser, or rename the winner more specifically.
+
+    - duplicate_groups: keys pointing to the SAME destination folder.
+      Not necessarily a bug (different LLM theme spellings can route
+      to the same place), but worth surfacing so the user can decide
+      to consolidate.
+
+    Both lists are pure analysis (no writes). The dormant list is NOT
+    returned here — use dormant_mappings() for that.
+    """
+    mapping = _load_mapping(profile)
+    if not mapping:
+        return {
+            "substring_conflicts": [],
+            "duplicate_groups": [],
+            "stats": {"n_substring_conflicts": 0, "n_duplicate_groups": 0,
+                      "n_keys_in_duplicates": 0},
+        }
+
+    keys_by_len = sorted(mapping.keys(), key=lambda k: -len(k))
+    _, folder_index = _get_indexes(profile)
+    keys_used: dict[str, int] = {}
+    for items in folder_index.values():
+        for item in items:
+            top_theme = item.get("top_theme")
+            if not top_theme:
+                continue
+            _, k = _resolve_with_key(top_theme, mapping, keys_by_len)
+            if k is not None:
+                keys_used[k] = keys_used.get(k, 0) + 1
+
+    # 1. Substring conflicts — pair each dormant (loser) with the longer
+    # key (winner) that eclipses it via longest-substring matching.
+    keys_lower = {k: k.lower() for k in mapping}
+    substring_conflicts: list[dict] = []
+    for loser, loser_low in keys_lower.items():
+        if loser in keys_used:
+            continue  # only flag dormants — active keys are by def not eclipsed
+        # Find the SHORTEST longer key that contains loser as substring AND
+        # is itself active — that's the most direct culprit.
+        best_winner: tuple[str, int] | None = None  # (winner, winner_len)
+        for winner, winner_low in keys_lower.items():
+            if winner == loser:
+                continue
+            if loser_low not in winner_low:
+                continue
+            if len(winner_low) <= len(loser_low):
+                continue
+            if keys_used.get(winner, 0) <= 0:
+                continue
+            if best_winner is None or len(winner_low) < best_winner[1]:
+                best_winner = (winner, len(winner_low))
+        if best_winner is not None:
+            winner = best_winner[0]
+            substring_conflicts.append({
+                "loser": loser,
+                "loser_folder": mapping[loser],
+                "winner": winner,
+                "winner_folder": mapping[winner],
+                "winner_files": keys_used[winner],
+            })
+    substring_conflicts.sort(
+        key=lambda r: (-r["winner_files"], r["loser"].lower()))
+
+    # 2. Duplicate groups — keys sharing the same destination folder.
+    by_folder: dict[str, list[str]] = defaultdict(list)
+    for k, folder in mapping.items():
+        by_folder[folder].append(k)
+    duplicate_groups: list[dict] = []
+    for folder, keys in by_folder.items():
+        if len(keys) <= 1:
+            continue
+        keys_sorted = sorted(keys, key=str.lower)
+        duplicate_groups.append({
+            "folder": folder,
+            "keys": keys_sorted,
+            "n_keys": len(keys_sorted),
+            "total_files": sum(keys_used.get(k, 0) for k in keys_sorted),
+            "per_key": {k: keys_used.get(k, 0) for k in keys_sorted},
+        })
+    # Sort: groups with most keys first, then by folder name
+    duplicate_groups.sort(key=lambda r: (-r["n_keys"], r["folder"].lower()))
+
+    return {
+        "substring_conflicts": substring_conflicts,
+        "duplicate_groups": duplicate_groups,
+        "stats": {
+            "n_substring_conflicts": len(substring_conflicts),
+            "n_duplicate_groups": len(duplicate_groups),
+            "n_keys_in_duplicates": sum(g["n_keys"] for g in duplicate_groups),
+        },
+    }
+
+
 def delete_mappings_bulk(profile: str, keys: list[str]) -> dict:
     """Delete multiple mapping keys in one transaction.
 
