@@ -58,6 +58,10 @@
     // matching nodes are kept visible to preserve hierarchy.
     treeSearch: '',
 
+    // Drag-drop of folders. Holds the path being dragged so dragover can
+    // decide whether to allow the drop (cycle prevention).
+    draggingFolderPath: null,
+
     // Mapped panel — when an item is clicked, fetches the list of files
     // concerned (future = vision_cache theme, current = files in target folder).
     // selectedMappedTheme stores the lowercased theme key for highlight.
@@ -1022,10 +1026,58 @@
     const row = el('div', {
       class: classes,
       style: `padding-left:${depth * 14 + 6}px;`,
-      ondragover: e => { e.preventDefault(); row.classList.add('drop-target'); },
-      ondragleave: () => row.classList.remove('drop-target'),
-      ondrop: e => { row.classList.remove('drop-target'); onDropOnFolder(e, node.path); },
+      ondragover: e => {
+        e.preventDefault();
+        // Move drag → check guards (can't drop into self or descendants)
+        const draggingPath = state.draggingFolderPath;
+        if (draggingPath !== null
+            && (node.path === draggingPath
+                || node.path.startsWith(draggingPath + '/'))) {
+          e.dataTransfer.dropEffect = 'none';
+          row.classList.add('drop-forbidden');
+          return;
+        }
+        e.dataTransfer.dropEffect = draggingPath !== null ? 'move' : 'copy';
+        row.classList.add('drop-target');
+      },
+      ondragleave: () => {
+        row.classList.remove('drop-target');
+        row.classList.remove('drop-forbidden');
+      },
+      ondrop: e => {
+        row.classList.remove('drop-target');
+        row.classList.remove('drop-forbidden');
+        onDropOnFolder(e, node.path);
+      },
     });
+    // Root row is not draggable (you can't move the racine)
+    if (!isRoot) {
+      row.setAttribute('draggable', 'true');
+      row.addEventListener('dragstart', (e) => {
+        // Skip if the drag was initiated on an interactive child (button,
+        // chevron, etc.) — those handle their own clicks.
+        const targetTag = (e.target && e.target.tagName) || '';
+        if (targetTag === 'BUTTON' || targetTag === 'INPUT') {
+          e.preventDefault();
+          return;
+        }
+        e.dataTransfer.setData('application/x-tax-folder', node.path);
+        e.dataTransfer.setData('text/plain', node.path);   // fallback
+        e.dataTransfer.effectAllowed = 'move';
+        state.draggingFolderPath = node.path;
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        state.draggingFolderPath = null;
+        // Cleanup any straggling drop-target classes
+        document.querySelectorAll('.tax-tree-row.drop-target, .tax-tree-row.drop-forbidden')
+          .forEach(r => {
+            r.classList.remove('drop-target');
+            r.classList.remove('drop-forbidden');
+          });
+      });
+    }
     row.dataset.path = node.path;
 
     if (isExpandable) {
@@ -1902,9 +1954,74 @@
 
   async function onDropOnFolder(e, folder) {
     e.preventDefault();
+    // Two kinds of drops:
+    //   1. folder onto folder  → move_folder (cascade tree + mappings + FS)
+    //   2. theme onto folder   → add_mapping  (theme_mapping write)
+    const sourceFolder = e.dataTransfer.getData('application/x-tax-folder');
+    if (sourceFolder) {
+      await moveFolderViaDrop(sourceFolder, folder);
+      return;
+    }
     const theme = e.dataTransfer.getData('text/plain');
     if (!theme || folder == null) return;
     await doAddMapping(theme, folder);
+  }
+
+  async function moveFolderViaDrop(sourcePath, targetParent) {
+    if (!sourcePath || targetParent == null) return;
+    // Reject self / descendant / current-parent drops
+    if (sourcePath === targetParent) return;
+    if (targetParent.startsWith(sourcePath + '/') || targetParent === sourcePath) {
+      showToast('✗ Impossible : on ne peut pas déplacer un dossier dans lui-même ou un descendant', 'error');
+      return;
+    }
+    const currentParent = dirname(sourcePath);
+    if (currentParent === targetParent) {
+      // Dropped on the same parent — silent no-op (user "missed")
+      return;
+    }
+    const sourceName = sourcePath.split('/').pop();
+    const newPath = targetParent ? targetParent + '/' + sourceName : sourceName;
+    const ok = await showConfirm({
+      title: 'Déplacer ce dossier ?',
+      body: `${sourcePath}\n→ ${newPath}\n\nLes mappings et fichiers sont déplacés en cascade. Réversible via Annuler.`,
+      confirmLabel: 'Déplacer',
+    });
+    if (!ok) return;
+    await withBusy(`Déplacement de « ${sourceName} »…`, async () => {
+      try {
+        const r = await postMoveFolder(sourcePath, targetParent);
+        if (r.unchanged) {
+          showToast('Emplacement inchangé', 'info');
+          return;
+        }
+        showToast(
+          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s)`,
+          'success',
+        );
+        // Rewrite expanded set + selection prefixes (same logic as the
+        // move popover handler).
+        const newExpanded = new Set();
+        for (const p of state.expanded) {
+          if (p === sourcePath) newExpanded.add(r.new_path);
+          else if (p.startsWith(sourcePath + '/'))
+            newExpanded.add(r.new_path + p.slice(sourcePath.length));
+          else newExpanded.add(p);
+        }
+        state.expanded = newExpanded;
+        if (state.selection.type) {
+          if (state.selection.path === sourcePath
+              || state.selection.path.startsWith(sourcePath + '/')) {
+            state.selection.path = r.new_path + state.selection.path.slice(sourcePath.length);
+          }
+        }
+        state.filesByPath = new Map();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (err) {
+        showToast('✗ ' + err.message, 'error');
+      }
+    });
   }
   // ── Impact preview modal ─────────────────────────────────────────────
 

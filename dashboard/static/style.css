@@ -3240,6 +3240,19 @@ th {
     outline: 2px dashed var(--green, #3fb950);
     outline-offset: -2px;
 }
+/* Drag-drop of folders: visual feedback for source + invalid targets. */
+.tax-tree-row[draggable="true"] { cursor: grab; }
+.tax-tree-row[draggable="true"]:active { cursor: grabbing; }
+.tax-tree-row.dragging {
+    opacity: 0.45;
+    background: rgba(88, 166, 255, 0.08);
+}
+.tax-tree-row.drop-forbidden {
+    background: rgba(248, 81, 73, 0.12);
+    outline: 2px dashed var(--red, #f85149);
+    outline-offset: -2px;
+    cursor: not-allowed;
+}
 
 /* Spotlight mode — driven by a selected mapped theme in column 3.
    - dim   : non-concerned rows fade into the background
