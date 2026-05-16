@@ -693,6 +693,134 @@ def theme_files(profile: str, theme: str, limit: int = 50) -> dict:
     }
 
 
+# ─── Reclassify dry-run (read-only impact projection) ────────────────────
+#
+# "If I ran klodo classify --execute now, what would move where?"
+#
+# Re-uses the folder_index we already built for the theme files panel —
+# each item there already carries (current_folder, top_theme, predicted_
+# folder via classify_by_theme step 1). No new LLM calls, no FS writes,
+# instant once the index is warm.
+#
+# Limits (documented to the caller):
+#  - Step 2 (KeywordClassifier) is NOT simulated → some "no_prediction"
+#    files would in fact be classified at execute time.
+#  - Step 3 (LLM Mapper, paid) is NOT simulated.
+#  - This is a projection from the cached vision result + today's mapping,
+#    not a true run.
+
+
+def reclassify_dryrun(profile: str, sample_size: int = 50) -> dict:
+    """Project what a reclassify would move.
+
+    Returns::
+
+        {
+          "ok": True,
+          "stats": {
+              "n_in_lib": int,           # total files in target/
+              "n_with_prediction": int,  # have a top theme → folder via step 1
+              "n_no_prediction": int,    # would fall through to step 2/3
+              "n_moving": int,           # current_folder != predicted_folder
+              "n_stable": int,           # already in the right place
+          },
+          "by_destination": [             # top N folders by incoming volume
+              {"folder": str, "n_incoming": int, "n_already_there": int,
+               "from": {<folder>: <count>}},   # top 5 sources
+              ...
+          ],
+          "sample_moves": [               # first `sample_size` moves
+              {"rel_path": str, "from": str, "to": str,
+               "top_theme": str, "confidence": float},
+              ...
+          ],
+          "limits": {
+              "step1_only": True,
+              "no_llm_mapper": True,
+              "no_execute": True,
+          },
+        }
+    """
+    _, folder_index = _get_indexes(profile)
+
+    # Also know the total number of files in target (incl. those without
+    # any prediction) so the stats reflect the real lib size, not the
+    # folder_index subset.
+    target = _profile_target_path(profile)
+    n_in_lib = 0
+    if target and target.exists():
+        for root, dirs, files in os.walk(str(target)):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for f in files:
+                if f.startswith(".") or not f.lower().endswith(_FILE_EXTS):
+                    continue
+                n_in_lib += 1
+
+    # Aggregate items across all predicted folders
+    n_with_prediction = 0
+    n_moving = 0
+    n_stable = 0
+    by_dest: dict[str, dict] = {}
+    moves: list[dict] = []
+
+    for predicted_folder, items in folder_index.items():
+        bucket = by_dest.setdefault(predicted_folder, {
+            "folder": predicted_folder,
+            "n_incoming": 0,
+            "n_already_there": 0,
+            "from": defaultdict(int),
+        })
+        for item in items:
+            n_with_prediction += 1
+            current_folder = item.get("current_folder") or ""
+            if current_folder == predicted_folder:
+                n_stable += 1
+                bucket["n_already_there"] += 1
+            else:
+                n_moving += 1
+                bucket["n_incoming"] += 1
+                bucket["from"][current_folder or "(racine)"] += 1
+                if len(moves) < sample_size:
+                    moves.append({
+                        "rel_path": item["rel_path"],
+                        "from": current_folder or "(racine)",
+                        "to": predicted_folder,
+                        "top_theme": item.get("top_theme", ""),
+                        "confidence": item.get("top_confidence", 0.0),
+                    })
+
+    # Convert defaultdicts → plain dicts, keep top-5 sources per dest
+    dests_out: list[dict] = []
+    for d in by_dest.values():
+        sources = sorted(d["from"].items(), key=lambda kv: -kv[1])[:5]
+        dests_out.append({
+            "folder": d["folder"],
+            "n_incoming": d["n_incoming"],
+            "n_already_there": d["n_already_there"],
+            "from": dict(sources),
+        })
+    # Top folders by incoming moves first; ones with 0 moves drop to the end
+    dests_out.sort(key=lambda r: (-r["n_incoming"], r["folder"].lower()))
+
+    return {
+        "ok": True,
+        "stats": {
+            "n_in_lib": n_in_lib,
+            "n_with_prediction": n_with_prediction,
+            "n_no_prediction": max(0, n_in_lib - n_with_prediction),
+            "n_moving": n_moving,
+            "n_stable": n_stable,
+        },
+        "by_destination": dests_out,
+        "sample_moves": moves,
+        "limits": {
+            "step1_only": True,
+            "no_llm_mapper": True,
+            "no_execute": True,
+        },
+    }
+
+
 # ─── Mapping writes (add only — Phase 1) ──────────────────────────────────
 
 

@@ -416,6 +416,125 @@
   }
 
   // ── Audit modal — dormant mappings ───────────────────────────────────
+  // ── Reclassify dry-run (feature C-1) ─────────────────────────────────
+  // Projects what would move at the next `klodo classify --execute` using
+  // only the cached folder_index. Read-only, instant once the index is warm.
+
+  async function openReclassifyModal() {
+    const modal = $('#tax-reclassify-modal');
+    const body = $('#tax-reclassify-body');
+    body.innerHTML = '<div class="muted">Projection en cours…</div>';
+    modal.style.display = 'flex';
+    await withBusy('Projection des déplacements…', async () => {
+      try {
+        const r = await fetch(
+          `/api/taxonomy/reclassify/dryrun?profile=${encodeURIComponent(state.profile)}&sample=50`);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        renderReclassifyBody(data);
+      } catch (e) {
+        body.innerHTML = '<div class="error">✗ ' + e.message + '</div>';
+      }
+    });
+  }
+
+  function closeReclassifyModal() {
+    $('#tax-reclassify-modal').style.display = 'none';
+  }
+
+  function renderReclassifyBody(data) {
+    const body = $('#tax-reclassify-body');
+    body.innerHTML = '';
+    const s = data.stats;
+    // Top stats line + caveat
+    body.appendChild(el('div', { class: 'tax-reclassify-stats' }, [
+      el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-moving' }, [
+        el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_moving)]),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['à déplacer']),
+      ]),
+      el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-stable' }, [
+        el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_stable)]),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['déjà en place']),
+      ]),
+      el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-orphan' }, [
+        el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_no_prediction)]),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['sans prédiction étape 1']),
+      ]),
+      el('div', { class: 'tax-reclassify-stat' }, [
+        el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_in_lib)]),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['total lib']),
+      ]),
+    ]));
+    body.appendChild(el('div', {
+      class: 'tax-reclassify-caveat muted small',
+    }, [
+      '⚠ Projection étape 1 (theme_mapping) seulement. Étape 2 (KeywordClassifier, categories.yaml) ',
+      'récupérerait une partie des fichiers sans prédiction. Étape 3 (LLM Mapper) non simulée.',
+    ]));
+
+    // By-destination section
+    const dests = data.by_destination.filter(d => d.n_incoming > 0).slice(0, 20);
+    if (dests.length) {
+      body.appendChild(el('h3', { class: 'tax-reclassify-section-h' },
+                          [`Top destinations (${dests.length})`]));
+      const destList = el('div', { class: 'tax-reclassify-dest-list' });
+      for (const d of dests) {
+        const sources = Object.entries(d.from);
+        destList.appendChild(el('div', { class: 'tax-reclassify-dest-row' }, [
+          el('div', { class: 'tax-reclassify-dest-head' }, [
+            el('span', { class: 'tax-reclassify-dest-folder' }, [d.folder]),
+            el('span', { class: 'tax-reclassify-dest-count' },
+                       [`+${d.n_incoming}`]),
+          ]),
+          el('div', { class: 'tax-reclassify-dest-sources muted small' },
+                     ['venant de : ' + sources.map(
+                        ([f, n]) => `${f} (${n})`).join(', ')]),
+        ]));
+      }
+      body.appendChild(destList);
+    }
+
+    // Sample moves section
+    if (data.sample_moves.length) {
+      body.appendChild(el('h3', { class: 'tax-reclassify-section-h' }, [
+        `Échantillon de ${data.sample_moves.length} fichiers (sur ${s.n_moving})`,
+      ]));
+      const tbl = el('div', { class: 'tax-reclassify-moves' });
+      // Header row
+      tbl.appendChild(el('div', { class: 'tax-reclassify-move tax-reclassify-move-head' }, [
+        el('span', { class: 'tax-reclassify-move-name' }, ['Fichier']),
+        el('span', { class: 'tax-reclassify-move-arrow' }, ['']),
+        el('span', { class: 'tax-reclassify-move-from' }, ['Depuis']),
+        el('span', { class: 'tax-reclassify-move-to' }, ['Vers']),
+        el('span', { class: 'tax-reclassify-move-theme' }, ['Via top thème']),
+      ]));
+      for (const m of data.sample_moves) {
+        const i = m.rel_path.lastIndexOf('/');
+        const name = i < 0 ? m.rel_path : m.rel_path.substring(i + 1);
+        tbl.appendChild(el('div', {
+          class: 'tax-reclassify-move',
+          title: m.rel_path,
+          onclick: () => {
+            closeReclassifyModal();
+            openFileFromPath(m.rel_path);
+          },
+        }, [
+          el('span', { class: 'tax-reclassify-move-name' }, [name]),
+          el('span', { class: 'tax-reclassify-move-arrow' }, ['→']),
+          el('span', { class: 'tax-reclassify-move-from' }, [m.from]),
+          el('span', { class: 'tax-reclassify-move-to' }, [m.to]),
+          el('span', { class: 'tax-reclassify-move-theme' },
+                     ['« ' + (m.top_theme || '?') + ' »']),
+        ]));
+      }
+      body.appendChild(tbl);
+    } else if (s.n_moving === 0) {
+      body.appendChild(el('div', { class: 'tax-reclassify-empty muted' },
+        ['✅ Aucun déplacement projeté — tout est déjà bien placé selon l\'étape 1.']));
+    }
+  }
+
+  // ── Audit modal — dormant mappings ───────────────────────────────────
   // Lists mapping keys that no file's top theme resolves through, so the
   // user can purge them in batch from theme_mapping.yaml.
 
@@ -2178,6 +2297,8 @@
     $('#tax-audit').addEventListener('click', openAuditModal);
     $('#tax-audit-close').addEventListener('click', closeAuditModal);
     $('#tax-audit-delete').addEventListener('click', confirmAuditDelete);
+    $('#tax-reclassify').addEventListener('click', openReclassifyModal);
+    $('#tax-reclassify-close').addEventListener('click', closeReclassifyModal);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
     });

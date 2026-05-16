@@ -44,6 +44,12 @@
                 <span style="font-size:13px;">🧹</span>
                 <span>Audit</span>
             </button>
+            <button id="tax-reclassify" class="tax-icon-btn"
+                    title="Voir ce qui bougerait au prochain reclassify (dry-run, lecture seule)"
+                    aria-label="Reclassify dryrun">
+                <span style="font-size:13px;">🚀</span>
+                <span>Reclassify</span>
+            </button>
         </div>
     </div>
     <div class="tax-stats" id="tax-stats">
@@ -307,6 +313,17 @@
         <div class="tax-modal-actions">
             <button id="tax-audit-close" class="btn-secondary">Fermer</button>
             <button id="tax-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
+        </div>
+    </div>
+</div>
+
+<!-- Reclassify dry-run modal (feature C-1) -->
+<div id="tax-reclassify-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:820px; max-width:96vw;">
+        <div class="tax-modal-title">🚀 Reclassify — projection d'impact (dry-run)</div>
+        <div class="tax-modal-body" id="tax-reclassify-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-reclassify-close" class="btn-secondary">Fermer</button>
         </div>
     </div>
 </div>

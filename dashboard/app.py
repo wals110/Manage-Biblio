@@ -1787,6 +1787,15 @@ async def taxonomy_theme_files_api(
     return JSONResponse(taxonomy.theme_files(profile, theme, limit=limit))
 
 
+@app.get("/api/taxonomy/reclassify/dryrun")
+async def taxonomy_reclassify_dryrun_api(profile: str, sample: int = 50):
+    """Project what would move at the next `klodo classify --execute`.
+    Read-only — uses the cached vision results + today's mapping."""
+    from fastapi.responses import JSONResponse
+    sample = max(0, min(sample, 500))
+    return JSONResponse(taxonomy.reclassify_dryrun(profile, sample_size=sample))
+
+
 @app.get("/api/taxonomy/dormant-mappings")
 async def taxonomy_dormant_mappings_api(profile: str):
     """List mapping keys that no file's top theme resolves through.

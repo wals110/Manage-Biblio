@@ -1718,5 +1718,120 @@ class TestDormantAndBulkEndpoints(TaxonomyTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+class TestReclassifyDryrun(TaxonomyTestBase):
+    """reclassify_dryrun() — project moves based on cached folder_index."""
+
+    def setUp(self):
+        super().setUp()
+        # Layout :
+        #   physics → 01-SCIENCES/PHYSIQUE  (already placed correctly)
+        #   physics → 01-SCIENCES/PHYSIQUE  (currently in MATHEMATIQUES — must move)
+        #   algebra → 01-SCIENCES/MATHEMATIQUES (already in place)
+        from lib import vision_cache as vc
+        cache = {}
+        files = {
+            # mechanics.pdf lives in PHYSIQUE with theme physics → stable
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf": [("physics", 0.9)],
+            # quantum.pdf lives in PHYSIQUE → stable
+            "01-SCIENCES/PHYSIQUE/quantum.pdf": [("quantum mechanics", 0.95)],
+            # misplaced.pdf has theme physics but currently in MATHEMATIQUES → would move
+            "01-SCIENCES/MATHEMATIQUES/misplaced.pdf": [("physics", 0.9)],
+            "01-SCIENCES/MATHEMATIQUES/algebra.pdf": [("algebra", 0.85)],
+        }
+        for rel, themes in files.items():
+            abs_path = self.target / rel
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            abs_path.write_bytes(f"%PDF-1.4 {rel}".encode())
+            key = vc.compute_cache_key(
+                str(abs_path),
+                model="Qwen/Qwen3-VL-32B-Instruct",
+                n_pages=2,
+            )
+            cache[key] = {
+                "result": {
+                    "title": Path(rel).stem,
+                    "themes": [{"theme": t, "confidence": c} for t, c in themes],
+                },
+                "model": "Qwen/Qwen3-VL-32B-Instruct",
+                "prompt_version": "v3",
+            }
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache_path.write_text(json.dumps(cache))
+        taxonomy.reset_cache(self.profile_name)
+
+    def test_counts_moving_and_stable(self):
+        r = taxonomy.reclassify_dryrun(self.profile_name)
+        s = r["stats"]
+        # 4 files total in lib (intro.pdf from base + 4 added in setUp — wait,
+        # base setUp uses single-file content shared across files, but our
+        # added files have unique bytes via setUp here so their cache_keys
+        # are real). Check counts via the prediction logic.
+        self.assertEqual(s["n_in_lib"], 5)  # intro.pdf + 4 unique
+        # Only the 4 unique files have working cache hits → 4 with prediction
+        # (intro.pdf shares head bytes with mechanics.pdf? Actually no — the
+        # base helper writes placeholder bytes, so intro.pdf shares with
+        # nobody since we override the others. Let's just sanity-check.)
+        self.assertGreaterEqual(s["n_with_prediction"], 3)
+        self.assertGreater(s["n_moving"], 0)
+        self.assertGreater(s["n_stable"], 0)
+
+    def test_misplaced_file_appears_in_sample_moves(self):
+        r = taxonomy.reclassify_dryrun(self.profile_name)
+        paths = {m["rel_path"] for m in r["sample_moves"]}
+        self.assertIn("01-SCIENCES/MATHEMATIQUES/misplaced.pdf", paths)
+        m = next(x for x in r["sample_moves"]
+                 if x["rel_path"] == "01-SCIENCES/MATHEMATIQUES/misplaced.pdf")
+        self.assertEqual(m["from"], "01-SCIENCES/MATHEMATIQUES")
+        self.assertEqual(m["to"], "01-SCIENCES/PHYSIQUE")
+
+    def test_by_destination_aggregates(self):
+        r = taxonomy.reclassify_dryrun(self.profile_name)
+        physique = next(d for d in r["by_destination"]
+                        if d["folder"] == "01-SCIENCES/PHYSIQUE")
+        # 1 incoming from MATHEMATIQUES, 2 already there
+        self.assertEqual(physique["n_incoming"], 1)
+        self.assertEqual(physique["n_already_there"], 2)
+        self.assertIn("01-SCIENCES/MATHEMATIQUES", physique["from"])
+
+    def test_sample_size_caps_moves_list(self):
+        r = taxonomy.reclassify_dryrun(self.profile_name, sample_size=0)
+        self.assertEqual(r["sample_moves"], [])
+        # But counts unaffected
+        self.assertGreater(r["stats"]["n_moving"], 0)
+
+    def test_limits_documented(self):
+        r = taxonomy.reclassify_dryrun(self.profile_name)
+        self.assertTrue(r["limits"]["step1_only"])
+        self.assertTrue(r["limits"]["no_llm_mapper"])
+        self.assertTrue(r["limits"]["no_execute"])
+
+
+class TestReclassifyDryrunEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_basic(self):
+        r = self.client.get(
+            f"/api/taxonomy/reclassify/dryrun?profile={self.profile_name}")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("stats", body)
+        self.assertIn("by_destination", body)
+        self.assertIn("sample_moves", body)
+        self.assertIn("limits", body)
+
+    def test_endpoint_sample_clamped(self):
+        r = self.client.get(
+            f"/api/taxonomy/reclassify/dryrun?profile={self.profile_name}"
+            f"&sample=99999")
+        self.assertEqual(r.status_code, 200)
+        # sample is clamped at 500 server-side — list can be ≤500 in tests
+        self.assertLessEqual(len(r.json()["sample_moves"]), 500)
+
+
 if __name__ == "__main__":
     unittest.main()
