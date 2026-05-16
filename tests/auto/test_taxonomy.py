@@ -2081,5 +2081,91 @@ class TestMappingConflictsEndpoint(TaxonomyTestBase):
         self.assertIn("stats", body)
 
 
+class TestAuditLogBackups(TaxonomyTestBase):
+    """list_taxonomy_backups() + restore_taxonomy_backup() — feature I."""
+
+    def test_list_empty_when_no_backups(self):
+        r = taxonomy.list_taxonomy_backups(self.profile_name)
+        self.assertEqual(r["n_total"], 0)
+        self.assertEqual(r["backups"], [])
+
+    def test_list_returns_backups_newest_first(self):
+        # Generate a few backups by performing real writes
+        taxonomy.add_mapping(self.profile_name, "newtheme1", "01-SCIENCES")
+        taxonomy.add_mapping(self.profile_name, "newtheme2", "01-SCIENCES")
+        taxonomy.add_mapping(self.profile_name, "newtheme3", "01-SCIENCES")
+        r = taxonomy.list_taxonomy_backups(self.profile_name)
+        self.assertEqual(r["n_total"], 3)
+        names = [b["filename"] for b in r["backups"]]
+        # Sorted DESC by timestamp embedded in filename
+        self.assertEqual(names, sorted(names, reverse=True))
+        # Each entry has the expected shape
+        for b in r["backups"]:
+            self.assertEqual(b["kind"], "mapping")
+            self.assertIn("size_bytes", b)
+            self.assertIn("age_human", b)
+            self.assertGreater(b["size_bytes"], 0)
+
+    def test_restore_specific_backup_overwrites_current(self):
+        # Snapshot the initial state (physics→PHYSIQUE)
+        taxonomy.add_mapping(self.profile_name, "extra1", "01-SCIENCES")
+        # Now we have 1 backup of the original state. Add a 2nd mapping
+        taxonomy.add_mapping(self.profile_name, "extra2", "01-SCIENCES")
+        backups = taxonomy.list_taxonomy_backups(self.profile_name)["backups"]
+        # The OLDEST backup (= initial state, no extras) is the last entry
+        oldest = backups[-1]["filename"]
+        r = taxonomy.restore_taxonomy_backup(self.profile_name, oldest)
+        self.assertTrue(r["ok"])
+        # After restore, neither extra is in the mapping
+        mp = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertNotIn("extra1", mp)
+        self.assertNotIn("extra2", mp)
+        # Pre-restore backup was created so the operation is itself undoable
+        self.assertIsNotNone(r["pre_restore_backup"])
+
+    def test_restore_unknown_filename_raises_404(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as cm:
+            taxonomy.restore_taxonomy_backup(
+                self.profile_name, "theme_mapping-does-not-exist.yaml")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_restore_rejects_path_traversal(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as cm:
+            taxonomy.restore_taxonomy_backup(
+                self.profile_name, "../../etc/passwd")
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_restore_rejects_unsupported_backup_type(self):
+        # Drop a YAML file in the backup dir that isn't a known type
+        bd = self.profile_dir / ".cache" / "taxonomy-backups"
+        bd.mkdir(parents=True, exist_ok=True)
+        (bd / "random-thing.yaml").write_text("x: 1\n")
+        with self.assertRaises(taxonomy.TaxonomyError) as cm:
+            taxonomy.restore_taxonomy_backup(
+                self.profile_name, "random-thing.yaml")
+        self.assertEqual(cm.exception.status, 400)
+
+
+class TestAuditLogEndpoints(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_list(self):
+        r = self.client.get(f"/api/taxonomy/backups?profile={self.profile_name}")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("backups", r.json())
+
+    def test_endpoint_restore_missing_filename(self):
+        r = self.client.post("/api/taxonomy/backups/restore", json={
+            "profile": self.profile_name,
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

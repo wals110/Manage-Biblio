@@ -274,7 +274,10 @@ def _backup_file(profile: str) -> Path | None:
     src = _categories_path(profile)
     if not src.exists():
         return None
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]  # ms precision
+    # Microsecond precision avoids name collisions when two writes happen
+    # in rapid succession (e.g. restore = backup current + overwrite, both
+    # within the same millisecond).
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     dst = _backup_dir(profile) / f"categories-{ts}.yaml"
     shutil.copy2(src, dst)
     # Rotate
@@ -836,6 +839,87 @@ def delete_entries_bulk(profile: str, items: list[dict]) -> dict:
         "not_found": not_found,
         "n_deleted": len(deleted),
         "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+    }
+
+
+# ─── Audit log — list + targeted restore (feature I) ─────────────────────
+
+
+def _human_age(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    if s < 86400:
+        return f"{s // 3600}h"
+    return f"{s // 86400}j"
+
+
+def _backup_timestamp(path: Path) -> str:
+    """Extract timestamp from 'categories-YYYYMMDD-HHMMSS-FFF.yaml'."""
+    stem = path.stem
+    if "-" not in stem:
+        return ""
+    return stem.split("-", 1)[1]
+
+
+def list_categories_backups(profile: str) -> dict:
+    """List categories backups, newest first.
+
+    Each entry: {filename, timestamp, size_bytes, age_seconds, age_human}.
+    """
+    import time as _time
+    backup_dir = _backup_dir(profile)
+    if not backup_dir.exists():
+        return {"backups": [], "n_total": 0}
+    now = _time.time()
+    items: list[dict] = []
+    for path in backup_dir.iterdir():
+        if not path.is_file() or path.suffix != ".yaml":
+            continue
+        if not path.name.startswith("categories-"):
+            continue
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        age = now - st.st_mtime
+        items.append({
+            "filename": path.name,
+            "kind": "categories",
+            "timestamp": _backup_timestamp(path),
+            "size_bytes": st.st_size,
+            "age_seconds": int(age),
+            "age_human": _human_age(age),
+        })
+    items.sort(key=lambda r: r["timestamp"], reverse=True)
+    return {"backups": items, "n_total": len(items)}
+
+
+def restore_categories_backup(profile: str, filename: str) -> dict:
+    """Restore a SPECIFIC categories backup by filename. The current
+    state is backed up first so the operation is itself undoable."""
+    if not filename or "/" in filename or "\\" in filename:
+        raise CategoriesError("nom de backup invalide", 400)
+    if not filename.startswith("categories-"):
+        raise CategoriesError(
+            "type de backup non supporté (attendu : categories-*)", 400,
+        )
+
+    with _locks[profile]:
+        target = _backup_dir(profile) / filename
+        if not target.exists() or not target.is_file():
+            raise CategoriesError(f"backup introuvable : {filename}", 404)
+        # Snapshot the current state before overwriting it
+        pre_backup = _backup_file(profile)
+        shutil.copy2(target, _categories_path(profile))
+        reset_cache(profile)
+
+    return {
+        "ok": True,
+        "restored_from": filename,
+        "pre_restore_backup": pre_backup.name if pre_backup is not None else None,
     }
 
 

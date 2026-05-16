@@ -446,6 +446,127 @@
     $('#tax-reclassify-modal').style.display = 'none';
   }
 
+  // ── Audit log / Historique modal (feature I) ─────────────────────────
+  // Lists backups for theme_mapping (Mappings sub-tab) or categories.yaml
+  // (Catégories sub-tab) and lets the user restore a specific one — with
+  // a pre-restore backup so the operation is itself undoable.
+
+  async function openHistoryModal() {
+    const active = document.querySelector('.tax-subtab.active');
+    const isCategories = active && active.dataset.view === 'categories';
+    const title = isCategories
+      ? '📜 Historique — categories.yaml'
+      : '📜 Historique — theme_mapping.yaml + tree.yaml';
+    $('#tax-history-title').textContent = title;
+    const body = $('#tax-history-body');
+    body.innerHTML = '<div class="muted">Chargement…</div>';
+    $('#tax-history-modal').style.display = 'flex';
+    await withBusy('Lecture des backups…', async () => {
+      try {
+        const url = isCategories
+          ? `/api/categories/backups?profile=${encodeURIComponent(state.profile)}`
+          : `/api/taxonomy/backups?profile=${encodeURIComponent(state.profile)}`;
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        renderHistoryBody(data, isCategories);
+      } catch (e) {
+        body.innerHTML = '<div class="error">✗ ' + e.message + '</div>';
+      }
+    });
+  }
+
+  function closeHistoryModal() {
+    $('#tax-history-modal').style.display = 'none';
+  }
+
+  function renderHistoryBody(data, isCategories) {
+    const body = $('#tax-history-body');
+    body.innerHTML = '';
+    if (data.n_total === 0) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
+        '✅ Aucun backup pour l\'instant.',
+        el('br'),
+        el('span', { class: 'small' }, [
+          'Un backup est créé automatiquement avant chaque écriture (rotation 20).',
+        ]),
+      ]));
+      return;
+    }
+    body.appendChild(el('div', { class: 'tax-audit-header' }, [
+      el('div', null, [
+        el('strong', null, [String(data.n_total)]),
+        ' backup(s) disponible(s) — du plus récent au plus ancien',
+      ]),
+      el('div', { class: 'muted small' }, [
+        'Restaurer une version remplace l\'état actuel. ',
+        'L\'état pré-restore est lui-même sauvegardé, donc l\'opération est réversible via Annuler.',
+      ]),
+    ]));
+    const list = el('div', { class: 'tax-audit-list tax-history-list' });
+    for (const b of data.backups) {
+      const kindLabel = (b.kind === 'tree') ? 'Tree'
+                     : (b.kind === 'mapping') ? 'Mapping'
+                     : 'Categories';
+      const sizeKb = (b.size_bytes / 1024).toFixed(1);
+      const row = el('div', { class: 'tax-history-row' }, [
+        el('span', {
+          class: 'tax-history-kind tax-history-kind-' + b.kind,
+          title: 'Type de backup',
+        }, [kindLabel]),
+        el('span', {
+          class: 'tax-history-time',
+          title: b.filename,
+        }, ['il y a ' + b.age_human]),
+        el('span', { class: 'tax-history-size muted small' },
+                   [`${sizeKb} KB`]),
+        el('button', {
+          class: 'btn-secondary tax-history-restore',
+          onclick: () => confirmRestore(b.filename, isCategories, b.kind),
+        }, ['Restaurer']),
+      ]);
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+  }
+
+  async function confirmRestore(filename, isCategories, kind) {
+    const ok = await showConfirm({
+      title: `Restaurer ce backup ?`,
+      body: `${filename}\n\nL'état actuel sera sauvegardé avant le restore. `
+          + `Tu pourras revenir avec ↶ Annuler si besoin.`,
+      confirmLabel: 'Restaurer',
+    });
+    if (!ok) return;
+    const url = isCategories
+      ? '/api/categories/backups/restore'
+      : '/api/taxonomy/backups/restore';
+    await withBusy('Restauration…', async () => {
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: state.profile, filename }),
+        });
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.error || 'HTTP ' + r.status);
+        showToast(`✓ Restauré : ${filename}`, 'success');
+        closeHistoryModal();
+        if (isCategories) {
+          // Notify the categories module so it drops its cached snapshot
+          // and re-renders the visible view. taxonomy.js doesn't own the
+          // categories DOM, so we just signal via a custom event.
+          document.dispatchEvent(new CustomEvent('tax-categories-reload'));
+        } else {
+          state.snapshot = await fetchSnapshot();
+          renderAll();
+        }
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
   function renderReclassifyBody(data) {
     const body = $('#tax-reclassify-body');
     body.innerHTML = '';
@@ -2563,6 +2684,8 @@
     $('#tax-audit-delete').addEventListener('click', confirmAuditDelete);
     $('#tax-reclassify').addEventListener('click', openReclassifyModal);
     $('#tax-reclassify-close').addEventListener('click', closeReclassifyModal);
+    $('#tax-history').addEventListener('click', openHistoryModal);
+    $('#tax-history-close').addEventListener('click', closeHistoryModal);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
     });

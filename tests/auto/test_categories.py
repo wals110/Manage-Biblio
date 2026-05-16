@@ -798,5 +798,75 @@ class TestDormantAuditAndBulkEndpoints(WriteTestBase):
         self.assertEqual(r.json()["n_deleted"], 1)
 
 
+class TestCategoriesAuditLog(WriteTestBase):
+    """list_categories_backups() + restore_categories_backup() — feature I."""
+
+    def test_list_returns_backups_newest_first(self):
+        # Trigger 2 writes → 2 backups
+        categories.add_keyword(self.profile_name, "informatique",
+                               "02-INFO/AI", "kw1")
+        categories.add_keyword(self.profile_name, "informatique",
+                               "02-INFO/AI", "kw2")
+        r = categories.list_categories_backups(self.profile_name)
+        self.assertEqual(r["n_total"], 2)
+        names = [b["filename"] for b in r["backups"]]
+        self.assertEqual(names, sorted(names, reverse=True))
+        for b in r["backups"]:
+            self.assertEqual(b["kind"], "categories")
+
+    def test_restore_specific_backup(self):
+        before = self._reload()
+        categories.delete_entry(self.profile_name, "informatique",
+                                "02-INFO/AI")
+        # We now have 1 backup of the pre-delete state
+        backups = categories.list_categories_backups(self.profile_name)["backups"]
+        self.assertEqual(len(backups), 1)
+        oldest = backups[0]["filename"]
+        r = categories.restore_categories_backup(self.profile_name, oldest)
+        self.assertTrue(r["ok"])
+        after = self._reload()
+        self.assertEqual(after, before)
+        self.assertIsNotNone(r["pre_restore_backup"])
+
+    def test_restore_unknown_filename_404(self):
+        with self.assertRaises(categories.CategoriesError) as cm:
+            categories.restore_categories_backup(
+                self.profile_name, "categories-doesnotexist.yaml")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_restore_rejects_path_traversal(self):
+        with self.assertRaises(categories.CategoriesError) as cm:
+            categories.restore_categories_backup(
+                self.profile_name, "../../etc/passwd")
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_restore_rejects_non_categories_prefix(self):
+        with self.assertRaises(categories.CategoriesError) as cm:
+            categories.restore_categories_backup(
+                self.profile_name, "theme_mapping-foo.yaml")
+        self.assertEqual(cm.exception.status, 400)
+
+
+class TestCategoriesAuditLogEndpoints(WriteTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_list(self):
+        r = self.client.get(
+            f"/api/categories/backups?profile={self.profile_name}")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("backups", r.json())
+
+    def test_endpoint_restore_missing_filename(self):
+        r = self.client.post("/api/categories/backups/restore", json={
+            "profile": self.profile_name,
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -50,6 +50,12 @@
                 <span style="font-size:13px;">🚀</span>
                 <span>Reclassify</span>
             </button>
+            <button id="tax-history" class="tax-icon-btn"
+                    title="Historique des backups — mappings ou catégories selon la vue active"
+                    aria-label="Historique">
+                <span style="font-size:13px;">📜</span>
+                <span>Historique</span>
+            </button>
         </div>
     </div>
     <div class="tax-stats" id="tax-stats">
@@ -313,6 +319,17 @@
         <div class="tax-modal-actions">
             <button id="tax-audit-close" class="btn-secondary">Fermer</button>
             <button id="tax-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
+        </div>
+    </div>
+</div>
+
+<!-- Audit log / Historique modal (feature I) -->
+<div id="tax-history-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:760px; max-width:96vw;">
+        <div class="tax-modal-title" id="tax-history-title">📜 Historique des backups</div>
+        <div class="tax-modal-body" id="tax-history-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-history-close" class="btn-secondary">Fermer</button>
         </div>
     </div>
 </div>

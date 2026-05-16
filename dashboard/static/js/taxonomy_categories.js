@@ -924,6 +924,15 @@
     });
     bindUndoInterceptor();
     bindAuditInterceptor();
+    // When taxonomy.js triggers a categories restore from its history
+    // modal, it can't reach into this IIFE — listen for the signal.
+    document.addEventListener('tax-categories-reload', () => {
+      state.snapshot = null;
+      state.selectedEntry = null;
+      state.loaded = false;
+      const active = document.querySelector('.tax-subtab.active');
+      if (active && active.dataset.view === 'categories') loadAndRender();
+    });
   }
 
   if (document.readyState === 'loading') {

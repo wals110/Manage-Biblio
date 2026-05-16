@@ -2336,6 +2336,99 @@ def _restore_mapping_from_backup(profile: str, backup_path: Path) -> dict:
     }
 
 
+# ─── Audit log — list + targeted restore (feature I) ─────────────────────
+
+
+def _human_age(seconds: float) -> str:
+    """Concise relative age: '12s', '4m', '3h', '2j', '5j ago'."""
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    if s < 86400:
+        return f"{s // 3600}h"
+    return f"{s // 86400}j"
+
+
+def list_taxonomy_backups(profile: str) -> dict:
+    """List both theme_mapping and tree backups, newest first.
+
+    Each entry: {filename, kind, timestamp, size_bytes, age_seconds, age_human}.
+    Kind is one of "mapping" / "tree" so the UI can render them distinctly.
+    """
+    backup_dir = _backup_dir(profile)
+    if not backup_dir.exists():
+        return {"backups": [], "n_total": 0}
+    now = time.time()
+    items: list[dict] = []
+    for path in backup_dir.iterdir():
+        if not path.is_file() or not path.suffix == ".yaml":
+            continue
+        if path.name.startswith("theme_mapping-"):
+            kind = "mapping"
+        elif path.name.startswith("tree-"):
+            kind = "tree"
+        else:
+            continue
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        age = now - st.st_mtime
+        items.append({
+            "filename": path.name,
+            "kind": kind,
+            "timestamp": _backup_timestamp(path),
+            "size_bytes": st.st_size,
+            "age_seconds": int(age),
+            "age_human": _human_age(age),
+        })
+    # Sort by timestamp DESC (newest first). Filename embeds it.
+    items.sort(key=lambda r: r["timestamp"], reverse=True)
+    return {"backups": items, "n_total": len(items)}
+
+
+def restore_taxonomy_backup(profile: str, filename: str) -> dict:
+    """Restore a SPECIFIC backup by its filename, regardless of position
+    in the history. The current state is backed up first (under a new
+    timestamp), so this operation is itself undoable via the standard
+    Annuler button.
+
+    Backups after the restored one are kept in place (no chain rewrite)
+    — they remain available for further jumps.
+    """
+    if not filename or "/" in filename or "\\" in filename:
+        raise TaxonomyError("nom de backup invalide", 400)
+
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        target = _backup_dir(profile) / filename
+        if not target.exists() or not target.is_file():
+            raise TaxonomyError(f"backup introuvable : {filename}", 404)
+
+        # Snapshot the current state under a fresh timestamp BEFORE
+        # restoring — so this restore can itself be undone.
+        if filename.startswith("theme_mapping-"):
+            pre_backup = _backup_mapping(profile)
+            result = _restore_mapping_from_backup(profile, target)
+        elif filename.startswith("tree-"):
+            pre_backup = _backup_tree(profile)
+            result = _restore_tree_from_backup(profile, target)
+        else:
+            raise TaxonomyError(
+                f"type de backup non supporté : {filename}", 400,
+            )
+
+        reset_cache(profile)
+        result["ok"] = True
+        result["pre_restore_backup"] = (
+            pre_backup.name if pre_backup is not None else None
+        )
+        return result
+
+
 def restore_last_backup(profile: str) -> dict:
     """Restore the most recent backup of EITHER theme_mapping.yaml or
     tree.yaml, picking by timestamp regardless of type.

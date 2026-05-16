@@ -261,14 +261,57 @@ a:hover {
     background: var(--card-hover);
 }
 
-.btn-primary {
-    background: var(--blue);
-    color: var(--bg);
-    border-color: var(--blue);
+/* ── Button variants — usable standalone OR combined with .btn ──
+ * Each variant includes its own base sizing so authors don't need to
+ * remember to add `btn` alongside. Visually consistent across the app:
+ * 32px tall, 6px radius, 13px text. Override `font-size` / `padding`
+ * inline if a denser context calls for it. */
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+    box-sizing: border-box;
+}
+.btn-primary:active,
+.btn-secondary:active,
+.btn-danger:active { transform: translateY(1px); }
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
+.btn-primary {
+    background: var(--blue, #58a6ff);
+    color: #0d1117;
+    border: 1px solid var(--blue, #58a6ff);
+}
 .btn-primary:hover {
-    opacity: 0.9;
+    background: #79c0ff;
+    border-color: #79c0ff;
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-muted, #8b949e);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text, #c9d1d9);
+    border-color: rgba(255, 255, 255, 0.22);
 }
 
 /* ── Section Headers ── */
@@ -935,22 +978,23 @@ th {
 }
 
 .btn-danger {
-    background: rgba(248, 113, 113, 0.1) !important;
-    color: var(--red) !important;
-    border: 1px solid rgba(248, 113, 113, 0.3);
+    background: rgba(248, 81, 73, 0.1);
+    color: var(--red, #f85149);
+    border: 1px solid rgba(248, 81, 73, 0.35);
 }
-
 .btn-danger:hover {
-    background: rgba(248, 113, 113, 0.2) !important;
+    background: rgba(248, 81, 73, 0.2);
+    border-color: var(--red, #f85149);
 }
 
 .btn-danger-full {
-    background: var(--red) !important;
-    color: white !important;
+    background: var(--red, #f85149);
+    color: white;
+    border: 1px solid var(--red, #f85149);
 }
-
 .btn-danger-full:hover {
-    background: #dc2626 !important;
+    background: #dc2626;
+    border-color: #dc2626;
 }
 
 .admin-stats {
@@ -3114,6 +3158,7 @@ th {
 }
 .tax-cat-stats strong { color: var(--text, #c9d1d9); margin-right: 3px; }
 .tax-cat-action {
+    height: auto;
     font-size: 11px;
     padding: 4px 10px;
 }
@@ -3795,6 +3840,7 @@ th {
     background: rgba(255, 255, 255, 0.02);
 }
 .tax-audit-controls button {
+    height: auto;
     font-size: 11px;
     padding: 4px 10px;
 }
@@ -3945,6 +3991,62 @@ th {
     border-radius: 6px;
     font-variant-numeric: tabular-nums;
     font-size: 10px;
+}
+
+/* Audit log / Historique modal — feature I */
+.tax-history-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 4px 8px;
+}
+.tax-history-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 70px 90px;
+    column-gap: 10px;
+    align-items: center;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 12px;
+}
+.tax-history-row:last-child { border-bottom: none; }
+.tax-history-row:hover { background: rgba(255, 255, 255, 0.03); }
+.tax-history-kind {
+    display: inline-block;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.tax-history-kind-mapping {
+    background: rgba(88, 166, 255, 0.18);
+    color: var(--blue, #58a6ff);
+}
+.tax-history-kind-tree {
+    background: rgba(63, 185, 80, 0.18);
+    color: var(--green, #3fb950);
+}
+.tax-history-kind-categories {
+    background: rgba(86, 212, 221, 0.18);
+    color: #56d4dd;
+}
+.tax-history-time {
+    color: var(--text, #c9d1d9);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tax-history-size {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.tax-history-restore {
+    height: auto;
+    font-size: 11px;
+    padding: 4px 8px;
 }
 
 /* Catégories audit — tabs between dormant keywords and dormant entries */
@@ -4278,35 +4380,14 @@ th {
     justify-content: flex-end;
     margin-top: 4px;
 }
-.tax-map-popover-actions button {
+/* Popover footer: rely on the unified .btn-primary / .btn-secondary
+ * styling — just tighten the height slightly for compact popovers. */
+.tax-map-popover-actions .btn-primary,
+.tax-map-popover-actions .btn-secondary {
     height: 30px;
     padding: 0 14px;
-    border-radius: 6px;
     font-size: 12.5px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, transform 0.05s;
 }
-.tax-map-popover-actions .btn-secondary {
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: var(--text-muted, #8b949e);
-}
-.tax-map-popover-actions .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text, #c9d1d9);
-    border-color: rgba(255, 255, 255, 0.20);
-}
-.tax-map-popover-actions .btn-primary {
-    background: var(--blue, #58a6ff);
-    border: 1px solid var(--blue, #58a6ff);
-    color: #0d1117;
-}
-.tax-map-popover-actions .btn-primary:hover {
-    background: #79c0ff;
-    border-color: #79c0ff;
-}
-.tax-map-popover-actions button:active { transform: translateY(1px); }
 
 /* LLM theme rows — 2 lignes : nom+count+btn / destination */
 .tax-llm-item {
@@ -4845,31 +4926,10 @@ th {
     gap: 8px;
     justify-content: flex-end;
 }
-.tax-modal-actions button {
-    height: 32px;
-    padding: 0 16px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.05s;
-}
-.tax-modal-actions .btn-secondary {
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: var(--text-muted, #8b949e);
-}
-.tax-modal-actions .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text, #c9d1d9);
-}
-.tax-modal-actions .btn-primary {
-    background: var(--blue, #58a6ff);
-    border: 1px solid var(--blue, #58a6ff);
-    color: #0d1117;
-}
-.tax-modal-actions .btn-primary:hover { background: #79c0ff; border-color: #79c0ff; }
-.tax-modal-actions button:active { transform: translateY(1px); }
+/* Modal footer: nothing to override — the global .btn-primary /
+ * .btn-secondary / .btn-danger already set the right 32px height,
+ * 13px font, hover and active states. Kept as a marker comment in
+ * case a per-modal override is needed later. */
 
 /* "Voir prédiction pipeline complet" button (Phase 2 C) */
 .tax-llm-full-btn {

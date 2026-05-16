@@ -1796,6 +1796,57 @@ async def taxonomy_reclassify_dryrun_api(profile: str, sample: int = 50):
     return JSONResponse(taxonomy.reclassify_dryrun(profile, sample_size=sample))
 
 
+@app.get("/api/taxonomy/backups")
+async def taxonomy_backups_list_api(profile: str):
+    """List theme_mapping + tree backups, newest first."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.list_taxonomy_backups(profile))
+
+
+@app.post("/api/taxonomy/backups/restore")
+async def taxonomy_backups_restore_api(request: Request):
+    """Restore a specific taxonomy backup by filename."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile")
+    filename = body.get("filename")
+    if not profile or not filename:
+        return JSONResponse(
+            {"error": "profile + filename requis"}, status_code=400,
+        )
+    try:
+        return JSONResponse(taxonomy.restore_taxonomy_backup(profile, filename))
+    except taxonomy.TaxonomyError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status)
+
+
+@app.get("/api/categories/backups")
+async def categories_backups_list_api(profile: str):
+    """List categories backups for the profile, newest first."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    return JSONResponse(categories.list_categories_backups(profile))
+
+
+@app.post("/api/categories/backups/restore")
+async def categories_backups_restore_api(request: Request):
+    """Restore a specific categories backup by filename."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    profile = body.get("profile")
+    filename = body.get("filename")
+    if not profile or not filename:
+        return JSONResponse(
+            {"error": "profile + filename requis"}, status_code=400,
+        )
+    try:
+        return JSONResponse(
+            categories.restore_categories_backup(profile, filename))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
 @app.get("/api/taxonomy/mapping-conflicts")
 async def taxonomy_mapping_conflicts_api(profile: str):
     """Extended audit: substring eclipses + same-folder duplicates.
