@@ -1686,6 +1686,49 @@ async def categories_undo_api(request: Request):
         return _categories_err(e)
 
 
+@app.get("/api/categories/dormant")
+async def categories_dormant_api(profile: str):
+    """Identify keywords + entries that no file's text could ever trigger.
+    Phase C audit endpoint."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    return JSONResponse(categories.dormant_audit(profile))
+
+
+@app.post("/api/categories/keywords/bulk-delete")
+async def categories_keywords_bulk_delete_api(request: Request):
+    """Delete multiple keywords in one transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    profile = body.get("profile")
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(categories.delete_keywords_bulk(
+            profile, body.get("items") or [],
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.post("/api/categories/entries/bulk-delete")
+async def categories_entries_bulk_delete_api(request: Request):
+    """Delete multiple entries in one transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    body = await request.json()
+    profile = body.get("profile")
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(categories.delete_entries_bulk(
+            profile, body.get("items") or [],
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
 @app.get("/mockup/categories")
 async def mockup_categories_page(request: Request):
     """Static visual mockup for the proposed Mappings/Catégories sub-tab.

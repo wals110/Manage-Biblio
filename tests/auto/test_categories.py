@@ -535,5 +535,268 @@ class TestCategoriesEndpoints(WriteTestBase):
         self.assertEqual(r.status_code, 404)
 
 
+class DormantAuditBase(CategoriesTestBase):
+    """Common scaffolding: a real `profile.yaml` pointing to an isolated
+    target directory + a vision_cache.json with controlled titles/themes."""
+
+    def setUp(self):
+        super().setUp()
+        self.target = self.tmpdir / "library"
+        self.target.mkdir(parents=True, exist_ok=True)
+        # Profile config so categories.py can find the target
+        (self.profile_dir / "profile.yaml").write_text(
+            yaml.safe_dump({"name": "test", "target": str(self.target)})
+        )
+
+    def _write_filenames(self, names: list[str]):
+        for n in names:
+            (self.target / n).write_bytes(b"%PDF-1.4 placeholder")
+
+    def _write_cache_titles_themes(self, items: list[dict]):
+        """items = [{title, themes:[{theme}]}]"""
+        cache: dict[str, dict] = {}
+        for i, it in enumerate(items):
+            cache[f"k{i}"] = {
+                "result": {
+                    "title": it.get("title", ""),
+                    "themes": [{"theme": t, "confidence": 0.9}
+                               for t in it.get("themes", [])],
+                },
+                "model": "x", "prompt_version": "v3",
+            }
+        cache_dir = self.profile_dir / ".cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "vision_cache.json").write_text(
+            __import__("json").dumps(cache),
+        )
+
+
+class TestDormantAudit(DormantAuditBase):
+
+    def test_no_corpus_marks_all_keywords_dormant(self):
+        """With an empty corpus, every keyword is dormant."""
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/AI", "priorite": 2,
+                 "mots_cles": ["ai", "ml"]},
+            ],
+        })
+        r = categories.dormant_audit(self.profile_name)
+        self.assertEqual(r["stats"]["n_keywords_total"], 2)
+        self.assertEqual(r["stats"]["n_keywords_dormant"], 2)
+        # Entry becomes dormant since all its keywords are
+        self.assertEqual(r["stats"]["n_entries_dormant"], 1)
+        self.assertEqual(r["dormant_entries"][0]["reason"], "all_keywords_dormant")
+
+    def test_corpus_with_match_keeps_keyword_active(self):
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/AI", "priorite": 2,
+                 "mots_cles": ["machine learning", "obscurity"]},
+            ],
+        })
+        self._write_cache_titles_themes([
+            {"title": "Hands-On Machine Learning", "themes": ["AI"]},
+        ])
+        r = categories.dormant_audit(self.profile_name)
+        # "machine learning" matches the cached title → active
+        # "obscurity" never appears → dormant
+        dormant = {k["keyword"] for k in r["dormant_keywords"]}
+        self.assertEqual(dormant, {"obscurity"})
+        # Entry has at least one active keyword → not dormant
+        self.assertEqual(r["stats"]["n_entries_dormant"], 0)
+
+    def test_filename_provides_match(self):
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+            ],
+        })
+        self._write_filenames(["Learning HTML 5 - Wiley.pdf"])
+        r = categories.dormant_audit(self.profile_name)
+        # filename is lowercased before search → "html" found in "learning html 5"
+        self.assertEqual(r["stats"]["n_keywords_dormant"], 0)
+
+    def test_theme_provides_match(self):
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/AI", "priorite": 2,
+                 "mots_cles": ["deep learning"]},
+            ],
+        })
+        self._write_cache_titles_themes([
+            {"title": "Boring title", "themes": ["Deep Learning"]},
+        ])
+        r = categories.dormant_audit(self.profile_name)
+        self.assertEqual(r["stats"]["n_keywords_dormant"], 0)
+
+    def test_empty_entry_has_dedicated_reason(self):
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/Z", "priorite": 5, "mots_cles": []},
+            ],
+        })
+        r = categories.dormant_audit(self.profile_name)
+        self.assertEqual(r["stats"]["n_entries_dormant"], 1)
+        self.assertEqual(r["dormant_entries"][0]["reason"], "no_keywords")
+
+    def test_case_insensitive_match(self):
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/AI", "priorite": 2,
+                 "mots_cles": ["MACHINE LEARNING"]},
+            ],
+        })
+        self._write_cache_titles_themes([
+            {"title": "machine learning basics", "themes": []},
+        ])
+        r = categories.dormant_audit(self.profile_name)
+        self.assertEqual(r["stats"]["n_keywords_dormant"], 0)
+
+
+class TestBulkDeleteKeywords(WriteTestBase):
+
+    def test_bulk_delete_happy(self):
+        r = categories.delete_keywords_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ai"},
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ml"},
+        ])
+        self.assertEqual(r["n_deleted"], 2)
+        kws = next(e["mots_cles"] for e in self._reload()["informatique"]
+                   if e["chemin"] == "02-INFO/AI")
+        self.assertEqual(kws, [])
+
+    def test_bulk_delete_across_entries(self):
+        r = categories.delete_keywords_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ai"},
+            {"group": "informatique", "chemin": "02-INFO/Web", "keyword": "html"},
+        ])
+        self.assertEqual(r["n_deleted"], 2)
+
+    def test_bulk_delete_reports_unknown_keyword(self):
+        r = categories.delete_keywords_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ai"},
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "nope"},
+        ])
+        self.assertEqual(r["n_deleted"], 1)
+        self.assertEqual(len(r["not_found"]), 1)
+        self.assertEqual(r["not_found"][0]["keyword"], "nope")
+
+    def test_bulk_delete_reports_unknown_entry(self):
+        r = categories.delete_keywords_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "does/not/exist", "keyword": "x"},
+        ])
+        self.assertEqual(r["n_deleted"], 0)
+        self.assertEqual(len(r["not_found"]), 1)
+
+    def test_bulk_delete_empty_list_rejected(self):
+        with self.assertRaises(categories.CategoriesError):
+            categories.delete_keywords_bulk(self.profile_name, [])
+
+    def test_bulk_delete_single_backup(self):
+        backup_dir = self.profile_dir / ".cache" / "categories-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        categories.delete_keywords_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ai"},
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ml"},
+            {"group": "informatique", "chemin": "02-INFO/Web", "keyword": "html"},
+        ])
+        after = list(backup_dir.glob("*.yaml"))
+        # Single backup despite 3 keyword deletions
+        self.assertEqual(len(after) - len(before), 1)
+
+    def test_bulk_delete_zero_matches_no_backup(self):
+        """All requested keywords missing → no backup, no write."""
+        backup_dir = self.profile_dir / ".cache" / "categories-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        r = categories.delete_keywords_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI", "keyword": "ghost"},
+        ])
+        self.assertEqual(r["n_deleted"], 0)
+        self.assertIsNone(r["backup"])
+        after = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        self.assertEqual(len(after), len(before))
+
+
+class TestBulkDeleteEntries(WriteTestBase):
+
+    def test_bulk_delete_happy(self):
+        r = categories.delete_entries_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI"},
+            {"group": "informatique", "chemin": "02-INFO/Web"},
+        ])
+        self.assertEqual(r["n_deleted"], 2)
+        self.assertEqual(self._reload()["informatique"], [])
+
+    def test_bulk_delete_across_groups(self):
+        r = categories.delete_entries_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI"},
+            {"group": "mathematique", "chemin": "01-MATH/Algebra"},
+        ])
+        self.assertEqual(r["n_deleted"], 2)
+
+    def test_bulk_delete_unknown(self):
+        r = categories.delete_entries_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "no/such"},
+        ])
+        self.assertEqual(r["n_deleted"], 0)
+        self.assertEqual(len(r["not_found"]), 1)
+
+    def test_bulk_delete_empty_list_rejected(self):
+        with self.assertRaises(categories.CategoriesError):
+            categories.delete_entries_bulk(self.profile_name, [])
+
+    def test_bulk_delete_single_backup(self):
+        backup_dir = self.profile_dir / ".cache" / "categories-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        categories.delete_entries_bulk(self.profile_name, [
+            {"group": "informatique", "chemin": "02-INFO/AI"},
+            {"group": "informatique", "chemin": "02-INFO/Web"},
+        ])
+        after = list(backup_dir.glob("*.yaml"))
+        self.assertEqual(len(after) - len(before), 1)
+
+
+class TestDormantAuditAndBulkEndpoints(WriteTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_dormant(self):
+        r = self.client.get(f"/api/categories/dormant?profile={self.profile_name}")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("dormant_keywords", body)
+        self.assertIn("dormant_entries", body)
+        self.assertIn("stats", body)
+
+    def test_endpoint_keywords_bulk_delete(self):
+        r = self.client.post("/api/categories/keywords/bulk-delete", json={
+            "profile": self.profile_name,
+            "items": [{"group": "informatique", "chemin": "02-INFO/AI",
+                       "keyword": "ai"}],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_deleted"], 1)
+
+    def test_endpoint_keywords_bulk_delete_requires_profile(self):
+        r = self.client.post("/api/categories/keywords/bulk-delete", json={
+            "items": [{"group": "x", "chemin": "y", "keyword": "z"}],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_endpoint_entries_bulk_delete(self):
+        r = self.client.post("/api/categories/entries/bulk-delete", json={
+            "profile": self.profile_name,
+            "items": [{"group": "informatique", "chemin": "02-INFO/AI"}],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_deleted"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

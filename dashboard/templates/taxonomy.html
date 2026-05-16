@@ -39,7 +39,8 @@
                 </svg>
             </button>
             <button id="tax-audit" class="tax-icon-btn"
-                    title="Auditer les mappings dormants (jamais utilisés)" aria-label="Audit">
+                    title="Auditer les dormants — mappings (vue Mappings) ou catégories (vue Catégories)"
+                    aria-label="Audit">
                 <span style="font-size:13px;">🧹</span>
                 <span>Audit</span>
             </button>
@@ -306,6 +307,18 @@
         <div class="tax-modal-actions">
             <button id="tax-audit-close" class="btn-secondary">Fermer</button>
             <button id="tax-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
+        </div>
+    </div>
+</div>
+
+<!-- Dormant categories audit modal (Phase C) -->
+<div id="tax-cat-audit-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:820px; max-width:96vw;">
+        <div class="tax-modal-title">🧹 Audit des catégories dormantes</div>
+        <div class="tax-modal-body" id="tax-cat-audit-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-cat-audit-close" class="btn-secondary">Fermer</button>
+            <button id="tax-cat-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
         </div>
     </div>
 </div>

@@ -20,6 +20,8 @@ Phase A surface (read-only):
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import shutil
 import threading
@@ -552,6 +554,287 @@ def delete_keyword(profile: str, group: str, chemin: str, keyword: str) -> dict:
         "chemin": chemin,
         "keyword": keyword,
         "n_keywords": len(new_mots),
+        "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+    }
+
+
+# ─── Dormant audit (Phase C) ──────────────────────────────────────────────
+#
+# An audit identifies keywords + entries that no file in the library could
+# ever trigger via the KeywordClassifier (step 2). We build a single big
+# lowercased "corpus" string from every file's title + filename + themes
+# in vision_cache, then for each keyword check whether its lowercased
+# form appears as a substring. ~2 MB corpus × 760 keywords ≈ <1 s.
+
+
+def _vision_cache_path_local(profile: str) -> Path:
+    """Avoid taxonomy import dependency — mirror the path used there."""
+    return _profile_dir(profile) / ".cache" / "vision_cache.json"
+
+
+def _profile_target_path_local(profile: str) -> Path | None:
+    """Read `target:` from profile.yaml. None if profile or path is missing."""
+    pf = _profile_dir(profile) / "profile.yaml"
+    if not pf.exists():
+        return None
+    try:
+        cfg = yaml.safe_load(pf.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(cfg, dict):
+        return None
+    tgt = cfg.get("target")
+    if not tgt:
+        return None
+    return Path(str(tgt))
+
+
+def _build_searchable_corpus(profile: str) -> str:
+    """Concatenate every file's title + filename + themes (lowercased,
+    one per line) so a keyword can be detected via simple substring
+    membership. Returns "" when no source is available."""
+    parts: list[str] = []
+
+    # Vision cache: titles + themes
+    cache_path = _vision_cache_path_local(profile)
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cache = {}
+        if isinstance(cache, dict):
+            for entry in cache.values():
+                if not isinstance(entry, dict):
+                    continue
+                result = entry.get("result")
+                if not isinstance(result, dict):
+                    continue
+                title = str(result.get("title") or "").strip()
+                if title:
+                    parts.append(title.lower())
+                arr = result.get("themes")
+                if isinstance(arr, list):
+                    for t in arr:
+                        if not isinstance(t, dict):
+                            continue
+                        th = str(t.get("theme") or "").strip()
+                        if th:
+                            parts.append(th.lower())
+                legacy = str(result.get("theme") or "").strip()
+                if legacy:
+                    parts.append(legacy.lower())
+
+    # Filesystem: filenames (basename only — paths add false positives)
+    target = _profile_target_path_local(profile)
+    if target and target.exists():
+        for root, dirs, files in os.walk(str(target)):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for f in files:
+                if f.startswith(".") or not f.lower().endswith((".pdf", ".epub")):
+                    continue
+                parts.append(f.lower())
+
+    return "\n".join(parts)
+
+
+def dormant_audit(profile: str) -> dict:
+    """Identify keywords + entries that no file's text could ever trigger.
+
+    Returns::
+
+        {
+          "dormant_keywords": [{group, chemin, keyword}],
+          "dormant_entries":  [{group, chemin, reason, n_keywords}],
+          "stats": {
+            "n_keywords_total":  int,
+            "n_keywords_dormant": int,
+            "n_entries_total":   int,
+            "n_entries_dormant":  int,
+            "corpus_size":       int,  # bytes
+          },
+        }
+
+    `reason` is "no_keywords" when the entry literally has zero, and
+    "all_keywords_dormant" when each of its keywords is itself dormant.
+    """
+    snap = build_snapshot(profile)
+    corpus = _build_searchable_corpus(profile)
+
+    dormant_keywords: list[dict] = []
+    dormant_entries: list[dict] = []
+    n_keywords_total = 0
+    n_entries_total = 0
+
+    for g in snap.get("groups", []):
+        for e in g.get("entries", []):
+            n_entries_total += 1
+            mots = e.get("mots_cles") or []
+            n_keywords_total += len(mots)
+            if not mots:
+                dormant_entries.append({
+                    "group": g["group"],
+                    "chemin": e["chemin"],
+                    "reason": "no_keywords",
+                    "n_keywords": 0,
+                })
+                continue
+            active = 0
+            for kw in mots:
+                kw_lower = str(kw).strip().lower()
+                if not kw_lower:
+                    continue
+                if kw_lower in corpus:
+                    active += 1
+                else:
+                    dormant_keywords.append({
+                        "group": g["group"],
+                        "chemin": e["chemin"],
+                        "keyword": kw,
+                    })
+            if active == 0:
+                dormant_entries.append({
+                    "group": g["group"],
+                    "chemin": e["chemin"],
+                    "reason": "all_keywords_dormant",
+                    "n_keywords": len(mots),
+                })
+
+    dormant_keywords.sort(key=lambda r: (r["group"], r["chemin"], r["keyword"].lower()))
+    dormant_entries.sort(key=lambda r: (r["group"], r["chemin"]))
+
+    return {
+        "dormant_keywords": dormant_keywords,
+        "dormant_entries": dormant_entries,
+        "stats": {
+            "n_keywords_total": n_keywords_total,
+            "n_keywords_dormant": len(dormant_keywords),
+            "n_entries_total": n_entries_total,
+            "n_entries_dormant": len(dormant_entries),
+            "corpus_size": len(corpus),
+        },
+    }
+
+
+# ─── Bulk delete operations (Phase C cleanup) ─────────────────────────────
+
+
+def delete_keywords_bulk(profile: str, items: list[dict]) -> dict:
+    """Delete multiple keywords across (possibly several) entries in a
+    single backup. Each item: {group, chemin, keyword}.
+
+    Items targeting missing entries / unknown keywords are reported in
+    `not_found` rather than aborting the batch.
+    """
+    if not isinstance(items, list) or not items:
+        raise CategoriesError("liste vide", 400)
+
+    # Group by (group, chemin) so we touch each entry's mots_cles once
+    by_entry: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for it in items:
+        if not isinstance(it, dict):
+            raise CategoriesError("élément invalide dans la liste", 400)
+        group = _validate_group(it.get("group") or "")
+        chemin = _validate_path(it.get("chemin") or "")
+        keyword = _validate_keyword(it.get("keyword") or "")
+        by_entry[(group, chemin)].append(keyword)
+
+    with _locks[profile]:
+        payload = _load_mutable(profile)
+        deleted: list[dict] = []
+        not_found: list[dict] = []
+        for (group, chemin), kws in by_entry.items():
+            located = _find_entry(payload, group, chemin)
+            if located is None:
+                for kw in kws:
+                    not_found.append({"group": group, "chemin": chemin, "keyword": kw})
+                continue
+            entries, idx = located
+            entry = entries[idx]
+            mots = entry.get("mots_cles") or []
+            kw_lower_set = {kw.lower() for kw in kws}
+            new_mots = [m for m in mots
+                        if str(m).strip().lower() not in kw_lower_set]
+            removed = [str(m) for m in mots
+                       if str(m).strip().lower() in kw_lower_set]
+            entry["mots_cles"] = new_mots
+            for kw in removed:
+                deleted.append({"group": group, "chemin": chemin, "keyword": kw})
+            # Track which requested keywords weren't found in this entry
+            removed_lower = {kw.lower() for kw in removed
+                             if isinstance(kw, str)}
+            for kw in kws:
+                if kw.lower() not in removed_lower:
+                    not_found.append({"group": group, "chemin": chemin, "keyword": kw})
+        if not deleted:
+            return {"ok": True, "deleted": [], "not_found": not_found,
+                    "n_deleted": 0, "backup": None}
+        backup = _backup_file(profile)
+        _save_mutable(profile, payload)
+        reset_cache(profile)
+
+    return {
+        "ok": True,
+        "deleted": deleted,
+        "not_found": not_found,
+        "n_deleted": len(deleted),
+        "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+    }
+
+
+def delete_entries_bulk(profile: str, items: list[dict]) -> dict:
+    """Delete multiple entries in a single backup. Each item: {group, chemin}."""
+    if not isinstance(items, list) or not items:
+        raise CategoriesError("liste vide", 400)
+
+    by_group: dict[str, list[str]] = defaultdict(list)
+    for it in items:
+        if not isinstance(it, dict):
+            raise CategoriesError("élément invalide dans la liste", 400)
+        group = _validate_group(it.get("group") or "")
+        chemin = _validate_path(it.get("chemin") or "")
+        by_group[group].append(chemin)
+
+    with _locks[profile]:
+        payload = _load_mutable(profile)
+        deleted: list[dict] = []
+        not_found: list[dict] = []
+        for group, chemins in by_group.items():
+            wanted = set(chemins)
+            entries = payload.get(group)
+            if not isinstance(entries, list):
+                for c in chemins:
+                    not_found.append({"group": group, "chemin": c})
+                continue
+            seen: set[str] = set()
+            kept: list = []
+            for e in entries:
+                ch = (isinstance(e, dict)
+                      and str(e.get("chemin") or "").strip())
+                if ch and ch in wanted:
+                    seen.add(ch)
+                    deleted.append({
+                        "group": group,
+                        "chemin": ch,
+                        "n_keywords": len(e.get("mots_cles") or []),
+                    })
+                else:
+                    kept.append(e)
+            payload[group] = kept
+            for c in chemins:
+                if c not in seen:
+                    not_found.append({"group": group, "chemin": c})
+        if not deleted:
+            return {"ok": True, "deleted": [], "not_found": not_found,
+                    "n_deleted": 0, "backup": None}
+        backup = _backup_file(profile)
+        _save_mutable(profile, payload)
+        reset_cache(profile)
+
+    return {
+        "ok": True,
+        "deleted": deleted,
+        "not_found": not_found,
+        "n_deleted": len(deleted),
         "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
     }
 

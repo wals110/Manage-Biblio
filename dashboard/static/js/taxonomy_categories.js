@@ -375,7 +375,11 @@
       class: 'muted small',
       style: 'padding:10px 14px;border-top:1px solid var(--border, #30363d);',
     }, [
-      '💡 Phase C ajoutera la détection des mots-clés qu\'aucun fichier de la lib ne contient.',
+      '💡 Le bouton ',
+      el('strong', null, ['🧹 Audit']),
+      ' du header liste tous les mots-clés que ',
+      el('em', null, ['aucun']),
+      ' fichier de la lib ne contient — utile pour purger les clés mortes.',
     ]));
   }
 
@@ -603,6 +607,269 @@
     }
   }
 
+  // ── Audit modal (Phase C) ────────────────────────────────────────────
+  // Lists dormant keywords + dormant entries for the active profile and
+  // lets the user purge the selection in batch.
+
+  const auditState = {
+    data: null,
+    selectedKeywords: new Set(),  // serialized "group||chemin||keyword"
+    selectedEntries: new Set(),   // serialized "group||chemin"
+    tab: 'keywords',              // 'keywords' | 'entries'
+  };
+
+  function _kwKey(g, c, kw) { return `${g}||${c}||${kw}`; }
+  function _entryKey(g, c)  { return `${g}||${c}`; }
+
+  async function openCatAuditModal() {
+    const modal = $('#tax-cat-audit-modal');
+    const body = $('#tax-cat-audit-body');
+    body.innerHTML = '<div class="muted">Analyse en cours… (peut prendre 1-2 s)</div>';
+    modal.style.display = 'flex';
+    auditState.selectedKeywords.clear();
+    auditState.selectedEntries.clear();
+    auditState.tab = 'keywords';
+    await withBusy('Analyse des dormants…', async () => {
+      try {
+        const r = await fetch(
+          `/api/categories/dormant?profile=${encodeURIComponent(state.profile)}`);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        auditState.data = await r.json();
+      } catch (e) {
+        body.innerHTML = '<div class="error">✗ ' + e.message + '</div>';
+        return;
+      }
+      renderCatAuditBody();
+    });
+  }
+
+  function closeCatAuditModal() {
+    $('#tax-cat-audit-modal').style.display = 'none';
+    auditState.data = null;
+    auditState.selectedKeywords.clear();
+    auditState.selectedEntries.clear();
+  }
+
+  function renderCatAuditBody() {
+    const body = $('#tax-cat-audit-body');
+    body.innerHTML = '';
+    const data = auditState.data;
+    if (!data) return;
+    const s = data.stats;
+    // Stats header
+    body.appendChild(el('div', { class: 'tax-audit-header' }, [
+      el('div', null, [
+        el('strong', null, [String(s.n_keywords_total)]),
+        ' mots-clés · ',
+        el('strong', { class: 'tax-audit-dormant-count' },
+                    [String(s.n_keywords_dormant)]),
+        ' dormants · ',
+        el('strong', null, [String(s.n_entries_total)]),
+        ' entries · ',
+        el('strong', { class: 'tax-audit-dormant-count' },
+                    [String(s.n_entries_dormant)]),
+        ' entries dormantes',
+      ]),
+      el('div', { class: 'muted small' }, [
+        'Dormant = aucun fichier de la lib ne contient ce mot-clé dans son titre, son filename ou ses thèmes LLM. ',
+        'Corpus scanné : ', el('strong', null, [(s.corpus_size / 1024).toFixed(0) + ' KB']),
+      ]),
+    ]));
+    // Tabs
+    body.appendChild(el('div', { class: 'tax-cat-audit-tabs' }, [
+      el('button', {
+        class: 'tax-cat-audit-tab' + (auditState.tab === 'keywords' ? ' active' : ''),
+        onclick: () => { auditState.tab = 'keywords'; renderCatAuditBody(); },
+      }, [`Mots-clés (${data.dormant_keywords.length})`]),
+      el('button', {
+        class: 'tax-cat-audit-tab' + (auditState.tab === 'entries' ? ' active' : ''),
+        onclick: () => { auditState.tab = 'entries'; renderCatAuditBody(); },
+      }, [`Entries (${data.dormant_entries.length})`]),
+    ]));
+
+    if (auditState.tab === 'keywords') renderCatAuditKeywords();
+    else renderCatAuditEntries();
+    updateCatAuditDeleteBtn();
+  }
+
+  function renderCatAuditKeywords() {
+    const body = $('#tax-cat-audit-body');
+    const items = auditState.data.dormant_keywords;
+    if (items.length === 0) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
+        '✅ Aucun mot-clé dormant — tout est utilisé par au moins un fichier.',
+      ]));
+      return;
+    }
+    body.appendChild(el('div', { class: 'tax-audit-controls' }, [
+      el('button', {
+        class: 'btn-secondary',
+        onclick: () => {
+          for (const it of items) {
+            auditState.selectedKeywords.add(_kwKey(it.group, it.chemin, it.keyword));
+          }
+          renderCatAuditBody();
+        },
+      }, [`Tout sélectionner (${items.length})`]),
+      el('button', {
+        class: 'btn-secondary',
+        onclick: () => { auditState.selectedKeywords.clear(); renderCatAuditBody(); },
+      }, ['Tout désélectionner']),
+    ]));
+    const list = el('div', { class: 'tax-audit-list' });
+    for (const it of items) {
+      const key = _kwKey(it.group, it.chemin, it.keyword);
+      const checked = auditState.selectedKeywords.has(key);
+      const checkbox = el('input', { type: 'checkbox' });
+      checkbox.checked = checked;
+      const row = el('label', {
+        class: 'tax-audit-row tax-cat-audit-row' + (checked ? ' selected' : ''),
+      }, [
+        checkbox,
+        el('span', { class: 'tax-cat-audit-kw' }, [it.keyword]),
+        el('span', { class: 'tax-cat-audit-arrow muted small' }, ['in']),
+        el('span', { class: 'tax-cat-audit-folder' }, [
+          it.group + '/' + shortenPath(it.chemin),
+        ]),
+      ]);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          auditState.selectedKeywords.add(key);
+          row.classList.add('selected');
+        } else {
+          auditState.selectedKeywords.delete(key);
+          row.classList.remove('selected');
+        }
+        updateCatAuditDeleteBtn();
+      });
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+  }
+
+  function renderCatAuditEntries() {
+    const body = $('#tax-cat-audit-body');
+    const items = auditState.data.dormant_entries;
+    if (items.length === 0) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' }, [
+        '✅ Aucune entry dormante — chaque entry a au moins un mot-clé utilisé.',
+      ]));
+      return;
+    }
+    body.appendChild(el('div', { class: 'tax-audit-controls' }, [
+      el('button', {
+        class: 'btn-secondary',
+        onclick: () => {
+          for (const it of items) {
+            auditState.selectedEntries.add(_entryKey(it.group, it.chemin));
+          }
+          renderCatAuditBody();
+        },
+      }, [`Tout sélectionner (${items.length})`]),
+      el('button', {
+        class: 'btn-secondary',
+        onclick: () => { auditState.selectedEntries.clear(); renderCatAuditBody(); },
+      }, ['Tout désélectionner']),
+    ]));
+    const list = el('div', { class: 'tax-audit-list' });
+    for (const it of items) {
+      const key = _entryKey(it.group, it.chemin);
+      const checked = auditState.selectedEntries.has(key);
+      const checkbox = el('input', { type: 'checkbox' });
+      checkbox.checked = checked;
+      const reasonLabel = (it.reason === 'no_keywords')
+        ? 'aucun mot-clé'
+        : `tous mots-clés dormants (${it.n_keywords})`;
+      const row = el('label', {
+        class: 'tax-audit-row tax-cat-audit-row' + (checked ? ' selected' : ''),
+      }, [
+        checkbox,
+        el('span', { class: 'tax-cat-audit-folder' }, [
+          it.group + '/' + shortenPath(it.chemin),
+        ]),
+        el('span', { class: 'tax-cat-audit-reason muted small' }, [
+          '(' + reasonLabel + ')',
+        ]),
+      ]);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          auditState.selectedEntries.add(key);
+          row.classList.add('selected');
+        } else {
+          auditState.selectedEntries.delete(key);
+          row.classList.remove('selected');
+        }
+        updateCatAuditDeleteBtn();
+      });
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+  }
+
+  function updateCatAuditDeleteBtn() {
+    const btn = $('#tax-cat-audit-delete');
+    const n = (auditState.tab === 'keywords')
+      ? auditState.selectedKeywords.size
+      : auditState.selectedEntries.size;
+    const label = (auditState.tab === 'keywords')
+      ? 'mot-clé(s)' : 'entry(s)';
+    btn.textContent = `Supprimer ${n} ${label}`;
+    btn.disabled = (n === 0);
+  }
+
+  async function confirmCatAuditDelete() {
+    const isKeywords = auditState.tab === 'keywords';
+    const selected = isKeywords ? auditState.selectedKeywords : auditState.selectedEntries;
+    if (selected.size === 0) return;
+    const items = Array.from(selected).map(s => {
+      const parts = s.split('||');
+      return isKeywords
+        ? { group: parts[0], chemin: parts[1], keyword: parts[2] }
+        : { group: parts[0], chemin: parts[1] };
+    });
+    const itemLabel = isKeywords ? 'mot-clé(s)' : 'entry(s)';
+    // Simple native confirm — keeps Phase C scope contained
+    if (!window.confirm(
+        `Supprimer ${items.length} ${itemLabel} ? Un backup unique sera créé.`)) {
+      return;
+    }
+    const url = isKeywords
+      ? '/api/categories/keywords/bulk-delete'
+      : '/api/categories/entries/bulk-delete';
+    await withBusy(`Suppression de ${items.length} ${itemLabel}…`, async () => {
+      try {
+        const r = await postJSON(url, { items });
+        showToast(`✓ ${r.n_deleted} ${itemLabel} supprimé(s)`, 'success');
+        if (r.not_found && r.not_found.length) {
+          showToast(`⚠ ${r.not_found.length} introuvable(s) ignoré(s)`, 'info');
+        }
+        closeCatAuditModal();
+        await reloadAfterWrite();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
+  // Hijack the shared "🧹 Audit" button at capture phase so it dispatches
+  // to dormant-mappings (Mappings sub-tab) or dormant-categories (Catégories).
+  function bindAuditInterceptor() {
+    const auditBtn = document.querySelector('#tax-audit');
+    if (!auditBtn) return;
+    auditBtn.addEventListener('click', (e) => {
+      const active = document.querySelector('.tax-subtab.active');
+      if (!active || active.dataset.view !== 'categories') return;
+      e.stopPropagation();
+      e.preventDefault();
+      openCatAuditModal();
+    }, true);
+    // Wire the close + delete buttons of our own modal
+    const closeBtn = document.querySelector('#tax-cat-audit-close');
+    const delBtn = document.querySelector('#tax-cat-audit-delete');
+    if (closeBtn) closeBtn.addEventListener('click', closeCatAuditModal);
+    if (delBtn) delBtn.addEventListener('click', confirmCatAuditDelete);
+  }
+
   // Hijack the shared "Annuler" button at the capture phase so that when
   // the Catégories sub-tab is active it triggers categories.undo()
   // instead of theme_mapping.undo(). taxonomy.js owns the same button.
@@ -656,6 +923,7 @@
       if (active && active.dataset.view === 'categories') loadAndRender();
     });
     bindUndoInterceptor();
+    bindAuditInterceptor();
   }
 
   if (document.readyState === 'loading') {
