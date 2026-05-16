@@ -1747,9 +1747,13 @@ class TestReclassifyDryrun(TaxonomyTestBase):
                 model="Qwen/Qwen3-VL-32B-Instruct",
                 n_pages=2,
             )
+            top_conf = max(c for _, c in themes)
             cache[key] = {
                 "result": {
                     "title": Path(rel).stem,
+                    # Top-level confidence is what classify_combined gates on
+                    # (it must be >= CONFIDENCE_THRESHOLD for step 1 to fire).
+                    "confidence": top_conf,
                     "themes": [{"theme": t, "confidence": c} for t, c in themes],
                 },
                 "model": "Qwen/Qwen3-VL-32B-Instruct",
@@ -1801,9 +1805,84 @@ class TestReclassifyDryrun(TaxonomyTestBase):
 
     def test_limits_documented(self):
         r = taxonomy.reclassify_dryrun(self.profile_name)
-        self.assertTrue(r["limits"]["step1_only"])
+        # step2_included is True when categories.yaml exists and was loaded;
+        # the test profile has no categories.yaml so it stays False — but
+        # the key must always be present in the limits payload.
+        self.assertIn("step2_included", r["limits"])
         self.assertTrue(r["limits"]["no_llm_mapper"])
         self.assertTrue(r["limits"]["no_execute"])
+
+    def test_step1_via_themes_counted_in_via_step1(self):
+        r = taxonomy.reclassify_dryrun(self.profile_name)
+        # No categories.yaml in the test profile → no step 2 rescue, all
+        # successful predictions come from step 1 (theme_mapping).
+        self.assertGreater(r["stats"]["n_via_step1"], 0)
+        self.assertEqual(r["stats"]["n_via_step2"], 0)
+        # Every move's source should NOT start with "Keyword"
+        for m in r["sample_moves"]:
+            self.assertFalse(m["source"].startswith("Keyword"))
+
+    def test_step2_rescues_file_with_no_mapped_theme(self):
+        """Adding a categories.yaml entry with a matching keyword should
+        rescue a file that has a theme not present in theme_mapping."""
+        # Add a file with theme 'biology' that has no mapping in theme_mapping
+        from lib import vision_cache as vc
+        rel = "01-SCIENCES/PHYSIQUE/biology-book.pdf"
+        abs_path = self.target / rel
+        abs_path.write_bytes(b"%PDF-1.4 biology-book unique bytes here")
+        key = vc.compute_cache_key(
+            str(abs_path),
+            model="Qwen/Qwen3-VL-32B-Instruct",
+            n_pages=2,
+        )
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache = json.loads(cache_path.read_text())
+        # Use a confidence below threshold for step 1 so step 1 is skipped
+        # AND theme is not in mapping anyway → only step 2 can rescue.
+        cache[key] = {
+            "result": {
+                "title": "Introduction to Genetics",
+                "confidence": 0.4,   # below threshold → step 1 skipped
+                "themes": [{"theme": "unknown-theme", "confidence": 0.4}],
+            },
+            "model": "Qwen/Qwen3-VL-32B-Instruct",
+            "prompt_version": "v3",
+        }
+        cache_path.write_text(json.dumps(cache))
+        # Write a categories.yaml that catches the file via title keyword
+        cat_path = self.profile_dir / "categories.yaml"
+        cat_path.write_text(
+            "sciences:\n"
+            "  - chemin: '01-SCIENCES/BIOLOGIE'\n"
+            "    priorite: 3\n"
+            "    mots_cles: ['genetics', 'biology']\n"
+        )
+        taxonomy.reset_cache(self.profile_name)
+        r = taxonomy.reclassify_dryrun(self.profile_name)
+        self.assertTrue(r["limits"]["step2_included"])
+        self.assertGreater(r["stats"]["n_via_step2"], 0)
+        paths = {m["rel_path"] for m in r["sample_moves"]}
+        self.assertIn(rel, paths)
+        match = next(m for m in r["sample_moves"] if m["rel_path"] == rel)
+        self.assertTrue(match["source"].startswith("Keyword"))
+
+    def test_disabling_step2_falls_back_to_step1_only(self):
+        # Same setup as test_step2_rescues but explicitly disable step 2
+        cat_path = self.profile_dir / "categories.yaml"
+        cat_path.write_text(
+            "sciences:\n"
+            "  - chemin: '01-SCIENCES/BIOLOGIE'\n"
+            "    priorite: 3\n"
+            "    mots_cles: ['biology']\n"
+        )
+        taxonomy.reset_cache(self.profile_name)
+        r_with = taxonomy.reclassify_dryrun(self.profile_name, include_step2=True)
+        r_without = taxonomy.reclassify_dryrun(self.profile_name, include_step2=False)
+        # step1 totals identical, step2 only differs
+        self.assertEqual(r_with["stats"]["n_via_step1"],
+                         r_without["stats"]["n_via_step1"])
+        self.assertEqual(r_without["stats"]["n_via_step2"], 0)
+        self.assertFalse(r_without["limits"]["step2_included"])
 
 
 class TestReclassifyDryrunEndpoint(TaxonomyTestBase):

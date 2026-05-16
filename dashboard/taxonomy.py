@@ -697,99 +697,191 @@ def theme_files(profile: str, theme: str, limit: int = 50) -> dict:
 #
 # "If I ran klodo classify --execute now, what would move where?"
 #
-# Re-uses the folder_index we already built for the theme files panel —
-# each item there already carries (current_folder, top_theme, predicted_
-# folder via classify_by_theme step 1). No new LLM calls, no FS writes,
-# instant once the index is warm.
-#
-# Limits (documented to the caller):
-#  - Step 2 (KeywordClassifier) is NOT simulated → some "no_prediction"
-#    files would in fact be classified at execute time.
-#  - Step 3 (LLM Mapper, paid) is NOT simulated.
-#  - This is a projection from the cached vision result + today's mapping,
-#    not a true run.
+# Runs the real pipeline (step 1 theme_mapping + step 2 KeywordClassifier
+# via categories.yaml) for every file in the lib, using the cached
+# vision results. No new LLM calls, no FS writes. Step 3 (LLM Mapper,
+# paid) is NOT simulated — those files are reported as no_prediction.
 
 
-def reclassify_dryrun(profile: str, sample_size: int = 50) -> dict:
+def reclassify_dryrun(
+    profile: str,
+    sample_size: int = 50,
+    include_step2: bool = True,
+) -> dict:
     """Project what a reclassify would move.
+
+    Runs ``classify_combined`` (steps 1+2 of the pipeline) on every
+    indexed file. ``include_step2=False`` short-circuits to step 1 only
+    (cheap, useful for comparing what categories.yaml would rescue).
 
     Returns::
 
         {
           "ok": True,
           "stats": {
-              "n_in_lib": int,           # total files in target/
-              "n_with_prediction": int,  # have a top theme → folder via step 1
-              "n_no_prediction": int,    # would fall through to step 2/3
-              "n_moving": int,           # current_folder != predicted_folder
-              "n_stable": int,           # already in the right place
+              "n_in_lib": int,
+              "n_with_prediction": int,
+              "n_no_prediction": int,
+              "n_moving": int,
+              "n_stable": int,
+              "n_via_step1": int,        # resolved via theme_mapping
+              "n_via_step2": int,        # resolved via KeywordClassifier
           },
-          "by_destination": [             # top N folders by incoming volume
-              {"folder": str, "n_incoming": int, "n_already_there": int,
-               "from": {<folder>: <count>}},   # top 5 sources
-              ...
-          ],
-          "sample_moves": [               # first `sample_size` moves
-              {"rel_path": str, "from": str, "to": str,
-               "top_theme": str, "confidence": float},
-              ...
-          ],
-          "limits": {
-              "step1_only": True,
-              "no_llm_mapper": True,
-              "no_execute": True,
-          },
+          "by_destination": [...],
+          "sample_moves": [{
+              "rel_path": str, "from": str, "to": str,
+              "top_theme": str, "confidence": float,
+              "source": str,             # "LLM (theme)" / "Keyword" / ...
+          }],
+          "limits": {step2_included, no_llm_mapper, no_execute},
         }
     """
-    _, folder_index = _get_indexes(profile)
+    from concurrent.futures import ThreadPoolExecutor
 
-    # Also know the total number of files in target (incl. those without
-    # any prediction) so the stats reflect the real lib size, not the
-    # folder_index subset.
+    from lib.classifier import classify_combined, load_keyword_classifier
+
     target = _profile_target_path(profile)
-    n_in_lib = 0
-    if target and target.exists():
-        for root, dirs, files in os.walk(str(target)):
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
-            for f in files:
-                if f.startswith(".") or not f.lower().endswith(_FILE_EXTS):
-                    continue
-                n_in_lib += 1
+    if target is None or not target.exists():
+        return _empty_dryrun(include_step2)
 
-    # Aggregate items across all predicted folders
-    n_with_prediction = 0
+    mapping = _load_mapping(profile)
+
+    classifier = None
+    if include_step2:
+        cat_path = _profile_dir(profile) / "categories.yaml"
+        if cat_path.exists():
+            classifier = load_keyword_classifier(str(cat_path))
+
+    cache_path = _vision_cache_path(profile)
+    cache: dict = {}
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cache = {}
+    if not isinstance(cache, dict):
+        cache = {}
+
+    cfg = _load_profile_yaml(profile)
+    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    # Enumerate every candidate file
+    target_str = str(target)
+    file_list: list[tuple[str, str, str]] = []  # (abs, rel, basename)
+    for root, dirs, files in os.walk(target_str):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if f.startswith(".") or not f.lower().endswith(_FILE_EXTS):
+                continue
+            abs_path = os.path.join(root, f)
+            try:
+                rel = os.path.relpath(abs_path, target_str).replace("\\", "/")
+            except ValueError:
+                continue
+            file_list.append((abs_path, rel, f))
+
+    def _process(item: tuple[str, str, str]) -> dict:
+        abs_path, rel, filename = item
+        i = rel.rfind("/")
+        current_folder = rel[:i] if i >= 0 else ""
+        # Lookup vision_cache
+        key = vision_cache.compute_cache_key(
+            abs_path, model=model, n_pages=n_pages)
+        result = vision_cache.lookup(cache, key) if key else None
+        if not isinstance(result, dict):
+            result = {}
+        # Extract top theme + score for display
+        top_theme = ""
+        top_conf = 0.0
+        themes_arr = result.get("themes")
+        if isinstance(themes_arr, list) and themes_arr:
+            best = max(
+                (t for t in themes_arr if isinstance(t, dict)),
+                key=lambda t: float(t.get("confidence") or 0.0),
+                default=None,
+            )
+            if best is not None:
+                top_theme = str(best.get("theme") or "")
+                top_conf = float(best.get("confidence") or 0.0)
+        elif result.get("theme"):
+            top_theme = str(result.get("theme") or "")
+            top_conf = float(result.get("confidence") or 0.0)
+        # Run the actual pipeline (step 1 + optional step 2; no LLM mapper)
+        dest, score, source = classify_combined(
+            result, filename, mapping,
+            classifier=classifier,
+            llm_mapper=None,
+            pdf_path=abs_path,
+        )
+        return {
+            "rel_path": rel,
+            "current_folder": current_folder,
+            "predicted_folder": dest,
+            "source": source,
+            "score": float(score) if score else 0.0,
+            "top_theme": top_theme,
+            "top_confidence": round(top_conf, 3),
+        }
+
+    # Parallel walk (8 workers — same as _build_indexes)
+    processed: list[dict] = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for r in ex.map(_process, file_list):
+            processed.append(r)
+
+    # Aggregate
+    n_in_lib = len(processed)
     n_moving = 0
     n_stable = 0
+    n_step1 = 0
+    n_step2 = 0
+    n_no_pred = 0
     by_dest: dict[str, dict] = {}
     moves: list[dict] = []
 
-    for predicted_folder, items in folder_index.items():
-        bucket = by_dest.setdefault(predicted_folder, {
-            "folder": predicted_folder,
-            "n_incoming": 0,
-            "n_already_there": 0,
-            "from": defaultdict(int),
-        })
-        for item in items:
-            n_with_prediction += 1
-            current_folder = item.get("current_folder") or ""
-            if current_folder == predicted_folder:
-                n_stable += 1
-                bucket["n_already_there"] += 1
-            else:
-                n_moving += 1
-                bucket["n_incoming"] += 1
-                bucket["from"][current_folder or "(racine)"] += 1
-                if len(moves) < sample_size:
-                    moves.append({
-                        "rel_path": item["rel_path"],
-                        "from": current_folder or "(racine)",
-                        "to": predicted_folder,
-                        "top_theme": item.get("top_theme", ""),
-                        "confidence": item.get("top_confidence", 0.0),
-                    })
+    for r in processed:
+        dest = r["predicted_folder"]
+        src = r["source"]
+        if not dest:
+            n_no_pred += 1
+            continue
+        # Classify source family
+        if src.startswith("Keyword"):
+            n_step2 += 1
+        else:
+            # "LLM (theme)", "LLM (theme→refined)", "LLM (theme-generic)" → step 1
+            n_step1 += 1
 
-    # Convert defaultdicts → plain dicts, keep top-5 sources per dest
+        if dest == r["current_folder"]:
+            n_stable += 1
+        else:
+            n_moving += 1
+            bucket = by_dest.setdefault(dest, {
+                "folder": dest,
+                "n_incoming": 0,
+                "n_already_there": 0,
+                "from": defaultdict(int),
+            })
+            bucket["n_incoming"] += 1
+            bucket["from"][r["current_folder"] or "(racine)"] += 1
+            if len(moves) < sample_size:
+                moves.append({
+                    "rel_path": r["rel_path"],
+                    "from": r["current_folder"] or "(racine)",
+                    "to": dest,
+                    "top_theme": r["top_theme"],
+                    "confidence": r["top_confidence"],
+                    "source": src,
+                })
+
+    # n_already_there: stable files per destination
+    for r in processed:
+        dest = r["predicted_folder"]
+        if dest and dest == r["current_folder"] and dest in by_dest:
+            by_dest[dest]["n_already_there"] += 1
+
+    # Top-5 sources per destination
     dests_out: list[dict] = []
     for d in by_dest.values():
         sources = sorted(d["from"].items(), key=lambda kv: -kv[1])[:5]
@@ -799,25 +891,39 @@ def reclassify_dryrun(profile: str, sample_size: int = 50) -> dict:
             "n_already_there": d["n_already_there"],
             "from": dict(sources),
         })
-    # Top folders by incoming moves first; ones with 0 moves drop to the end
     dests_out.sort(key=lambda r: (-r["n_incoming"], r["folder"].lower()))
 
     return {
         "ok": True,
         "stats": {
             "n_in_lib": n_in_lib,
-            "n_with_prediction": n_with_prediction,
-            "n_no_prediction": max(0, n_in_lib - n_with_prediction),
+            "n_with_prediction": n_step1 + n_step2,
+            "n_no_prediction": n_no_pred,
             "n_moving": n_moving,
             "n_stable": n_stable,
+            "n_via_step1": n_step1,
+            "n_via_step2": n_step2,
         },
         "by_destination": dests_out,
         "sample_moves": moves,
         "limits": {
-            "step1_only": True,
+            "step2_included": include_step2 and classifier is not None,
             "no_llm_mapper": True,
             "no_execute": True,
         },
+    }
+
+
+def _empty_dryrun(include_step2: bool) -> dict:
+    return {
+        "ok": True,
+        "stats": {"n_in_lib": 0, "n_with_prediction": 0, "n_no_prediction": 0,
+                  "n_moving": 0, "n_stable": 0,
+                  "n_via_step1": 0, "n_via_step2": 0},
+        "by_destination": [],
+        "sample_moves": [],
+        "limits": {"step2_included": include_step2,
+                   "no_llm_mapper": True, "no_execute": True},
     }
 
 

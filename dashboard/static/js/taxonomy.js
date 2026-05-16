@@ -446,7 +446,9 @@
     const body = $('#tax-reclassify-body');
     body.innerHTML = '';
     const s = data.stats;
-    // Top stats line + caveat
+    const step2 = data.limits.step2_included;
+    // Top stats line: à déplacer / déjà en place / via étape 1 / via étape 2
+    // / sans prédiction / total
     body.appendChild(el('div', { class: 'tax-reclassify-stats' }, [
       el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-moving' }, [
         el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_moving)]),
@@ -456,9 +458,17 @@
         el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_stable)]),
         el('div', { class: 'tax-reclassify-stat-label' }, ['déjà en place']),
       ]),
+      el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-step1' }, [
+        el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_via_step1)]),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['via étape 1']),
+      ]),
+      el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-step2' }, [
+        el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_via_step2)]),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['via étape 2']),
+      ]),
       el('div', { class: 'tax-reclassify-stat tax-reclassify-stat-orphan' }, [
         el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_no_prediction)]),
-        el('div', { class: 'tax-reclassify-stat-label' }, ['sans prédiction étape 1']),
+        el('div', { class: 'tax-reclassify-stat-label' }, ['sans prédiction']),
       ]),
       el('div', { class: 'tax-reclassify-stat' }, [
         el('div', { class: 'tax-reclassify-stat-num' }, [String(s.n_in_lib)]),
@@ -468,8 +478,10 @@
     body.appendChild(el('div', {
       class: 'tax-reclassify-caveat muted small',
     }, [
-      '⚠ Projection étape 1 (theme_mapping) seulement. Étape 2 (KeywordClassifier, categories.yaml) ',
-      'récupérerait une partie des fichiers sans prédiction. Étape 3 (LLM Mapper) non simulée.',
+      step2
+        ? '✓ Pipeline étapes 1 (theme_mapping) + 2 (KeywordClassifier via categories.yaml). '
+        : '⚠ Étape 2 non disponible (categories.yaml absent ou vide). ',
+      'Étape 3 (LLM Mapper, payant) non simulée — les fichiers sans prédiction y seraient envoyés en production.',
     ]));
 
     // By-destination section
@@ -502,29 +514,42 @@
       const tbl = el('div', { class: 'tax-reclassify-moves' });
       // Header row
       tbl.appendChild(el('div', { class: 'tax-reclassify-move tax-reclassify-move-head' }, [
+        el('span', { class: 'tax-reclassify-move-src' }, ['Étape']),
         el('span', { class: 'tax-reclassify-move-name' }, ['Fichier']),
         el('span', { class: 'tax-reclassify-move-arrow' }, ['']),
         el('span', { class: 'tax-reclassify-move-from' }, ['Depuis']),
         el('span', { class: 'tax-reclassify-move-to' }, ['Vers']),
-        el('span', { class: 'tax-reclassify-move-theme' }, ['Via top thème']),
+        el('span', { class: 'tax-reclassify-move-theme' }, ['Signal']),
       ]));
       for (const m of data.sample_moves) {
         const i = m.rel_path.lastIndexOf('/');
         const name = i < 0 ? m.rel_path : m.rel_path.substring(i + 1);
+        const isStep2 = (m.source || '').startsWith('Keyword');
+        // Trigger shown for the "Signal" column:
+        //  - step 1 → top theme that resolved (e.g. « Mathematical Physics »)
+        //  - step 2 → keyword that fired (parsed from "Keyword (deep learning)")
+        let trigger = '« ' + (m.top_theme || '?') + ' »';
+        if (isStep2) {
+          const match = (m.source || '').match(/\(([^)]+)\)/);
+          trigger = match ? 'kw: « ' + match[1] + ' »' : 'kw match';
+        }
         tbl.appendChild(el('div', {
           class: 'tax-reclassify-move',
-          title: m.rel_path,
+          title: m.rel_path + '\n' + (m.source || ''),
           onclick: () => {
             closeReclassifyModal();
             openFileFromPath(m.rel_path);
           },
         }, [
+          el('span', {
+            class: 'tax-reclassify-move-src tax-reclassify-move-src-'
+                 + (isStep2 ? 'step2' : 'step1'),
+          }, [isStep2 ? '2' : '1']),
           el('span', { class: 'tax-reclassify-move-name' }, [name]),
           el('span', { class: 'tax-reclassify-move-arrow' }, ['→']),
           el('span', { class: 'tax-reclassify-move-from' }, [m.from]),
           el('span', { class: 'tax-reclassify-move-to' }, [m.to]),
-          el('span', { class: 'tax-reclassify-move-theme' },
-                     ['« ' + (m.top_theme || '?') + ' »']),
+          el('span', { class: 'tax-reclassify-move-theme' }, [trigger]),
         ]));
       }
       body.appendChild(tbl);
