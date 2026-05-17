@@ -1745,17 +1745,6 @@ async def categories_entries_bulk_delete_api(request: Request):
         return _categories_err(e)
 
 
-@app.get("/mockup/categories")
-async def mockup_categories_page(request: Request):
-    """Static visual mockup for the proposed Mappings/Catégories sub-tab.
-    Not wired to any data — purely a layout preview to validate UX."""
-    return templates.TemplateResponse(
-        request,
-        "mockup_categories.html",
-        {"active": "taxonomy"},
-    )
-
-
 @app.get("/api/taxonomy/profiles")
 async def taxonomy_profiles_api():
     from fastapi.responses import JSONResponse
