@@ -553,6 +553,156 @@ def get_journal(profile: str, limit: int = 200) -> dict:
     }
 
 
+def commit_rename_bulk(
+    profile: str,
+    items: list[dict],
+    batch_id: str = "",
+) -> dict:
+    """Apply N renames as a single batch.
+
+    ``items`` is ``[{"rel_path": str, "new_name": str}, ...]``. A shared
+    ``batch_id`` (auto-generated if not provided) tags every record in
+    the journal so the whole batch can be undone in one call.
+
+    Failure semantics: best-effort. Each item is attempted independently;
+    a per-item failure does NOT abort the batch. The result lists
+    successes and per-item errors so the UI can show what happened.
+
+    Cache invalidation happens once at the end (instead of once per
+    item) — small but meaningful for the 18k-file lib.
+    """
+    if not isinstance(items, list) or not items:
+        raise RenameError("items vide ou invalide", 400)
+
+    from lib import rename_journal
+    if not batch_id:
+        batch_id = rename_journal.generate_batch_id()
+
+    target = _profile_target(profile)
+    if target is None or not target.exists():
+        raise RenameError("profil sans target configuré", 400)
+
+    # We bypass the full commit_rename() to skip its per-call cache
+    # invalidation; everything else (path traversal, name validation,
+    # case-insensitive collision, journal append) we replicate inline.
+    target_resolved = target.resolve()
+    profile_dir = _profile_dir(profile)
+
+    successes: list[dict] = []
+    errors: list[dict] = []
+
+    for item in items:
+        rel_path = (item or {}).get("rel_path") or ""
+        raw_new = (item or {}).get("new_name") or ""
+        if not rel_path:
+            errors.append({"rel_path": rel_path, "error": "rel_path manquant",
+                           "status": 400})
+            continue
+        try:
+            new_name = _validate_new_basename(raw_new)
+        except RenameError as exc:
+            errors.append({"rel_path": rel_path, "error": str(exc),
+                           "status": exc.status})
+            continue
+
+        abs_old = (target / rel_path).resolve()
+        try:
+            abs_old.relative_to(target_resolved)
+        except ValueError:
+            errors.append({"rel_path": rel_path,
+                           "error": "rel_path hors du target", "status": 400})
+            continue
+        if not abs_old.exists():
+            errors.append({"rel_path": rel_path,
+                           "error": "fichier introuvable", "status": 404})
+            continue
+
+        abs_new = abs_old.parent / new_name
+        if abs_new.name == abs_old.name:
+            successes.append({
+                "rel_path": rel_path,
+                "new_rel_path": rel_path,
+                "new_name": new_name,
+                "unchanged": True,
+            })
+            continue
+
+        if abs_new.exists():
+            try:
+                same = abs_new.samefile(abs_old)
+            except OSError:
+                same = False
+            if not same:
+                errors.append({"rel_path": rel_path,
+                               "error": f"collision avec {new_name}",
+                               "status": 409})
+                continue
+
+        try:
+            os.rename(abs_old, abs_new)
+        except OSError as exc:
+            errors.append({"rel_path": rel_path,
+                           "error": f"échec rename : {exc}", "status": 500})
+            continue
+
+        record = rename_journal.append_rename(
+            profile_dir,
+            old_abs=str(abs_old),
+            new_abs=str(abs_new),
+            batch_id=batch_id,
+        )
+        new_rel = str(abs_new.relative_to(target_resolved)).replace("\\", "/")
+        successes.append({
+            "rel_path": rel_path,
+            "new_rel_path": new_rel,
+            "new_name": new_name,
+            "journal_entry": record,
+        })
+
+    # Single cache invalidation for the whole batch
+    if successes:
+        _invalidate_dependent_caches(profile)
+
+    return {
+        "ok": True,
+        "batch_id": batch_id,
+        "n_total": len(items),
+        "n_renamed": len(successes),
+        "n_errors": len(errors),
+        "successes": successes,
+        "errors": errors,
+    }
+
+
+def undo_batch_for_profile(profile: str, batch_id: str) -> dict:
+    """Reverse every rename of a batch in reverse order.
+
+    Wraps ``lib.rename_journal.undo_batch`` to add the cache-invalidation
+    step and translate FS-level errors into RenameError. Returns the
+    journal's per-record undone / errors summary unchanged so the UI can
+    show what was reverted vs what failed.
+    """
+    if not batch_id:
+        raise RenameError("batch_id manquant", 400)
+
+    target = _profile_target(profile)
+    if target is None or not target.exists():
+        raise RenameError("profil sans target configuré", 400)
+
+    from lib import rename_journal
+    profile_dir = _profile_dir(profile)
+    try:
+        summary = rename_journal.undo_batch(profile_dir, batch_id)
+    except FileNotFoundError as exc:
+        raise RenameError(str(exc), 404) from exc
+
+    # Even partial success warrants a cache invalidation (the FS moved)
+    if summary.get("n_undone", 0) > 0:
+        _invalidate_dependent_caches(profile)
+
+    return {"ok": True, **summary}
+
+
 def undo_single_rename(
     profile: str, ts: str, old_abs: str, new_abs: str,
 ) -> dict:

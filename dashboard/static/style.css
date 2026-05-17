@@ -3059,6 +3059,74 @@ th {
 }
 .tax-rename-search-clear:hover { color: var(--text, #c9d1d9); }
 
+/* Bulk action bar — shown when ≥1 candidate is checked */
+.tax-rename-bulkbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(88, 166, 255, 0.1);
+    border-top: 1px solid rgba(88, 166, 255, 0.25);
+    border-bottom: 1px solid rgba(88, 166, 255, 0.25);
+    font-size: 11px;
+}
+.tax-rename-bulkbar[hidden] { display: none; }
+.tax-rename-bulkbar-count { color: var(--text, #c9d1d9); flex: 1; }
+.tax-rename-bulkbar-count strong { color: #58a6ff; }
+.tax-rename-bulkbar .btn-sm {
+    padding: 3px 8px;
+    font-size: 11px;
+    border-radius: 3px;
+}
+
+/* History modal tabs (Tous / Par lot) */
+.tax-rename-history-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 4px 0 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.tax-rename-history-tab {
+    background: transparent;
+    border: 0;
+    color: var(--text-muted, #8b949e);
+    padding: 6px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+}
+.tax-rename-history-tab:hover { color: var(--text, #c9d1d9); }
+.tax-rename-history-tab.active {
+    color: var(--text, #c9d1d9);
+    border-bottom-color: #58a6ff;
+    font-weight: 600;
+}
+
+/* Batch row in the "Par lot" view */
+.tax-rename-history-batch-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    column-gap: 12px;
+    align-items: center;
+    padding: 9px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 11px;
+}
+.tax-rename-history-batch-row:hover { background: rgba(255, 255, 255, 0.03); }
+.tax-rename-history-batch-meta {
+    color: var(--text, #c9d1d9);
+}
+.tax-rename-history-batch-id {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-rename-history-batch-count {
+    color: var(--text-muted, #6e7681);
+    font-variant-numeric: tabular-nums;
+}
+
 /* 📜 Renommages button — opens the journal modal */
 .tax-rename-history-btn {
     flex: none;
@@ -3196,7 +3264,7 @@ th {
 }
 .tax-rename-row {
     display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) 40px;
+    grid-template-columns: 20px 36px minmax(0, 1fr) 40px;
     column-gap: 8px;
     align-items: center;
     padding: 5px 10px;
@@ -3204,6 +3272,14 @@ th {
     border-bottom: 1px solid rgba(255,255,255,0.04);
     font-size: 11px;
 }
+.tax-rename-row-check {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: #58a6ff;
+}
+.tax-rename-row.bulk-selected { background: rgba(88, 166, 255, 0.07); }
+.tax-rename-row.bulk-selected:hover { background: rgba(88, 166, 255, 0.12); }
 .tax-rename-row:hover { background: rgba(255,255,255,0.04); }
 .tax-rename-row.selected { background: rgba(88, 166, 255, 0.12); }
 .tax-rename-row-current {

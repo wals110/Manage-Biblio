@@ -1746,6 +1746,45 @@ async def rename_undo_record_api(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
 
 
+@app.post("/api/rename/bulk")
+async def rename_bulk_api(request: Request):
+    """Apply N renames as a single batch.
+    Body: {profile, items: [{rel_path, new_name}, ...], batch_id?}.
+    Best-effort: per-item failures are surfaced in `errors[]`; the
+    successful renames go through with a shared batch_id so they can
+    be undone together via /api/rename/undo/batch."""
+    from fastapi.responses import JSONResponse
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.commit_rename_bulk(
+            profile=body.get("profile"),
+            items=body.get("items") or [],
+            batch_id=body.get("batch_id") or "",
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/undo/batch")
+async def rename_undo_batch_api(request: Request):
+    """Reverse every rename tagged with `batch_id`.
+    Body: {profile, batch_id}. Returns the per-record undone / errors
+    summary from the journal."""
+    from fastapi.responses import JSONResponse
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.undo_batch_for_profile(
+            profile=body.get("profile"),
+            batch_id=body.get("batch_id"),
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,

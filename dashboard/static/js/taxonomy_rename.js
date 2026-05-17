@@ -50,6 +50,11 @@
     sessionRenames: [],
     sessionExpanded: false,
     SESSION_MAX: 50,
+    // Bulk selection: set of rel_paths currently checked in the list.
+    // Cleared on profile change + on successful bulk apply.
+    bulkSelected: new Set(),
+    // Active tab of the 📜 modal: "records" or "batches"
+    historyTab: 'records',
   };
 
   function _sessionKey() {
@@ -130,6 +135,40 @@
         old: record.old,
         new: record.new,
       }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { /* ignore */ }
+    if (!r.ok) {
+      const msg = (body && body.error) || `HTTP ${r.status}`;
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    return body;
+  }
+
+  async function postBulk(items) {
+    const r = await fetch('/api/rename/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, items }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { /* ignore */ }
+    if (!r.ok) {
+      const msg = (body && body.error) || `HTTP ${r.status}`;
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    return body;
+  }
+
+  async function postUndoBatch(batchId) {
+    const r = await fetch('/api/rename/undo/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, batch_id: batchId }),
     });
     let body = null;
     try { body = await r.json(); } catch (_) { /* ignore */ }
@@ -330,12 +369,29 @@
     const MAX = 500;
     for (const c of candidates.slice(0, MAX)) {
       const selected = state.selectedRelPath === c.rel_path;
+      const checked = state.bulkSelected.has(c.rel_path);
       const sim = Math.round(c.similarity * 100);
+      const checkbox = el('input', {
+        type: 'checkbox',
+        class: 'tax-rename-row-check',
+        title: 'Inclure dans le batch de renommage',
+        checked: checked || undefined,
+      });
+      // Stop propagation so toggling the checkbox doesn't also select
+      // the row for detail-view. The click handler ON the row stays
+      // for everywhere except the checkbox itself.
+      checkbox.addEventListener('click', (e) => e.stopPropagation());
+      checkbox.addEventListener('change', () => {
+        _toggleBulk(c.rel_path, checkbox.checked);
+      });
       wrap.appendChild(el('div', {
-        class: 'tax-rename-row' + (selected ? ' selected' : ''),
+        class: 'tax-rename-row'
+             + (selected ? ' selected' : '')
+             + (checked ? ' bulk-selected' : ''),
         title: c.rel_path,
         onclick: () => selectCandidate(c.rel_path),
       }, [
+        checkbox,
         el('span', {
           class: 'tax-rename-cat tax-rename-cat-' + c.category,
           title: 'Catégorie : ' + c.category,
@@ -938,12 +994,119 @@
                           ['Chargement du journal…']));
     try {
       const data = await fetchJournal(200);
-      _renderHistoryList(data);
+      state._historyData = data;
+      _renderHistoryActiveTab();
     } catch (e) {
       list.innerHTML = '';
       list.appendChild(el('div', { class: 'tax-rename-history-empty error' },
                             ['✗ ' + e.message]));
     }
+  }
+
+  function _renderHistoryActiveTab() {
+    const list = $('#tax-rename-history-list');
+    const batches = $('#tax-rename-history-batches');
+    if (!list || !batches) return;
+    const data = state._historyData;
+    if (!data) return;
+    if (state.historyTab === 'batches') {
+      list.hidden = true;
+      batches.hidden = false;
+      _renderBatches(data);
+    } else {
+      list.hidden = false;
+      batches.hidden = true;
+      _renderHistoryList(data);
+    }
+  }
+
+  function _renderBatches(data) {
+    const wrap = $('#tax-rename-history-batches');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const batches = (data && data.batches) || [];
+    if (batches.length === 0) {
+      wrap.appendChild(el('div', { class: 'tax-rename-history-empty' },
+                            ['Aucun batch de renommage pour l\'instant — utilise la barre "sélectionnés" en col 1 pour en créer un.']));
+      return;
+    }
+    for (const b of batches) {
+      // Compute if all records of this batch are undone (each record's
+      // is_undone flag is in data.records).
+      const recordsOfBatch = (data.records || []).filter(
+        r => r.batch === b.batch && !r.is_undo);
+      const nUndone = recordsOfBatch.filter(r => r.is_undone).length;
+      const nTotal = recordsOfBatch.length || b.n_renames || 0;
+      const allUndone = nTotal > 0 && nUndone === nTotal;
+      wrap.appendChild(el('div', { class: 'tax-rename-history-batch-row' }, [
+        el('div', { class: 'tax-rename-history-batch-meta' }, [
+          el('div', null, [
+            el('strong', null, [b.ts.replace('T', ' ')]),
+            ' · ',
+            el('span', { class: 'tax-rename-history-batch-count' },
+                       [`${nTotal} renommage(s)`]),
+            nUndone > 0
+              ? el('span', { class: 'muted small',
+                              style: 'margin-left:6px;color:#ff7b72;' },
+                            [`(${nUndone} déjà annulé(s))`])
+              : null,
+          ].filter(Boolean)),
+          el('div', { class: 'tax-rename-history-batch-id' },
+                     ['batch ' + b.batch]),
+        ]),
+        el('span'),
+        allUndone
+          ? el('span', { class: 'tax-rename-history-meta' },
+                       ['déjà annulé'])
+          : el('button', {
+              type: 'button',
+              class: 'tax-rename-history-undo-btn',
+              title: 'Annuler tout le batch en une opération',
+              onclick: () => _undoBatchFromHistory(b, nTotal - nUndone),
+            }, [`↶ Annuler le lot (${nTotal - nUndone})`]),
+      ]));
+    }
+  }
+
+  async function _undoBatchFromHistory(batch, nActive) {
+    const ok = await showConfirm({
+      title: 'Annuler tout le batch ?',
+      body: `${nActive} renommage(s) vont être inversés en une opération (ordre inverse).\n\nbatch_id : ${batch.batch}\nDate : ${batch.ts.replace('T', ' ')}`,
+      confirmLabel: 'Annuler le batch',
+      cancelLabel: 'Garder',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await withBusy(`Annulation du batch…`, async () => {
+      try {
+        const summary = await postUndoBatch(batch.batch);
+        // Mark every session entry of this batch as undone
+        for (const entry of state.sessionRenames) {
+          if (entry.batch_id === batch.batch
+              || (entry.journal && entry.journal.batch === batch.batch)) {
+            entry.undone = true;
+          }
+        }
+        _saveSessionToStorage();
+        state.data = await fetchAudit(true);
+        renderAll();
+        const data = await fetchJournal(200);
+        state._historyData = data;
+        _renderHistoryActiveTab();
+        _refreshHistoryCount();
+        if (summary.n_errors > 0) {
+          showToast(
+            `${summary.n_undone} annulé(s), ${summary.n_errors} en erreur (voir console)`,
+            'info');
+          console.warn('Undo batch errors:', summary.errors);
+        } else {
+          showToast(`↶ Batch annulé : ${summary.n_undone} fichier(s)`, 'success');
+        }
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec : ${detail}`, 'error');
+      }
+    });
   }
 
   function _renderHistoryList(data) {
@@ -1028,7 +1191,9 @@
         state.data = await fetchAudit(true);
         renderAll();
         const data = await fetchJournal(200);
-        _renderHistoryList(data);
+        state._historyData = data;
+        _renderHistoryActiveTab();
+        _refreshHistoryCount();
         showToast(`↶ Renommage annulé`, 'success');
       } catch (e) {
         const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
@@ -1038,7 +1203,8 @@
           // entry (might have been undone by another route, etc.).
           try {
             const data = await fetchJournal(200);
-            _renderHistoryList(data);
+            state._historyData = data;
+            _renderHistoryActiveTab();
           } catch (_) { /* ignore */ }
         }
       }
@@ -1059,6 +1225,110 @@
     renderDetail();
     renderPreview();
     renderSession();
+    renderBulkbar();
+  }
+
+  // ── Bulk selection (multi-rename) ────────────────────────────────────
+
+  function _toggleBulk(relPath, checked) {
+    if (checked) state.bulkSelected.add(relPath);
+    else state.bulkSelected.delete(relPath);
+    renderList();
+    renderBulkbar();
+  }
+
+  function _clearBulk() {
+    if (state.bulkSelected.size === 0) return;
+    state.bulkSelected.clear();
+    renderList();
+    renderBulkbar();
+  }
+
+  function renderBulkbar() {
+    const bar = $('#tax-rename-bulkbar');
+    const n = $('#tax-rename-bulkbar-n');
+    if (!bar || !n) return;
+    const count = state.bulkSelected.size;
+    n.textContent = String(count);
+    bar.hidden = count === 0;
+  }
+
+  async function _applyBulkSuggestion() {
+    if (state.bulkSelected.size === 0 || !state.data) return;
+    // Build items list from current candidates (their suggested name).
+    // A file might have been edited in col 3 — for bulk we use the
+    // template suggestion to stay predictable. If the user edited one
+    // file's name, they should rename it solo before bulking the rest.
+    const byPath = new Map(state.data.candidates.map(c => [c.rel_path, c]));
+    const items = [];
+    const skipped = [];
+    for (const relPath of state.bulkSelected) {
+      const c = byPath.get(relPath);
+      if (!c) { skipped.push(relPath); continue; }
+      // Skip files where current_name == suggested_name (no-op)
+      if (c.current_name === c.suggested_name) { skipped.push(relPath); continue; }
+      items.push({ rel_path: relPath, new_name: c.suggested_name });
+    }
+    if (items.length === 0) {
+      showToast('Rien à renommer (les fichiers sélectionnés sont déjà à leur nom suggéré).',
+                'info');
+      return;
+    }
+
+    // Preview: list the first 5 for the confirm modal
+    const preview = items.slice(0, 5).map(i => `• ${i.new_name}`).join('\n');
+    const extra = items.length > 5 ? `\n…et ${items.length - 5} autres` : '';
+    const ok = await showConfirm({
+      title: `Renommer ${items.length} fichier(s) ?`,
+      body: `Application de la suggestion du template pour chaque fichier sélectionné. Tout est tagué avec un même batch_id — annulable d'un clic depuis 📜 Renommages.\n\n${preview}${extra}`,
+      confirmLabel: `Renommer ${items.length} fichier(s)`,
+      cancelLabel: 'Annuler',
+      variant: 'primary',
+    });
+    if (!ok) return;
+
+    await withBusy(`Renommage de ${items.length} fichier(s)…`, async () => {
+      try {
+        const result = await postBulk(items);
+        // Push session entries for each success so the user sees them
+        // immediately and can undo individually too.
+        for (const s of (result.successes || [])) {
+          const c = byPath.get(s.rel_path);
+          _pushSessionRename({
+            old_name: c ? c.current_name : s.rel_path,
+            new_name: s.new_name,
+            old_rel_path: s.rel_path,
+            new_rel_path: s.new_rel_path,
+            ts: Date.now(),
+            journal: s.journal_entry ? {
+              ts: s.journal_entry.ts,
+              old: s.journal_entry.old,
+              new: s.journal_entry.new,
+              batch: s.journal_entry.batch || result.batch_id,
+            } : null,
+            batch_id: result.batch_id,
+            undone: false,
+          });
+        }
+        state.bulkSelected.clear();
+        state.data = await fetchAudit(true);
+        renderAll();
+        _refreshHistoryCount();
+        if (result.n_errors > 0) {
+          showToast(
+            `✓ ${result.n_renamed} renommés, ${result.n_errors} en erreur. Voir la console pour le détail.`,
+            'info');
+          console.warn('Bulk rename errors:', result.errors);
+        } else {
+          showToast(
+            `✓ ${result.n_renamed} fichier(s) renommé(s) (batch ${result.batch_id.slice(0, 8)}…)`,
+            'success');
+        }
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec du batch : ${detail}`, 'error');
+      }
+    });
   }
 
   async function loadAndRender() {
@@ -1098,6 +1368,7 @@
       state.editingNameByPath.clear();
       state.renaming = false;
       state.searchQuery = '';
+      state.bulkSelected.clear();
       // Session log is keyed per profile so each profile has its own
       // history. Load the new profile's log; the previous one stays in
       // sessionStorage untouched.
@@ -1157,7 +1428,17 @@
     // sessionStorage from the start (even before the user clicks Rename).
     renderSession();
 
-    // ── 📜 Renommages modal: open / close / refresh count ──
+    // ── Bulk action bar ──
+    const bulkApplyBtn = $('#tax-rename-bulkbar-apply');
+    if (bulkApplyBtn) {
+      bulkApplyBtn.addEventListener('click', () => _applyBulkSuggestion());
+    }
+    const bulkClearBtn = $('#tax-rename-bulkbar-clear');
+    if (bulkClearBtn) {
+      bulkClearBtn.addEventListener('click', () => _clearBulk());
+    }
+
+    // ── 📜 Renommages modal: open / close / refresh count + tabs ──
     const historyBtn = $('#tax-rename-history-btn');
     if (historyBtn) {
       historyBtn.addEventListener('click', () => openHistoryModal());
@@ -1166,6 +1447,19 @@
     if (historyClose) {
       historyClose.addEventListener('click', () => closeHistoryModal());
     }
+    document.querySelectorAll('.tax-rename-history-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        if (!tab || tab === state.historyTab) return;
+        state.historyTab = tab;
+        document.querySelectorAll('.tax-rename-history-tab').forEach(b => {
+          const active = b.dataset.tab === tab;
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        _renderHistoryActiveTab();
+      });
+    });
     const historyModal = $('#tax-rename-history-modal');
     if (historyModal) {
       // Click on backdrop closes; Esc too

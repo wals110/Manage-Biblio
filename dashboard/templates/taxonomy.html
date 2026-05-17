@@ -293,6 +293,19 @@
                 </button>
             </div>
             <div class="tax-rename-filters" id="tax-rename-filters"></div>
+            <div class="tax-rename-bulkbar" id="tax-rename-bulkbar" hidden>
+                <span class="tax-rename-bulkbar-count">
+                    <strong id="tax-rename-bulkbar-n">0</strong> sélectionnés
+                </span>
+                <button type="button" class="btn-primary btn-sm"
+                        id="tax-rename-bulkbar-apply">
+                    Renommer (suggestion)
+                </button>
+                <button type="button" class="btn-secondary btn-sm"
+                        id="tax-rename-bulkbar-clear">
+                    Tout désélectionner
+                </button>
+            </div>
             <div class="tax-rename-list" id="tax-rename-list"></div>
             <div class="tax-rename-session" id="tax-rename-session">
                 <div class="tax-rename-session-header">
@@ -351,7 +364,17 @@
             📜 Renommages — journal du profil
         </div>
         <div class="tax-modal-sub" id="tax-rename-history-modal-sub"></div>
+        <div class="tax-rename-history-tabs" role="tablist">
+            <button type="button" class="tax-rename-history-tab active"
+                    data-tab="records" role="tab"
+                    aria-selected="true">Tous (record-by-record)</button>
+            <button type="button" class="tax-rename-history-tab"
+                    data-tab="batches" role="tab"
+                    aria-selected="false">Par lot</button>
+        </div>
         <div class="tax-rename-history-list" id="tax-rename-history-list"></div>
+        <div class="tax-rename-history-list" id="tax-rename-history-batches"
+             hidden></div>
         <div class="tax-modal-actions">
             <button id="tax-rename-history-close" class="btn-secondary">Fermer</button>
         </div>

@@ -706,5 +706,206 @@ class TestJournalEndpoints(RenameAuditTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+# ─── Bulk rename + batch undo (PR4B) ─────────────────────────────────────
+
+
+class TestCommitRenameBulk(RenameAuditTestBase):
+
+    def _seed_three(self):
+        # Use names with NO case-only equivalence to their targets so the
+        # tests behave the same on case-sensitive (Linux ext4) and
+        # case-insensitive (macOS APFS) filesystems.
+        self._add_file_with_cache("alpha-src.pdf", title="A")
+        self._add_file_with_cache("beta-src.pdf", title="B")
+        self._add_file_with_cache("gamma-src.pdf", title="C")
+
+    def test_happy_path_all_succeed(self):
+        self._seed_three()
+        r = rename.commit_rename_bulk(self.profile_name, items=[
+            {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},
+            {"rel_path": "beta-src.pdf", "new_name": "Beta.pdf"},
+            {"rel_path": "gamma-src.pdf", "new_name": "Gamma.pdf"},
+        ])
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["n_renamed"], 3)
+        self.assertEqual(r["n_errors"], 0)
+        self.assertTrue(r["batch_id"])
+        # FS state
+        for new in ("Alpha.pdf", "Beta.pdf", "Gamma.pdf"):
+            self.assertTrue((self.target / new).exists())
+
+    def test_shared_batch_id(self):
+        self._seed_three()
+        r = rename.commit_rename_bulk(self.profile_name, items=[
+            {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},
+            {"rel_path": "beta-src.pdf", "new_name": "Beta.pdf"},
+        ])
+        bid = r["batch_id"]
+        # Every success carries the same batch_id in its journal entry
+        for s in r["successes"]:
+            self.assertEqual(s["journal_entry"]["batch"], bid)
+
+    def test_partial_failure_does_not_abort_batch(self):
+        self._seed_three()
+        # Pre-create a TRULY distinct file (different inode) for the
+        # collision case so APFS case-insensitivity doesn't make it the
+        # same inode as beta-src.pdf.
+        (self.target / "Beta.pdf").write_bytes(b"%PDF squatter content")
+        r = rename.commit_rename_bulk(self.profile_name, items=[
+            {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},    # OK
+            {"rel_path": "beta-src.pdf",  "new_name": "Beta.pdf"},     # 409
+            {"rel_path": "missing.pdf",   "new_name": "X.pdf"},        # 404
+            {"rel_path": "gamma-src.pdf", "new_name": "foo/bar.pdf"},  # 400
+        ])
+        self.assertEqual(r["n_renamed"], 1)
+        self.assertEqual(r["n_errors"], 3)
+        # Each error preserves the rel_path so the UI can highlight rows
+        rels = {e["rel_path"] for e in r["errors"]}
+        self.assertIn("beta-src.pdf", rels)
+        self.assertIn("missing.pdf", rels)
+        self.assertIn("gamma-src.pdf", rels)
+
+    def test_empty_items_400(self):
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.commit_rename_bulk(self.profile_name, items=[])
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_cache_invalidated_once_after_bulk(self):
+        self._seed_three()
+        r1 = rename.rename_audit(self.profile_name)
+        self.assertEqual(r1["stats"]["n_total"], 3)
+        rename.commit_rename_bulk(self.profile_name, items=[
+            {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},
+            {"rel_path": "beta-src.pdf", "new_name": "Beta.pdf"},
+        ])
+        r2 = rename.rename_audit(self.profile_name)
+        names = {c["current_name"] for c in r2["candidates"]}
+        self.assertIn("Alpha.pdf", names)
+        self.assertIn("Beta.pdf", names)
+        self.assertNotIn("alpha-src.pdf", names)
+
+
+class TestUndoBatch(RenameAuditTestBase):
+
+    def _bulk_three(self) -> str:
+        # Distinct names again so undo's FS state check works regardless
+        # of FS case sensitivity.
+        self._add_file_with_cache("alpha-src.pdf", title="A")
+        self._add_file_with_cache("beta-src.pdf", title="B")
+        self._add_file_with_cache("gamma-src.pdf", title="C")
+        r = rename.commit_rename_bulk(self.profile_name, items=[
+            {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},
+            {"rel_path": "beta-src.pdf", "new_name": "Beta.pdf"},
+            {"rel_path": "gamma-src.pdf", "new_name": "Gamma.pdf"},
+        ])
+        return r["batch_id"]
+
+    def test_undo_batch_restores_all(self):
+        bid = self._bulk_three()
+        summary = rename.undo_batch_for_profile(self.profile_name, bid)
+        self.assertTrue(summary["ok"])
+        self.assertEqual(summary["n_undone"], 3)
+        self.assertEqual(summary["n_errors"], 0)
+        for old in ("alpha-src.pdf", "beta-src.pdf", "gamma-src.pdf"):
+            self.assertTrue((self.target / old).exists())
+        for new in ("Alpha.pdf", "Beta.pdf", "Gamma.pdf"):
+            self.assertFalse((self.target / new).exists())
+
+    def test_undo_batch_unknown_id_404(self):
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_batch_for_profile(
+                self.profile_name, "20990101-000000-ffffff")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_undo_batch_empty_id_400(self):
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_batch_for_profile(self.profile_name, "")
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_undo_batch_partial_with_external_collision(self):
+        bid = self._bulk_three()
+        # Re-create a squatter at one of the original paths (using the
+        # original distinct name so it's a real second inode, not the
+        # same file on case-insensitive FS).
+        (self.target / "beta-src.pdf").write_bytes(b"%PDF squatter content")
+        summary = rename.undo_batch_for_profile(self.profile_name, bid)
+        self.assertTrue(summary["ok"])
+        # 2 undone, 1 errored (the one with the squatter)
+        self.assertEqual(summary["n_undone"], 2)
+        self.assertEqual(summary["n_errors"], 1)
+
+    def test_undo_batch_idempotent_second_run(self):
+        bid = self._bulk_three()
+        rename.undo_batch_for_profile(self.profile_name, bid)
+        # Second call: all records are already undone — n_undone=0
+        summary = rename.undo_batch_for_profile(self.profile_name, bid)
+        self.assertEqual(summary["n_undone"], 0)
+
+    def test_cache_invalidated_after_undo_batch(self):
+        bid = self._bulk_three()
+        r1 = rename.rename_audit(self.profile_name)
+        names1 = {c["current_name"] for c in r1["candidates"]}
+        self.assertIn("Alpha.pdf", names1)
+        rename.undo_batch_for_profile(self.profile_name, bid)
+        r2 = rename.rename_audit(self.profile_name)
+        names2 = {c["current_name"] for c in r2["candidates"]}
+        self.assertIn("alpha-src.pdf", names2)
+        self.assertNotIn("Alpha.pdf", names2)
+
+
+class TestBulkEndpoints(RenameAuditTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_bulk_endpoint_happy(self):
+        self._add_file_with_cache("alpha-src.pdf", title="A")
+        self._add_file_with_cache("beta-src.pdf", title="B")
+        r = self.client.post("/api/rename/bulk", json={
+            "profile": self.profile_name,
+            "items": [
+                {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},
+                {"rel_path": "beta-src.pdf",  "new_name": "Beta.pdf"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_renamed"], 2)
+        self.assertTrue(body["batch_id"])
+
+    def test_bulk_endpoint_empty_items_400(self):
+        r = self.client.post("/api/rename/bulk", json={
+            "profile": self.profile_name, "items": [],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_undo_batch_endpoint_happy(self):
+        self._add_file_with_cache("alpha-src.pdf", title="A")
+        self._add_file_with_cache("beta-src.pdf", title="B")
+        bulk = self.client.post("/api/rename/bulk", json={
+            "profile": self.profile_name,
+            "items": [
+                {"rel_path": "alpha-src.pdf", "new_name": "Alpha.pdf"},
+                {"rel_path": "beta-src.pdf",  "new_name": "Beta.pdf"},
+            ],
+        }).json()
+        r = self.client.post("/api/rename/undo/batch", json={
+            "profile": self.profile_name,
+            "batch_id": bulk["batch_id"],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_undone"], 2)
+
+    def test_undo_batch_endpoint_404(self):
+        r = self.client.post("/api/rename/undo/batch", json={
+            "profile": self.profile_name,
+            "batch_id": "20990101-000000-ffffff",
+        })
+        self.assertEqual(r.status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()
