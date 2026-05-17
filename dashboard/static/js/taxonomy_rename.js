@@ -112,6 +112,36 @@
     return body;
   }
 
+  async function fetchJournal(limit) {
+    const url = `/api/rename/journal?profile=${encodeURIComponent(state.profile)}`
+              + (limit ? `&limit=${limit}` : '');
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('journal HTTP ' + r.status);
+    return r.json();
+  }
+
+  async function postUndoRecord(record) {
+    const r = await fetch('/api/rename/undo/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profile: state.profile,
+        ts: record.ts,
+        old: record.old,
+        new: record.new,
+      }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { /* ignore */ }
+    if (!r.ok) {
+      const msg = (body && body.error) || `HTTP ${r.status}`;
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    return body;
+  }
+
   // Reuses the shared modal HTML (#tax-confirm-modal) declared in
   // taxonomy.html — same pattern as taxonomy_categories.js. We can't
   // share the JS helper because each sub-tab module lives in its own
@@ -683,7 +713,7 @@
 
     const ok = await showConfirm({
       title: 'Renommer ce fichier ?',
-      body: `${c.current_name}  →  ${newName}\n\nLe rename est journalisé et peut être annulé via 📜 Historique.`,
+      body: `${c.current_name}  →  ${newName}\n\nLe rename est journalisé sur disque. Tu peux l'annuler depuis 📜 Renommages ou directement depuis la liste de session en bas à gauche.`,
       confirmLabel: 'Renommer',
       cancelLabel: 'Annuler',
       variant: 'primary',
@@ -700,12 +730,23 @@
         // Record in the session journal BEFORE refreshing the audit so
         // the UI shows the entry immediately even if fetchAudit is slow.
         const newRel = result.new_rel_path || relPath;
+        const journalEntry = result.journal_entry || null;
         _pushSessionRename({
           old_name: c.current_name,
           new_name: newName,
           old_rel_path: relPath,
           new_rel_path: newRel,
           ts: Date.now(),
+          // Keep the durable journal entry so the inline ↶ button can
+          // POST it back to /api/rename/undo/record. Without these
+          // fields the undo can't work (server matches on ts+old+new).
+          journal: journalEntry ? {
+            ts: journalEntry.ts,
+            old: journalEntry.old,
+            new: journalEntry.new,
+            batch: journalEntry.batch || '',
+          } : null,
+          undone: false,
         });
         // Refresh the audit so the renamed file shows up under its new name
         state.data = await fetchAudit(true);
@@ -721,6 +762,7 @@
           state.selectedRelPath = newRel;
         }
         renderAll();
+        _refreshHistoryCount();
         showToast(`✓ Renommé : ${newName}`, 'success');
       } catch (e) {
         const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
@@ -773,8 +815,8 @@
                             ['Aucun renommage dans cette session.']));
       return;
     }
-    for (const entry of state.sessionRenames) {
-      body.appendChild(el('div', {
+    state.sessionRenames.forEach((entry, idx) => {
+      const row = el('div', {
         class: 'tax-rename-session-row',
         title: 'Cliquer pour aller au fichier (nouveau nom)',
         onclick: () => _jumpToSessionEntry(entry),
@@ -786,8 +828,65 @@
         ]),
         el('div', { class: 'tax-rename-session-row-ts' },
                    [_formatTime(entry.ts)]),
-      ]));
-    }
+      ]);
+      // Inline undo button (visible on row hover). Only enabled when
+      // the durable journal record is available — older session entries
+      // (saved before PR4A) won't have it, so we just hide the button.
+      if (entry.journal) {
+        const undoBtn = el('button', {
+          type: 'button',
+          class: 'tax-rename-session-row-undo'
+                 + (entry.undone ? ' is-undone' : ''),
+          title: entry.undone
+            ? 'Déjà annulé'
+            : 'Annuler ce renommage (remet l\'ancien nom)',
+          disabled: entry.undone,
+          onclick: (e) => {
+            e.stopPropagation();
+            if (!entry.undone) _undoSessionEntry(idx);
+          },
+        }, [entry.undone ? '✓ annulé' : '↶ annuler']);
+        row.appendChild(undoBtn);
+      }
+      body.appendChild(row);
+    });
+  }
+
+  async function _undoSessionEntry(idx) {
+    const entry = state.sessionRenames[idx];
+    if (!entry || !entry.journal || entry.undone) return;
+    const ok = await showConfirm({
+      title: 'Annuler ce renommage ?',
+      body: `Le fichier va revenir à : ${entry.old_name}\n\nCette opération est elle-même journalisée (audit trail complet).`,
+      confirmLabel: 'Annuler le renommage',
+      cancelLabel: 'Garder',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await withBusy('Annulation…', async () => {
+      try {
+        await postUndoRecord(entry.journal);
+        // Mark the session entry as undone (keep it in the list for
+        // visibility, but disable the button).
+        entry.undone = true;
+        _saveSessionToStorage();
+        // Refresh the audit so the restored file shows up under its
+        // original name. Try to select it.
+        state.data = await fetchAudit(true);
+        const found = (state.data.candidates || []).find(
+          c => c.rel_path === entry.old_rel_path);
+        if (found) {
+          state.activeCategories.add(found.category);
+          state.selectedRelPath = entry.old_rel_path;
+        }
+        renderAll();
+        _refreshHistoryCount();
+        showToast(`↶ Renommage annulé : ${entry.old_name}`, 'success');
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec de l'annulation : ${detail}`, 'error');
+      }
+    });
   }
 
   async function _jumpToSessionEntry(entry) {
@@ -815,6 +914,140 @@
     body.hidden = !willExpand;
     toggle.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
     state.sessionExpanded = willExpand;
+  }
+
+  // ── Durable journal modal (📜 Renommages) ────────────────────────────
+
+  async function _refreshHistoryCount() {
+    try {
+      const data = await fetchJournal(200);
+      const btnCount = $('#tax-rename-history-count');
+      if (btnCount) btnCount.textContent = String(data.n_active || 0);
+    } catch (_) { /* silent — the count just won't update */ }
+  }
+
+  async function openHistoryModal() {
+    const modal = $('#tax-rename-history-modal');
+    const list = $('#tax-rename-history-list');
+    const sub = $('#tax-rename-history-modal-sub');
+    if (!modal || !list) return;
+    modal.style.display = 'flex';
+    list.innerHTML = '';
+    if (sub) sub.textContent = 'Chargement…';
+    list.appendChild(el('div', { class: 'tax-rename-history-empty' },
+                          ['Chargement du journal…']));
+    try {
+      const data = await fetchJournal(200);
+      _renderHistoryList(data);
+    } catch (e) {
+      list.innerHTML = '';
+      list.appendChild(el('div', { class: 'tax-rename-history-empty error' },
+                            ['✗ ' + e.message]));
+    }
+  }
+
+  function _renderHistoryList(data) {
+    const list = $('#tax-rename-history-list');
+    const sub = $('#tax-rename-history-modal-sub');
+    const btnCount = $('#tax-rename-history-count');
+    if (!list) return;
+    list.innerHTML = '';
+    const records = (data && data.records) || [];
+    if (sub) {
+      sub.textContent = `${data.n_active} actif(s) / ${data.n_total} entrée(s) — ` +
+                        `les annulations sont elles-mêmes journalisées`;
+    }
+    if (btnCount) btnCount.textContent = String(data.n_active || 0);
+    if (records.length === 0) {
+      list.appendChild(el('div', { class: 'tax-rename-history-empty' },
+                            ['Aucun renommage dans ce profil pour l\'instant.']));
+      return;
+    }
+    for (const r of records) {
+      const klass = 'tax-rename-history-row'
+                  + (r.is_undo ? ' is-undo' : '')
+                  + (r.is_undone ? ' is-undone' : '');
+      const row = el('div', { class: klass }, [
+        el('div', { class: 'tax-rename-history-names', title: r.new_rel }, [
+          el('span', { class: 'tax-rename-history-old' }, [r.old_rel]),
+          el('span', { class: 'tax-rename-history-new' }, ['→ ' + r.new_rel]),
+        ]),
+        el('div', { class: 'tax-rename-history-meta' }, [
+          r.is_undo ? '↶ undo · ' : '',
+          r.ts.replace('T', ' '),
+        ]),
+        _buildHistoryUndoButton(r),
+      ]);
+      list.appendChild(row);
+    }
+  }
+
+  function _buildHistoryUndoButton(r) {
+    // No undo button on "undo" records (they're inverse ops, undoing
+    // them would re-apply the original rename — too confusing for an
+    // MVP; the user can re-apply manually if needed).
+    if (r.is_undo) {
+      return el('span', { class: 'tax-rename-history-meta' }, ['—']);
+    }
+    if (r.is_undone) {
+      return el('span', { class: 'tax-rename-history-meta' }, ['déjà annulé']);
+    }
+    return el('button', {
+      type: 'button',
+      class: 'tax-rename-history-undo-btn',
+      title: 'Annuler ce renommage (remet l\'ancien nom)',
+      onclick: () => _undoFromHistory(r),
+    }, ['↶ Annuler']);
+  }
+
+  async function _undoFromHistory(record) {
+    const ok = await showConfirm({
+      title: 'Annuler ce renommage ?',
+      body: `${record.new_rel} → ${record.old_rel}\n\n` +
+            `L'opération inverse est elle-même journalisée.`,
+      confirmLabel: 'Annuler le renommage',
+      cancelLabel: 'Garder',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    const list = $('#tax-rename-history-list');
+    await withBusy('Annulation…', async () => {
+      try {
+        await postUndoRecord({
+          ts: record.ts, old: record.old, new: record.new,
+        });
+        // Mark matching session entry undone (if present)
+        for (const entry of state.sessionRenames) {
+          if (entry.journal && entry.journal.ts === record.ts
+              && entry.journal.new === record.new) {
+            entry.undone = true;
+          }
+        }
+        _saveSessionToStorage();
+        // Refresh both the audit and the modal list
+        state.data = await fetchAudit(true);
+        renderAll();
+        const data = await fetchJournal(200);
+        _renderHistoryList(data);
+        showToast(`↶ Renommage annulé`, 'success');
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec : ${detail}`, 'error');
+        if (list) {
+          // Reload the list so the user sees the current state of the
+          // entry (might have been undone by another route, etc.).
+          try {
+            const data = await fetchJournal(200);
+            _renderHistoryList(data);
+          } catch (_) { /* ignore */ }
+        }
+      }
+    });
+  }
+
+  function closeHistoryModal() {
+    const modal = $('#tax-rename-history-modal');
+    if (modal) modal.style.display = 'none';
   }
 
   // ── Init ─────────────────────────────────────────────────────────────
@@ -876,6 +1109,7 @@
       const active = document.querySelector('.tax-subtab.active');
       if (active && active.dataset.view === 'rename') loadAndRender();
       else renderSession();
+      _refreshHistoryCount();
     });
 
     // ── Search bar: debounced filter on candidate names ──
@@ -922,6 +1156,37 @@
     // Initial render of the session panel so the count/list reflect
     // sessionStorage from the start (even before the user clicks Rename).
     renderSession();
+
+    // ── 📜 Renommages modal: open / close / refresh count ──
+    const historyBtn = $('#tax-rename-history-btn');
+    if (historyBtn) {
+      historyBtn.addEventListener('click', () => openHistoryModal());
+    }
+    const historyClose = $('#tax-rename-history-close');
+    if (historyClose) {
+      historyClose.addEventListener('click', () => closeHistoryModal());
+    }
+    const historyModal = $('#tax-rename-history-modal');
+    if (historyModal) {
+      // Click on backdrop closes; Esc too
+      historyModal.addEventListener('click', (e) => {
+        if (e.target === historyModal) closeHistoryModal();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape'
+            && historyModal.style.display === 'flex') {
+          closeHistoryModal();
+        }
+      });
+    }
+    // Fetch the journal count in the background so the 📜 button shows
+    // the right number on first load. Cheap: GET-only, capped at 200.
+    fetchJournal(200)
+      .then(data => {
+        const btnCount = $('#tax-rename-history-count');
+        if (btnCount) btnCount.textContent = String(data.n_active || 0);
+      })
+      .catch(() => { /* silent — the modal will retry on open */ });
     if (sessionClear) {
       sessionClear.addEventListener('click', async () => {
         if (state.sessionRenames.length === 0) return;

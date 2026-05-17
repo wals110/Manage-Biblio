@@ -156,8 +156,17 @@ def undo_record(profile_dir: Path, record: dict) -> dict:
         raise FileNotFoundError(
             f"new path missing, cannot undo: {new}")
     if os.path.exists(old):
-        raise FileExistsError(
-            f"old path is occupied, cannot undo: {old}")
+        # APFS / HFS+ case-insensitive guard: ``old`` may "exist" because
+        # it refers to the same inode as ``new`` (case-only rename). In
+        # that case it's not a real collision — os.rename will simply
+        # change the visible case.
+        try:
+            same = os.path.samefile(old, new)
+        except OSError:
+            same = False
+        if not same:
+            raise FileExistsError(
+                f"old path is occupied, cannot undo: {old}")
     os.rename(new, old)
     original_batch = record.get("batch") or ""
     inverse_tag = "undo-" + original_batch if original_batch else "undo"

@@ -286,6 +286,11 @@
                 <button type="button" id="tax-rename-search-clear"
                         class="tax-rename-search-clear" hidden
                         aria-label="Effacer la recherche">✕</button>
+                <button type="button" id="tax-rename-history-btn"
+                        class="tax-rename-history-btn"
+                        title="Voir le journal des renommages (avec undo)">
+                    📜 <span id="tax-rename-history-count">0</span>
+                </button>
             </div>
             <div class="tax-rename-filters" id="tax-rename-filters"></div>
             <div class="tax-rename-list" id="tax-rename-list"></div>
@@ -336,6 +341,22 @@
     </div>
 </div>
 <!-- ────────────────────── End view: Rename ───────────────────────────────── -->
+
+<!-- 📜 Rename history modal (PR4A) -->
+<div id="tax-rename-history-modal" class="tax-modal-backdrop"
+     style="display:none;">
+    <div class="tax-modal tax-rename-history-modal-body" role="dialog"
+         aria-labelledby="tax-rename-history-modal-title">
+        <div class="tax-modal-title" id="tax-rename-history-modal-title">
+            📜 Renommages — journal du profil
+        </div>
+        <div class="tax-modal-sub" id="tax-rename-history-modal-sub"></div>
+        <div class="tax-rename-history-list" id="tax-rename-history-list"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-rename-history-close" class="btn-secondary">Fermer</button>
+        </div>
+    </div>
+</div>
 
 <!-- Popover "+ Mapper" -->
 <div id="tax-map-popover" class="tax-map-popover" style="display:none;">

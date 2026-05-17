@@ -511,5 +511,200 @@ class TestCommitRenameEndpoint(RenameAuditTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+# ─── Journal viewing + single undo (PR4A) ────────────────────────────────
+
+
+class TestGetJournal(RenameAuditTestBase):
+
+    def test_empty_journal(self):
+        j = rename.get_journal(self.profile_name)
+        self.assertEqual(j["records"], [])
+        self.assertEqual(j["batches"], [])
+        self.assertEqual(j["n_total"], 0)
+        self.assertEqual(j["n_active"], 0)
+
+    def test_records_newest_first_with_rel_paths(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        self._add_file_with_cache("b.pdf", title="B")
+        rename.commit_rename(self.profile_name, "a.pdf", "A.pdf")
+        rename.commit_rename(self.profile_name, "b.pdf", "B.pdf")
+        j = rename.get_journal(self.profile_name)
+        self.assertEqual(len(j["records"]), 2)
+        # Newest first — B was renamed after A
+        self.assertEqual(j["records"][0]["new_rel"], "B.pdf")
+        self.assertEqual(j["records"][1]["new_rel"], "A.pdf")
+        # Flags
+        self.assertFalse(j["records"][0]["is_undo"])
+        self.assertFalse(j["records"][0]["is_undone"])
+
+    def test_is_undone_flag_after_undo(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        rename.commit_rename(self.profile_name, "a.pdf", "A.pdf")
+        j_before = rename.get_journal(self.profile_name)
+        rec = j_before["records"][0]
+        rename.undo_single_rename(
+            self.profile_name, rec["ts"], rec["old"], rec["new"])
+        j_after = rename.get_journal(self.profile_name)
+        # The original record now flagged as undone; the inverse appears
+        originals = [r for r in j_after["records"] if not r["is_undo"]]
+        self.assertEqual(len(originals), 1)
+        self.assertTrue(originals[0]["is_undone"])
+        # And the active count drops to 0
+        self.assertEqual(j_after["n_active"], 0)
+
+    def test_limit_caps_records(self):
+        # Generate 5 renames
+        for i in range(5):
+            self._add_file_with_cache(f"f{i}.pdf", title=f"T{i}")
+            rename.commit_rename(self.profile_name, f"f{i}.pdf", f"F{i}.pdf")
+        j = rename.get_journal(self.profile_name, limit=3)
+        self.assertEqual(len(j["records"]), 3)
+        # newest-first → F4, F3, F2
+        self.assertEqual(j["records"][0]["new_rel"], "F4.pdf")
+
+
+class TestUndoSingle(RenameAuditTestBase):
+
+    def _rename_and_get_record(self, old_rel: str, new_name: str) -> dict:
+        self._add_file_with_cache(old_rel, title=new_name.replace(".pdf", ""))
+        rename.commit_rename(self.profile_name, old_rel, new_name)
+        return rename.get_journal(self.profile_name)["records"][0]
+
+    def test_happy_path(self):
+        rec = self._rename_and_get_record("ugly.pdf", "Clean.pdf")
+        # FS state before undo
+        self.assertTrue((self.target / "Clean.pdf").exists())
+        self.assertFalse((self.target / "ugly.pdf").exists())
+        r = rename.undo_single_rename(
+            self.profile_name, rec["ts"], rec["old"], rec["new"])
+        self.assertTrue(r["ok"])
+        # FS state after undo — file is back at original path
+        self.assertFalse((self.target / "Clean.pdf").exists())
+        self.assertTrue((self.target / "ugly.pdf").exists())
+        # Inverse entry recorded in the journal
+        self.assertEqual(r["inverse_entry"]["new"],
+                         str((self.target / "ugly.pdf").resolve()))
+
+    def test_unknown_record_404(self):
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_single_rename(
+                self.profile_name,
+                ts="2999-01-01T00:00:00",
+                old_abs=str(self.target / "ghost-old.pdf"),
+                new_abs=str(self.target / "ghost-new.pdf"),
+            )
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_already_undone_409(self):
+        rec = self._rename_and_get_record("a.pdf", "A.pdf")
+        rename.undo_single_rename(
+            self.profile_name, rec["ts"], rec["old"], rec["new"])
+        # Second undo on the same record must refuse
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_single_rename(
+                self.profile_name, rec["ts"], rec["old"], rec["new"])
+        self.assertEqual(cm.exception.status, 409)
+        self.assertIn("déjà", str(cm.exception))
+
+    def test_cross_profile_path_rejected(self):
+        # A record from "elsewhere" — path is outside the profile target.
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_single_rename(
+                self.profile_name,
+                ts="2026-01-01T00:00:00",
+                old_abs="/etc/passwd-old",
+                new_abs="/etc/passwd",
+            )
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_collision_during_undo_409(self):
+        # Use truly distinct names so the squatter file can't be the
+        # same inode as the renamed file on case-insensitive FS.
+        rec = self._rename_and_get_record("ugly.pdf", "renamed.pdf")
+        # Re-create a different file at the original path so undo can't
+        # move back without overwriting it.
+        (self.target / "ugly.pdf").write_bytes(b"%PDF squatter content")
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_single_rename(
+                self.profile_name, rec["ts"], rec["old"], rec["new"])
+        self.assertEqual(cm.exception.status, 409)
+
+    def test_missing_disk_file_404(self):
+        rec = self._rename_and_get_record("a.pdf", "A.pdf")
+        # Someone removed the renamed file externally
+        (self.target / "A.pdf").unlink()
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.undo_single_rename(
+                self.profile_name, rec["ts"], rec["old"], rec["new"])
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_caches_invalidated_after_undo(self):
+        rec = self._rename_and_get_record("a.pdf", "A.pdf")
+        # Prime the audit cache after the rename
+        r1 = rename.rename_audit(self.profile_name)
+        names_before = {c["current_name"] for c in r1["candidates"]}
+        self.assertIn("A.pdf", names_before)
+        rename.undo_single_rename(
+            self.profile_name, rec["ts"], rec["old"], rec["new"])
+        # Audit should now reflect the restored name
+        r2 = rename.rename_audit(self.profile_name)
+        names_after = {c["current_name"] for c in r2["candidates"]}
+        self.assertIn("a.pdf", names_after)
+        self.assertNotIn("A.pdf", names_after)
+
+
+class TestJournalEndpoints(RenameAuditTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_get_journal_endpoint(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        rename.commit_rename(self.profile_name, "a.pdf", "A.pdf")
+        r = self.client.get(
+            f"/api/rename/journal?profile={self.profile_name}")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(len(body["records"]), 1)
+        self.assertEqual(body["records"][0]["new_rel"], "A.pdf")
+        self.assertEqual(body["n_active"], 1)
+
+    def test_undo_record_endpoint_happy(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        rename.commit_rename(self.profile_name, "a.pdf", "A.pdf")
+        j = self.client.get(
+            f"/api/rename/journal?profile={self.profile_name}").json()
+        rec = j["records"][0]
+        r = self.client.post("/api/rename/undo/record", json={
+            "profile": self.profile_name,
+            "ts": rec["ts"],
+            "old": rec["old"],
+            "new": rec["new"],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue((self.target / "a.pdf").exists())
+
+    def test_undo_record_endpoint_404(self):
+        r = self.client.post("/api/rename/undo/record", json={
+            "profile": self.profile_name,
+            "ts": "2999-01-01T00:00:00",
+            "old": str(self.target / "ghost-old.pdf"),
+            "new": str(self.target / "ghost-new.pdf"),
+        })
+        self.assertEqual(r.status_code, 404)
+
+    def test_undo_record_endpoint_400_outside_target(self):
+        r = self.client.post("/api/rename/undo/record", json={
+            "profile": self.profile_name,
+            "ts": "2026-01-01T00:00:00",
+            "old": "/etc/passwd-old",
+            "new": "/etc/passwd",
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3024,9 +3024,12 @@ th {
     position: relative;
     padding: 6px 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 .tax-rename-search {
-    width: 100%;
+    flex: 1;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 4px;
@@ -3055,6 +3058,135 @@ th {
     line-height: 1;
 }
 .tax-rename-search-clear:hover { color: var(--text, #c9d1d9); }
+
+/* 📜 Renommages button — opens the journal modal */
+.tax-rename-history-btn {
+    flex: none;
+    background: rgba(88, 166, 255, 0.08);
+    border: 1px solid rgba(88, 166, 255, 0.2);
+    color: var(--text, #c9d1d9);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s;
+}
+.tax-rename-history-btn:hover {
+    background: rgba(88, 166, 255, 0.15);
+    border-color: rgba(88, 166, 255, 0.4);
+}
+.tax-rename-history-btn[disabled] { opacity: 0.45; cursor: default; }
+
+/* Journal modal — list of records with per-row undo */
+.tax-rename-history-modal-body { min-width: 560px; max-width: 760px; }
+.tax-rename-history-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    margin: 8px 0;
+}
+.tax-rename-history-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    column-gap: 12px;
+    align-items: center;
+    padding: 7px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 11px;
+    line-height: 1.4;
+}
+.tax-rename-history-row:hover { background: rgba(255, 255, 255, 0.03); }
+.tax-rename-history-row.is-undo { opacity: 0.55; font-style: italic; }
+.tax-rename-history-row.is-undone { opacity: 0.55; }
+.tax-rename-history-row.is-undone .tax-rename-history-old,
+.tax-rename-history-row.is-undone .tax-rename-history-new {
+    text-decoration: line-through;
+}
+.tax-rename-history-names {
+    overflow: hidden;
+}
+.tax-rename-history-old {
+    color: var(--text-muted, #8b949e);
+    text-decoration: line-through;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+}
+.tax-rename-history-new {
+    color: var(--text, #c9d1d9);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+}
+.tax-rename-history-meta {
+    color: var(--text-muted, #6e7681);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.tax-rename-history-undo-btn {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    color: #ff7b72;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 10px;
+    white-space: nowrap;
+    transition: background 0.12s;
+}
+.tax-rename-history-undo-btn:hover {
+    background: rgba(248, 81, 73, 0.2);
+}
+.tax-rename-history-undo-btn[disabled] {
+    opacity: 0.35;
+    cursor: default;
+}
+.tax-rename-history-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-muted, #8b949e);
+    font-size: 11px;
+}
+
+/* Inline undo button in the session log rows */
+.tax-rename-session-row {
+    position: relative;
+}
+.tax-rename-session-row-undo {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    color: #ff7b72;
+    padding: 1px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+.tax-rename-session-row:hover .tax-rename-session-row-undo { opacity: 1; }
+.tax-rename-session-row-undo:hover { background: rgba(248, 81, 73, 0.2); }
+.tax-rename-session-row-undo[disabled] {
+    opacity: 0.35 !important;
+    cursor: default;
+}
+.tax-rename-session-row-undo.is-undone {
+    opacity: 1;
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted, #6e7681);
+    cursor: default;
+}
 
 /* Candidate list rows */
 .tax-rename-list {

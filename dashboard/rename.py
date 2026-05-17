@@ -360,6 +360,25 @@ def _validate_new_basename(new_name: str) -> str:
     return name
 
 
+def _invalidate_dependent_caches(profile: str) -> None:
+    """After any FS rename (apply OR undo), drop the rename / taxonomy /
+    categories caches so subsequent reads rebuild from the current state.
+    Failures to import a sibling module are swallowed: the rename
+    succeeded, a missing cache is at worst a stale read.
+    """
+    reset_cache(profile)
+    try:
+        from dashboard import taxonomy as _tx
+        _tx.reset_cache(profile)
+    except Exception:
+        pass
+    try:
+        from dashboard import categories as _cat
+        _cat.reset_cache(profile)
+    except Exception:
+        pass
+
+
 def commit_rename(
     profile: str,
     rel_path: str,
@@ -445,17 +464,7 @@ def commit_rename(
 
     # Invalidate dependent caches. They're all keyed by rel_path so a
     # filename change makes them stale. They rebuild lazily on next query.
-    reset_cache(profile)
-    try:
-        from dashboard import taxonomy as _tx
-        _tx.reset_cache(profile)
-    except Exception:
-        pass
-    try:
-        from dashboard import categories as _cat
-        _cat.reset_cache(profile)
-    except Exception:
-        pass
+    _invalidate_dependent_caches(profile)
 
     # ``target.resolve()`` is required because ``abs_new`` came from
     # ``abs_old.resolve().parent`` — on macOS ``/var`` is a symlink to
@@ -468,4 +477,153 @@ def commit_rename(
         "new_rel_path": new_rel,
         "new_name": new_name,
         "journal_entry": record,
+    }
+
+
+# ─── Journal viewing + undo (PR4) ────────────────────────────────────────
+
+
+def _path_under(target_resolved: Path, abs_path: str) -> bool:
+    """True if abs_path resolves under target_resolved. Used to refuse
+    journal entries that point outside the current profile (e.g. a
+    crafted payload trying to undo a rename in a different profile)."""
+    try:
+        Path(abs_path).resolve().relative_to(target_resolved)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def get_journal(profile: str, limit: int = 200) -> dict:
+    """Return the rename journal for the UI, newest first, with the
+    per-record `is_undo` / `is_undone` flags + relative paths against
+    the profile's target so the modal can show short names.
+
+    Also returns ``batches``: the list_batches() grouping (used by PR4
+    bulk undo). Does NOT touch the filesystem.
+    """
+    from lib import rename_journal
+    profile_dir = _profile_dir(profile)
+    target = _profile_target(profile)
+    target_resolved = (target.resolve()
+                       if (target and target.exists()) else None)
+
+    all_records = rename_journal.read_journal(profile_dir)
+    # A record is "already undone" if a later inverse op (batch starting
+    # with "undo") has its `old` field == this record's `new` field.
+    inverse_olds = {
+        r["old"] for r in all_records
+        if (r.get("batch") or "").startswith("undo")
+    }
+
+    def _rel(abs_path: str) -> str:
+        if not target_resolved:
+            return abs_path
+        try:
+            return str(Path(abs_path).resolve().relative_to(
+                target_resolved)).replace("\\", "/")
+        except (ValueError, OSError):
+            return abs_path
+
+    # Walk newest first
+    enriched: list[dict] = []
+    for r in reversed(all_records):
+        batch = r.get("batch") or ""
+        is_undo = batch.startswith("undo")
+        is_undone = r.get("new") in inverse_olds
+        enriched.append({
+            **r,
+            "old_rel": _rel(r.get("old", "")),
+            "new_rel": _rel(r.get("new", "")),
+            "is_undo": is_undo,
+            "is_undone": is_undone,
+        })
+
+    # Cap *after* enrichment so the freshest entries are kept
+    enriched = enriched[:limit]
+
+    batches = rename_journal.list_batches(profile_dir)
+
+    return {
+        "records": enriched,
+        "batches": batches,
+        "n_total": len(all_records),
+        "n_active": sum(1 for r in enriched
+                        if not r["is_undo"] and not r["is_undone"]),
+    }
+
+
+def undo_single_rename(
+    profile: str, ts: str, old_abs: str, new_abs: str,
+) -> dict:
+    """Reverse one rename identified by (ts, old, new). The record must
+    exist in the journal AND both paths must be under the profile's
+    target. Appends an "undo-*" record so the audit trail stays
+    append-only.
+
+    Raises RenameError(400/404/409/500) on the expected failure modes:
+      400 — paths outside target / profile misconfigured
+      404 — record not in journal, or file not found on disk
+      409 — already undone, or destination is occupied
+    """
+    if not ts:
+        raise RenameError("ts manquant", 400)
+    if not old_abs or not new_abs:
+        raise RenameError("old/new manquants", 400)
+
+    target = _profile_target(profile)
+    if target is None or not target.exists():
+        raise RenameError("profil sans target configuré", 400)
+    target_resolved = target.resolve()
+
+    if not (_path_under(target_resolved, old_abs)
+            and _path_under(target_resolved, new_abs)):
+        raise RenameError(
+            "Chemins hors du target du profil — undo refusé", 400)
+
+    from lib import rename_journal
+    profile_dir = _profile_dir(profile)
+
+    # Look up the record. We match on (ts, old, new) so the caller can
+    # pass back exactly what the GET endpoint returned.
+    all_records = rename_journal.read_journal(profile_dir)
+    match: dict | None = None
+    for r in all_records:
+        if (r.get("ts") == ts
+                and r.get("old") == old_abs
+                and r.get("new") == new_abs):
+            match = r
+            break
+    if match is None:
+        raise RenameError(
+            "Entrée introuvable dans le journal", 404)
+
+    # Already undone? An inverse op exists if a later "undo-*" record
+    # has its old field equal to this record's new field.
+    if any((r.get("batch") or "").startswith("undo")
+           and r.get("old") == match["new"]
+           for r in all_records):
+        raise RenameError("Cette entrée a déjà été annulée", 409)
+
+    try:
+        inverse = rename_journal.undo_record(profile_dir, match)
+    except FileNotFoundError as exc:
+        raise RenameError(
+            f"Fichier introuvable sur disque : {exc}", 404) from exc
+    except FileExistsError as exc:
+        raise RenameError(
+            f"Collision pendant l'undo : {exc}", 409) from exc
+    except OSError as exc:
+        raise RenameError(f"Échec de l'undo : {exc}", 500) from exc
+
+    _invalidate_dependent_caches(profile)
+
+    return {
+        "ok": True,
+        "inverse_entry": inverse,
+        "restored_abs": match["old"],
+        "restored_rel": str(
+            Path(match["old"]).resolve().relative_to(target_resolved)
+        ).replace("\\", "/") if _path_under(target_resolved, match["old"])
+            else match["old"],
     }

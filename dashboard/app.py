@@ -1717,6 +1717,35 @@ async def rename_file_api(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
 
 
+@app.get("/api/rename/journal")
+async def rename_journal_api(profile: str, limit: int = 200):
+    """Return the rename journal entries (newest first) + batch groups.
+    Read-only — used by the 📜 Renommages modal."""
+    from fastapi.responses import JSONResponse
+    from dashboard import rename as rename_mod
+    return JSONResponse(rename_mod.get_journal(profile, limit=limit))
+
+
+@app.post("/api/rename/undo/record")
+async def rename_undo_record_api(request: Request):
+    """Undo one rename. Body: {profile, ts, old, new}.
+    The record must exist in the journal and both paths must be under
+    the profile's target. Returns the inverse journal entry on success."""
+    from fastapi.responses import JSONResponse
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.undo_single_rename(
+            profile=body.get("profile"),
+            ts=body.get("ts"),
+            old_abs=body.get("old"),
+            new_abs=body.get("new"),
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,
