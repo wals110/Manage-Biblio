@@ -509,12 +509,19 @@ def get_journal(profile: str, limit: int = 200) -> dict:
                        if (target and target.exists()) else None)
 
     all_records = rename_journal.read_journal(profile_dir)
-    # A record is "already undone" if a later inverse op (batch starting
-    # with "undo") has its `old` field == this record's `new` field.
-    inverse_olds = {
-        r["old"] for r in all_records
-        if (r.get("batch") or "").startswith("undo")
-    }
+    # is_undone is computed POSITIONALLY in the journal — a forward
+    # record at index `i` is undone iff there exists an inverse record
+    # at some index `j > i` whose `old` equals this record's `new`.
+    #
+    # The naive "any undo's old equals this new" check is wrong: paths
+    # repeat over time. If a file is renamed → undone → renamed-again
+    # with the same target, the new rename would look "already undone"
+    # by the earlier inverse, which is nonsense. The journal is
+    # append-only and chronological, so order = truth.
+    undo_indices_by_old: dict[str, list[int]] = {}
+    for i, r in enumerate(all_records):
+        if (r.get("batch") or "").startswith("undo"):
+            undo_indices_by_old.setdefault(r.get("old", ""), []).append(i)
 
     def _rel(abs_path: str) -> str:
         if not target_resolved:
@@ -527,10 +534,15 @@ def get_journal(profile: str, limit: int = 200) -> dict:
 
     # Walk newest first
     enriched: list[dict] = []
-    for r in reversed(all_records):
+    for idx in range(len(all_records) - 1, -1, -1):
+        r = all_records[idx]
         batch = r.get("batch") or ""
         is_undo = batch.startswith("undo")
-        is_undone = r.get("new") in inverse_olds
+        is_undone = False
+        if not is_undo:
+            # Look for ANY later undo whose old equals this record's new
+            candidates = undo_indices_by_old.get(r.get("new", ""), [])
+            is_undone = any(ci > idx for ci in candidates)
         enriched.append({
             **r,
             "old_rel": _rel(r.get("old", "")),

@@ -552,6 +552,86 @@ class TestGetJournal(RenameAuditTestBase):
         # And the active count drops to 0
         self.assertEqual(j_after["n_active"], 0)
 
+    def test_is_undone_respects_journal_order(self):
+        """A rename done AFTER an earlier file landed at the same path
+        must NOT be flagged as already-undone just because that earlier
+        path appears as an inverse op's `old`. Order in the journal
+        is the source of truth.
+
+        Reproduces user-reported bug 2026-05-17: a fresh bulk was
+        displayed as "déjà annulé" because old pre-PR4A undo records
+        happened to share path names with the new bulk's targets.
+        """
+        # Step 1 — rename + undo (creates an inverse op whose old =
+        # "renamed-target.pdf")
+        self._add_file_with_cache("source.pdf", title="X")
+        rec1 = rename.commit_rename(
+            self.profile_name, "source.pdf", "renamed-target.pdf")
+        j1 = rename.get_journal(self.profile_name)
+        rename.undo_single_rename(
+            self.profile_name,
+            j1["records"][0]["ts"],
+            j1["records"][0]["old"],
+            j1["records"][0]["new"],
+        )
+        # Step 2 — re-do the same rename. The new record's new field is
+        # again "renamed-target.pdf" — same path as the earlier undo's old.
+        rec2 = rename.commit_rename(
+            self.profile_name, "source.pdf", "renamed-target.pdf")
+        # Now query the journal: the FRESH record must NOT be is_undone
+        j2 = rename.get_journal(self.profile_name)
+        forwards = [r for r in j2["records"] if not r["is_undo"]]
+        # Two forward records: the older one IS undone (its inverse
+        # exists), the newer one is NOT.
+        # j2["records"] is newest-first → forwards[0] is rec2, forwards[1] is rec1
+        self.assertEqual(len(forwards), 2)
+        self.assertFalse(forwards[0]["is_undone"],
+                         "Most recent rename must not be flagged undone")
+        self.assertTrue(forwards[1]["is_undone"],
+                        "Original rename should be flagged undone")
+        # And n_active counts the freshly-redone rename
+        self.assertEqual(j2["n_active"], 1)
+
+    def test_batches_excludes_legacy_undo_records(self):
+        """Pre-PR4A individual undo records are tagged batch="undo"
+        (no batch_id suffix). They must not surface as a fake batch in
+        the "Par lot" view — only forward batches should appear.
+
+        Reproduces user-reported bug 2026-05-17: the modal showed
+        "batch undo · 4 renommage(s)" because the legacy "undo" tag
+        slipped past the `startswith("undo-")` filter.
+        """
+        # Manually craft a legacy-style journal so we don't have to
+        # roundtrip through the PR3 commit/undo path.
+        from lib import rename_journal
+        rename_journal.append_rename(
+            self.profile_dir,
+            old_abs=str(self.target / "Foo.pdf"),
+            new_abs=str(self.target / "Bar.pdf"),
+            batch_id="",        # single rename, no batch
+        )
+        rename_journal.append_rename(
+            self.profile_dir,
+            old_abs=str(self.target / "Bar.pdf"),
+            new_abs=str(self.target / "Foo.pdf"),
+            batch_id="undo",    # legacy inverse op
+        )
+        # And a real batch alongside
+        self._add_file_with_cache("source.pdf", title="X")
+        rename.commit_rename_bulk(self.profile_name, items=[
+            {"rel_path": "source.pdf", "new_name": "Renamed.pdf"},
+        ])
+        j = rename.get_journal(self.profile_name)
+        batch_ids = {b["batch"] for b in j["batches"]}
+        self.assertNotIn("undo", batch_ids,
+                         "Legacy 'undo' must not surface as a batch")
+        self.assertNotIn("", batch_ids,
+                         "Un-batched singles must not surface either")
+        # The real PR4 batch IS present (its id starts with a timestamp
+        # like 20260517-...)
+        self.assertTrue(any(b["batch"] and not b["batch"].startswith("undo")
+                            for b in j["batches"]))
+
     def test_limit_caps_records(self):
         # Generate 5 renames
         for i in range(5):

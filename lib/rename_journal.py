@@ -122,7 +122,10 @@ def list_batches(profile_dir: Path) -> list[dict]:
     by_batch: dict[str, dict] = {}
     for r in read_journal(profile_dir):
         bid = r.get("batch") or ""
-        if not bid or bid.startswith("undo-"):
+        # Skip un-batched singles (bid == "") + every inverse op:
+        # PR4A onwards tags them "undo-<batch_id>", pre-PR4A used just
+        # "undo". Both share the "undo" prefix so the catch-all is safe.
+        if not bid or bid.startswith("undo"):
             continue
         slot = by_batch.setdefault(bid, {
             "batch": bid,
