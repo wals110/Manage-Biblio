@@ -277,8 +277,37 @@
                 <h2 class="tax-col-title">Candidats</h2>
                 <span class="tax-col-sub" id="tax-rename-list-sub"></span>
             </header>
+            <div class="tax-rename-search-wrap">
+                <input type="search" id="tax-rename-search"
+                       class="tax-rename-search"
+                       placeholder="Rechercher un fichier…"
+                       autocomplete="off"
+                       aria-label="Filtrer la liste par nom de fichier">
+                <button type="button" id="tax-rename-search-clear"
+                        class="tax-rename-search-clear" hidden
+                        aria-label="Effacer la recherche">✕</button>
+            </div>
             <div class="tax-rename-filters" id="tax-rename-filters"></div>
             <div class="tax-rename-list" id="tax-rename-list"></div>
+            <div class="tax-rename-session" id="tax-rename-session">
+                <div class="tax-rename-session-header">
+                    <button type="button" class="tax-rename-session-toggle"
+                            id="tax-rename-session-toggle"
+                            aria-expanded="false">
+                        <span class="tax-rename-session-chevron">▶</span>
+                        <span class="tax-rename-session-label">
+                            Renommés cette session
+                            <span class="tax-rename-session-count"
+                                  id="tax-rename-session-count">0</span>
+                        </span>
+                    </button>
+                    <button type="button" id="tax-rename-session-clear"
+                            class="tax-rename-session-clear"
+                            title="Vider le journal de session" hidden>🗑</button>
+                </div>
+                <div class="tax-rename-session-body" id="tax-rename-session-body"
+                     hidden></div>
+            </div>
         </section>
         <!-- Col 2 — file detail + diff -->
         <section class="tax-col tax-rename-col">

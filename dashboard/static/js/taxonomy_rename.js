@@ -41,7 +41,38 @@
     editingNameByPath: new Map(),
     // True while a rename HTTP call is in flight — gates the button.
     renaming: false,
+    // Free-text filter on the candidate list (case-insensitive substring
+    // match on current_name). Combined with category filters in AND.
+    searchQuery: '',
+    // Renames done during this tab session — visual feedback distinct
+    // from the journal (which is durable). Newest first. Persisted in
+    // sessionStorage so an F5 keeps the list. Max 50 entries.
+    sessionRenames: [],
+    sessionExpanded: false,
+    SESSION_MAX: 50,
   };
+
+  function _sessionKey() {
+    return 'tax-rename-session::' + (state.profile || '');
+  }
+
+  function _loadSessionFromStorage() {
+    try {
+      const raw = sessionStorage.getItem(_sessionKey());
+      if (!raw) { state.sessionRenames = []; return; }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        state.sessionRenames = parsed.slice(0, state.SESSION_MAX);
+      }
+    } catch (_) { state.sessionRenames = []; }
+  }
+
+  function _saveSessionToStorage() {
+    try {
+      sessionStorage.setItem(
+        _sessionKey(), JSON.stringify(state.sessionRenames));
+    } catch (_) { /* quota / disabled — ignore */ }
+  }
 
   // ── API ──────────────────────────────────────────────────────────────
 
@@ -248,13 +279,22 @@
       sub.textContent = '';
       return;
     }
-    const candidates = state.data.candidates.filter(
-      c => state.activeCategories.has(c.category));
-    sub.textContent = `${candidates.length} affichés / ${state.data.candidates.length}`;
+    const q = (state.searchQuery || '').trim().toLowerCase();
+    const candidates = state.data.candidates.filter(c => {
+      if (!state.activeCategories.has(c.category)) return false;
+      if (q && !c.current_name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    const total = state.data.candidates.length;
+    const suffix = q ? ` · recherche "${state.searchQuery}"` : '';
+    sub.textContent = `${candidates.length} affichés / ${total}${suffix}`;
     if (candidates.length === 0) {
+      const emptyMsg = q
+        ? `Aucun candidat ne matche "${state.searchQuery}".`
+        : 'Aucun candidat avec les filtres actifs.';
       wrap.appendChild(el('div', { class: 'muted small',
                                     style: 'padding:14px;text-align:center;' },
-        ['Aucun candidat avec les filtres actifs.']));
+        [emptyMsg]));
       return;
     }
     const MAX = 500;
@@ -657,10 +697,19 @@
         const result = await postRenameFile(relPath, newName);
         // Clear the per-file edit since we just committed it
         state.editingNameByPath.delete(relPath);
+        // Record in the session journal BEFORE refreshing the audit so
+        // the UI shows the entry immediately even if fetchAudit is slow.
+        const newRel = result.new_rel_path || relPath;
+        _pushSessionRename({
+          old_name: c.current_name,
+          new_name: newName,
+          old_rel_path: relPath,
+          new_rel_path: newRel,
+          ts: Date.now(),
+        });
         // Refresh the audit so the renamed file shows up under its new name
         state.data = await fetchAudit(true);
         // Try to re-select the renamed file under its new path
-        const newRel = result.new_rel_path || relPath;
         const found = (state.data.candidates || []).find(
           x => x.rel_path === newRel);
         if (found) {
@@ -691,6 +740,83 @@
     }
   }
 
+  // ── Session log ──────────────────────────────────────────────────────
+
+  function _pushSessionRename(entry) {
+    // Newest first; cap at SESSION_MAX. If the same file is renamed
+    // twice, keep both entries (audit trail of the session).
+    state.sessionRenames.unshift(entry);
+    if (state.sessionRenames.length > state.SESSION_MAX) {
+      state.sessionRenames.length = state.SESSION_MAX;
+    }
+    _saveSessionToStorage();
+    renderSession();
+  }
+
+  function _formatTime(ts) {
+    const d = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function renderSession() {
+    const body = $('#tax-rename-session-body');
+    const count = $('#tax-rename-session-count');
+    const clearBtn = $('#tax-rename-session-clear');
+    if (!body || !count) return;
+    const n = state.sessionRenames.length;
+    count.textContent = String(n);
+    if (clearBtn) clearBtn.hidden = n === 0;
+    body.innerHTML = '';
+    if (n === 0) {
+      body.appendChild(el('div', { class: 'tax-rename-session-empty' },
+                            ['Aucun renommage dans cette session.']));
+      return;
+    }
+    for (const entry of state.sessionRenames) {
+      body.appendChild(el('div', {
+        class: 'tax-rename-session-row',
+        title: 'Cliquer pour aller au fichier (nouveau nom)',
+        onclick: () => _jumpToSessionEntry(entry),
+      }, [
+        el('div', { class: 'tax-rename-session-row-names' }, [
+          el('span', { class: 'tax-rename-session-row-old' }, [entry.old_name]),
+          el('span', { class: 'tax-rename-session-row-arrow' }, ['→']),
+          el('span', { class: 'tax-rename-session-row-new' }, [entry.new_name]),
+        ]),
+        el('div', { class: 'tax-rename-session-row-ts' },
+                   [_formatTime(entry.ts)]),
+      ]));
+    }
+  }
+
+  async function _jumpToSessionEntry(entry) {
+    if (!state.loaded) await loadAndRender();
+    const target = entry.new_rel_path;
+    const found = (state.data && state.data.candidates || []).find(
+      c => c.rel_path === target);
+    if (found) {
+      state.activeCategories.add(found.category);
+      selectCandidate(target);
+      renderFilters();
+      renderList();
+    } else {
+      showToast(
+        `Fichier hors audit (probablement OK et filtré) : ${entry.new_name}`,
+        'info');
+    }
+  }
+
+  function _toggleSessionPanel(expand) {
+    const toggle = $('#tax-rename-session-toggle');
+    const body = $('#tax-rename-session-body');
+    if (!toggle || !body) return;
+    const willExpand = expand != null ? !!expand : body.hidden;
+    body.hidden = !willExpand;
+    toggle.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
+    state.sessionExpanded = willExpand;
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────
 
   function renderAll() {
@@ -699,6 +825,7 @@
     renderList();
     renderDetail();
     renderPreview();
+    renderSession();
   }
 
   async function loadAndRender() {
@@ -726,6 +853,7 @@
     const sel = document.querySelector('#tax-profile-select');
     if (!sel) return;
     state.profile = sel.value;
+    _loadSessionFromStorage();
     document.querySelectorAll('.tax-subtab').forEach(b => {
       b.addEventListener('click', () => activateSubtab(b.dataset.view));
     });
@@ -736,9 +864,80 @@
       state.loaded = false;
       state.editingNameByPath.clear();
       state.renaming = false;
+      state.searchQuery = '';
+      // Session log is keyed per profile so each profile has its own
+      // history. Load the new profile's log; the previous one stays in
+      // sessionStorage untouched.
+      _loadSessionFromStorage();
+      const searchInput = $('#tax-rename-search');
+      if (searchInput) searchInput.value = '';
+      const clearBtn = $('#tax-rename-search-clear');
+      if (clearBtn) clearBtn.hidden = true;
       const active = document.querySelector('.tax-subtab.active');
       if (active && active.dataset.view === 'rename') loadAndRender();
+      else renderSession();
     });
+
+    // ── Search bar: debounced filter on candidate names ──
+    const searchInput = $('#tax-rename-search');
+    const searchClear = $('#tax-rename-search-clear');
+    if (searchInput) {
+      let debounceId = null;
+      searchInput.addEventListener('input', () => {
+        if (searchClear) searchClear.hidden = !searchInput.value;
+        clearTimeout(debounceId);
+        debounceId = setTimeout(() => {
+          state.searchQuery = searchInput.value;
+          renderList();
+        }, 150);
+      });
+      // Esc clears the search field
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && searchInput.value) {
+          searchInput.value = '';
+          state.searchQuery = '';
+          if (searchClear) searchClear.hidden = true;
+          renderList();
+          e.stopPropagation();
+        }
+      });
+    }
+    if (searchClear) {
+      searchClear.addEventListener('click', () => {
+        if (!searchInput) return;
+        searchInput.value = '';
+        state.searchQuery = '';
+        searchClear.hidden = true;
+        renderList();
+        searchInput.focus();
+      });
+    }
+
+    // ── Session log: collapse toggle + clear ──
+    const sessionToggle = $('#tax-rename-session-toggle');
+    if (sessionToggle) {
+      sessionToggle.addEventListener('click', () => _toggleSessionPanel());
+    }
+    const sessionClear = $('#tax-rename-session-clear');
+    // Initial render of the session panel so the count/list reflect
+    // sessionStorage from the start (even before the user clicks Rename).
+    renderSession();
+    if (sessionClear) {
+      sessionClear.addEventListener('click', async () => {
+        if (state.sessionRenames.length === 0) return;
+        const ok = await showConfirm({
+          title: 'Vider le journal de session ?',
+          body: `${state.sessionRenames.length} entrée(s) vont disparaître de cette vue. Les renommages eux-mêmes restent en place dans le journal durable (undo possible plus tard).`,
+          confirmLabel: 'Vider',
+          cancelLabel: 'Garder',
+          variant: 'danger',
+        });
+        if (!ok) return;
+        state.sessionRenames = [];
+        _saveSessionToStorage();
+        renderSession();
+      });
+    }
     // Wire the info banner toggle (same pattern as the cat module)
     const infoBtn = document.querySelector('.tax-rename-info-toggle');
     const infoBody = document.querySelector('.tax-rename-info-body');
