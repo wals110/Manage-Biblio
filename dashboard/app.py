@@ -1697,6 +1697,26 @@ async def rename_audit_api(profile: str, force: bool = False):
         rename_audit_module.rename_audit(profile, force_reload=force))
 
 
+@app.post("/api/rename/file")
+async def rename_file_api(request: Request):
+    """Apply a single rename. Body: {profile, rel_path, new_name, batch_id?}.
+    On success the rename is committed on disk + journaled.
+    Returns the new rel_path so the caller can navigate / select it."""
+    from fastapi.responses import JSONResponse
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.commit_rename(
+            profile=body.get("profile"),
+            rel_path=body.get("rel_path"),
+            new_name=body.get("new_name"),
+            batch_id=body.get("batch_id") or "",
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,

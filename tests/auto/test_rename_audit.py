@@ -135,10 +135,24 @@ class TestRenameAuditBasics(RenameAuditTestBase):
     def test_low_confidence_skipped(self):
         self._add_file_with_cache("foo.pdf", title="The Real Title",
                                   confidence=0.4)
-        # Default min_title_confidence is 0.85 → this file is skipped
+        # Default min_title_confidence is 0.85 → file is in the cache but
+        # below the threshold. Should be counted in n_low_confidence (not
+        # n_no_metadata, which is reserved for files with no cache hit).
+        r = rename.rename_audit(self.profile_name)
+        self.assertEqual(r["stats"]["n_low_confidence"], 1)
+        self.assertEqual(r["stats"]["n_no_metadata"], 0)
+        self.assertEqual(r["stats"]["n_with_title"], 0)
+
+    def test_no_metadata_and_low_confidence_distinct(self):
+        # Two files: one with no cache entry at all, one below threshold.
+        # They must land in different stat buckets.
+        (self.target / "no_cache.pdf").write_bytes(b"%PDF no cache here")
+        self._add_file_with_cache(
+            "low_conf.pdf", title="Real Title", confidence=0.3)
         r = rename.rename_audit(self.profile_name)
         self.assertEqual(r["stats"]["n_no_metadata"], 1)
-        self.assertEqual(r["stats"]["n_with_title"], 0)
+        self.assertEqual(r["stats"]["n_low_confidence"], 1)
+        self.assertEqual(r["stats"]["n_total"], 2)
 
     def test_high_confidence_audited(self):
         self._add_file_with_cache(
@@ -325,6 +339,176 @@ class TestRenameAuditEndpoint(RenameAuditTestBase):
         r2 = self.client.get(
             f"/api/rename/audit?profile={self.profile_name}&force=true")
         self.assertEqual(r2.json()["stats"]["n_total"], 2)
+
+
+class TestCommitRename(RenameAuditTestBase):
+    """commit_rename(): FS rename + journal append + cache invalidation."""
+
+    def test_happy_path(self):
+        self._add_file_with_cache("ugly_name.pdf", title="Clean Title",
+                                   author="An Author")
+        r = rename.commit_rename(
+            self.profile_name, "ugly_name.pdf", "Clean Title - An Author.pdf",
+        )
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["new_rel_path"], "Clean Title - An Author.pdf")
+        # FS state
+        self.assertFalse((self.target / "ugly_name.pdf").exists())
+        self.assertTrue((self.target / "Clean Title - An Author.pdf").exists())
+        # Journal got the entry
+        from lib import rename_journal
+        records = rename_journal.list_renames(self.profile_dir)
+        self.assertEqual(len(records), 1)
+        self.assertTrue(records[0]["old"].endswith("ugly_name.pdf"))
+        self.assertTrue(
+            records[0]["new"].endswith("Clean Title - An Author.pdf"))
+
+    def test_unchanged_when_new_equals_old(self):
+        self._add_file_with_cache("same.pdf", title="x")
+        r = rename.commit_rename(self.profile_name, "same.pdf", "same.pdf")
+        self.assertTrue(r["ok"])
+        self.assertTrue(r.get("unchanged"))
+        # No journal entry written for a no-op
+        from lib import rename_journal
+        self.assertEqual(rename_journal.list_renames(self.profile_dir), [])
+
+    def test_collision_refused_409(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        # Pre-create the target so the rename collides
+        (self.target / "b.pdf").write_bytes(b"%PDF other")
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.commit_rename(self.profile_name, "a.pdf", "b.pdf")
+        self.assertEqual(cm.exception.status, 409)
+        # Source file still in place
+        self.assertTrue((self.target / "a.pdf").exists())
+
+    def test_missing_source_404(self):
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.commit_rename(
+                self.profile_name, "nope.pdf", "anything.pdf")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_validates_new_name_empty(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.commit_rename(self.profile_name, "a.pdf", "   ")
+        self.assertEqual(cm.exception.status, 400)
+        self.assertIn("vide", str(cm.exception))
+
+    def test_validates_new_name_separators(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        for bad in ("foo/bar.pdf", "..\\b.pdf", "x:y.pdf", "x?.pdf"):
+            with self.assertRaises(rename.RenameError) as cm:
+                rename.commit_rename(self.profile_name, "a.pdf", bad)
+            self.assertEqual(cm.exception.status, 400,
+                             f"expected 400 for {bad!r}")
+
+    def test_validates_new_name_length(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        too_long = "x" * 300 + ".pdf"
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.commit_rename(self.profile_name, "a.pdf", too_long)
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_path_traversal_blocked(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        # rel_path that escapes target
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.commit_rename(
+                self.profile_name, "../outside.pdf", "x.pdf")
+        # Either 400 (escapes target) or 404 (doesn't exist) — both acceptable
+        self.assertIn(cm.exception.status, (400, 404))
+
+    def test_subdirectory_preserved(self):
+        """The rename keeps the file in its current directory; only the
+        basename changes."""
+        self._add_file_with_cache(
+            "01-SCIENCES/PHYSIQUE/ugly.pdf", title="Pretty")
+        rename.commit_rename(
+            self.profile_name,
+            "01-SCIENCES/PHYSIQUE/ugly.pdf",
+            "Pretty.pdf",
+        )
+        self.assertFalse((self.target / "01-SCIENCES/PHYSIQUE/ugly.pdf").exists())
+        self.assertTrue((self.target / "01-SCIENCES/PHYSIQUE/Pretty.pdf").exists())
+
+    def test_case_only_rename_allowed_on_case_insensitive_fs(self):
+        """Renaming `foo.pdf` → `Foo.pdf` must NOT raise 409 collision.
+
+        On case-insensitive filesystems (APFS / HFS+ default on macOS),
+        the destination path "exists" because it's the same inode as the
+        source. The collision guard must use samefile() to tell case
+        renames apart from real collisions. On case-sensitive FS (Linux
+        ext4) the destination doesn't exist anyway — same outcome.
+        """
+        self._add_file_with_cache("foo.pdf", title="Foo")
+        r = rename.commit_rename(self.profile_name, "foo.pdf", "Foo.pdf")
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["new_rel_path"], "Foo.pdf")
+        # The file is now at Foo.pdf (case may be merged on APFS; what
+        # matters is no 409 was raised and the journal has an entry).
+        from lib import rename_journal
+        records = rename_journal.list_renames(self.profile_dir)
+        self.assertEqual(len(records), 1)
+
+    def test_caches_invalidated_after_rename(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        # Prime the audit cache
+        r1 = rename.rename_audit(self.profile_name)
+        self.assertEqual(r1["stats"]["n_total"], 1)
+        # Apply rename
+        rename.commit_rename(self.profile_name, "a.pdf", "B.pdf")
+        # Audit cache should now reflect the renamed file (re-built)
+        r2 = rename.rename_audit(self.profile_name)
+        names = {c["current_name"] for c in r2["candidates"]}
+        self.assertIn("B.pdf", names)
+        self.assertNotIn("a.pdf", names)
+
+
+class TestCommitRenameEndpoint(RenameAuditTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_happy(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        r = self.client.post("/api/rename/file", json={
+            "profile": self.profile_name,
+            "rel_path": "a.pdf",
+            "new_name": "B.pdf",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["new_rel_path"], "B.pdf")
+
+    def test_endpoint_collision_409(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        (self.target / "b.pdf").write_bytes(b"%PDF")
+        r = self.client.post("/api/rename/file", json={
+            "profile": self.profile_name,
+            "rel_path": "a.pdf",
+            "new_name": "b.pdf",
+        })
+        self.assertEqual(r.status_code, 409)
+
+    def test_endpoint_missing_404(self):
+        r = self.client.post("/api/rename/file", json={
+            "profile": self.profile_name,
+            "rel_path": "nope.pdf",
+            "new_name": "x.pdf",
+        })
+        self.assertEqual(r.status_code, 404)
+
+    def test_endpoint_bad_name_400(self):
+        self._add_file_with_cache("a.pdf", title="A")
+        r = self.client.post("/api/rename/file", json={
+            "profile": self.profile_name,
+            "rel_path": "a.pdf",
+            "new_name": "foo/bar.pdf",
+        })
+        self.assertEqual(r.status_code, 400)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,11 @@
     viewerPageByPath: new Map(),
     // Cap on pages shown in the pager — matches the Mappings cap.
     MAX_PAGES: 5,
+    // Edited basename per file (only set if the user typed something
+    // different from the audit suggestion). Cleared on rename success.
+    editingNameByPath: new Map(),
+    // True while a rename HTTP call is in flight — gates the button.
+    renaming: false,
   };
 
   // ── API ──────────────────────────────────────────────────────────────
@@ -53,6 +58,67 @@
     const r = await fetch(url);
     if (!r.ok) throw new Error('metadata HTTP ' + r.status);
     return r.json();
+  }
+
+  async function postRenameFile(relPath, newName) {
+    const r = await fetch('/api/rename/file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profile: state.profile,
+        rel_path: relPath,
+        new_name: newName,
+      }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { /* ignore */ }
+    if (!r.ok) {
+      const msg = (body && body.error) || `HTTP ${r.status}`;
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    return body;
+  }
+
+  // Reuses the shared modal HTML (#tax-confirm-modal) declared in
+  // taxonomy.html — same pattern as taxonomy_categories.js. We can't
+  // share the JS helper because each sub-tab module lives in its own
+  // IIFE, so we duplicate the 30-line wiring rather than expose a
+  // global. Cheaper than a coupling abstraction for one button.
+  function showConfirm({title, body, confirmLabel, cancelLabel, variant}) {
+    return new Promise((resolve) => {
+      const modal = $('#tax-confirm-modal');
+      const okBtn = $('#tax-confirm-ok');
+      const cancelBtn = $('#tax-confirm-cancel');
+      if (!modal || !okBtn || !cancelBtn) {
+        // Fall back to native confirm if the shared modal isn't on this page
+        resolve(window.confirm(`${title || ''}\n\n${body || ''}`));
+        return;
+      }
+      $('#tax-confirm-title').textContent = title || 'Confirmer ?';
+      $('#tax-confirm-body').textContent = body || '';
+      okBtn.textContent = confirmLabel || 'Confirmer';
+      cancelBtn.textContent = cancelLabel || 'Annuler';
+      okBtn.className = (variant === 'danger') ? 'btn-danger' : 'btn-primary';
+      modal.style.display = 'flex';
+
+      function cleanup(result) {
+        modal.style.display = 'none';
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+        if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
+      }
+      okBtn.onclick = () => cleanup(true);
+      cancelBtn.onclick = () => cleanup(false);
+      document.addEventListener('keydown', onKey);
+      setTimeout(() => okBtn.focus(), 50);
+    });
   }
 
   function thumbnailURL(relPath, page) {
@@ -108,13 +174,17 @@
       return;
     }
     const s = state.data.stats;
+    const lowConf = s.n_low_confidence || 0;
     out.innerHTML =
       `<span><strong>${s.n_total}</strong> fichiers</span>` +
       `<span class="dot"></span><span><strong>${s.n_with_title}</strong> avec titre LLM</span>` +
       `<span class="dot"></span><span class="orphan-badge"><strong>${s.n_placeholder}</strong> placeholders</span>` +
       `<span class="dot"></span><span><strong>${s.n_divergent}</strong> divergents</span>` +
       `<span class="dot"></span><span><strong>${s.n_minor_case}</strong> minor case</span>` +
-      `<span class="dot"></span><span><strong>${s.n_ok}</strong> ok</span>`;
+      `<span class="dot"></span><span><strong>${s.n_ok}</strong> ok</span>` +
+      (lowConf > 0
+        ? `<span class="dot"></span><span class="muted small" title="Fichiers avec une entrée vision_cache mais une confidence < min_title_confidence — non audités, à re-scanner si besoin"><strong>${lowConf}</strong> low conf.</span>`
+        : '');
   }
 
   // ── Sub-tab toggle ───────────────────────────────────────────────────
@@ -472,13 +542,29 @@
       return;
     }
     sub.textContent = '';
-    // Editable proposed name
+
+    // Editable proposed name. Default = suggested_name from the audit,
+    // overridable by the user via the input. We persist their edits per
+    // file so switching candidates and coming back keeps the value.
+    const initialName = state.editingNameByPath.get(c.rel_path)
+                        || c.suggested_name;
+    const nameInput = el('input', {
+      type: 'text', value: initialName,
+      title: 'Renommer le fichier (basename uniquement, pas de chemin)',
+    });
+    nameInput.addEventListener('input', () => {
+      state.editingNameByPath.set(c.rel_path, nameInput.value);
+      _refreshRenameButtonState(c, nameInput);
+    });
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyRename(c.rel_path);
+      }
+    });
     wrap.appendChild(el('div', { class: 'tax-rename-field' }, [
       el('label', null, ['Nouveau nom']),
-      el('input', {
-        type: 'text', value: c.suggested_name, disabled: true,
-        title: 'Édition disponible en PR3',
-      }),
+      nameInput,
     ]));
     if (c.issues && c.issues.length) {
       wrap.appendChild(el('div', { class: 'tax-rename-field' }, [
@@ -486,21 +572,25 @@
         el('div', { class: 'muted small' }, [c.issues.join('; ')]),
       ]));
     }
+
+    const renameBtn = el('button', {
+      class: 'btn-primary',
+      'data-tax-rename-apply': '1',
+      onclick: () => applyRename(c.rel_path),
+    }, ['Renommer']);
     wrap.appendChild(el('div', { class: 'tax-rename-field',
                                   style: 'border-bottom:none;' }, [
       el('label', null, ['Actions']),
       el('div', { class: 'muted small', style: 'margin-bottom:6px;' },
-                 ['L\'application du renommage arrive en PR3.']),
-      el('button', {
-        class: 'btn-primary', disabled: true,
-        title: 'Disponible en PR3',
-      }, ['Renommer']),
+                 ['Le rename est appliqué sur disque et journalisé pour undo.']),
+      renameBtn,
       ' ',
       el('button', {
         class: 'btn-secondary', disabled: true,
         title: 'Disponible en PR4',
       }, ['Ajouter au batch']),
     ]));
+    _refreshRenameButtonState(c, nameInput);
     // Template config preview (read-only)
     if (state.data && state.data.config) {
       wrap.appendChild(el('div', { class: 'tax-rename-field',
@@ -511,6 +601,93 @@
         el('div', { class: 'muted small', style: 'margin-top:2px;' },
                    ['fallback : ' + state.data.config.fallback]),
       ]));
+    }
+  }
+
+  // ── Rename application ───────────────────────────────────────────────
+
+  // Reflect whether the current input value is a usable, distinct
+  // basename. Same checks the backend will run (basename only, no
+  // path separators, non-empty), so the user sees the button gray
+  // out instantly on invalid input.
+  function _refreshRenameButtonState(c, nameInput) {
+    const btn = document.querySelector('[data-tax-rename-apply="1"]');
+    if (!btn) return;
+    const raw = (nameInput.value || '').trim();
+    const invalidChars = /[\\/:*?"<>|\x00]/.test(raw);
+    const isPlaceholder = !raw || raw === '.' || raw === '..';
+    const sameAsCurrent = raw === c.current_name;
+    const disabled = state.renaming || isPlaceholder || invalidChars || sameAsCurrent;
+    btn.disabled = disabled;
+    if (state.renaming) {
+      btn.title = 'Renommage en cours…';
+    } else if (isPlaceholder) {
+      btn.title = 'Saisis un nouveau nom';
+    } else if (invalidChars) {
+      btn.title = 'Caractères interdits dans un nom de fichier : / \\ : * ? " < > |';
+    } else if (sameAsCurrent) {
+      btn.title = 'Identique au nom actuel — rien à renommer';
+    } else {
+      btn.title = `Renommer vers : ${raw}`;
+    }
+  }
+
+  async function applyRename(relPath) {
+    if (state.renaming) return;
+    const c = state.data && state.data.candidates.find(
+      x => x.rel_path === relPath);
+    if (!c) return;
+    const newName = (state.editingNameByPath.get(relPath)
+                     || c.suggested_name || '').trim();
+    if (!newName || newName === c.current_name) return;
+
+    const ok = await showConfirm({
+      title: 'Renommer ce fichier ?',
+      body: `${c.current_name}  →  ${newName}\n\nLe rename est journalisé et peut être annulé via 📜 Historique.`,
+      confirmLabel: 'Renommer',
+      cancelLabel: 'Annuler',
+      variant: 'primary',
+    });
+    if (!ok) return;
+
+    state.renaming = true;
+    _refreshButtonsDuringRename(true);
+    await withBusy('Renommage…', async () => {
+      try {
+        const result = await postRenameFile(relPath, newName);
+        // Clear the per-file edit since we just committed it
+        state.editingNameByPath.delete(relPath);
+        // Refresh the audit so the renamed file shows up under its new name
+        state.data = await fetchAudit(true);
+        // Try to re-select the renamed file under its new path
+        const newRel = result.new_rel_path || relPath;
+        const found = (state.data.candidates || []).find(
+          x => x.rel_path === newRel);
+        if (found) {
+          state.selectedRelPath = newRel;
+          state.activeCategories.add(found.category);
+        } else {
+          // The renamed file might now fall into "ok" (correctly named)
+          // and be hidden behind a filter — surface it anyway.
+          state.selectedRelPath = newRel;
+        }
+        renderAll();
+        showToast(`✓ Renommé : ${newName}`, 'success');
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec du renommage : ${detail}`, 'error');
+      } finally {
+        state.renaming = false;
+        _refreshButtonsDuringRename(false);
+      }
+    });
+  }
+
+  function _refreshButtonsDuringRename(active) {
+    const btn = document.querySelector('[data-tax-rename-apply="1"]');
+    if (btn) {
+      btn.disabled = active;
+      if (active) btn.title = 'Renommage en cours…';
     }
   }
 
@@ -557,6 +734,8 @@
       state.data = null;
       state.selectedRelPath = null;
       state.loaded = false;
+      state.editingNameByPath.clear();
+      state.renaming = false;
       const active = document.querySelector('.tax-subtab.active');
       if (active && active.dataset.view === 'rename') loadAndRender();
     });

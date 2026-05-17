@@ -226,7 +226,7 @@ def rename_audit(profile: str, force_reload: bool = False) -> dict:
 
         conf = float(result.get("confidence") or 0.0)
         if conf < cfg["min_title_confidence"]:
-            return {"_no_metadata": True}
+            return {"_low_confidence": True}
 
         meta = _extract_metadata(result)
         if not meta["title"]:
@@ -268,6 +268,9 @@ def rename_audit(profile: str, force_reload: bool = False) -> dict:
             if r.get("_no_metadata"):
                 stats["n_no_metadata"] += 1
                 continue
+            if r.get("_low_confidence"):
+                stats["n_low_confidence"] += 1
+                continue
             if r.get("_render_failed"):
                 stats["n_render_failed"] += 1
                 continue
@@ -302,6 +305,12 @@ def _empty_stats() -> dict:
         "n_ok": 0,
         "n_render_failed": 0,
         "n_no_metadata": 0,
+        # Files that DO have a cache entry but its confidence sits below
+        # `min_title_confidence`. Tracked separately from `n_no_metadata`
+        # so the UI can tell the user "1500 files are stuck under the
+        # threshold" instead of conflating them with files that were
+        # never scanned.
+        "n_low_confidence": 0,
     }
 
 
@@ -312,3 +321,151 @@ def reset_cache(profile: str | None = None) -> None:
             _audit_cache.clear()
         else:
             _audit_cache.pop(profile, None)
+
+
+# ─── Apply path (PR3) ────────────────────────────────────────────────────
+
+
+class RenameError(Exception):
+    """User-facing rename failure with an HTTP-style status hint."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+# Refused chars in a basename — covers POSIX + Windows. Note we DO allow
+# unicode chars freely; only the strictly problematic FS metachars are
+# blocked. The frontend should already have run them through the same
+# sanitize pipeline at preview time.
+_REFUSED_BASENAME_CHARS = '/\\\x00<>:"|?*'
+_MAX_BASENAME_LENGTH = 240   # POSIX is typically 255; keep margin
+
+
+def _validate_new_basename(new_name: str) -> str:
+    """Ensure `new_name` is a safe basename (no path parts, no FS metas).
+    Raises RenameError on rejection."""
+    name = (new_name or "").strip()
+    if not name:
+        raise RenameError("nom vide", 400)
+    if any(ch in name for ch in _REFUSED_BASENAME_CHARS):
+        raise RenameError(
+            "nom contient des caractères interdits (/, \\, :, *, ?, \", <, >, |)",
+            400)
+    if name in (".", "..") or name.startswith(".."):
+        raise RenameError("nom invalide (réservé : '.', '..')", 400)
+    if len(name) > _MAX_BASENAME_LENGTH:
+        raise RenameError(
+            f"nom trop long (> {_MAX_BASENAME_LENGTH} chars)", 400)
+    return name
+
+
+def commit_rename(
+    profile: str,
+    rel_path: str,
+    new_name: str,
+    batch_id: str = "",
+) -> dict:
+    """Apply a rename on disk + record it in the journal.
+
+    `rel_path` is the file's current relative path under target/; `new_name`
+    is the new BASENAME (no directory part). The directory is preserved —
+    use the tree-move flow if you want to relocate the file.
+
+    Order of operations:
+      1. Validate new_name (refused chars, length, dotfiles).
+      2. Resolve abs_old + abs_new under target/. Reject if abs_new would
+         be outside target (path traversal) or already exists (collision).
+      3. os.rename(abs_old, abs_new).
+      4. Journal append (record AFTER the FS op so a crash leaves no
+         lying entry).
+      5. Invalidate the rename audit cache + the dashboard's folder
+         index + the categories text index (all keyed by rel_path).
+
+    Raises RenameError(400/404/409) on the obvious failure modes;
+    FileNotFoundError/FileExistsError from the OS layer are surfaced as
+    well-typed errors.
+    """
+    new_name = _validate_new_basename(new_name)
+    if not rel_path:
+        raise RenameError("rel_path requis", 400)
+
+    target = _profile_target(profile)
+    if target is None or not target.exists():
+        raise RenameError("profil sans target configuré", 400)
+
+    abs_old = (target / rel_path).resolve()
+    # Path traversal guard: make sure the resolved old path is still under
+    # the profile's target.
+    try:
+        abs_old.relative_to(target.resolve())
+    except ValueError as exc:
+        raise RenameError("rel_path hors du target", 400) from exc
+    if not abs_old.exists():
+        raise RenameError(f"fichier introuvable : {rel_path}", 404)
+
+    abs_new = abs_old.parent / new_name
+    # Same-name no-op (true equality, byte-for-byte)
+    if abs_new.name == abs_old.name:
+        return {
+            "ok": True,
+            "unchanged": True,
+            "old_rel_path": rel_path,
+            "new_rel_path": rel_path,
+            "new_name": new_name,
+        }
+    if abs_new.exists():
+        # APFS / HFS+ are case-insensitive by default on macOS — renaming
+        # ``foo.pdf`` → ``Foo.pdf`` makes ``abs_new.exists()`` True even
+        # though the destination IS the source. ``samefile()`` compares
+        # inodes so it tells case-only renames apart from real collisions.
+        try:
+            same = abs_new.samefile(abs_old)
+        except OSError:
+            same = False
+        if not same:
+            raise RenameError(
+                f"un fichier porte déjà ce nom : {new_name}", 409)
+
+    # FS rename
+    try:
+        os.rename(abs_old, abs_new)
+    except OSError as exc:
+        raise RenameError(f"échec du rename : {exc}", 500) from exc
+
+    # Record AFTER the rename succeeded
+    from lib import rename_journal
+    profile_dir = _profile_dir(profile)
+    record = rename_journal.append_rename(
+        profile_dir,
+        old_abs=str(abs_old),
+        new_abs=str(abs_new),
+        batch_id=batch_id,
+    )
+
+    # Invalidate dependent caches. They're all keyed by rel_path so a
+    # filename change makes them stale. They rebuild lazily on next query.
+    reset_cache(profile)
+    try:
+        from dashboard import taxonomy as _tx
+        _tx.reset_cache(profile)
+    except Exception:
+        pass
+    try:
+        from dashboard import categories as _cat
+        _cat.reset_cache(profile)
+    except Exception:
+        pass
+
+    # ``target.resolve()`` is required because ``abs_new`` came from
+    # ``abs_old.resolve().parent`` — on macOS ``/var`` is a symlink to
+    # ``/private/var``, so an un-resolved ``target`` would not be a parent
+    # of ``abs_new`` and ``relative_to`` would raise.
+    new_rel = str(abs_new.relative_to(target.resolve())).replace("\\", "/")
+    return {
+        "ok": True,
+        "old_rel_path": rel_path,
+        "new_rel_path": new_rel,
+        "new_name": new_name,
+        "journal_entry": record,
+    }
