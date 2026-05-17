@@ -111,6 +111,11 @@ def _validate_group(name: str) -> str:
 # Memory cache — invalidated whenever categories.yaml is written. Same
 # pattern as taxonomy._snapshot_cache.
 _snapshot_cache: dict[str, dict] = {}
+# {profile -> {rel_path -> {title, themes_text, filename, current_folder}}}
+# Built on first entry-files query for a profile, kept in memory until a
+# write (categories OR taxonomy) invalidates it. Avoids the 5-10s walk
+# on every entry click.
+_text_index_cache: dict[str, dict[str, dict]] = {}
 _locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
 _cache_lock = threading.Lock()
 
@@ -249,8 +254,10 @@ def reset_cache(profile: str | None = None) -> None:
     with _cache_lock:
         if profile is None:
             _snapshot_cache.clear()
+            _text_index_cache.clear()
         else:
             _snapshot_cache.pop(profile, None)
+            _text_index_cache.pop(profile, None)
 
 
 # ─── Backup + write helpers ───────────────────────────────────────────────
@@ -719,6 +726,225 @@ def dormant_audit(profile: str) -> dict:
 
 
 # ─── Bulk delete operations (Phase C cleanup) ─────────────────────────────
+
+
+# ─── Entry → files (feature J) ────────────────────────────────────────────
+#
+# Given a category entry (group + chemin), list:
+#  - "future" files: those whose title/filename/themes contain at least
+#    one of the entry's keywords (= would be classified to this entry's
+#    chemin at the next reclassify, via KeywordClassifier).
+#  - "current" files: those directly inside the entry's chemin folder
+#    on disk.
+#
+# Computing `future` requires walking the lib + reading vision_cache.
+# To make subsequent entry clicks fast, we build a per-profile index of
+# (rel_path → {title, themes_text, filename, current_folder}) and cache
+# it. The index is invalidated by reset_cache.
+
+
+def _build_text_index(profile: str) -> dict[str, dict]:
+    """Walk target/, hash each PDF/EPUB, look up the vision_cache, and
+    return a per-file dict of the text we can search keywords against.
+
+    Cost: O(N_files) hash + lookup. On 18k files via 8 threads, ~5-6 s.
+    Cached and re-used until invalidation.
+    """
+    import json as _json
+    from concurrent.futures import ThreadPoolExecutor
+
+    target = _profile_target_path_local(profile)
+    if target is None or not target.exists():
+        return {}
+
+    cache_path = _vision_cache_path_local(profile)
+    cache: dict = {}
+    if cache_path.exists():
+        try:
+            cache = _json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, _json.JSONDecodeError):
+            cache = {}
+    if not isinstance(cache, dict):
+        cache = {}
+
+    cfg_path = _profile_dir(profile) / "profile.yaml"
+    cfg: dict = {}
+    if cfg_path.exists():
+        try:
+            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    target_str = str(target)
+    file_list: list[tuple[str, str, str]] = []
+    for root, dirs, files in os.walk(target_str):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if f.startswith(".") or not f.lower().endswith((".pdf", ".epub")):
+                continue
+            abs_path = os.path.join(root, f)
+            try:
+                rel = os.path.relpath(abs_path, target_str).replace("\\", "/")
+            except ValueError:
+                continue
+            file_list.append((abs_path, rel, f))
+
+    from lib import vision_cache as vc
+
+    def _process(item: tuple[str, str, str]) -> tuple[str, dict] | None:
+        abs_path, rel, filename = item
+        title = ""
+        themes_text = ""
+        key = vc.compute_cache_key(abs_path, model=model, n_pages=n_pages)
+        result = vc.lookup(cache, key) if key else None
+        if isinstance(result, dict):
+            title = str(result.get("title") or "").strip()
+            themes_arr = result.get("themes")
+            theme_parts: list[str] = []
+            if isinstance(themes_arr, list):
+                for t in themes_arr:
+                    if isinstance(t, dict):
+                        th = str(t.get("theme") or "").strip()
+                        if th:
+                            theme_parts.append(th)
+            legacy = str(result.get("theme") or "").strip()
+            if legacy:
+                theme_parts.append(legacy)
+            themes_text = " ".join(theme_parts)
+        i = rel.rfind("/")
+        current_folder = rel[:i] if i >= 0 else ""
+        return rel, {
+            "title": title,
+            "themes_text": themes_text,
+            "filename": filename,
+            "current_folder": current_folder,
+        }
+
+    index: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for res in ex.map(_process, file_list):
+            if res is None:
+                continue
+            rel, info = res
+            index[rel] = info
+    return index
+
+
+def _get_text_index(profile: str) -> dict[str, dict]:
+    with _cache_lock:
+        cached = _text_index_cache.get(profile)
+    if cached is not None:
+        return cached
+    # Build outside the lock — slow operation, multiple seconds on cold cache
+    idx = _build_text_index(profile)
+    with _cache_lock:
+        _text_index_cache[profile] = idx
+    return idx
+
+
+def entry_files(
+    profile: str,
+    group: str,
+    chemin: str,
+    limit: int = 50,
+) -> dict:
+    """For a single category entry, return:
+      - future : files whose title/filename/themes match at least one of
+                 the entry's keywords (KeywordClassifier rescue candidates).
+                 Each item carries the FIRST keyword that matched so the
+                 user knows why the file was caught.
+      - current: files directly inside the entry's `chemin` folder on disk.
+                 Subfolders are NOT included (use the tree if needed).
+    """
+    empty = {
+        "ok": True,
+        "group": group,
+        "chemin": chemin,
+        "n_future": 0,
+        "n_current": 0,
+        "future": [],
+        "current": [],
+        "n_keywords": 0,
+    }
+    if not group or not chemin:
+        return empty
+
+    snap = build_snapshot(profile)
+    entry = None
+    for g in snap.get("groups", []):
+        if g.get("group") != group:
+            continue
+        for e in g.get("entries", []):
+            if e.get("chemin") == chemin:
+                entry = e
+                break
+        break
+    if entry is None:
+        return empty
+
+    keywords_orig = [k for k in entry.get("mots_cles") or [] if str(k).strip()]
+    keywords_lc = [str(k).strip().lower() for k in keywords_orig]
+
+    # FUTURE — scan the per-file text index for keyword matches
+    future: list[dict] = []
+    if keywords_lc:
+        text_index = _get_text_index(profile)
+        for rel_path, info in text_index.items():
+            blob = (
+                info.get("title", "") + " "
+                + info.get("themes_text", "") + " "
+                + info.get("filename", "")
+            ).lower()
+            matched: str | None = None
+            for kw_orig, kw_lc in zip(keywords_orig, keywords_lc, strict=False):
+                if kw_lc in blob:
+                    matched = kw_orig
+                    break
+            if matched:
+                future.append({
+                    "rel_path": rel_path,
+                    "title": info.get("title", ""),
+                    "current_folder": info.get("current_folder", ""),
+                    "keyword_matched": matched,
+                })
+        future.sort(key=lambda r: r["rel_path"].lower())
+
+    # CURRENT — files directly in `chemin` on disk
+    current: list[dict] = []
+    target = _profile_target_path_local(profile)
+    if target and target.exists():
+        folder_path = target / chemin
+        if folder_path.is_dir():
+            try:
+                with os.scandir(folder_path) as it:
+                    for entry_fs in it:
+                        if (entry_fs.is_file(follow_symlinks=False)
+                                and not entry_fs.name.startswith(".")
+                                and entry_fs.name.lower().endswith(
+                                    (".pdf", ".epub"))):
+                            current.append({
+                                "rel_path": f"{chemin}/{entry_fs.name}",
+                                "title": "",
+                                "current_folder": chemin,
+                            })
+            except OSError:
+                pass
+            current.sort(key=lambda r: r["rel_path"].lower())
+
+    return {
+        "ok": True,
+        "group": group,
+        "chemin": chemin,
+        "n_keywords": len(keywords_orig),
+        "n_future": len(future),
+        "n_current": len(current),
+        "future": future[:limit],
+        "current": current[:limit],
+    }
 
 
 def delete_keywords_bulk(profile: str, items: list[dict]) -> dict:

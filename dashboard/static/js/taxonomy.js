@@ -2724,6 +2724,15 @@
       renderTree();
       treeSearchInput.focus();
     });
+    // Cross-view navigation: the Catégories sub-tab can dispatch a
+    // request to open a file in our tree (e.g. clicking on an entry's
+    // matched file). We re-use the same logic as the Theme Files panel's
+    // file-click handler.
+    document.addEventListener('tax-navigate-file', (e) => {
+      const relPath = e.detail && e.detail.rel_path;
+      if (!relPath) return;
+      openFileFromPath(relPath);
+    });
     // Treemap scale toggle (Lissé / Réel)
     document.querySelectorAll('#tax-treemap-scale button').forEach(btn => {
       btn.addEventListener('click', () => {

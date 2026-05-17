@@ -33,6 +33,10 @@
     selectedEntry: null,       // { group, chemin }
     collapsedGroups: new Set(),// group names currently collapsed
     loaded: false,
+    // Files-section cache (feature J): key = "group||chemin" → entry_files
+    // response. Cleared on profile change or after writes.
+    entryFilesCache: new Map(),
+    entryFilesTab: 'future',   // 'future' | 'current'
   };
 
   // ── API ──────────────────────────────────────────────────────────────
@@ -41,6 +45,16 @@
     const url = `/api/categories/snapshot?profile=${encodeURIComponent(state.profile)}${force ? '&force=true' : ''}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error('snapshot HTTP ' + r.status);
+    return r.json();
+  }
+
+  async function fetchEntryFiles(group, chemin, limit) {
+    const url = `/api/categories/entry/files?profile=${encodeURIComponent(state.profile)}`
+              + `&group=${encodeURIComponent(group)}`
+              + `&chemin=${encodeURIComponent(chemin)}`
+              + `&limit=${limit || 50}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('entry/files HTTP ' + r.status);
     return r.json();
   }
 
@@ -125,6 +139,9 @@
                           state.selectedEntry.chemin);
       if (!e) state.selectedEntry = null;
     }
+    // Drop cached entry-files data — keywords may have changed, so the
+    // backend's index can no longer be trusted for any entry.
+    state.entryFilesCache.clear();
     renderAll();
   }
 
@@ -253,7 +270,31 @@
     renderTree();
     renderDetail();
     renderKeywords();
+    renderEntryFiles();
+    // Lazy fetch: if we don't already have data for this entry, ask the
+    // backend and re-render once it lands. Index build can take 4-5s
+    // on a cold run — the busy overlay covers it.
+    const key = entryFilesKey(group, chemin);
+    if (!state.entryFilesCache.has(key)) {
+      withBusy('Recherche des fichiers concernés…', async () => {
+        try {
+          const data = await fetchEntryFiles(group, chemin, 50);
+          state.entryFilesCache.set(key, data);
+        } catch (err) {
+          state.entryFilesCache.set(key, { error: err.message });
+        }
+        // Only re-render if the same entry is still selected (user might
+        // have moved on during the fetch).
+        if (state.selectedEntry
+            && state.selectedEntry.group === group
+            && state.selectedEntry.chemin === chemin) {
+          renderEntryFiles();
+        }
+      });
+    }
   }
+
+  function entryFilesKey(group, chemin) { return group + '||' + chemin; }
 
   function renderDetail() {
     const wrap = $('#tax-cat-detail');
@@ -381,6 +422,103 @@
       el('em', null, ['aucun']),
       ' fichier de la lib ne contient — utile pour purger les clés mortes.',
     ]));
+  }
+
+  // ── Col 3 bottom — entry files (feature J) ───────────────────────────
+
+  function renderEntryFiles() {
+    const wrap = $('#tax-cat-files');
+    const sub = $('#tax-cat-files-sub');
+    wrap.innerHTML = '';
+    if (!state.selectedEntry) {
+      sub.textContent = '';
+      wrap.appendChild(el('div', {
+        class: 'muted small',
+        style: 'padding:20px;text-align:center;',
+      }, ['Sélectionne une entry à gauche.']));
+      return;
+    }
+    const key = entryFilesKey(state.selectedEntry.group,
+                              state.selectedEntry.chemin);
+    const data = state.entryFilesCache.get(key);
+    if (!data) {
+      sub.textContent = 'Chargement…';
+      wrap.appendChild(el('div', { class: 'muted small',
+                                    style: 'padding:20px;text-align:center;' },
+        ['Analyse en cours…']));
+      return;
+    }
+    if (data.error) {
+      sub.textContent = '';
+      wrap.appendChild(el('div', { class: 'error small' },
+        ['✗ ' + data.error]));
+      return;
+    }
+    const tab = state.entryFilesTab;
+    sub.textContent = (tab === 'future')
+      ? `${data.n_future} matchent les mots-clés`
+      : `${data.n_current} actuellement dans le dossier`;
+    // Sub-tabs
+    wrap.appendChild(el('div', { class: 'tax-cat-files-tabs' }, [
+      el('button', {
+        class: 'tax-cat-files-tab' + (tab === 'future' ? ' active' : ''),
+        onclick: () => { state.entryFilesTab = 'future'; renderEntryFiles(); },
+        title: 'Fichiers dont le titre/filename/thèmes contient au moins un mot-clé de cette entry',
+      }, [`Impact futur (${data.n_future})`]),
+      el('button', {
+        class: 'tax-cat-files-tab' + (tab === 'current' ? ' active' : ''),
+        onclick: () => { state.entryFilesTab = 'current'; renderEntryFiles(); },
+        title: 'Fichiers présents dans le dossier cible de cette entry',
+      }, [`Actuellement (${data.n_current})`]),
+    ]));
+    const items = (tab === 'future') ? data.future : data.current;
+    const total = (tab === 'future') ? data.n_future : data.n_current;
+    if (!items || items.length === 0) {
+      wrap.appendChild(el('div', { class: 'muted small',
+                                    style: 'padding:14px;text-align:center;' }, [
+        tab === 'future'
+          ? '✅ Aucun fichier ne matche les mots-clés (filtre vide ou keywords trop spécifiques).'
+          : '✅ Le dossier cible est vide pour l\'instant.',
+      ]));
+      return;
+    }
+    const list = el('ul', { class: 'tax-cat-files-list' });
+    for (const f of items) {
+      const i = f.rel_path.lastIndexOf('/');
+      const name = i < 0 ? f.rel_path : f.rel_path.substring(i + 1);
+      const folder = f.current_folder || '(racine)';
+      const trigger = (tab === 'future' && f.keyword_matched)
+        ? el('span', {
+            class: 'tax-cat-files-trigger',
+            title: 'Mot-clé qui a déclenché le match',
+          }, [`kw: « ${f.keyword_matched} »`])
+        : null;
+      list.appendChild(el('li', {
+        class: 'tax-cat-files-row',
+        title: f.rel_path,
+        onclick: () => navigateToFileFromCat(f.rel_path),
+      }, [
+        el('span', { class: 'tax-cat-files-name' }, [name]),
+        el('span', { class: 'tax-cat-files-folder' }, [folder]),
+        trigger,
+      ]));
+    }
+    wrap.appendChild(list);
+    if (items.length < total) {
+      wrap.appendChild(el('div', {
+        class: 'muted small',
+        style: 'padding:8px 14px;text-align:center;',
+      }, [`+${total - items.length} autres — affine la recherche`]));
+    }
+  }
+
+  // Cross-view navigation: switch to the Mappings sub-tab and ask the
+  // other module to expand + select the file in its tree. The taxonomy.js
+  // module listens for 'tax-navigate-file' and handles the rest.
+  function navigateToFileFromCat(relPath) {
+    activateSubtab('mappings');
+    document.dispatchEvent(new CustomEvent('tax-navigate-file',
+                                           { detail: { rel_path: relPath } }));
   }
 
   // ── Write handlers ───────────────────────────────────────────────────
@@ -590,6 +728,7 @@
     renderTree();
     renderDetail();
     renderKeywords();
+    renderEntryFiles();
   }
 
   async function loadAndRender() {

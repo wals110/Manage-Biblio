@@ -3209,6 +3209,88 @@ th {
     opacity: 0.4;        /* disabled visual until Phase B */
 }
 
+/* Col 3 splits in two halves: keywords (top) + entry files (bottom).
+   Each is its own scrollable region separated by a header strip. */
+.tax-cat-col-kw {
+    display: flex;
+    flex-direction: column;
+}
+.tax-cat-col-kw .tax-cat-kw-panel {
+    flex: 0 0 45%;
+    border-bottom: 1px solid var(--border, #30363d);
+}
+.tax-cat-files-header {
+    flex-shrink: 0;
+}
+.tax-cat-files-panel {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Feature J — entry files sub-tabs + list */
+.tax-cat-files-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 12px 0;
+    border-bottom: 1px solid var(--border, #30363d);
+}
+.tax-cat-files-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #8b949e);
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 11px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    border-radius: 4px 4px 0 0;
+}
+.tax-cat-files-tab:hover { color: var(--text, #c9d1d9); background: rgba(255,255,255,0.03); }
+.tax-cat-files-tab.active {
+    color: var(--blue, #58a6ff);
+    border-bottom-color: var(--blue, #58a6ff);
+}
+.tax-cat-files-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+}
+.tax-cat-files-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, auto);
+    column-gap: 8px;
+    align-items: center;
+    padding: 4px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    font-size: 11px;
+}
+.tax-cat-files-row:last-child { border-bottom: none; }
+.tax-cat-files-row:hover { background: rgba(88, 166, 255, 0.06); }
+.tax-cat-files-name,
+.tax-cat-files-folder {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tax-cat-files-name { color: var(--text, #c9d1d9); }
+.tax-cat-files-folder {
+    color: var(--text-muted, #8b949e);
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tax-cat-files-trigger {
+    color: var(--blue, #58a6ff);
+    font-size: 10px;
+    font-style: italic;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
 .tax-stats {
     display: flex;
     align-items: center;

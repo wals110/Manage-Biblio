@@ -1686,6 +1686,22 @@ async def categories_undo_api(request: Request):
         return _categories_err(e)
 
 
+@app.get("/api/categories/entry/files")
+async def categories_entry_files_api(
+    profile: str,
+    group: str,
+    chemin: str,
+    limit: int = 50,
+):
+    """For a given category entry, return files matching its keywords
+    (future) + files currently in its target folder (current)."""
+    from fastapi.responses import JSONResponse
+    from dashboard import categories
+    limit = max(1, min(limit, 500))
+    return JSONResponse(
+        categories.entry_files(profile, group, chemin, limit=limit))
+
+
 @app.get("/api/categories/dormant")
 async def categories_dormant_api(profile: str):
     """Identify keywords + entries that no file's text could ever trigger.
