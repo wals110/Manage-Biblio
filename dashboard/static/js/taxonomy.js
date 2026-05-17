@@ -1686,6 +1686,62 @@
       body.appendChild(el('div', { class: 'muted' },
         ['🎯 Aucune prédiction theme-only — tous les thèmes sont orphelins.']));
     }
+    // Renommage — cross-link to the Rename sub-tab. Shows the rename
+    // diagnostic for this file (category + similarity vs the suggested
+    // name) and a button to jump to the Rename view where the user can
+    // act on it.
+    if (meta.rename_diagnostic) {
+      body.appendChild(el('div', { class: 'tax-llm-meta-h' }, ['Renommage']));
+      const rd = meta.rename_diagnostic;
+      if (rd.kind === 'ok') {
+        const catLabel = {
+          placeholder: '🏷  Placeholder',
+          divergent:   '⚠ Divergent',
+          minor_case:  'ℹ️ Minor case',
+          ok:          '✅ OK',
+        }[rd.category] || rd.category;
+        const sim = Math.round((rd.similarity || 0) * 100);
+        body.appendChild(el('div', {
+          class: 'tax-llm-rename tax-llm-rename-' + rd.category,
+        }, [
+          el('div', null, [
+            el('strong', null, [catLabel]),
+            '  ',
+            el('span', { class: 'muted small' }, [`sim ${sim}%`]),
+          ]),
+          el('div', { class: 'muted small', style: 'margin-top:2px;' }, [
+            '→ ', el('code', null, [rd.suggested_name]),
+          ]),
+        ]));
+        // Jump button — switches sub-tab + selects this file in Rename
+        body.appendChild(el('button', {
+          class: 'tax-llm-full-btn',
+          title: 'Ouvrir cet item dans la vue Rename',
+          onclick: () => {
+            const target = meta.file && meta.file.rel_path;
+            // Switch sub-tab
+            const renameBtn = document.querySelector('.tax-subtab[data-view="rename"]');
+            if (renameBtn) renameBtn.click();
+            // Ask the rename module to focus this candidate (event-based,
+            // because the JS modules live in separate IIFEs).
+            if (target) {
+              document.dispatchEvent(new CustomEvent('tax-rename-select',
+                { detail: { rel_path: target } }));
+            }
+          },
+        }, ['Ouvrir dans Rename →']));
+      } else if (rd.kind === 'low_confidence') {
+        body.appendChild(el('div', { class: 'muted small' }, [
+          `Titre LLM en confiance trop basse (${Math.round((rd.confidence||0)*100)}% < ${Math.round((rd.min_required||0)*100)}%) — diagnostic non calculé.`,
+        ]));
+      } else if (rd.kind === 'render_failed') {
+        body.appendChild(el('div', { class: 'muted small' }, [
+          'Le template a échoué : ' + (rd.issues || []).join('; '),
+        ]));
+      } else {
+        // no_metadata: stay silent — we already say it elsewhere
+      }
+    }
     // Bouton "Pipeline complet" (Phase 2 C) — recalcul avec KeywordClassifier
     const fullBtn = el('button', {
       class: 'tax-llm-full-btn',

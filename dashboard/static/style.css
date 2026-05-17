@@ -2902,6 +2902,367 @@ th {
     color: white;
 }
 
+/* Rename view — info banner + 3-column grid + filters + diff (PR2)
+ * Reuses the same banner pattern as the Catégories view for consistency. */
+.tax-rename-info-banner {
+    margin-bottom: 10px;
+    background: rgba(88, 166, 255, 0.04);
+    border: 1px solid rgba(88, 166, 255, 0.18);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.tax-rename-info-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+}
+.tax-rename-info-toggle:hover { background: rgba(88, 166, 255, 0.06); }
+.tax-rename-info-label { flex: 1; }
+.tax-rename-info-chevron {
+    font-size: 9px;
+    color: var(--text-muted, #8b949e);
+    transition: transform 0.15s;
+}
+.tax-rename-info-toggle.open .tax-rename-info-chevron { transform: rotate(90deg); }
+.tax-rename-info-body {
+    padding: 4px 18px 14px 38px;
+    border-top: 1px solid rgba(88, 166, 255, 0.12);
+    font-size: 12px;
+    line-height: 1.55;
+}
+.tax-rename-info-body p { margin: 8px 0; }
+.tax-rename-info-body code {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--blue, #58a6ff);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+.tax-rename-info-list { margin: 8px 0; padding-left: 18px; }
+
+.tax-rename-grid {
+    display: grid;
+    grid-template-columns: 36% 32% 32%;
+    gap: 12px;
+    height: calc(100vh - 210px);
+}
+.tax-rename-col {
+    background: var(--card, #161b22);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Filter pills (top of col 1) */
+.tax-rename-filters {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border, #30363d);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+/* Toggle pills: very binary visual. INACTIVE = fully grayed out, no
+   color hint, "○" prefix. ACTIVE = full color fill, "●" prefix.
+   !important defends against any cached/leftover styling. */
+.tax-rename-filter {
+    padding: 4px 12px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.10) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: rgba(255, 255, 255, 0.35) !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: background 0.12s, border-color 0.12s, color 0.12s !important;
+}
+.tax-rename-filter::before {
+    content: "○ " !important;
+    font-size: 11px !important;
+}
+.tax-rename-filter:hover {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+.tax-rename-filter.active::before {
+    content: "● " !important;
+}
+.tax-rename-filter.active {
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+.tax-rename-filter-danger.active {
+    background: var(--red, #f85149) !important;
+    border-color: var(--red, #f85149) !important;
+}
+.tax-rename-filter-warning.active {
+    background: #d29922 !important;
+    border-color: #d29922 !important;
+}
+.tax-rename-filter-neutral.active {
+    background: var(--blue, #58a6ff) !important;
+    border-color: var(--blue, #58a6ff) !important;
+}
+.tax-rename-filter-success.active {
+    background: var(--green, #3fb950) !important;
+    border-color: var(--green, #3fb950) !important;
+}
+
+/* Candidate list rows */
+.tax-rename-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0;
+}
+.tax-rename-row {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) 40px;
+    column-gap: 8px;
+    align-items: center;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 11px;
+}
+.tax-rename-row:hover { background: rgba(255,255,255,0.04); }
+.tax-rename-row.selected { background: rgba(88, 166, 255, 0.12); }
+.tax-rename-row-current {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text, #c9d1d9);
+}
+.tax-rename-row-sim {
+    text-align: right;
+    color: var(--text-muted, #8b949e);
+    font-variant-numeric: tabular-nums;
+    font-size: 10px;
+}
+
+/* Category pill (used in row + diagnostic) */
+.tax-rename-cat {
+    display: inline-block;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+.tax-rename-cat-placeholder {
+    background: rgba(248, 81, 73, 0.2); color: var(--red, #f85149);
+}
+.tax-rename-cat-divergent {
+    background: rgba(217, 119, 6, 0.2); color: #d29922;
+}
+.tax-rename-cat-minor_case {
+    background: rgba(88, 166, 255, 0.18); color: var(--blue, #58a6ff);
+}
+.tax-rename-cat-ok {
+    background: rgba(63, 185, 80, 0.18); color: var(--green, #3fb950);
+}
+
+/* Col 2 — detail */
+.tax-rename-detail, .tax-rename-preview {
+    overflow-y: auto;
+    flex: 1;
+}
+.tax-rename-field {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.tax-rename-field label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted, #8b949e);
+    margin-bottom: 4px;
+}
+.tax-rename-current-name,
+.tax-rename-suggested-name {
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    word-break: break-all;
+}
+.tax-rename-current-name { color: var(--text-muted, #8b949e); }
+.tax-rename-suggested-name { color: var(--blue, #58a6ff); }
+.tax-rename-meta { font-size: 12px; line-height: 1.5; }
+.tax-rename-template-display {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--blue, #58a6ff);
+    background: rgba(88, 166, 255, 0.06);
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+/* Cover thumbnail + LLM summary card at the top of the detail column.
+   The cover takes the FULL width (auto height) — same fit-to-container
+   behaviour as the Mappings viewer. LLM card sits below it, not next
+   to it, so both have breathing room. */
+.tax-rename-preview-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.tax-rename-cover-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg, #0d1117);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 4px;
+    min-height: 320px;
+    max-height: 48vh;
+    overflow: hidden;
+}
+.tax-rename-cover {
+    max-width: 100%;
+    max-height: 48vh;
+    object-fit: contain;
+    display: block;
+}
+
+/* Multipage pager — arrow + thumb strip + indicator. Same UX shape as
+   the Mappings viewer but sized smaller (the col is narrower here). */
+.tax-rename-pager {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.tax-rename-pager-arrow {
+    height: auto;
+    padding: 2px 6px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border, #30363d);
+    border-radius: 4px;
+    color: var(--text, #c9d1d9);
+    cursor: pointer;
+}
+.tax-rename-pager-arrow:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.tax-rename-thumb {
+    width: 38px;
+    height: 50px;
+    border: 1px solid var(--border, #30363d);
+    border-radius: 3px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg, #0d1117);
+    transition: border-color 0.1s, transform 0.05s;
+}
+.tax-rename-thumb:hover {
+    border-color: rgba(88, 166, 255, 0.5);
+}
+.tax-rename-thumb.active {
+    border-color: var(--blue, #58a6ff);
+    box-shadow: 0 0 0 1px var(--blue, #58a6ff);
+}
+.tax-rename-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.tax-rename-pager-indicator {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+.tax-rename-llm-card {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text, #c9d1d9);
+    min-width: 0;
+}
+.tax-rename-llm-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+    overflow-wrap: anywhere;
+}
+.tax-rename-llm-author {
+    color: var(--text-muted, #8b949e);
+    font-size: 11px;
+    margin-bottom: 6px;
+    overflow-wrap: anywhere;
+}
+.tax-rename-llm-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.tax-rename-llm-themes-h {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted, #8b949e);
+    margin: 6px 0 3px;
+}
+.tax-rename-llm-themes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 11px;
+}
+.tax-rename-llm-themes li { margin-bottom: 2px; }
+
+/* Char diff */
+.tax-rename-diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                   font-size: 11px; line-height: 1.5; }
+.tax-rename-diff-row {
+    white-space: pre-wrap;
+    word-break: break-all;
+    padding: 4px 6px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    margin: 2px 0;
+}
+.tax-rename-diff-ch.kept { color: var(--text, #c9d1d9); }
+.tax-rename-diff-ch.removed {
+    background: rgba(248, 81, 73, 0.25);
+    color: var(--red, #f85149);
+    border-radius: 2px;
+}
+.tax-rename-diff-ch.added {
+    background: rgba(63, 185, 80, 0.25);
+    color: var(--green, #3fb950);
+    border-radius: 2px;
+}
+
+/* Col 3 — preview input */
+.tax-rename-preview input[type="text"] {
+    width: 100%;
+    background: var(--bg, #0d1117);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: var(--text, #c9d1d9);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+.tax-rename-preview input[type="text"]:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 /* Catégories info banner — collapsed pill by default, expands inline */
 .tax-cat-info-banner {
     margin-bottom: 10px;
@@ -3894,6 +4255,40 @@ th {
 .tax-llm-reason-secondary_theme { border-left-color: #d29922; }
 .tax-llm-reason-ancestor_match { border-left-color: var(--blue, #58a6ff); }
 .tax-llm-reason-no_theme_match { border-left-color: var(--text-muted, #8b949e); }
+/* Rename diagnostic block inside the Mappings LLM card — color coded
+   by category, mirrors the same palette used in the Rename sub-tab. */
+.tax-llm-rename {
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin: 4px 0;
+    font-size: 12px;
+    border-left: 2px solid var(--border, #30363d);
+}
+.tax-llm-rename code {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--blue, #58a6ff);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    word-break: break-all;
+}
+.tax-llm-rename-placeholder {
+    background: rgba(248, 81, 73, 0.06);
+    border-left-color: var(--red, #f85149);
+}
+.tax-llm-rename-divergent {
+    background: rgba(217, 119, 6, 0.06);
+    border-left-color: #d29922;
+}
+.tax-llm-rename-minor_case {
+    background: rgba(88, 166, 255, 0.04);
+    border-left-color: var(--blue, #58a6ff);
+}
+.tax-llm-rename-ok {
+    background: rgba(63, 185, 80, 0.06);
+    border-left-color: var(--green, #3fb950);
+}
+
 /* Heuristic banner — surfaced when the theme-only prediction picked a
    non-top theme because its mapping was more specific. Subtle info tone
    (cyan) to distinguish from the green/yellow "Pourquoi ici ?" line. */

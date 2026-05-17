@@ -13,6 +13,8 @@
                     title="Mappings thème → dossier (theme_mapping.yaml)">Mappings</button>
             <button class="tax-subtab" data-view="categories"
                     title="Catégories + mots-clés (categories.yaml)">Catégories</button>
+            <button class="tax-subtab" data-view="rename"
+                    title="Audit + renommage des fichiers basé sur le titre LLM">Rename</button>
         </div>
         <div class="tax-toolbar">
             <label class="filter-label">Profil</label>
@@ -63,6 +65,9 @@
     </div>
     <div class="tax-stats" id="tax-stats-categories" style="display:none;">
         <span class="muted">Chargement catégories…</span>
+    </div>
+    <div class="tax-stats" id="tax-stats-rename" style="display:none;">
+        <span class="muted">Chargement audit rename…</span>
     </div>
 </header>
 
@@ -236,6 +241,73 @@
 </div>
 <!-- ────────────────────── End view: Catégories ──────────────────────────── -->
 
+<!-- ────────────────────── View: Rename (PR2 — read-only audit) ───────────── -->
+<div class="tax-view tax-view-rename" data-view="rename" style="display:none;">
+    <div class="tax-rename-info-banner">
+        <button class="tax-rename-info-toggle" aria-expanded="false">
+            <span>ℹ️</span>
+            <span class="tax-rename-info-label">À quoi sert cette vue ?</span>
+            <span class="tax-rename-info-chevron">▶</span>
+        </button>
+        <div class="tax-rename-info-body" hidden>
+            <p>
+                <strong>Audit des noms de fichiers</strong> basé sur les titres détectés
+                par le LLM. Le pipeline de classification ne touche pas aux noms ; cette
+                vue identifie les fichiers dont le filename actuel diverge fortement du
+                titre LLM extrait du contenu.
+            </p>
+            <ul class="tax-rename-info-list">
+                <li><strong>placeholder</strong> : noms du type <code>Title Author.pdf</code> — le rename a échoué silencieusement</li>
+                <li><strong>divergent</strong> : similarité &lt; 0.4 avec le titre LLM (ex: <code>Book4You.pdf</code>)</li>
+                <li><strong>minor_case</strong> : 0.4–0.7 (souvent juste casse / ordre des mots)</li>
+                <li><strong>ok</strong> : ≥ 0.7 — le filename reflète déjà le titre</li>
+            </ul>
+            <p class="muted small">
+                Le template est défini dans <code>profile.yaml</code> sous
+                <code>rename.template</code> (par défaut : <code>{title}{ - author}</code>).
+                Renommage à appliquer à venir dans une PR suivante — cette vue est en
+                lecture seule pour l'instant.
+            </p>
+        </div>
+    </div>
+    <div class="tax-rename-grid">
+        <!-- Col 1 — candidate list -->
+        <section class="tax-col tax-rename-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Candidats</h2>
+                <span class="tax-col-sub" id="tax-rename-list-sub"></span>
+            </header>
+            <div class="tax-rename-filters" id="tax-rename-filters"></div>
+            <div class="tax-rename-list" id="tax-rename-list"></div>
+        </section>
+        <!-- Col 2 — file detail + diff -->
+        <section class="tax-col tax-rename-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Détail</h2>
+                <span class="tax-col-sub" id="tax-rename-detail-sub"></span>
+            </header>
+            <div class="tax-rename-detail" id="tax-rename-detail">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Sélectionne un candidat à gauche.
+                </div>
+            </div>
+        </section>
+        <!-- Col 3 — suggested name + (future) apply -->
+        <section class="tax-col tax-rename-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Proposition</h2>
+                <span class="tax-col-sub" id="tax-rename-preview-sub"></span>
+            </header>
+            <div class="tax-rename-preview" id="tax-rename-preview">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Sélectionne un candidat à gauche.
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+<!-- ────────────────────── End view: Rename ───────────────────────────────── -->
+
 <!-- Popover "+ Mapper" -->
 <div id="tax-map-popover" class="tax-map-popover" style="display:none;">
     <div class="tax-map-popover-title">Mapper le thème vers un dossier</div>
@@ -377,4 +449,5 @@
 
 <script src="/static/js/taxonomy.js"></script>
 <script src="/static/js/taxonomy_categories.js"></script>
+<script src="/static/js/taxonomy_rename.js"></script>
 {% endblock %}

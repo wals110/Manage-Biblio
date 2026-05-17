@@ -1686,6 +1686,17 @@ async def categories_undo_api(request: Request):
         return _categories_err(e)
 
 
+@app.get("/api/rename/audit")
+async def rename_audit_api(profile: str, force: bool = False):
+    """Scan the lib + suggest a name per file using the profile's
+    rename template. Read-only. Cached in memory.
+    Optional `force=true` bypasses the cache."""
+    from fastapi.responses import JSONResponse
+    from dashboard import rename as rename_audit_module
+    return JSONResponse(
+        rename_audit_module.rename_audit(profile, force_reload=force))
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,

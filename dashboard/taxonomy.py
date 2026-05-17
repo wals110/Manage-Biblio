@@ -1159,7 +1159,72 @@ def get_file_metadata(profile: str, rel_path: str) -> dict:
         reason["kind"] = "no_themes"
         reason["explanation"] = "Pas d'analyse LLM disponible pour ce fichier."
     out["classification_reason"] = reason
+
+    # ── Cross-link to Rename audit (feature: card LLM also shows the
+    # renaming diagnostic for this file so the user gets the full picture
+    # in one place). Cheap: 1 template render + 1 trigram jaccard.
+    out["rename_diagnostic"] = _rename_diagnostic_for(profile, rel_path, result)
     return out
+
+
+def _rename_diagnostic_for(
+    profile: str,
+    rel_path: str,
+    vision_result: dict,
+) -> dict:
+    """Best-effort filename audit for a single file. Returns the same
+    shape as one entry from dashboard.rename.rename_audit, plus a
+    ``kind`` discriminator the UI uses for icons/colors.
+
+    Returns kind=``no_metadata`` when the title isn't usable.
+    """
+    from dashboard import rename as rename_mod
+    from lib import rename_template as rt
+
+    try:
+        cfg = rename_mod.get_rename_config(profile)
+    except Exception:
+        return {"kind": "no_metadata"}
+
+    title = str(vision_result.get("title") or "").strip()
+    if not title:
+        return {"kind": "no_metadata"}
+    conf = float(vision_result.get("confidence") or 0.0)
+    if conf < cfg["min_title_confidence"]:
+        return {"kind": "low_confidence",
+                "confidence": round(conf, 2),
+                "min_required": cfg["min_title_confidence"]}
+
+    filename = rel_path.split("/")[-1]
+    stem, ext = filename.rsplit(".", 1) if "." in filename else (filename, "pdf")
+    ext_with_dot = "." + ext.lower()
+
+    metadata = {
+        "title": title,
+        "author": str(vision_result.get("author") or "").strip(),
+        "year": str(vision_result.get("year") or "").strip(),
+        "lang": str(vision_result.get("language")
+                    or vision_result.get("lang") or "").strip(),
+    }
+    rendered = rt.render_with_fallback(
+        template=cfg["template"], fallback=cfg["fallback"],
+        metadata=metadata, extension=ext_with_dot,
+        sanitize_cfg=cfg["sanitize"], max_length=cfg["max_length"],
+    )
+    if not rendered.is_valid:
+        return {"kind": "render_failed", "issues": rendered.issues}
+
+    similarity = rename_mod._jaccard_3grams(stem, rendered.new_stem)
+    category = rename_mod._categorize(stem, similarity)
+    return {
+        "kind": "ok",
+        "category": category,                 # placeholder | divergent | minor_case | ok
+        "similarity": round(similarity, 3),
+        "current_name": filename,
+        "suggested_name": rendered.new_name,
+        "used_fallback": rendered.used_fallback,
+        "issues": rendered.issues,
+    }
 
 
 # ─── Thumbnails (cover + multipage lazy) ──────────────────────────────────
