@@ -857,10 +857,33 @@
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
+  function _refreshSessionActiveBadge() {
+    // Count session entries that still hold a journal record AND haven't
+    // been undone yet — these are the "still revertable" actions the
+    // user did in this tab. Anything else (undone, or pre-PR4A entries
+    // without a journal field) is excluded.
+    const active = state.sessionRenames.filter(
+      e => e.journal && !e.undone).length;
+    const warn = $('#tax-rename-history-session-warn');
+    const warnN = $('#tax-rename-history-session-n');
+    if (!warn || !warnN) return;
+    warnN.textContent = String(active);
+    warn.hidden = active === 0;
+    // Also tweak the parent button title so the tooltip explains both
+    // counters once they diverge.
+    const btn = $('#tax-rename-history-btn');
+    if (btn) {
+      btn.title = active > 0
+        ? `Journal du profil — ${active} renommage(s) faits dans cette session sont encore actifs (non annulés)`
+        : 'Voir le journal des renommages (avec undo)';
+    }
+  }
+
   function renderSession() {
     const body = $('#tax-rename-session-body');
     const count = $('#tax-rename-session-count');
     const clearBtn = $('#tax-rename-session-clear');
+    _refreshSessionActiveBadge();
     if (!body || !count) return;
     const n = state.sessionRenames.length;
     count.textContent = String(n);

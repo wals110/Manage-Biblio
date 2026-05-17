@@ -3146,6 +3146,23 @@ th {
     border-color: rgba(88, 166, 255, 0.4);
 }
 .tax-rename-history-btn[disabled] { opacity: 0.45; cursor: default; }
+/* Session-active sub-badge — orange dot when the current tab session
+ * still has renames pending undo. Lives inside the 📜 button. */
+.tax-rename-history-session-warn {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    padding: 0 5px;
+    background: rgba(217, 130, 43, 0.18);
+    color: #f0883e;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.45;
+    border: 1px solid rgba(217, 130, 43, 0.35);
+}
+.tax-rename-history-session-warn[hidden] { display: none; }
 
 /* Journal modal — list of records with per-row undo */
 .tax-rename-history-modal-body { min-width: 560px; max-width: 760px; }
