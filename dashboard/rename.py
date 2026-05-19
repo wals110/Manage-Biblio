@@ -746,26 +746,39 @@ def undo_single_rename(
     from lib import rename_journal
     profile_dir = _profile_dir(profile)
 
-    # Look up the record. We match on (ts, old, new) so the caller can
-    # pass back exactly what the GET endpoint returned.
+    # Look up the record AND its position in the journal. We match on
+    # (ts, old, new) so the caller can pass back exactly what the GET
+    # endpoint returned. The journal index matters because the
+    # already-undone check must respect chronological order.
+    #
+    # When the same (ts, old, new) repeats — possible if a user does
+    # the same rename twice within one second (ts has 1s precision) —
+    # we target the LAST occurrence. Reasoning: the journal is
+    # append-only, so the freshest "live" record is the latest match;
+    # earlier ones must have already been reversed by an interleaved
+    # undo or they'd have failed at FS level.
     all_records = rename_journal.read_journal(profile_dir)
     match: dict | None = None
-    for r in all_records:
+    match_idx = -1
+    for i, r in enumerate(all_records):
         if (r.get("ts") == ts
                 and r.get("old") == old_abs
                 and r.get("new") == new_abs):
             match = r
-            break
+            match_idx = i
+            # Keep walking — we want the LAST match, not the first
     if match is None:
         raise RenameError(
             "Entrée introuvable dans le journal", 404)
 
-    # Already undone? An inverse op exists if a later "undo-*" record
-    # has its old field equal to this record's new field.
-    if any((r.get("batch") or "").startswith("undo")
-           and r.get("old") == match["new"]
-           for r in all_records):
-        raise RenameError("Cette entrée a déjà été annulée", 409)
+    # Already undone? Only consider undo records that came AFTER this
+    # rename — a path can repeat across time (rename → undo → re-rename
+    # to the same target), so an earlier undo whose old happens to
+    # equal this rename's new is NOT a reversal of THIS rename.
+    for later in all_records[match_idx + 1:]:
+        later_batch = later.get("batch") or ""
+        if later_batch.startswith("undo") and later.get("old") == match["new"]:
+            raise RenameError("Cette entrée a déjà été annulée", 409)
 
     try:
         inverse = rename_journal.undo_record(profile_dir, match)

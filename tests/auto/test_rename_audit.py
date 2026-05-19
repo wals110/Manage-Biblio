@@ -718,6 +718,51 @@ class TestUndoSingle(RenameAuditTestBase):
                 self.profile_name, rec["ts"], rec["old"], rec["new"])
         self.assertEqual(cm.exception.status, 404)
 
+    def test_undo_respects_journal_order_not_just_path_match(self):
+        """If a file has been renamed → undone → renamed-again to the
+        same target, undoing the SECOND rename must NOT be refused as
+        already-undone just because an earlier (now-stale) undo record
+        has its `old` equal to this rename's `new`.
+
+        Reproduces user-reported bug 2026-05-17: the modal correctly
+        showed records as actionable (get_journal respects order) but
+        the undo endpoint refused with 409 because undo_single_rename
+        used the older path-only check.
+        """
+        # Step 1 — rename + undo it
+        self._add_file_with_cache("src.pdf", title="Foo")
+        rename.commit_rename(self.profile_name, "src.pdf", "Renamed.pdf")
+        j1 = rename.get_journal(self.profile_name)
+        first_rec = j1["records"][0]
+        rename.undo_single_rename(
+            self.profile_name,
+            first_rec["ts"], first_rec["old"], first_rec["new"])
+        # Step 2 — re-do the same rename. The journal now has:
+        #   line 1: old=src.pdf, new=Renamed.pdf (original)
+        #   line 2: old=Renamed.pdf, new=src.pdf (undo of line 1)
+        #   line 3: old=src.pdf, new=Renamed.pdf (re-do)
+        # The fresh re-do MUST be undoable.
+        rename.commit_rename(self.profile_name, "src.pdf", "Renamed.pdf")
+        j2 = rename.get_journal(self.profile_name)
+        # records is newest-first; the freshest forward is at index 0
+        forwards = [r for r in j2["records"] if not r["is_undo"]]
+        latest_forward = forwards[0]   # newest first
+        # The fresh re-do must NOT be flagged as undone (the buggy check
+        # would have, because an earlier inverse op's old matches its new).
+        self.assertFalse(latest_forward["is_undone"])
+        # The earlier original IS undone (its inverse exists)
+        self.assertTrue(forwards[1]["is_undone"])
+
+        # Now try to undo it — this used to raise 409 with the buggy check
+        result = rename.undo_single_rename(
+            self.profile_name,
+            latest_forward["ts"],
+            latest_forward["old"],
+            latest_forward["new"])
+        self.assertTrue(result["ok"])
+        # And the file is back at src.pdf
+        self.assertTrue((self.target / "src.pdf").exists())
+
     def test_caches_invalidated_after_undo(self):
         rec = self._rename_and_get_record("a.pdf", "A.pdf")
         # Prime the audit cache after the rename
