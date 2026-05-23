@@ -435,7 +435,10 @@ def _apply_patch_to_audit(
     """Mutate ``cached`` in place for each ``(old_rel, new_rel)`` pair.
 
     Returns True on success, False if any pair couldn't be patched
-    cleanly (caller should drop the cache for safety).
+    cleanly. On False, ``stats`` is restored to its pre-call state so
+    the cache stays self-consistent even if the caller forgets to
+    drop it. ``candidates`` is only rebuilt at the very end so it
+    cannot be partially mutated.
 
     Single sort at the end — for a bulk of 100 renames we pay one
     ``candidates.sort()`` (~50ms on 10k entries) instead of 100.
@@ -443,6 +446,12 @@ def _apply_patch_to_audit(
     target_resolved, vc, cfg, model, n_pages = ctx
     candidates: list[dict] = cached["candidates"]
     stats: dict = cached["stats"]
+    # Snapshot stats so we can restore on any failure mode. We decrement
+    # the old entry's bucket BEFORE we know if its replacement will land
+    # successfully — without this snapshot, a mid-batch failure would
+    # leave the cache with half-decremented counters even though the
+    # caller's `pop(profile)` fixes it. Defensive: belt + suspenders.
+    stats_backup: dict = dict(stats)
     # Build an index for O(1) lookup of old entries
     by_rel: dict[str, int] = {
         c["rel_path"]: i for i, c in enumerate(candidates)
@@ -451,6 +460,14 @@ def _apply_patch_to_audit(
     to_remove: set[int] = set()
     additions: list[dict] = []
 
+    def _bail() -> bool:
+        # Restore the stats to their pre-call state. ``candidates`` was
+        # never mutated (we only collected indices in ``to_remove``),
+        # so nothing else needs undoing.
+        stats.clear()
+        stats.update(stats_backup)
+        return False
+
     for old_rel, new_rel in pairs:
         idx = by_rel.get(old_rel)
         if idx is None:
@@ -458,10 +475,11 @@ def _apply_patch_to_audit(
             # n_low_confidence / n_render_failed). We can't know which
             # without re-scanning the now-vanished file. Bail to a full
             # rebuild so stats don't drift.
-            return False
+            return _bail()
         if idx in to_remove:
-            # Same file referenced twice in the batch — shouldn't happen
-            return False
+            # Duplicate rel_path in the batch — punt to a full rebuild
+            # to avoid mutating the same entry twice.
+            return _bail()
         to_remove.add(idx)
         old_entry = candidates[idx]
         stats[f"n_{old_entry['category']}"] -= 1
@@ -469,7 +487,7 @@ def _apply_patch_to_audit(
 
         abs_new = target_resolved / new_rel
         if not abs_new.exists():
-            return False
+            return _bail()
         new_result = _audit_single_file(
             str(abs_new), new_rel, vc, cfg, model, n_pages)
 
@@ -484,16 +502,13 @@ def _apply_patch_to_audit(
             stats[f"n_{new_result['category']}"] += 1
             additions.append(new_result)
 
-    # Apply removals + additions in one pass, then a single sort
-    if to_remove:
-        cached["candidates"] = [
-            c for i, c in enumerate(candidates) if i not in to_remove
-        ]
-        candidates = cached["candidates"]
-    if additions:
-        candidates.extend(additions)
-    if to_remove or additions:
-        candidates.sort(key=_candidate_sort_key)
+    # Apply removals + additions in one pass, then a single sort. We
+    # always rebuild the list to keep this branch unconditional — clearer
+    # than the previous "rebind if to_remove" pattern and equally cheap.
+    new_list = [c for i, c in enumerate(candidates) if i not in to_remove]
+    new_list.extend(additions)
+    new_list.sort(key=_candidate_sort_key)
+    cached["candidates"] = new_list
     return True
 
 
