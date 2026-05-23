@@ -1337,5 +1337,186 @@ class TestTargetedAuditPatchRegressions(RenameAuditTestBase):
         self.assertEqual(len(cached["candidates"]), candidates_before_count)
 
 
+# ─── User category overrides (feature/rename-status-override) ───────────
+
+
+class TestSetOverrides(RenameAuditTestBase):
+    """User-facing semantic: 'this divergent is actually fine, mark it ok'.
+    Persists in profile/.cache/rename-overrides.json keyed by cache_key
+    (MD5-of-head), so the override survives renames automatically."""
+
+    def test_set_override_changes_category(self):
+        # A truly divergent file (random name vs. specific title)
+        self._add_file_with_cache(
+            "abcd.pdf",
+            title="Hands-On Machine Learning",
+            author="Aurélien Géron",
+        )
+        r1 = rename.rename_audit(self.profile_name)
+        c = r1["candidates"][0]
+        self.assertEqual(c["category"], "divergent")
+        self.assertFalse(c["is_overridden"])
+
+        result = rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "abcd.pdf", "category": "ok"}],
+        )
+        self.assertEqual(result["n_set"], 1)
+        self.assertEqual(result["n_errors"], 0)
+
+        r2 = rename.rename_audit(self.profile_name)
+        c2 = r2["candidates"][0]
+        self.assertEqual(c2["category"], "ok")
+        self.assertEqual(c2["auto_category"], "divergent")
+        self.assertTrue(c2["is_overridden"])
+        # Stats reflect the override
+        self.assertEqual(r2["stats"]["n_ok"], 1)
+        self.assertEqual(r2["stats"]["n_divergent"], 0)
+
+    def test_clear_override_restores_auto_category(self):
+        self._add_file_with_cache("xyz.pdf",
+                                   title="Some Real Title", author="Author")
+        rename.rename_audit(self.profile_name)
+        rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "xyz.pdf", "category": "ok"}])
+        # Now clear
+        result = rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "xyz.pdf"}],
+            clear=True)
+        self.assertEqual(result["n_set"], 1)
+        self.assertTrue(result["successes"][0]["cleared"])
+
+        r = rename.rename_audit(self.profile_name)
+        c = r["candidates"][0]
+        self.assertFalse(c["is_overridden"])
+        self.assertEqual(c["category"], c["auto_category"])
+
+    def test_override_persists_to_disk(self):
+        self._add_file_with_cache("f.pdf",
+                                   title="Title", author="Author")
+        rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "f.pdf", "category": "ok"}])
+        path = rename._overrides_path(self.profile_name)
+        self.assertTrue(path.exists())
+        on_disk = json.loads(path.read_text())
+        self.assertEqual(len(on_disk), 1)
+        first = next(iter(on_disk.values()))
+        self.assertEqual(first["category"], "ok")
+        self.assertIn("ts", first)
+
+    def test_override_survives_rename(self):
+        # The override is keyed by cache_key (MD5 of file head bytes),
+        # not by rel_path. Renaming the file MUST keep the override
+        # active under the new path.
+        self._add_file_with_cache(
+            "Title Author.pdf",
+            title="Real Book", author="Some Author")  # placeholder
+        rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "Title Author.pdf", "category": "ok"}])
+        r1 = rename.rename_audit(self.profile_name)
+        self.assertEqual(r1["candidates"][0]["category"], "ok")
+        self.assertTrue(r1["candidates"][0]["is_overridden"])
+
+        # Now rename the file
+        rename.commit_rename(
+            self.profile_name, "Title Author.pdf", "Real Book - Some Author.pdf")
+        # The renamed file MUST still be marked overridden
+        r2 = rename.rename_audit(self.profile_name)
+        c = r2["candidates"][0]
+        self.assertEqual(c["current_name"], "Real Book - Some Author.pdf")
+        self.assertTrue(c["is_overridden"])
+        self.assertEqual(c["category"], "ok")
+
+    def test_only_ok_category_allowed_in_mvp(self):
+        self._add_file_with_cache("f.pdf",
+                                   title="Title", author="Author")
+        result = rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "f.pdf", "category": "placeholder"}])
+        self.assertEqual(result["n_set"], 0)
+        self.assertEqual(result["n_errors"], 1)
+        self.assertEqual(result["errors"][0]["status"], 400)
+        self.assertIn("non autorisée", result["errors"][0]["error"])
+
+    def test_path_traversal_refused(self):
+        self._add_file_with_cache("f.pdf",
+                                   title="Title", author="Author")
+        result = rename.set_overrides(
+            self.profile_name,
+            items=[{"rel_path": "../outside.pdf", "category": "ok"}])
+        self.assertEqual(result["n_set"], 0)
+        # The resolved path lands outside target, or doesn't exist —
+        # either way it's a 400 or 404.
+        self.assertEqual(result["n_errors"], 1)
+        self.assertIn(result["errors"][0]["status"], (400, 404))
+
+    def test_empty_items_400(self):
+        with self.assertRaises(rename.RenameError) as cm:
+            rename.set_overrides(self.profile_name, items=[])
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_bulk_override_mixed_outcomes(self):
+        self._add_file_with_cache("a.pdf",
+                                   title="A book", author="A")
+        self._add_file_with_cache("b.pdf",
+                                   title="B book", author="B")
+        result = rename.set_overrides(
+            self.profile_name,
+            items=[
+                {"rel_path": "a.pdf", "category": "ok"},          # OK
+                {"rel_path": "b.pdf", "category": "placeholder"}, # bad
+                {"rel_path": "ghost.pdf", "category": "ok"},      # 404
+            ])
+        self.assertEqual(result["n_set"], 1)
+        self.assertEqual(result["n_errors"], 2)
+        self.assertEqual(result["successes"][0]["rel_path"], "a.pdf")
+
+
+class TestOverrideEndpoints(RenameAuditTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_set_happy(self):
+        self._add_file_with_cache("a.pdf",
+                                   title="A book", author="A")
+        r = self.client.post("/api/rename/override", json={
+            "profile": self.profile_name,
+            "items": [{"rel_path": "a.pdf", "category": "ok"}],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_set"], 1)
+
+    def test_endpoint_clear(self):
+        self._add_file_with_cache("a.pdf",
+                                   title="A book", author="A")
+        self.client.post("/api/rename/override", json={
+            "profile": self.profile_name,
+            "items": [{"rel_path": "a.pdf", "category": "ok"}],
+        })
+        r = self.client.post("/api/rename/override", json={
+            "profile": self.profile_name,
+            "items": [{"rel_path": "a.pdf"}],
+            "clear": True,
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["successes"][0]["cleared"])
+
+    def test_endpoint_empty_items_400(self):
+        r = self.client.post("/api/rename/override", json={
+            "profile": self.profile_name,
+            "items": [],
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()
