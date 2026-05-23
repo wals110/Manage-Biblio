@@ -75,19 +75,40 @@ def classify_by_theme(
     if not theme or not theme_mapping:
         return None
 
-    theme_lower = theme.lower().strip()
+    # Strip parenthetical / bracketed clarifications from the theme
+    # before matching. The vision LLM (prompt v2) sometimes returns
+    # themes like "Neural Networks (Computer Science)" — the parenthetical
+    # is meant as disambiguation but our longest-substring rule rewards
+    # the GENERIC clarification (16-char "computer science" → /Fondamentaux-CS)
+    # over the specific TOPIC (14-char "neural network" → /Deep-Learning).
+    # Stripping it makes the matcher focus on the primary noun phrase.
+    import re as _re
+    theme_clean = _re.sub(r"[\(\[][^\)\]]*[\)\]]", "", theme).strip()
+    theme_lower = (theme_clean or theme).lower().strip()
 
-    # 1. Exact match (case-insensitive)
-    for key, path in theme_mapping.items():
-        if key.lower() == theme_lower:
-            return path
+    # 1. Exact match (case-insensitive) — try cleaned form first, fallback raw
+    for candidate in (theme_clean, theme):
+        if not candidate:
+            continue
+        cand = candidate.lower().strip()
+        for key, path in theme_mapping.items():
+            if key.lower() == cand:
+                return path
 
-    # 2. Substring match (longest wins)
+    # 2. Substring match (longest wins) — on cleaned theme
+    # Mono-mot (sans espace) → match par mot entier (évite "art" dans
+    # "p**art**icle" ou "stochastic P**art**ial Differential…").
+    # Multi-mots (phrase) → substring (les espaces forment déjà des bornes).
     best_match = None
     best_length = 0
     for key, path in theme_mapping.items():
         key_lower = key.lower()
-        if key_lower in theme_lower and len(key_lower) > best_length:
+        if ' ' in key_lower:
+            matched = key_lower in theme_lower
+        else:
+            pattern = r'(?<![a-zà-ÿ])' + _re.escape(key_lower) + r'(?![a-zà-ÿ])'
+            matched = bool(_re.search(pattern, theme_lower))
+        if matched and len(key_lower) > best_length:
             best_match = path
             best_length = len(key_lower)
 
@@ -145,6 +166,98 @@ def load_keyword_classifier(categories_yaml_path: str) -> object | None:
         return None
 
 
+def _refine_to_subfolder(
+    matched_path: str,
+    theme_mapping: dict[str, str],
+    theme: str = "",
+    title: str = "",
+    filename: str = "",
+) -> str | None:
+    """If matched_path is a generic / catchall, search title + filename for
+    a more specific theme_mapping key that points to a related folder.
+
+    Only triggers when:
+    - The refinement key is STRICTLY LONGER than the original theme that
+      matched (otherwise we'd risk overriding a correctly-specific theme
+      with a less-specific keyword).
+    - The refined path is a CHILD of matched_path (≥3 char keyword) OR a
+      SIBLING under the same immediate parent (≥5 char keyword to limit
+      false positives on short collisions).
+
+    Cross-domain shifts (different top-level section) are NOT handled here
+    — those go through the keyword classifier (P2) or the LLM mapper (P3).
+
+    Examples:
+        '05-RELIGIONS', theme='Religion', title="L'Islam et le Graal"
+            → '05-RELIGIONS/ISLAM' (child, key='islam' (5) > 'religion' (8)?
+              5 < 8 so this WOULDN'T trigger. Hmm see below.)
+
+    Note on the strict-length rule: it's primarily for SIBLING scope, where
+    we risk regressions like 'quantum mechanics' (correct) being overridden
+    by 'mechanics' (sibling, shorter). For CHILD scope we keep the looser
+    "any keyword in title that maps to a child" because by definition the
+    child is more specific than the parent.
+    """
+    if not matched_path or not theme_mapping:
+        return None
+    text = (title + " " + filename).lower()
+    if not text.strip():
+        return None
+
+    theme_len = len(theme.strip()) if theme else 0
+    child_prefix = matched_path.rstrip("/") + "/"
+    parts = matched_path.split("/")
+    sibling_prefix = "/".join(parts[:-1]) + "/" if len(parts) > 1 else ""
+
+    # Catchall detection: top-level section, or last segment hints at
+    # being a fallback class. Catchalls allow looser sibling refinement
+    # because the matched theme is admittedly generic.
+    last = parts[-1].lower()
+    is_catchall = (
+        len(parts) == 1  # top-level (e.g. '05-RELIGIONS', '02-INFORMATIQUE')
+        or "general" in last
+        or "autres" in last
+        or last.endswith("-general")
+        or last.endswith("-other")
+        or last.endswith("-misc")
+    )
+
+    best_child: tuple[str, int] | None = None
+    best_sibling: tuple[str, int] | None = None
+    for key, mapped in theme_mapping.items():
+        if not isinstance(mapped, str):
+            continue
+        if mapped == matched_path:
+            continue
+        kl = key.lower().strip()
+        if not kl or kl not in text:
+            continue
+        # CHILD scope: refine to a strict subfolder. The child is more
+        # specific by definition, so we don't require the key to be longer
+        # than the original theme.
+        if mapped.startswith(child_prefix) and len(kl) >= 3:
+            if best_child is None or len(kl) > best_child[1]:
+                best_child = (mapped, len(kl))
+            continue
+        # SIBLING scope: when matched_path is a catchall (top-level section
+        # or *-Generales/*-Autres) we allow short keys, since the original
+        # theme is admittedly generic. Otherwise we require the new key to
+        # be strictly longer than the theme to avoid regressions like
+        # 'mechanics' (sibling) overriding the correctly-specific
+        # 'quantum mechanics'.
+        if (sibling_prefix and mapped.startswith(sibling_prefix)
+                and len(kl) >= 5
+                and (is_catchall or len(kl) > theme_len)):
+            if best_sibling is None or len(kl) > best_sibling[1]:
+                best_sibling = (mapped, len(kl))
+
+    if best_child:
+        return best_child[0]
+    if best_sibling:
+        return best_sibling[0]
+    return None
+
+
 def classify_combined(
     vision_result: dict[str, object],
     filename: str,
@@ -183,11 +296,53 @@ def classify_combined(
     confidence = vision_result.get('confidence', 0.0)
     title = vision_result.get('title', '')
 
-    # Priorité 1 : LLM theme si confiance >= CONFIDENCE_THRESHOLD
-    if confidence >= CONFIDENCE_THRESHOLD:
-        path = classify_by_theme(theme, theme_mapping)
-        if path:
-            return (path, confidence, "LLM (theme)")
+    # Build the candidate list. New vision v2 prompt returns 'themes' as
+    # a ranked list of {theme, confidence, reason}. Legacy single-'theme'
+    # shape gives a 1-element list.
+    candidates: list[tuple[str, float]] = []
+    raw_themes = vision_result.get("themes")
+    if isinstance(raw_themes, list) and raw_themes:
+        for item in raw_themes:
+            if not isinstance(item, dict):
+                continue
+            t = str(item.get("theme", "")).strip()
+            if not t:
+                continue
+            c = float(item.get("confidence", confidence))
+            candidates.append((t, c))
+    elif theme:
+        candidates.append((theme, confidence))
+
+    # Priorité 1 : LLM theme si confiance >= CONFIDENCE_THRESHOLD.
+    # Try candidates in ranked order; stop at the first that maps to a
+    # SPECIFIC folder (more than 1 path component). If only generic /
+    # parent paths match, keep them as fallback and let later priorities
+    # (P2 keyword classifier) try to do better.
+    if confidence >= CONFIDENCE_THRESHOLD and candidates:
+        best_specific: tuple[str, str] | None = None  # (path, theme_used)
+        best_generic: tuple[str, str] | None = None
+        for cand_theme, _cand_conf in candidates:
+            path = classify_by_theme(cand_theme, theme_mapping)
+            if not path:
+                continue
+            refined = _refine_to_subfolder(
+                path, theme_mapping, theme=cand_theme, title=title,
+                filename=filename)
+            final_path = refined or path
+            is_specific = "/" in final_path
+            if is_specific:
+                best_specific = (final_path, cand_theme)
+                break
+            if best_generic is None:
+                best_generic = (final_path, cand_theme)
+
+        if best_specific is not None:
+            path, used_theme = best_specific
+            label = "LLM (theme→refined)" if used_theme != theme else "LLM (theme)"
+            return (path, confidence, label)
+        if best_generic is not None:
+            path, _ = best_generic
+            return (path, confidence, "LLM (theme-generic)")
 
     # Priorité 2 : Keyword classifier (titre LLM + thème + nom de fichier)
     # On combine toutes les infos textuelles disponibles pour maximiser

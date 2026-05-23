@@ -1,0 +1,532 @@
+{% extends "base.html" %}
+{% set active = "taxonomy" %}
+{% block title %}Taxonomie — Arborescence & thèmes{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+<header class="tax-header">
+    <div class="tax-title-row">
+        <h1 class="page-title" style="margin:0;">Taxonomie</h1>
+        <div class="tax-subtabs" role="tablist">
+            <button class="tax-subtab active" data-view="mappings"
+                    title="Mappings thème → dossier (theme_mapping.yaml)">Mappings</button>
+            <button class="tax-subtab" data-view="categories"
+                    title="Catégories + mots-clés (categories.yaml)">Catégories</button>
+            <button class="tax-subtab" data-view="rename"
+                    title="Audit + renommage des fichiers basé sur le titre LLM">Rename</button>
+        </div>
+        <div class="tax-toolbar">
+            <label class="filter-label">Profil</label>
+            <select id="tax-profile-select" class="filter-select">
+                {% for p in profiles %}
+                <option value="{{ p.name }}" {% if p.name == profile %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <span class="tax-toolbar-divider"></span>
+            <button id="tax-undo" class="tax-icon-btn" title="Annuler la dernière modification (restore backup)" aria-label="Annuler" disabled>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 7v6h6"></path>
+                    <path d="M3 13a9 9 0 1 0 3-7.7L3 8"></path>
+                </svg>
+                <span>Annuler</span>
+                <span class="tax-undo-badge" id="tax-undo-badge"></span>
+            </button>
+            <button id="tax-refresh" class="tax-icon-btn tax-icon-only" title="Recharger le snapshot" aria-label="Recharger">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path>
+                    <path d="M21 3v5h-5"></path>
+                </svg>
+            </button>
+            <button id="tax-audit" class="tax-icon-btn"
+                    title="Auditer les dormants — mappings (vue Mappings) ou catégories (vue Catégories)"
+                    aria-label="Audit">
+                <span style="font-size:13px;">🧹</span>
+                <span>Audit</span>
+            </button>
+            <button id="tax-reclassify" class="tax-icon-btn"
+                    title="Voir ce qui bougerait au prochain reclassify (dry-run, lecture seule)"
+                    aria-label="Reclassify dryrun">
+                <span style="font-size:13px;">🚀</span>
+                <span>Reclassify</span>
+            </button>
+            <button id="tax-history" class="tax-icon-btn"
+                    title="Historique des backups — mappings ou catégories selon la vue active"
+                    aria-label="Historique">
+                <span style="font-size:13px;">📜</span>
+                <span>Historique</span>
+            </button>
+        </div>
+    </div>
+    <div class="tax-stats" id="tax-stats">
+        <span class="muted">Chargement…</span>
+    </div>
+    <div class="tax-stats" id="tax-stats-categories" style="display:none;">
+        <span class="muted">Chargement catégories…</span>
+    </div>
+    <div class="tax-stats" id="tax-stats-rename" style="display:none;">
+        <span class="muted">Chargement audit rename…</span>
+    </div>
+</header>
+
+<!-- ─────────────────────── View: Mappings (default) ─────────────────────── -->
+<div class="tax-view tax-view-mappings active" data-view="mappings">
+<div class="tax-grid" id="tax-grid">
+    <!-- Colonne 1 — Arbre -->
+    <section class="tax-col tax-col-tree">
+        <header class="tax-col-header">
+            <h2 class="tax-col-title">Arborescence</h2>
+            <span class="tax-col-sub" id="tax-tree-sub"></span>
+        </header>
+        <div class="tax-tree-search-wrap">
+            <input id="tax-tree-search" type="text"
+                   placeholder="🔍 rechercher un dossier… (ex: math)"
+                   autocomplete="off">
+            <button id="tax-tree-search-clear" type="button"
+                    title="Effacer la recherche (Esc)" aria-label="Effacer">×</button>
+        </div>
+        <div class="tax-tree-scroll">
+            <div id="tax-tree" class="tax-tree"></div>
+        </div>
+    </section>
+
+    <!-- Colonne 2 — Viewer + Analyse LLM + Treemap -->
+    <section class="tax-col tax-col-center">
+        <!-- Viewer PDF -->
+        <div class="tax-viewer" id="tax-viewer">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Viewer</h2>
+                <span class="tax-col-sub" id="tax-viewer-sub">Sélectionne un fichier dans l'arbre</span>
+            </header>
+            <div class="tax-viewer-body" id="tax-viewer-body">
+                <div class="tax-viewer-empty">📄 Aucun fichier sélectionné</div>
+            </div>
+            <div class="tax-viewer-pager" id="tax-viewer-pager" style="display:none;"></div>
+        </div>
+
+        <!-- Card analyse LLM (toujours visible — placeholder si pas de fichier) -->
+        <div class="tax-llm-card" id="tax-llm-card">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">🔍 Analyse LLM</h2>
+                <span class="tax-col-sub" id="tax-llm-card-sub"></span>
+            </header>
+            <div class="tax-llm-card-body" id="tax-llm-card-body">
+                <div class="muted small">Sélectionne un fichier pour voir son analyse LLM</div>
+            </div>
+        </div>
+
+        <!-- Treemap 1 niveau -->
+        <div class="tax-treemap-section">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Treemap</h2>
+                <div class="tax-breadcrumb" id="tax-breadcrumb"></div>
+                <div class="tax-treemap-scale" id="tax-treemap-scale" title="Mode d'échelle du treemap">
+                    <button data-scale="sqrt"   class="active">Lissé</button>
+                    <button data-scale="linear">Réel</button>
+                </div>
+            </header>
+            <div id="tax-treemap" class="tax-treemap-wrap"></div>
+        </div>
+    </section>
+
+    <!-- Colonne 3 — Thèmes mappés + LLM universe -->
+    <section class="tax-col tax-col-themes">
+        <div class="tax-themes-mapped">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Thèmes mappés</h2>
+                <span class="tax-col-sub" id="tax-mapped-sub">Sélectionne un dossier</span>
+            </header>
+            <ul id="tax-mapped-list" class="tax-mapped-list"></ul>
+        </div>
+        <div class="tax-themes-llm">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Thèmes LLM</h2>
+                <span class="tax-col-sub" id="tax-llm-sub"></span>
+            </header>
+            <div class="tax-llm-filters">
+                <input id="tax-llm-search" type="text" placeholder="🔍 rechercher…" class="filter-select" style="flex:1;">
+                <label><input type="checkbox" id="tax-llm-orph-only"> orphelins</label>
+            </div>
+            <div id="tax-llm-list" class="tax-llm-list"></div>
+        </div>
+    </section>
+</div>
+</div>
+<!-- ────────────────────── End view: Mappings ────────────────────────────── -->
+
+<!-- ────────────────────── View: Catégories ──────────────────────────────── -->
+<div class="tax-view tax-view-categories" data-view="categories" style="display:none;">
+    <div class="tax-cat-info-banner">
+        <button class="tax-cat-info-toggle" aria-expanded="false"
+                title="Afficher / masquer l'explication">
+            <span class="tax-cat-info-icon">ℹ️</span>
+            <span class="tax-cat-info-label">À quoi sert cette vue ?</span>
+            <span class="tax-cat-info-chevron">▶</span>
+        </button>
+        <div class="tax-cat-info-body" hidden>
+            <p>
+                <strong>categories.yaml</strong> est l'<strong>étape 2 du pipeline</strong> de
+                classification. C'est un filet de sécurité quand l'étape 1
+                (<code>theme_mapping.yaml</code>) ne résout pas le thème détecté par le LLM.
+            </p>
+            <div class="tax-cat-pipeline">
+                <span class="tax-cat-pipeline-step">1. theme_mapping</span>
+                <span class="tax-cat-pipeline-arrow">→</span>
+                <span class="tax-cat-pipeline-step tax-cat-pipeline-step-active">2. categories ← ici</span>
+                <span class="tax-cat-pipeline-arrow">→</span>
+                <span class="tax-cat-pipeline-step">3. LLM Mapper ($)</span>
+                <span class="tax-cat-pipeline-arrow">→</span>
+                <span class="tax-cat-pipeline-step">4. _A-TRIER</span>
+            </div>
+            <ul class="tax-cat-info-list">
+                <li><strong>Groupe</strong> (informatique, mathematique…) — clé top-level du YAML, sert juste à regrouper</li>
+                <li><strong>Entry</strong> — un <em>chemin cible</em> (dossier de destination) avec une <em>priorité</em> et une liste de <em>mots-clés</em></li>
+                <li><strong>Priorité</strong> — plus le nombre est <em>bas</em>, plus l'entry gagne quand plusieurs matchent (P1 bat P2)</li>
+                <li><strong>Mot-clé</strong> — substring cherché dans le <em>titre + filename + thème</em> du fichier (insensible à la casse)</li>
+            </ul>
+            <p class="muted small">
+                Exemple : un fichier <code>Hands-On GAN for Image Synthesis.pdf</code>
+                dont le thème LLM n'est pas mappé à l'étape 1 sera attrapé ici via le
+                mot-clé <code>GAN</code> et classé dans <code>05-IA-ML/Deep-Learning</code>.
+            </p>
+        </div>
+    </div>
+    <div class="tax-cat-grid">
+        <!-- Col 1 — Tree of groups + entries -->
+        <section class="tax-col tax-cat-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Catégories</h2>
+                <span class="tax-col-sub" id="tax-cat-tree-sub"></span>
+            </header>
+            <div class="tax-cat-tree" id="tax-cat-tree"></div>
+        </section>
+
+        <!-- Col 2 — Detail of the selected entry -->
+        <section class="tax-col tax-cat-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Détail entry</h2>
+                <span class="tax-col-sub" id="tax-cat-detail-sub">Sélectionne une entry</span>
+            </header>
+            <div class="tax-cat-detail" id="tax-cat-detail">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Aucune entry sélectionnée — clic dans la colonne de gauche.
+                </div>
+            </div>
+        </section>
+
+        <!-- Col 3 — Keywords (top) + Files (bottom) -->
+        <section class="tax-col tax-cat-col tax-cat-col-kw">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Mots-clés</h2>
+                <span class="tax-col-sub" id="tax-cat-kw-sub"></span>
+            </header>
+            <div class="tax-cat-kw-panel" id="tax-cat-kw">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Sélectionne une entry pour voir ses mots-clés.
+                </div>
+            </div>
+            <header class="tax-col-header tax-cat-files-header">
+                <h2 class="tax-col-title">Fichiers concernés</h2>
+                <span class="tax-col-sub" id="tax-cat-files-sub"></span>
+            </header>
+            <div class="tax-cat-files-panel" id="tax-cat-files">
+                <div class="muted small" style="padding:20px;text-align:center;">
+                    Sélectionne une entry à gauche.
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+<!-- ────────────────────── End view: Catégories ──────────────────────────── -->
+
+<!-- ────────────────────── View: Rename (PR2 — read-only audit) ───────────── -->
+<div class="tax-view tax-view-rename" data-view="rename" style="display:none;">
+    <div class="tax-rename-info-banner">
+        <button class="tax-rename-info-toggle" aria-expanded="false">
+            <span>ℹ️</span>
+            <span class="tax-rename-info-label">À quoi sert cette vue ?</span>
+            <span class="tax-rename-info-chevron">▶</span>
+        </button>
+        <div class="tax-rename-info-body" hidden>
+            <p>
+                <strong>Audit des noms de fichiers</strong> basé sur les titres détectés
+                par le LLM. Le pipeline de classification ne touche pas aux noms ; cette
+                vue identifie les fichiers dont le filename actuel diverge fortement du
+                titre LLM extrait du contenu.
+            </p>
+            <ul class="tax-rename-info-list">
+                <li><strong>placeholder</strong> : noms du type <code>Title Author.pdf</code> — le rename a échoué silencieusement</li>
+                <li><strong>divergent</strong> : similarité &lt; 0.4 avec le titre LLM (ex: <code>Book4You.pdf</code>)</li>
+                <li><strong>minor_case</strong> : 0.4–0.7 (souvent juste casse / ordre des mots)</li>
+                <li><strong>ok</strong> : ≥ 0.7 — le filename reflète déjà le titre</li>
+            </ul>
+            <p class="muted small">
+                Le template est défini dans <code>profile.yaml</code> sous
+                <code>rename.template</code> (par défaut : <code>{title}{ - author}</code>).
+                Renommage à appliquer à venir dans une PR suivante — cette vue est en
+                lecture seule pour l'instant.
+            </p>
+        </div>
+    </div>
+    <div class="tax-rename-grid">
+        <!-- Col 1 — candidate list -->
+        <section class="tax-col tax-rename-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Candidats</h2>
+                <span class="tax-col-sub" id="tax-rename-list-sub"></span>
+            </header>
+            <div class="tax-rename-search-wrap">
+                <input type="search" id="tax-rename-search"
+                       class="tax-rename-search"
+                       placeholder="Rechercher un fichier…"
+                       autocomplete="off"
+                       aria-label="Filtrer la liste par nom de fichier">
+                <button type="button" id="tax-rename-search-clear"
+                        class="tax-rename-search-clear" hidden
+                        aria-label="Effacer la recherche">✕</button>
+                <button type="button" id="tax-rename-history-btn"
+                        class="tax-rename-history-btn"
+                        title="Voir le journal des renommages (avec undo)">
+                    📜 <span id="tax-rename-history-count">0</span>
+                    <span id="tax-rename-history-session-warn"
+                          class="tax-rename-history-session-warn"
+                          hidden
+                          title="Renommages faits dans cette session encore non annulés — pense à finir l'undo si besoin">
+                        ⚠ <span id="tax-rename-history-session-n">0</span>
+                    </span>
+                </button>
+            </div>
+            <div class="tax-rename-filters" id="tax-rename-filters"></div>
+            <div class="tax-rename-bulkbar" id="tax-rename-bulkbar" hidden>
+                <span class="tax-rename-bulkbar-count">
+                    <strong id="tax-rename-bulkbar-n">0</strong> sélectionnés
+                </span>
+                <button type="button" class="btn-primary btn-sm"
+                        id="tax-rename-bulkbar-apply">
+                    Renommer (suggestion)
+                </button>
+                <button type="button" class="btn-secondary btn-sm"
+                        id="tax-rename-bulkbar-clear">
+                    Tout désélectionner
+                </button>
+            </div>
+            <div class="tax-rename-list" id="tax-rename-list"></div>
+            <div class="tax-rename-session" id="tax-rename-session">
+                <div class="tax-rename-session-header">
+                    <button type="button" class="tax-rename-session-toggle"
+                            id="tax-rename-session-toggle"
+                            aria-expanded="false">
+                        <span class="tax-rename-session-chevron">▶</span>
+                        <span class="tax-rename-session-label">
+                            Renommés cette session
+                            <span class="tax-rename-session-count"
+                                  id="tax-rename-session-count">0</span>
+                        </span>
+                    </button>
+                    <button type="button" id="tax-rename-session-clear"
+                            class="tax-rename-session-clear"
+                            title="Vider le journal de session" hidden>🗑</button>
+                </div>
+                <div class="tax-rename-session-body" id="tax-rename-session-body"
+                     hidden></div>
+            </div>
+        </section>
+        <!-- Col 2 — file detail + diff -->
+        <section class="tax-col tax-rename-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Détail</h2>
+                <span class="tax-col-sub" id="tax-rename-detail-sub"></span>
+            </header>
+            <div class="tax-rename-detail" id="tax-rename-detail">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Sélectionne un candidat à gauche.
+                </div>
+            </div>
+        </section>
+        <!-- Col 3 — suggested name + (future) apply -->
+        <section class="tax-col tax-rename-col">
+            <header class="tax-col-header">
+                <h2 class="tax-col-title">Proposition</h2>
+                <span class="tax-col-sub" id="tax-rename-preview-sub"></span>
+            </header>
+            <div class="tax-rename-preview" id="tax-rename-preview">
+                <div class="muted small" style="padding:30px;text-align:center;">
+                    Sélectionne un candidat à gauche.
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+<!-- ────────────────────── End view: Rename ───────────────────────────────── -->
+
+<!-- 📜 Rename history modal (PR4A) -->
+<div id="tax-rename-history-modal" class="tax-modal-backdrop"
+     style="display:none;">
+    <div class="tax-modal tax-rename-history-modal-body" role="dialog"
+         aria-labelledby="tax-rename-history-modal-title">
+        <div class="tax-modal-title" id="tax-rename-history-modal-title">
+            📜 Renommages — journal du profil
+        </div>
+        <div class="tax-modal-sub" id="tax-rename-history-modal-sub"></div>
+        <div class="tax-rename-history-tabs" role="tablist">
+            <button type="button" class="tax-rename-history-tab active"
+                    data-tab="records" role="tab"
+                    aria-selected="true">Tous (record-by-record)</button>
+            <button type="button" class="tax-rename-history-tab"
+                    data-tab="batches" role="tab"
+                    aria-selected="false">Par lot</button>
+        </div>
+        <div class="tax-rename-history-list" id="tax-rename-history-list"></div>
+        <div class="tax-rename-history-list" id="tax-rename-history-batches"
+             hidden></div>
+        <div class="tax-modal-actions">
+            <button id="tax-rename-history-close" class="btn-secondary">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Popover "+ Mapper" -->
+<div id="tax-map-popover" class="tax-map-popover" style="display:none;">
+    <div class="tax-map-popover-title">Mapper le thème vers un dossier</div>
+    <div class="tax-map-popover-theme" id="tax-map-popover-theme"></div>
+    <input id="tax-map-popover-input" type="text"
+           class="filter-select" placeholder="tape un chemin… (ex: 01-SCIENCES/PHYSIQUE)"
+           autocomplete="off">
+    <div id="tax-map-popover-suggestions" class="tax-map-popover-suggestions"></div>
+    <div class="tax-map-popover-actions">
+        <button id="tax-map-popover-cancel" class="btn-secondary">Annuler</button>
+        <button id="tax-map-popover-confirm" class="btn-primary">Mapper</button>
+    </div>
+</div>
+
+<!-- Popover "déplacer dossier" (Phase 3 C) -->
+<div id="tax-movefolder-popover" class="tax-map-popover" style="display:none;">
+    <div class="tax-map-popover-title">Déplacer ce dossier</div>
+    <div class="tax-map-popover-theme">
+        <span class="muted">déplacer</span>
+        <code id="tax-movefolder-source"></code>
+    </div>
+    <input id="tax-movefolder-input" type="text"
+           placeholder="Nouveau parent (laisser vide pour la racine)"
+           autocomplete="off">
+    <div class="tax-newfolder-hint">Le dossier conserve son nom — seul son emplacement change.</div>
+    <div id="tax-movefolder-suggestions" class="tax-map-popover-suggestions"></div>
+    <div class="tax-map-popover-actions">
+        <button id="tax-movefolder-cancel" class="btn-secondary">Annuler</button>
+        <button id="tax-movefolder-confirm" class="btn-primary">Déplacer</button>
+    </div>
+</div>
+
+<!-- Popover "+ sous-dossier" (Phase 3 Étape A) -->
+<div id="tax-newfolder-popover" class="tax-map-popover" style="display:none;">
+    <div class="tax-map-popover-title">Créer un sous-dossier</div>
+    <div class="tax-map-popover-theme">
+        <span class="muted">dans</span>
+        <code id="tax-newfolder-parent"></code>
+    </div>
+    <input id="tax-newfolder-input" type="text"
+           placeholder="Nom du nouveau dossier" autocomplete="off">
+    <div class="tax-newfolder-hint">Autorisés : lettres, chiffres, espaces, et <code>-_.&amp;()</code></div>
+    <div class="tax-map-popover-actions">
+        <button id="tax-newfolder-cancel" class="btn-secondary">Annuler</button>
+        <button id="tax-newfolder-confirm" class="btn-primary">Créer</button>
+    </div>
+</div>
+
+<!-- Delete-folder modal (Phase 3 D) -->
+<div id="tax-delete-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal tax-modal-danger">
+        <div class="tax-modal-title">🗑 Supprimer <code id="tax-delete-path"></code></div>
+        <div class="tax-modal-body" id="tax-delete-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-delete-cancel" class="btn-secondary">Annuler</button>
+            <button id="tax-delete-confirm" class="btn-danger" disabled>Supprimer définitivement</button>
+        </div>
+    </div>
+</div>
+
+<!-- Impact preview modal (Phase 2 B) -->
+<div id="tax-impact-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal">
+        <div class="tax-modal-title">Impact estimé sur la bibliothèque</div>
+        <div class="tax-modal-body" id="tax-impact-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-impact-cancel" class="btn-secondary">Annuler</button>
+            <button id="tax-impact-confirm" class="btn-primary">Confirmer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Generic confirm modal (replaces native window.confirm) -->
+<div id="tax-confirm-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal">
+        <div class="tax-modal-title" id="tax-confirm-title"></div>
+        <div class="tax-modal-body" id="tax-confirm-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-confirm-cancel" class="btn-secondary">Annuler</button>
+            <button id="tax-confirm-ok" class="btn-primary">Confirmer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Dormant mappings audit modal (feature B) -->
+<div id="tax-audit-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:720px; max-width:96vw;">
+        <div class="tax-modal-title">🧹 Audit des mappings dormants</div>
+        <div class="tax-modal-body" id="tax-audit-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-audit-close" class="btn-secondary">Fermer</button>
+            <button id="tax-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
+        </div>
+    </div>
+</div>
+
+<!-- Audit log / Historique modal (feature I) -->
+<div id="tax-history-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:760px; max-width:96vw;">
+        <div class="tax-modal-title" id="tax-history-title">📜 Historique des backups</div>
+        <div class="tax-modal-body" id="tax-history-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-history-close" class="btn-secondary">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Reclassify dry-run modal (feature C-1) -->
+<div id="tax-reclassify-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:820px; max-width:96vw;">
+        <div class="tax-modal-title">🚀 Reclassify — projection d'impact (dry-run)</div>
+        <div class="tax-modal-body" id="tax-reclassify-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-reclassify-close" class="btn-secondary">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Dormant categories audit modal (Phase C) -->
+<div id="tax-cat-audit-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:820px; max-width:96vw;">
+        <div class="tax-modal-title">🧹 Audit des catégories dormantes</div>
+        <div class="tax-modal-body" id="tax-cat-audit-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-cat-audit-close" class="btn-secondary">Fermer</button>
+            <button id="tax-cat-audit-delete" class="btn-danger" disabled>Supprimer (0)</button>
+        </div>
+    </div>
+</div>
+
+<!-- Busy overlay (Phase 3 polish) — slim bar + click blocker during writes -->
+<div id="tax-busy" class="tax-busy" aria-hidden="true">
+    <div class="tax-busy-bar"></div>
+    <div class="tax-busy-label" id="tax-busy-label">Mise à jour…</div>
+</div>
+
+<div id="tax-tooltip" class="tax-tooltip" style="display:none;"></div>
+<div id="tax-toast" class="tax-toast" style="display:none;"></div>
+
+<script src="/static/js/taxonomy.js"></script>
+<script src="/static/js/taxonomy_categories.js"></script>
+<script src="/static/js/taxonomy_rename.js"></script>
+{% endblock %}

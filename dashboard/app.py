@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import data
+from dashboard import baseline, data, taxonomy
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -1376,3 +1376,812 @@ async def delete_run(id: str):
     if report_dir.exists():
         shutil.rmtree(report_dir)
     return JSONResponse({"message": f"Run {id} supprimé"})
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Baseline classification — adjudicate disagreements between current Klodo
+#  predictions and the current SSD layout. Run-based, multi-profile.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/baseline")
+async def baseline_page(
+    request: Request,
+    profile: str | None = None,
+    run_id: str | None = None,
+):
+    """Validation UI for the latest baseline run of a profile.
+
+    Smart default: profile with the most recent run, else 'default'.
+    """
+    if not profile:
+        profile = baseline.smart_default_profile()
+
+    available_profiles = [
+        p["name"] if isinstance(p, dict) else p
+        for p in data.get_available_profiles()
+    ]
+
+    runs = baseline.list_runs(profile)
+    selected_run = baseline.get_run(profile, run_id)
+    if selected_run is None and runs:
+        selected_run = runs[0]
+
+    folders = baseline.list_target_folders(profile)
+    record = None
+    stats = None
+    if selected_run:
+        rid = selected_run["run_id"]
+        record = baseline.next_record(profile, rid)
+        stats = baseline.stats(profile, rid)
+
+    return templates.TemplateResponse(
+        request,
+        "baseline.html",
+        {
+            "active": "baseline",
+            "profile": profile,
+            "available_profiles": available_profiles,
+            "runs": runs,
+            "selected_run": selected_run,
+            "record": record,
+            "folders": folders,
+            "stats": stats,
+        },
+    )
+
+
+@app.get("/api/baseline/runs")
+async def baseline_runs_api(profile: str):
+    """List baseline runs for a profile (latest first)."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"runs": baseline.list_runs(profile)})
+
+
+@app.get("/api/baseline/next")
+async def baseline_next_api(profile: str, run_id: str | None = None):
+    """Return the next unvalidated disagreement for a run."""
+    from fastapi.responses import JSONResponse
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"error": "no run available"}, status_code=404)
+    rid = run["run_id"]
+    record = baseline.next_record(profile, rid)
+    return JSONResponse({
+        "done": record is None,
+        "record": record,
+        "run_id": rid,
+        "stats": baseline.stats(profile, rid),
+    })
+
+
+@app.get("/api/baseline/record")
+async def baseline_record_api(profile: str, file_id: str, run_id: str | None = None):
+    """Return a specific record by file_id (used for going back / editing)."""
+    from fastapi.responses import JSONResponse
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"error": "no run available"}, status_code=404)
+    rid = run["run_id"]
+    record = baseline.get_record(profile, rid, file_id)
+    if record is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"record": record, "run_id": rid,
+                         "stats": baseline.stats(profile, rid)})
+
+
+@app.post("/api/baseline/verdict")
+async def baseline_verdict_api(request: Request):
+    """Persist a verdict for one disagreement.
+
+    Body JSON: {profile, run_id, file_id, verdict, ground_truth?, notes?}
+    """
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile")
+    run_id = body.get("run_id")
+    file_id = body.get("file_id")
+    verdict = body.get("verdict")
+    ground_truth = body.get("ground_truth")
+    notes = body.get("notes")
+
+    if not profile or not run_id or not file_id or not verdict:
+        return JSONResponse({"error": "missing fields"}, status_code=400)
+
+    try:
+        ok = baseline.save_verdict(
+            profile, run_id, file_id, verdict,
+            ground_truth=ground_truth, notes=notes,
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    if not ok:
+        return JSONResponse({"error": "file_id not found"}, status_code=404)
+
+    next_rec = baseline.next_record(profile, run_id)
+    return JSONResponse({
+        "ok": True,
+        "stats": baseline.stats(profile, run_id),
+        "next": next_rec,
+        "done": next_rec is None,
+    })
+
+
+@app.get("/api/baseline/thumbnail/{file_id}")
+async def baseline_thumbnail_api(
+    file_id: str, profile: str, run_id: str | None = None,
+):
+    """Serve a JPEG thumbnail for a file_id, generating on demand."""
+    from fastapi.responses import FileResponse, JSONResponse
+
+    from lib.thumbnail import generate_thumbnail
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"error": "no run"}, status_code=404)
+    record = baseline.get_record(profile, run["run_id"], file_id)
+    if record is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    source = baseline.resolve_source_path(profile, record["rel_path"])
+    if source is None:
+        return JSONResponse({"error": "source missing"}, status_code=404)
+
+    doc_dir = baseline.baseline_thumbnail_dir(profile, file_id)
+    target = doc_dir / "1.jpg"
+    if not target.exists():
+        try:
+            generate_thumbnail(source, doc_dir, n_pages=1, start_page=1)
+        except Exception as e:
+            return JSONResponse({"error": f"thumbnail failed: {e}"}, status_code=500)
+    if not target.exists():
+        return JSONResponse({"error": "unavailable"}, status_code=500)
+    return FileResponse(target, media_type="image/jpeg")
+
+
+@app.get("/api/baseline/folders")
+async def baseline_folders_api(profile: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"folders": baseline.list_target_folders(profile)})
+
+
+@app.get("/api/baseline/stats")
+async def baseline_stats_api(profile: str, run_id: str | None = None):
+    from fastapi.responses import JSONResponse
+    run = baseline.get_run(profile, run_id)
+    if run is None:
+        return JSONResponse({"exists": False})
+    return JSONResponse(baseline.stats(profile, run["run_id"]))
+
+
+# ─── Taxonomy ────────────────────────────────────────────────────────────
+
+
+@app.get("/taxonomy")
+async def taxonomy_page(request: Request, profile: str | None = None):
+    """Interactive viewer of tree.yaml + theme_mapping.yaml + LLM themes."""
+    profiles = taxonomy.list_profiles()
+    if not profile and profiles:
+        profile = profiles[0]["name"]
+    return templates.TemplateResponse(
+        request,
+        "taxonomy.html",
+        {
+            "active": "taxonomy",
+            "profile": profile,
+            "profiles": profiles,
+        },
+    )
+
+
+@app.get("/api/categories/snapshot")
+async def categories_snapshot_api(profile: str, force: bool = False):
+    """Return the parsed + aggregated view of categories.yaml for the UI."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    return JSONResponse(categories.build_snapshot(profile, force_reload=force))
+
+
+def _categories_err(e: "object"):  # typing.TYPE_CHECKING-safe
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"error": str(e)}, status_code=getattr(e, "status", 400))
+
+
+@app.post("/api/categories/entry")
+async def categories_entry_add_api(request: Request):
+    """Create a new entry under a group in categories.yaml."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.add_entry(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            body.get("priorite", 5),
+            body.get("mots_cles") or [],
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.patch("/api/categories/entry")
+async def categories_entry_update_api(request: Request):
+    """Update an existing entry's path and/or priority."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.update_entry(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            new_chemin=body.get("new_chemin"),
+            new_priorite=body.get("new_priorite"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.delete("/api/categories/entry")
+async def categories_entry_delete_api(request: Request):
+    """Remove an entry."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.delete_entry(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.post("/api/categories/entry/keyword")
+async def categories_keyword_add_api(request: Request):
+    """Append a keyword to an entry's mots_cles list (dedups)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.add_keyword(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            body.get("keyword"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.delete("/api/categories/entry/keyword")
+async def categories_keyword_delete_api(request: Request):
+    """Remove a keyword from an entry (case-insensitive match)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.delete_keyword(
+            body.get("profile"),
+            body.get("group"),
+            body.get("chemin"),
+            body.get("keyword"),
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.post("/api/categories/undo")
+async def categories_undo_api(request: Request):
+    """Restore categories.yaml from the most recent backup."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    try:
+        return JSONResponse(categories.undo(body.get("profile")))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.get("/api/rename/audit")
+async def rename_audit_api(profile: str, force: bool = False):
+    """Scan the lib + suggest a name per file using the profile's
+    rename template. Read-only. Cached in memory.
+    Optional `force=true` bypasses the cache."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_audit_module
+    return JSONResponse(
+        rename_audit_module.rename_audit(profile, force_reload=force))
+
+
+@app.post("/api/rename/file")
+async def rename_file_api(request: Request):
+    """Apply a single rename. Body: {profile, rel_path, new_name, batch_id?}.
+    On success the rename is committed on disk + journaled.
+    Returns the new rel_path so the caller can navigate / select it."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.commit_rename(
+            profile=body.get("profile"),
+            rel_path=body.get("rel_path"),
+            new_name=body.get("new_name"),
+            batch_id=body.get("batch_id") or "",
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.get("/api/rename/journal")
+async def rename_journal_api(profile: str, limit: int = 200):
+    """Return the rename journal entries (newest first) + batch groups.
+    Read-only — used by the 📜 Renommages modal."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_mod
+    return JSONResponse(rename_mod.get_journal(profile, limit=limit))
+
+
+@app.post("/api/rename/undo/record")
+async def rename_undo_record_api(request: Request):
+    """Undo one rename. Body: {profile, ts, old, new}.
+    The record must exist in the journal and both paths must be under
+    the profile's target. Returns the inverse journal entry on success."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.undo_single_rename(
+            profile=body.get("profile"),
+            ts=body.get("ts"),
+            old_abs=body.get("old"),
+            new_abs=body.get("new"),
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/bulk")
+async def rename_bulk_api(request: Request):
+    """Apply N renames as a single batch.
+    Body: {profile, items: [{rel_path, new_name}, ...], batch_id?}.
+    Best-effort: per-item failures are surfaced in `errors[]`; the
+    successful renames go through with a shared batch_id so they can
+    be undone together via /api/rename/undo/batch."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.commit_rename_bulk(
+            profile=body.get("profile"),
+            items=body.get("items") or [],
+            batch_id=body.get("batch_id") or "",
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/undo/batch")
+async def rename_undo_batch_api(request: Request):
+    """Reverse every rename tagged with `batch_id`.
+    Body: {profile, batch_id}. Returns the per-record undone / errors
+    summary from the journal."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.undo_batch_for_profile(
+            profile=body.get("profile"),
+            batch_id=body.get("batch_id"),
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.get("/api/categories/entry/files")
+async def categories_entry_files_api(
+    profile: str,
+    group: str,
+    chemin: str,
+    limit: int = 50,
+):
+    """For a given category entry, return files matching its keywords
+    (future) + files currently in its target folder (current)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    limit = max(1, min(limit, 500))
+    return JSONResponse(
+        categories.entry_files(profile, group, chemin, limit=limit))
+
+
+@app.get("/api/categories/dormant")
+async def categories_dormant_api(profile: str):
+    """Identify keywords + entries that no file's text could ever trigger.
+    Phase C audit endpoint."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    return JSONResponse(categories.dormant_audit(profile))
+
+
+@app.post("/api/categories/keywords/bulk-delete")
+async def categories_keywords_bulk_delete_api(request: Request):
+    """Delete multiple keywords in one transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    profile = body.get("profile")
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(categories.delete_keywords_bulk(
+            profile, body.get("items") or [],
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.post("/api/categories/entries/bulk-delete")
+async def categories_entries_bulk_delete_api(request: Request):
+    """Delete multiple entries in one transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    profile = body.get("profile")
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(categories.delete_entries_bulk(
+            profile, body.get("items") or [],
+        ))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.get("/api/taxonomy/profiles")
+async def taxonomy_profiles_api():
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"profiles": taxonomy.list_profiles()})
+
+
+@app.get("/api/taxonomy/snapshot")
+async def taxonomy_snapshot_api(profile: str, force: bool = False):
+    from fastapi.responses import JSONResponse
+    try:
+        snap = taxonomy.get_snapshot(profile, force_reload=force)
+    except Exception as exc:  # pragma: no cover — defensive
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(snap)
+
+
+@app.get("/api/taxonomy/folder/files")
+async def taxonomy_files_api(
+    profile: str,
+    path: str = "",
+    offset: int = 0,
+    limit: int = 50,
+):
+    from fastapi.responses import JSONResponse
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return JSONResponse(taxonomy.list_files_in_folder(profile, path, offset, limit))
+
+
+@app.get("/api/taxonomy/theme/files")
+async def taxonomy_theme_files_api(
+    profile: str,
+    theme: str,
+    limit: int = 50,
+):
+    """For a given theme, return:
+      - future: files in vision_cache that carry this theme (potential
+                reclassify targets)
+      - current: files actually in the folder mapped to this theme now
+    """
+    from fastapi.responses import JSONResponse
+    if not theme.strip():
+        return JSONResponse({"error": "theme requis"}, status_code=400)
+    limit = max(1, min(limit, 500))
+    return JSONResponse(taxonomy.theme_files(profile, theme, limit=limit))
+
+
+@app.get("/api/taxonomy/reclassify/dryrun")
+async def taxonomy_reclassify_dryrun_api(profile: str, sample: int = 50):
+    """Project what would move at the next `klodo classify --execute`.
+    Read-only — uses the cached vision results + today's mapping."""
+    from fastapi.responses import JSONResponse
+    sample = max(0, min(sample, 500))
+    return JSONResponse(taxonomy.reclassify_dryrun(profile, sample_size=sample))
+
+
+@app.get("/api/taxonomy/backups")
+async def taxonomy_backups_list_api(profile: str):
+    """List theme_mapping + tree backups, newest first."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.list_taxonomy_backups(profile))
+
+
+@app.post("/api/taxonomy/backups/restore")
+async def taxonomy_backups_restore_api(request: Request):
+    """Restore a specific taxonomy backup by filename."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile")
+    filename = body.get("filename")
+    if not profile or not filename:
+        return JSONResponse(
+            {"error": "profile + filename requis"}, status_code=400,
+        )
+    try:
+        return JSONResponse(taxonomy.restore_taxonomy_backup(profile, filename))
+    except taxonomy.TaxonomyError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status)
+
+
+@app.get("/api/categories/backups")
+async def categories_backups_list_api(profile: str):
+    """List categories backups for the profile, newest first."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    return JSONResponse(categories.list_categories_backups(profile))
+
+
+@app.post("/api/categories/backups/restore")
+async def categories_backups_restore_api(request: Request):
+    """Restore a specific categories backup by filename."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    body = await request.json()
+    profile = body.get("profile")
+    filename = body.get("filename")
+    if not profile or not filename:
+        return JSONResponse(
+            {"error": "profile + filename requis"}, status_code=400,
+        )
+    try:
+        return JSONResponse(
+            categories.restore_categories_backup(profile, filename))
+    except categories.CategoriesError as e:
+        return _categories_err(e)
+
+
+@app.get("/api/taxonomy/mapping-conflicts")
+async def taxonomy_mapping_conflicts_api(profile: str):
+    """Extended audit: substring eclipses + same-folder duplicates.
+    Pure analysis, no writes."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.mapping_conflicts(profile))
+
+
+@app.get("/api/taxonomy/dormant-mappings")
+async def taxonomy_dormant_mappings_api(profile: str):
+    """List mapping keys that no file's top theme resolves through.
+    Removing them wouldn't change any file's classification."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.dormant_mappings(profile))
+
+
+@app.post("/api/taxonomy/mappings/bulk-delete")
+async def taxonomy_mappings_bulk_delete_api(request: Request):
+    """Delete multiple mappings in a single transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile")
+    keys = body.get("keys")
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(taxonomy.delete_mappings_bulk(profile, keys or []))
+    except taxonomy.TaxonomyError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status)
+
+
+@app.post("/api/taxonomy/mapping")
+async def taxonomy_mapping_add_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    folder = body.get("folder") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.add_mapping(profile, theme, folder)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.patch("/api/taxonomy/mapping")
+async def taxonomy_mapping_update_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    folder = body.get("folder") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.update_mapping(profile, theme, folder)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.delete("/api/taxonomy/mapping")
+async def taxonomy_mapping_delete_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.delete_mapping(profile, theme)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.post("/api/taxonomy/undo")
+async def taxonomy_undo_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.restore_last_backup(profile)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.post("/api/taxonomy/folder")
+async def taxonomy_folder_create_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    parent = body.get("parent") or ""
+    name = body.get("name") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.create_folder(profile, parent, name)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.patch("/api/taxonomy/folder")
+async def taxonomy_folder_rename_api(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    old_path = body.get("path") or ""
+    new_name = body.get("new_name") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.rename_folder(profile, old_path, new_name)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.post("/api/taxonomy/folder/move")
+async def taxonomy_folder_move_api(request: Request):
+    """Move a folder under a different parent (basename unchanged)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    old_path = body.get("path") or ""
+    new_parent = body.get("new_parent") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.move_folder(profile, old_path, new_parent)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.get("/api/taxonomy/folder/delete-preview")
+async def taxonomy_folder_delete_preview_api(profile: str, path: str):
+    """Read-only: what would `delete_folder(path)` remove ?"""
+    from fastapi.responses import JSONResponse
+    try:
+        return JSONResponse(taxonomy.delete_folder_preview(profile, path))
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.delete("/api/taxonomy/folder")
+async def taxonomy_folder_delete_api(request: Request):
+    """Delete a folder (force=True required for non-empty)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    path = body.get("path") or ""
+    force = bool(body.get("force") or False)
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.delete_folder(profile, path, force=force)
+    except taxonomy.TaxonomyError as exc:
+        payload = {"error": str(exc)}
+        # Surface the preview stats when refusing for non-empty so the
+        # client can show its confirm modal without a second round-trip.
+        if hasattr(exc, "preview"):
+            payload["preview"] = exc.preview  # type: ignore[attr-defined]
+        return JSONResponse(payload, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.post("/api/taxonomy/mapping/preview")
+async def taxonomy_mapping_preview_api(request: Request):
+    """Dry-run: simulate the effect of an add/update/delete on the cache
+    without writing anything. Returns counts + sample examples."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    theme = body.get("theme") or ""
+    folder = body.get("folder")  # None for delete
+    action = body.get("action") or "add"
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        result = taxonomy.preview_mapping_impact(profile, theme, folder, action)
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+    return JSONResponse(result)
+
+
+@app.get("/api/taxonomy/file/metadata")
+async def taxonomy_file_metadata_api(profile: str, path: str):
+    from fastapi.responses import JSONResponse
+    meta = taxonomy.get_file_metadata(profile, path)
+    meta["file"]["page_count_estimate"] = taxonomy.get_file_page_count(profile, path)
+    return JSONResponse(meta)
+
+
+@app.get("/api/taxonomy/file/thumbnail")
+async def taxonomy_file_thumbnail_api(profile: str, path: str, page: int = 1):
+    from fastapi.responses import FileResponse, JSONResponse
+    img, mime = taxonomy.get_thumbnail(profile, path, page)
+    if img is None:
+        return JSONResponse({"error": mime or "indisponible"}, status_code=404)
+    return FileResponse(img, media_type=mime or "image/jpeg")
+
+
+@app.get("/api/taxonomy/file/full_pipeline")
+async def taxonomy_file_full_pipeline_api(profile: str, path: str):
+    """Recompute the prediction with the full classifier (KeywordClassifier
+    included). Doesn't call the LLM Mapper to avoid token spending."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(taxonomy.get_file_metadata_full_pipeline(profile, path))

@@ -25,7 +25,7 @@ from lib.logger import get_logger
 
 log = get_logger()
 
-PROMPT_VERSION = "v1"  # Bump sur changement de VISION_PROMPT / VISION_PROMPT_MULTI
+PROMPT_VERSION = "v3"  # v3: smart page selection (top-K par densité texte au lieu des N premières)
 _PDF_HEAD_BYTES = 64 * 1024
 
 _cache_lock = Lock()
@@ -71,12 +71,33 @@ def load_cache(cache_path: Path) -> dict:
 
 
 def save_cache(cache_path: Path, cache: dict) -> None:
-    """Écrit le cache JSON sur disque (création du dossier si besoin)."""
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cache_path.with_suffix(cache_path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
-    tmp.replace(cache_path)
+    """Écrit le cache JSON sur disque, concurrency-safe.
+
+    Plusieurs workers (ThreadPoolExecutor) peuvent appeler cette fonction
+    en parallèle ; on sérialise les écritures avec `_cache_lock` et on
+    relit la version sur disque sous lock pour ne pas écraser les ajouts
+    d'autres workers (lost-update + tmp-rename race).
+    """
+    with _cache_lock:
+        # Re-read disk state to avoid lost updates from other workers
+        on_disk: dict = {}
+        if cache_path.exists():
+            try:
+                with open(cache_path, encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    on_disk = loaded
+            except (OSError, json.JSONDecodeError):
+                # Corrupted on-disk version — discard, our in-memory copy wins
+                pass
+        # Merge: in-memory entries take precedence (latest writes win)
+        merged = {**on_disk, **cache}
+        # Atomic write
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_suffix(cache_path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+        tmp.replace(cache_path)
 
 
 def lookup(cache: dict, key: str) -> dict | None:

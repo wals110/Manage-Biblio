@@ -199,11 +199,12 @@ def execute_classify(results, target_base, fallback='_A-TRIER'):
 def process_single_file(pdf_path, api_key, endpoint, model,
                         theme_mapping, classifier=None, llm_mapper=None,
                         verbose=False, min_confidence=CONFIDENCE_THRESHOLD, n_pages=1,
+                        n_candidates=0,
                         vision_cache_path=None):
-    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int, str | None) -> dict
+    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int, int, str | None) -> dict
     """
     Pipeline de classification pour un fichier :
-    1. Extraction couverture → image
+    1. Extraction couverture → image (smart selection si n_candidates>n_pages)
     2. Envoi au LLM Vision → titre, auteur, thème (via cache si `vision_cache_path` fourni)
     3. Classification thématique
     """
@@ -225,10 +226,12 @@ def process_single_file(pdf_path, api_key, endpoint, model,
     if vision_cache_path:
         vision = analyze_cover_cached(pdf_path, vision_cache_path,
                                       api_key, endpoint, model,
-                                      verbose=verbose, n_pages=n_pages)
+                                      verbose=verbose, n_pages=n_pages,
+                                      n_candidates=n_candidates)
     else:
         vision = analyze_cover(pdf_path, api_key, endpoint, model,
-                               verbose=verbose, n_pages=n_pages)
+                               verbose=verbose, n_pages=n_pages,
+                               n_candidates=n_candidates)
 
     if vision.get('error') == 'extraction':
         result['status'] = 'erreur_extraction'

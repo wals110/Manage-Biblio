@@ -42,7 +42,6 @@ import base64
 import io
 import json
 import os
-import re
 
 try:
     from PIL import Image
@@ -71,65 +70,114 @@ log = get_logger()
 SILICONFLOW_ENDPOINT = "https://api.siliconflow.com/v1/chat/completions"
 DEFAULT_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 
-VISION_PROMPT = """Analyze this book cover image. Extract the following information and respond ONLY with a valid JSON object, nothing else:
+VISION_PROMPT = """Analyze this book cover image. Respond ONLY with a valid JSON object, nothing else:
 
 {
   "title": "the book title (in the original language of the book)",
   "author": "the author name(s), or empty string if not visible",
-  "theme": "the main topic/discipline in English (e.g. Mathematics, Computer Science, Physics, Chemistry, Biology, Medicine, Philosophy, History, Economics, Law, Psychology, Religion, Literature, Art, Music, Cooking, Sports, Photography, Engineering, Electronics, Networking, Programming, Machine Learning, Data Science, etc.)",
+  "themes": [
+    {"theme": "primary topic", "confidence": 0.0 to 1.0, "reason": "why"},
+    {"theme": "alt topic if ambiguous", "confidence": 0.0 to 1.0, "reason": "why"}
+  ],
   "language": "the main language of the book (fr, en, ar, de, es, etc.)",
   "confidence": 0.0 to 1.0
 }
 
-Rules:
-- If you cannot read the title clearly, set confidence below 0.3
-- If the image is not a book cover, set all fields to empty strings and confidence to 0
-- Keep the title exactly as written on the cover (preserve original language and case)
-- For author, use "Firstname Lastname" format if possible
-- Be specific with the theme (e.g. "Machine Learning" not just "Computer Science")"""
+Rules for `themes`:
+- Provide 1 to 3 candidate themes in English, ranked by confidence.
+- Be SPECIFIC: prefer "Machine Learning" over "Computer Science",
+  "Topology" over "Mathematics", "Quantum Mechanics" over "Physics".
+- If the title contains TECHNICAL terms (stochastic, bayesian, markov,
+  algorithm, gradient, neural, optimization, …), include the matching
+  technical discipline as a candidate even when the cover style suggests
+  another field (e.g. a humanities-styled cover on a math book).
+- If a theme is ambiguous between fields (e.g. "Learning" can mean
+  Machine Learning OR Educational Psychology), include BOTH candidates.
+- For each candidate, give a 1-line `reason` from the cover/title text.
 
-VISION_PROMPT_MULTI = """You are given multiple pages from a book (cover and first pages). Extract the following information and respond ONLY with a valid JSON object, nothing else:
+Other rules:
+- If you cannot read the title clearly, set top-level confidence below 0.3.
+- If the image is not a book cover, set all fields to empty strings.
+- Keep the title exactly as written on the cover (original language + case).
+- For author, use "Firstname Lastname" format if possible."""
+
+VISION_PROMPT_MULTI = """You are given multiple pages from a book (cover + first pages). Respond ONLY with a valid JSON object:
 
 {
-  "title": "the specific book title (NOT the series/collection name)",
+  "title": "the SPECIFIC book title (NOT the series/collection name)",
   "author": "the author name(s), or empty string if not visible",
-  "theme": "the main topic/discipline in English (e.g. Mathematics, Computer Science, Physics, Chemistry, Biology, Medicine, Philosophy, History, Economics, Law, Psychology, Religion, Literature, Art, Music, Cooking, Sports, Photography, Engineering, Electronics, Networking, Programming, Machine Learning, Data Science, etc.)",
-  "language": "the main language of the book (fr, en, ar, de, es, etc.)",
+  "themes": [
+    {"theme": "primary topic", "confidence": 0.0 to 1.0, "reason": "why (cite TOC/title)"},
+    {"theme": "alt topic if ambiguous", "confidence": 0.0 to 1.0, "reason": "why"}
+  ],
+  "language": "main language (fr, en, ar, de, es, etc.)",
   "confidence": 0.0 to 1.0
 }
 
-Rules:
-- IMPORTANT: Look for the SPECIFIC title of this book, not the collection/series name (e.g. not "Lecture Notes in Computer Science" but the actual book title)
-- The title page is often on the 2nd or 3rd page, not the cover
-- If you cannot read the title clearly, set confidence below 0.3
-- If the images are not from a book, set all fields to empty strings and confidence to 0
-- Keep the title exactly as written (preserve original language and case)
-- For author, use "Firstname Lastname" format if possible
-- Be specific with the theme (e.g. "Machine Learning" not just "Computer Science")"""
+Rules for `themes`:
+- 1 to 3 candidates in English, ranked by confidence.
+- Use the table of contents / chapter titles when visible to identify
+  the technical discipline. The TOC is often more decisive than the cover.
+- Be SPECIFIC: prefer "Machine Learning" over "Computer Science",
+  "Topology" over "Mathematics", "Quantum Mechanics" over "Physics".
+- For ambiguous books (mathematical psychology, computational linguistics,
+  applied ethics, etc.), include BOTH candidate disciplines.
+- Each candidate has a 1-line `reason` citing what you saw in the pages.
+
+Other rules:
+- IMPORTANT: identify the SPECIFIC title of this book, not the
+  collection/series name (e.g. not "Lecture Notes in Computer Science"
+  but the actual book title — usually on page 2-3).
+- If you cannot read the title clearly, set top-level confidence < 0.3.
+- If the images are not from a book, set all fields to empty strings.
+- Preserve title exactly (original language and case)."""
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # EXTRACTION COUVERTURE
 # ════════════════════════════════════════════════════════════════════════════
 
-def extract_cover_image(pdf_path: str, dpi: int = PDF_DPI,
-                        n_pages: int = 1) -> list['Image.Image'] | None:
+def extract_cover_image(
+    pdf_path: str,
+    dpi: int = PDF_DPI,
+    n_pages: int = 1,
+    n_candidates: int = 0,
+) -> list['Image.Image'] | None:
     """
-    Extrait les N premières pages du PDF comme images PIL.
+    Extrait les pages les plus informatives du PDF comme images PIL.
+
+    Modes:
+    - n_candidates <= n_pages : extraction contiguë des n_pages premières
+      (comportement legacy).
+    - n_candidates > n_pages : smart page selection — score les
+      n_candidates premières pages via pypdf (text density), retient les
+      n_pages les plus informatives. Evite d'envoyer des pages blanches
+      ou de garde au LLM, capte mieux la TOC.
 
     Passe par le cache mémoire intra-run `lib.pdf_cover.get_cover_image()`
-    pour mutualiser l'appel Poppler entre rename, classify et viewer Curation
-    (un seul `pdf2image.convert_from_path` par (pdf_path, dpi, n_pages)).
+    pour mutualiser l'appel Poppler entre rename, classify et viewer Curation.
 
     Args:
         pdf_path: Chemin vers le fichier PDF
         dpi: Résolution de l'extraction (par défaut 150 dpi)
-        n_pages: Nombre de pages à extraire (par défaut 1)
+        n_pages: Nombre de pages à retourner pour le LLM (par défaut 1)
+        n_candidates: Nombre de pages à scanner pour la sélection
+                      (>= n_pages active la smart selection ; 0/legacy = contiguë)
 
     Returns:
         Liste d'images PIL ou None si extraction échoue
     """
     from lib.pdf_cover import get_cover_image
+
+    if n_candidates and n_candidates > n_pages:
+        from lib.page_selector import select_top_pages
+        indices = select_top_pages(pdf_path, n_candidates=n_candidates,
+                                   n_keep=n_pages)
+        if indices:
+            return get_cover_image(pdf_path, dpi=dpi,
+                                   page_indices=tuple(indices))
+        # fallthrough: select_top_pages returned empty → legacy behavior
+
     return get_cover_image(pdf_path, dpi=dpi, n_pages=n_pages)
 
 
@@ -215,6 +263,31 @@ def call_vision_api(images_base64: object, api_key: str, endpoint: str,
     return parse_vision_response(content)
 
 
+def _extract_outermost_json(content: str) -> str | None:
+    """Find the first {...} block in `content` whose braces are balanced.
+
+    The previous regex-based approach failed when the JSON contained nested
+    objects (e.g. `themes: [{theme: ...}]`) — `\\{[^{}]*\\}` matched the
+    INNER theme object first instead of the outer wrapping one. This
+    counter-based scan returns the outermost JSON object reliably.
+    """
+    if not content:
+        return None
+    start = content.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    for i in range(start, len(content)):
+        c = content[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return content[start:i + 1]
+    return None
+
+
 def parse_vision_response(content: str) -> dict | None:
     """
     Parse la réponse JSON du LLM Vision.
@@ -228,26 +301,55 @@ def parse_vision_response(content: str) -> dict | None:
     Returns:
         Dict normalisé avec title, author, theme, language, confidence ou None
     """
-    # Extraire le JSON de la réponse (le LLM peut ajouter du texte autour)
-    json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
-    if not json_match:
-        # Essayer avec des accolades imbriquées
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-
-    if not json_match:
+    # Extraire le JSON outermost de la réponse (le LLM peut ajouter du
+    # texte autour). On compte les accolades pour trouver l'objet englobant
+    # — important depuis prompt v2 qui contient des objets imbriqués
+    # dans `themes: [{...}, {...}]`.
+    json_str = _extract_outermost_json(content)
+    if not json_str:
         log.warning(f"  ⚠ Pas de JSON dans la réponse: {content[:500]}")
         return None
 
     try:
-        result = json.loads(json_match.group())
+        result = json.loads(json_str)
 
-        # Valider et normaliser
+        # Normalize themes[] — support both new (themes array) and legacy
+        # (single 'theme' string) shapes for backward compat.
+        themes_list: list[dict] = []
+        raw_themes = result.get("themes")
+        if isinstance(raw_themes, list):
+            for item in raw_themes:
+                if not isinstance(item, dict):
+                    continue
+                t = str(item.get("theme", "")).strip()
+                if not t:
+                    continue
+                themes_list.append({
+                    "theme": t,
+                    "confidence": float(item.get("confidence", 0.0)),
+                    "reason": str(item.get("reason", "")).strip(),
+                })
+        # Legacy fallback: a single 'theme' string
+        if not themes_list:
+            t = str(result.get("theme", "")).strip()
+            if t:
+                themes_list.append({
+                    "theme": t,
+                    "confidence": float(result.get("confidence", 0.0)),
+                    "reason": "",
+                })
+
+        # Top theme exposed under 'theme' for backward compat with all
+        # existing callers (classifier, mapper, dashboard, etc.)
+        top_theme = themes_list[0]["theme"] if themes_list else ""
+
         return {
-            'title': str(result.get('title', '')).strip(),
-            'author': str(result.get('author', '')).strip(),
-            'theme': str(result.get('theme', '')).strip(),
-            'language': str(result.get('language', '')).strip(),
-            'confidence': float(result.get('confidence', 0.0)),
+            "title": str(result.get("title", "")).strip(),
+            "author": str(result.get("author", "")).strip(),
+            "theme": top_theme,
+            "themes": themes_list,
+            "language": str(result.get("language", "")).strip(),
+            "confidence": float(result.get("confidence", 0.0)),
         }
     except (json.JSONDecodeError, ValueError) as e:
         log.warning(f"  ⚠ JSON invalide: {e} — contenu: {content[:150]}")
@@ -264,6 +366,7 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
                   verbose: bool = False,
                   max_retries: int = 3,
                   n_pages: int = 1,
+                  n_candidates: int = 0,
                   client: 'LLMClient | None' = None) -> dict | None:
     """
     Analyse complète d'une couverture de livre (une ou plusieurs pages).
@@ -304,7 +407,8 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
     # Étape 1: Extraire les pages
     if verbose:
         log.info("  → Extraction des pages...")
-    images = extract_cover_image(pdf_path, dpi=dpi, n_pages=n_pages)
+    images = extract_cover_image(pdf_path, dpi=dpi, n_pages=n_pages,
+                                 n_candidates=n_candidates)
     if not images:
         if verbose:
             log.info("  ✗ Échec extraction image")
@@ -349,6 +453,7 @@ def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
                          verbose: bool = False,
                          max_retries: int = 3,
                          n_pages: int = 1,
+                         n_candidates: int = 0,
                          client: 'LLMClient | None' = None) -> dict | None:
     """Version cachée de `analyze_cover()` — lookup JSON avant appel LLM.
 
@@ -392,7 +497,7 @@ def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
     result = analyze_cover(
         pdf_path, api_key=api_key, endpoint=endpoint, model=model,
         dpi=dpi, verbose=verbose, max_retries=max_retries,
-        n_pages=n_pages, client=client)
+        n_pages=n_pages, n_candidates=n_candidates, client=client)
 
     if (
         key is not None

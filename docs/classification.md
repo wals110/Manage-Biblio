@@ -7,8 +7,75 @@
 La classification est le cœur de Klodo. Elle transforme un thème détecté par LLM Vision en un chemin de dossier dans l'arborescence cible. Le système utilise 4 niveaux en cascade : chaque niveau n'est essayé que si le précédent échoue.
 
 <p align="center">
-  <img src="diagrams/cascade-classification.svg" alt="Cascade de classification" width="550">
+  <img src="diagrams/cascade-classification.svg" alt="Cascade de classification" width="850">
 </p>
+
+## Les fichiers YAML du pipeline
+
+La classification s'appuie sur trois fichiers YAML distincts, chacun avec un rôle précis. Cette section les compare pour lever toute ambiguïté.
+
+| Fichier | Étape pipeline | Modifié par | Rôle |
+| --- | --- | --- | --- |
+| `theme_mapping.yaml` | 1 — Theme Mapping (rapide, gratuit) | édition manuelle + drag-drop dashboard Taxonomie + auto-apprentissage LLM Mapper | mapping direct `thème → dossier` |
+| `categories.yaml` | 2 — Keyword Classifier (fallback) | édition manuelle uniquement | mots-clés par dossier, scan multi-source (titre, thème, filename) |
+| `.cache/taxonomy-backups/theme_mapping-YYYYMMDD-HHMMSS.yaml` | aucune (rollback) | écrit automatiquement avant chaque write du dashboard Taxonomie | snapshot horodaté pour annulation, rotation 20 |
+
+### `theme_mapping.yaml` — étape 1
+
+C'est la **table principale** : une lookup directe `clé thème → chemin dossier`. Utilisé par `classify_by_theme()` au début du pipeline.
+
+```yaml
+# Extrait
+physics: 01-SCIENCES/PHYSIQUE
+quantum mechanics: 01-SCIENCES/PHYSIQUE/05-Relativite-Quantique
+java: 02-INFORMATIQUE/03-Langages-Programmation/Java
+```
+
+**Logique de match** (dans l'ordre) :
+
+1. Match **exact** insensible à la casse
+2. Match **substring** longest-wins, avec **word-boundary** pour les clés mono-mot (évite `art` dans `Particle`, `surface` dans `surfaces`)
+3. Match **substring inverse** (le thème apparaît dans une clé plus longue)
+
+### `categories.yaml` — étape 2
+
+C'est le **filet de sauvetage** : utilisé seulement si l'étape 1 a échoué. La structure est différente — c'est une liste de catégories, chacune avec ses mots-clés et sa priorité.
+
+```yaml
+# Extrait
+- chemin: 01-SCIENCES/PHYSIQUE/01-Mecanique
+  priorite: 5
+  mots_cles:
+    - mechanics
+    - mécanique
+    - fluid dynamics
+    - Newton
+    - Lagrange
+```
+
+Le `KeywordClassifier` scanne **titre + thème + filename** combinés, à la recherche des mots-clés. Une catégorie gagne si elle accumule plus de matches (pondérés par priorité). Word-boundary appliqué aux clés mono-mot pour les mêmes raisons que `theme_mapping`.
+
+### `.cache/taxonomy-backups/theme_mapping-*.yaml` — rollback
+
+Snapshots horodatés de `theme_mapping.yaml` créés automatiquement par le dashboard Taxonomie **avant chaque écriture** (drag-drop, popover Mapper). Rotation à 20 backups (les plus anciens sont supprimés).
+
+Pour annuler une modification ratée : copie le backup le plus récent par-dessus `theme_mapping.yaml`, recharge le dashboard.
+
+```text
+profiles/default/.cache/taxonomy-backups/
+├── theme_mapping-20260511-204512.yaml   ← le plus récent
+├── theme_mapping-20260511-185233.yaml
+├── theme_mapping-20260510-145822.yaml
+└── …  (max 20)
+```
+
+### Quand modifier quoi
+
+| Symptôme | Fichier à éditer | Mécanisme |
+| --- | --- | --- |
+| Un thème LLM revient souvent et n'est pas mappé | `theme_mapping.yaml` | Drag-drop dans dashboard Taxonomie (recommandé) ou édition à la main |
+| Un mot-clé spécifique dans le titre/filename devrait toujours router vers un dossier (indépendamment du thème LLM) | `categories.yaml` | Édition manuelle uniquement |
+| Une mauvaise mapping vient d'être ajoutée et il faut revenir en arrière | restaurer depuis `taxonomy-backups/` | Copie manuelle du backup le plus récent |
 
 ## LLM Vision
 
