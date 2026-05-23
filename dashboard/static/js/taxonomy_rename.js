@@ -55,6 +55,11 @@
     bulkSelected: new Set(),
     // Active tab of the 📜 modal: "records" or "batches"
     historyTab: 'records',
+    // Timestamp (ms epoch) of the last full audit (force=true OR initial
+    // load). Patches don't update this — the cache may be in-sync but
+    // the os.walk hasn't run, so files added manually since are still
+    // invisible.
+    lastFullScanTs: 0,
   };
 
   function _sessionKey() {
@@ -1255,6 +1260,7 @@
     renderPreview();
     renderSession();
     renderBulkbar();
+    renderRescanAge();
   }
 
   // ── Bulk selection (multi-rename) ────────────────────────────────────
@@ -1365,6 +1371,7 @@
       try {
         state.data = await fetchAudit();
         state.loaded = true;
+        state.lastFullScanTs = Date.now();
         // Pre-select the first candidate so the detail panel is not empty
         if (state.data.candidates.length) {
           state.selectedRelPath = state.data.candidates[0].rel_path;
@@ -1377,6 +1384,55 @@
           wrap.appendChild(el('div', { class: 'error', style: 'padding:20px;' },
             ['✗ ' + e.message]));
         }
+      }
+    });
+  }
+
+  // ── Manual rescan (force=true → full os.walk + ThreadPoolExecutor) ──
+
+  // Format "il y a Xmin" for the rescan button label. Refreshed on every
+  // renderAll() call (≈ on every user interaction), so it stays fresh
+  // enough without a setInterval.
+  function _formatScanAge() {
+    if (!state.lastFullScanTs) return '';
+    const sec = Math.max(0, Math.round((Date.now() - state.lastFullScanTs) / 1000));
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}min`;
+    const h = Math.floor(min / 60);
+    return `${h}h`;
+  }
+
+  function renderRescanAge() {
+    const span = $('#tax-rename-rescan-age');
+    if (span) span.textContent = _formatScanAge();
+  }
+
+  async function manualRescan() {
+    const btn = $('#tax-rename-rescan-btn');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    await withBusy('Rescan complet…', async () => {
+      try {
+        state.data = await fetchAudit(true);
+        state.lastFullScanTs = Date.now();
+        // Keep the current selection if the file still exists; otherwise
+        // pick the first candidate so the detail panel isn't empty.
+        const stillThere = state.selectedRelPath
+          && state.data.candidates.some(
+              c => c.rel_path === state.selectedRelPath);
+        if (!stillThere && state.data.candidates.length) {
+          state.selectedRelPath = state.data.candidates[0].rel_path;
+        }
+        renderAll();
+        showToast(
+          `🔄 Scan terminé : ${state.data.stats.n_total} fichiers, `
+          + `${state.data.stats.n_with_title} audités`,
+          'success');
+      } catch (e) {
+        showToast('✗ Échec du rescan : ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
       }
     });
   }
@@ -1398,6 +1454,7 @@
       state.renaming = false;
       state.searchQuery = '';
       state.bulkSelected.clear();
+      state.lastFullScanTs = 0;
       // Session log is keyed per profile so each profile has its own
       // history. Load the new profile's log; the previous one stays in
       // sessionStorage untouched.
@@ -1456,6 +1513,16 @@
     // Initial render of the session panel so the count/list reflect
     // sessionStorage from the start (even before the user clicks Rename).
     renderSession();
+
+    // ── Manual rescan button ──
+    const rescanBtn = $('#tax-rename-rescan-btn');
+    if (rescanBtn) {
+      rescanBtn.addEventListener('click', () => manualRescan());
+    }
+    // Passively refresh the "il y a Xmin" label so it stays sensible
+    // when the user keeps the tab open without interacting. Cheap:
+    // one DOM write per minute.
+    setInterval(renderRescanAge, 60_000);
 
     // ── Bulk action bar ──
     const bulkApplyBtn = $('#tax-rename-bulkbar-apply');
