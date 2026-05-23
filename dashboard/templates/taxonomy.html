@@ -286,6 +286,11 @@
                 <button type="button" id="tax-rename-search-clear"
                         class="tax-rename-search-clear" hidden
                         aria-label="Effacer la recherche">✕</button>
+                <button type="button" id="tax-rename-rescan-btn"
+                        class="tax-rename-rescan-btn"
+                        title="Forcer un nouveau scan du target (~5s sur 18k fichiers) — utile après un ajout manuel ou un cycle `klodo.sh rename` qui a enrichi vision_cache.json">
+                    🔄 <span id="tax-rename-rescan-age" class="tax-rename-rescan-age"></span>
+                </button>
                 <button type="button" id="tax-rename-history-btn"
                         class="tax-rename-history-btn"
                         title="Voir le journal des renommages (avec undo)">
