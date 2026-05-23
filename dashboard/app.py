@@ -1579,6 +1579,7 @@ async def taxonomy_page(request: Request, profile: str | None = None):
 async def categories_snapshot_api(profile: str, force: bool = False):
     """Return the parsed + aggregated view of categories.yaml for the UI."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     return JSONResponse(categories.build_snapshot(profile, force_reload=force))
 
@@ -1592,6 +1593,7 @@ def _categories_err(e: "object"):  # typing.TYPE_CHECKING-safe
 async def categories_entry_add_api(request: Request):
     """Create a new entry under a group in categories.yaml."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     try:
@@ -1610,6 +1612,7 @@ async def categories_entry_add_api(request: Request):
 async def categories_entry_update_api(request: Request):
     """Update an existing entry's path and/or priority."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     try:
@@ -1628,6 +1631,7 @@ async def categories_entry_update_api(request: Request):
 async def categories_entry_delete_api(request: Request):
     """Remove an entry."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     try:
@@ -1644,6 +1648,7 @@ async def categories_entry_delete_api(request: Request):
 async def categories_keyword_add_api(request: Request):
     """Append a keyword to an entry's mots_cles list (dedups)."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     try:
@@ -1661,6 +1666,7 @@ async def categories_keyword_add_api(request: Request):
 async def categories_keyword_delete_api(request: Request):
     """Remove a keyword from an entry (case-insensitive match)."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     try:
@@ -1678,6 +1684,7 @@ async def categories_keyword_delete_api(request: Request):
 async def categories_undo_api(request: Request):
     """Restore categories.yaml from the most recent backup."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     try:
@@ -1692,6 +1699,7 @@ async def rename_audit_api(profile: str, force: bool = False):
     rename template. Read-only. Cached in memory.
     Optional `force=true` bypasses the cache."""
     from fastapi.responses import JSONResponse
+
     from dashboard import rename as rename_audit_module
     return JSONResponse(
         rename_audit_module.rename_audit(profile, force_reload=force))
@@ -1703,6 +1711,7 @@ async def rename_file_api(request: Request):
     On success the rename is committed on disk + journaled.
     Returns the new rel_path so the caller can navigate / select it."""
     from fastapi.responses import JSONResponse
+
     from dashboard import rename as rename_mod
     body = await request.json()
     try:
@@ -1722,6 +1731,7 @@ async def rename_journal_api(profile: str, limit: int = 200):
     """Return the rename journal entries (newest first) + batch groups.
     Read-only — used by the 📜 Renommages modal."""
     from fastapi.responses import JSONResponse
+
     from dashboard import rename as rename_mod
     return JSONResponse(rename_mod.get_journal(profile, limit=limit))
 
@@ -1732,6 +1742,7 @@ async def rename_undo_record_api(request: Request):
     The record must exist in the journal and both paths must be under
     the profile's target. Returns the inverse journal entry on success."""
     from fastapi.responses import JSONResponse
+
     from dashboard import rename as rename_mod
     body = await request.json()
     try:
@@ -1754,6 +1765,7 @@ async def rename_bulk_api(request: Request):
     successful renames go through with a shared batch_id so they can
     be undone together via /api/rename/undo/batch."""
     from fastapi.responses import JSONResponse
+
     from dashboard import rename as rename_mod
     body = await request.json()
     try:
@@ -1773,6 +1785,7 @@ async def rename_undo_batch_api(request: Request):
     Body: {profile, batch_id}. Returns the per-record undone / errors
     summary from the journal."""
     from fastapi.responses import JSONResponse
+
     from dashboard import rename as rename_mod
     body = await request.json()
     try:
@@ -1795,6 +1808,7 @@ async def categories_entry_files_api(
     """For a given category entry, return files matching its keywords
     (future) + files currently in its target folder (current)."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     limit = max(1, min(limit, 500))
     return JSONResponse(
@@ -1806,6 +1820,7 @@ async def categories_dormant_api(profile: str):
     """Identify keywords + entries that no file's text could ever trigger.
     Phase C audit endpoint."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     return JSONResponse(categories.dormant_audit(profile))
 
@@ -1814,6 +1829,7 @@ async def categories_dormant_api(profile: str):
 async def categories_keywords_bulk_delete_api(request: Request):
     """Delete multiple keywords in one transaction (one backup)."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     profile = body.get("profile")
@@ -1831,6 +1847,7 @@ async def categories_keywords_bulk_delete_api(request: Request):
 async def categories_entries_bulk_delete_api(request: Request):
     """Delete multiple entries in one transaction (one backup)."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     profile = body.get("profile")
@@ -1928,6 +1945,7 @@ async def taxonomy_backups_restore_api(request: Request):
 async def categories_backups_list_api(profile: str):
     """List categories backups for the profile, newest first."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     return JSONResponse(categories.list_categories_backups(profile))
 
@@ -1936,6 +1954,7 @@ async def categories_backups_list_api(profile: str):
 async def categories_backups_restore_api(request: Request):
     """Restore a specific categories backup by filename."""
     from fastapi.responses import JSONResponse
+
     from dashboard import categories
     body = await request.json()
     profile = body.get("profile")

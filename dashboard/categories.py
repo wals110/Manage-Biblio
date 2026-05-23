@@ -33,7 +33,6 @@ import yaml
 
 from dashboard import data
 
-
 # ─── Exceptions ───────────────────────────────────────────────────────────
 
 

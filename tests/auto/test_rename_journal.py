@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for lib/rename_journal.py — append-only JSONL + undo helpers."""
 
-import json
 import os
 import shutil
 import sys

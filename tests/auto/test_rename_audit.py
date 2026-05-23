@@ -315,6 +315,7 @@ class TestRenameAuditEndpoint(RenameAuditTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -470,6 +471,7 @@ class TestCommitRenameEndpoint(RenameAuditTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -565,7 +567,7 @@ class TestGetJournal(RenameAuditTestBase):
         # Step 1 — rename + undo (creates an inverse op whose old =
         # "renamed-target.pdf")
         self._add_file_with_cache("source.pdf", title="X")
-        rec1 = rename.commit_rename(
+        rename.commit_rename(
             self.profile_name, "source.pdf", "renamed-target.pdf")
         j1 = rename.get_journal(self.profile_name)
         rename.undo_single_rename(
@@ -576,14 +578,13 @@ class TestGetJournal(RenameAuditTestBase):
         )
         # Step 2 — re-do the same rename. The new record's new field is
         # again "renamed-target.pdf" — same path as the earlier undo's old.
-        rec2 = rename.commit_rename(
+        rename.commit_rename(
             self.profile_name, "source.pdf", "renamed-target.pdf")
         # Now query the journal: the FRESH record must NOT be is_undone
         j2 = rename.get_journal(self.profile_name)
         forwards = [r for r in j2["records"] if not r["is_undo"]]
         # Two forward records: the older one IS undone (its inverse
-        # exists), the newer one is NOT.
-        # j2["records"] is newest-first → forwards[0] is rec2, forwards[1] is rec1
+        # exists), the newer one is NOT (newest-first ordering).
         self.assertEqual(len(forwards), 2)
         self.assertFalse(forwards[0]["is_undone"],
                          "Most recent rename must not be flagged undone")
@@ -783,6 +784,7 @@ class TestJournalEndpoints(RenameAuditTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -983,6 +985,7 @@ class TestBulkEndpoints(RenameAuditTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 

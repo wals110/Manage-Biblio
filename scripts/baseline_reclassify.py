@@ -79,7 +79,7 @@ def main(profile: str, run_id: str | None, dry_run: bool) -> int:
     else:
         run_dir = latest_run_dir(profile_dir)
     if not run_dir or not run_dir.exists():
-        print(f"ERROR: no baseline run", file=sys.stderr)
+        print("ERROR: no baseline run", file=sys.stderr)
         return 2
 
     pred_path = run_dir / "predictions.jsonl"
@@ -161,7 +161,7 @@ def main(profile: str, run_id: str | None, dry_run: bool) -> int:
         else:
             n_unchanged += 1
 
-    print(f"Predictions stats")
+    print("Predictions stats")
     print(f"  changées             : {n_changed}")
     print(f"  inchangées           : {n_unchanged}")
     print(f"  sans cache (skip)    : {n_no_cache}")
@@ -220,7 +220,7 @@ def main(profile: str, run_id: str | None, dry_run: bool) -> int:
             print(f"WARN: runs.index.json non mis à jour ({e})", file=sys.stderr)
 
     print(f"✅ Run mis à jour in-place: {run_dir.name}")
-    print(f"   predictions.jsonl + disagreements.jsonl + meta.json")
+    print("   predictions.jsonl + disagreements.jsonl + meta.json")
     return 0
 
 

@@ -121,7 +121,7 @@ def main(profile_name: str, workers: int, limit: int, smoke: bool, dry_run: bool
 
     if dry_run:
         print("DRY-RUN — aucun appel LLM.")
-        print(f"Premiers fichiers qui seraient traités :")
+        print("Premiers fichiers qui seraient traités :")
         for p in missing[:10]:
             print(f"  - {p.relative_to(profile.target)}")
         return 0

@@ -23,7 +23,6 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from dashboard import data, taxonomy  # noqa: E402
 
-
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -326,6 +325,7 @@ class TestEndpoints(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -489,6 +489,7 @@ class TestUpdateDeleteUndoEndpoints(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -661,6 +662,7 @@ class TestCreateFolderEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -763,6 +765,7 @@ class TestImpactPreviewEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -965,6 +968,7 @@ class TestRenameFolderEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -1066,6 +1070,7 @@ class TestMoveFolderEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -1211,6 +1216,7 @@ class TestDeleteFolderEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -1504,6 +1510,7 @@ class TestThemeFilesEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -1682,6 +1689,7 @@ class TestDormantAndBulkEndpoints(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -1890,6 +1898,7 @@ class TestReclassifyDryrunEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -2068,6 +2077,7 @@ class TestMappingConflictsEndpoint(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -2152,6 +2162,7 @@ class TestAuditLogEndpoints(TaxonomyTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 

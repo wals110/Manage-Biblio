@@ -21,7 +21,6 @@ from lib.rename_template import (  # noqa: E402
     truncate_with_ext,
 )
 
-
 # ─── Parser ──────────────────────────────────────────────────────────────
 
 

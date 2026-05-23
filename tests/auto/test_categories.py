@@ -218,6 +218,7 @@ class TestSnapshotEndpoint(CategoriesTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -470,6 +471,7 @@ class TestCategoriesEndpoints(WriteTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -763,6 +765,7 @@ class TestDormantAuditAndBulkEndpoints(WriteTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -852,6 +855,7 @@ class TestCategoriesAuditLogEndpoints(WriteTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -1010,6 +1014,7 @@ class TestEntryFilesEndpoint(WriteTestBase):
     def setUp(self):
         super().setUp()
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
