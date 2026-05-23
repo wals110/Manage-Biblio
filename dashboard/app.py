@@ -1798,6 +1798,28 @@ async def rename_undo_batch_api(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
 
 
+@app.post("/api/rename/override")
+async def rename_override_api(request: Request):
+    """Set or clear user category overrides for the rename audit.
+    Body: {profile, items: [{rel_path, category}], clear?}.
+    When clear=true, drops the override for each rel_path (the
+    category field is ignored). Otherwise sets the category — only
+    `ok` is allowed in the MVP. Returns per-item successes + errors."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename as rename_mod
+    body = await request.json()
+    try:
+        result = rename_mod.set_overrides(
+            profile=body.get("profile"),
+            items=body.get("items") or [],
+            clear=bool(body.get("clear")),
+        )
+        return JSONResponse(result)
+    except rename_mod.RenameError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,

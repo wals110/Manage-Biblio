@@ -14,6 +14,7 @@ import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -49,6 +50,40 @@ def _profile_dir(profile: str) -> Path:
 
 def _vision_cache_path(profile: str) -> Path:
     return _profile_dir(profile) / ".cache" / "vision_cache.json"
+
+
+def _overrides_path(profile: str) -> Path:
+    """JSON file storing user manual category overrides for the rename
+    audit. Keyed by vision_cache.compute_cache_key (MD5 of file head
+    bytes + model + n_pages) so the override survives renames — the
+    cache_key only changes if the file CONTENT changes."""
+    return _profile_dir(profile) / ".cache" / "rename-overrides.json"
+
+
+def _load_overrides(profile: str) -> dict:
+    """Read the overrides JSON for a profile. Returns ``{}`` on any
+    error (missing file, bad JSON, wrong shape) — the audit must work
+    even if overrides are corrupted."""
+    path = _overrides_path(profile)
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _save_overrides(profile: str, overrides: dict) -> None:
+    """Persist the overrides JSON atomically (write to ``.tmp`` then
+    rename). The file lives under ``.cache/`` so it's gitignored."""
+    path = _overrides_path(profile)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(overrides, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    tmp.replace(path)
 
 
 def _load_profile_yaml(profile: str) -> dict:
@@ -123,6 +158,7 @@ def _audit_single_file(
     cfg: dict,
     model: str,
     n_pages: int,
+    overrides: dict | None = None,
 ) -> dict:
     """Compute the audit verdict for ONE file.
 
@@ -135,6 +171,12 @@ def _audit_single_file(
     Pulled out of ``rename_audit`` so the targeted-patch path
     (``_patch_audit_after_rename``) can re-audit one file without
     rescanning the whole library.
+
+    If ``overrides`` is provided (a mapping ``cache_key → {"category":
+    ...}``), the user's manual category override is applied AFTER the
+    auto-categorization. The returned candidate then has
+    ``is_overridden=True`` and ``original_category`` records what the
+    algorithm said before the user intervened.
     """
     filename = os.path.basename(abs_path)
     stem, ext = os.path.splitext(filename)
@@ -166,7 +208,18 @@ def _audit_single_file(
         return {"_render_failed": True, "issues": rendered.issues}
 
     similarity = _jaccard_3grams(stem, rendered.new_stem)
-    category = _categorize(stem, similarity)
+    auto_category = _categorize(stem, similarity)
+
+    # Apply user override if one exists for this content (keyed by the
+    # MD5-of-head cache_key, which survives renames since the bytes
+    # don't change).
+    is_overridden = False
+    effective_category = auto_category
+    if overrides and key and key in overrides:
+        ov_cat = (overrides[key] or {}).get("category")
+        if ov_cat in _CATEGORY_SORT_ORDER:
+            effective_category = ov_cat
+            is_overridden = True
 
     return {
         "rel_path": rel,
@@ -175,7 +228,10 @@ def _audit_single_file(
         "suggested_name": rendered.new_name,
         "suggested_stem": rendered.new_stem,
         "similarity": round(similarity, 3),
-        "category": category,
+        "category": effective_category,
+        "auto_category": auto_category,
+        "is_overridden": is_overridden,
+        "cache_key": key,
         "title": meta["title"],
         "author": meta["author"],
         "confidence": round(conf, 2),
@@ -276,6 +332,12 @@ def rename_audit(profile: str, force_reload: bool = False) -> dict:
             or "Qwen/Qwen3-VL-32B-Instruct"
     n_pages = int((profile_yaml.get("defaults") or {}).get("pages") or 2)
 
+    # Load user category overrides once (cheap, small JSON keyed by
+    # vision cache_key). Pass to every _audit_single_file call so the
+    # category in the returned candidate already reflects the user's
+    # override choice.
+    overrides = _load_overrides(profile)
+
     # Enumerate files
     file_list: list[tuple[str, str]] = []
     target_str = str(target)
@@ -298,7 +360,7 @@ def rename_audit(profile: str, force_reload: bool = False) -> dict:
     def _process(item: tuple[str, str]) -> dict | None:
         abs_path, rel = item
         return _audit_single_file(
-            abs_path, rel, cache, cfg, model, n_pages)
+            abs_path, rel, cache, cfg, model, n_pages, overrides)
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         for r in ex.map(_process, file_list):
@@ -411,10 +473,12 @@ def _load_vision_cache_for_patch(profile: str) -> dict:
     return vc if isinstance(vc, dict) else {}
 
 
-def _profile_audit_context(profile: str) -> tuple[Path, dict, dict, str, int] | None:
+def _profile_audit_context(
+    profile: str,
+) -> tuple[Path, dict, dict, str, int, dict] | None:
     """Bundle everything ``_audit_single_file`` needs in one call.
-    Returns ``(target_resolved, vc, cfg, model, n_pages)`` or ``None``
-    if the profile is misconfigured."""
+    Returns ``(target_resolved, vc, cfg, model, n_pages, overrides)``
+    or ``None`` if the profile is misconfigured."""
     target = _profile_target(profile)
     if target is None or not target.exists():
         return None
@@ -424,13 +488,14 @@ def _profile_audit_context(profile: str) -> tuple[Path, dict, dict, str, int] | 
     model = ((profile_yaml.get("llm") or {}).get("model")
              or "Qwen/Qwen3-VL-32B-Instruct")
     n_pages = int((profile_yaml.get("defaults") or {}).get("pages") or 2)
-    return target.resolve(), vc, cfg, model, n_pages
+    overrides = _load_overrides(profile)
+    return target.resolve(), vc, cfg, model, n_pages, overrides
 
 
 def _apply_patch_to_audit(
     cached: dict,
     pairs: list[tuple[str, str]],
-    ctx: tuple[Path, dict, dict, str, int],
+    ctx: tuple[Path, dict, dict, str, int, dict],
 ) -> bool:
     """Mutate ``cached`` in place for each ``(old_rel, new_rel)`` pair.
 
@@ -443,7 +508,7 @@ def _apply_patch_to_audit(
     Single sort at the end — for a bulk of 100 renames we pay one
     ``candidates.sort()`` (~50ms on 10k entries) instead of 100.
     """
-    target_resolved, vc, cfg, model, n_pages = ctx
+    target_resolved, vc, cfg, model, n_pages, overrides = ctx
     candidates: list[dict] = cached["candidates"]
     stats: dict = cached["stats"]
     # Snapshot stats so we can restore on any failure mode. We decrement
@@ -489,7 +554,7 @@ def _apply_patch_to_audit(
         if not abs_new.exists():
             return _bail()
         new_result = _audit_single_file(
-            str(abs_new), new_rel, vc, cfg, model, n_pages)
+            str(abs_new), new_rel, vc, cfg, model, n_pages, overrides)
 
         if new_result.get("_no_metadata"):
             stats["n_no_metadata"] += 1
@@ -1057,4 +1122,131 @@ def undo_single_rename(
         "inverse_entry": inverse,
         "restored_abs": match["old"],
         "restored_rel": post_rel or match["old"],
+    }
+
+
+# ─── User category override (PR ─ rename-status-override) ────────────────
+
+
+# Categories the user is allowed to set via override. We deliberately
+# limit this to "ok" for the MVP — that covers the dominant use case
+# ("this divergent is legitimately fine, stop bothering me") without
+# the conceptual mess of letting users swap placeholder/divergent/
+# minor_case arbitrarily. Extend if a real use case emerges.
+_OVERRIDE_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"ok"})
+
+
+def set_overrides(
+    profile: str,
+    items: list[dict],
+    clear: bool = False,
+) -> dict:
+    """Set or clear user category overrides for one or more files.
+
+    ``items`` is ``[{"rel_path": str, "category": str}, ...]``. When
+    ``clear`` is True, ``category`` is ignored and the override for
+    each ``rel_path`` is removed (no-op if none existed). When False,
+    ``category`` must be in ``_OVERRIDE_ALLOWED_CATEGORIES`` ("ok"
+    for the MVP) — anything else returns a per-item error.
+
+    Per-item best-effort: a malformed entry doesn't abort the batch.
+    The summary lists successes and errors so the UI can show what
+    happened. After persisting, the audit cache is patched in place
+    (or dropped if patch isn't applicable) so the new category is
+    visible without a full rescan.
+    """
+    if not isinstance(items, list) or not items:
+        raise RenameError("items vide ou invalide", 400)
+
+    target = _profile_target(profile)
+    if target is None or not target.exists():
+        raise RenameError("profil sans target configuré", 400)
+    target_resolved = target.resolve()
+
+    profile_yaml = _load_profile_yaml(profile)
+    model = ((profile_yaml.get("llm") or {}).get("model")
+             or "Qwen/Qwen3-VL-32B-Instruct")
+    n_pages = int((profile_yaml.get("defaults") or {}).get("pages") or 2)
+
+    overrides = _load_overrides(profile)
+    successes: list[dict] = []
+    errors: list[dict] = []
+    touched_rels: list[str] = []
+
+    for item in items:
+        rel_path = (item or {}).get("rel_path") or ""
+        if not rel_path:
+            errors.append({"rel_path": rel_path,
+                           "error": "rel_path manquant", "status": 400})
+            continue
+
+        # Path traversal guard — resolve and assert under target
+        abs_path = (target / rel_path).resolve()
+        try:
+            abs_path.relative_to(target_resolved)
+        except ValueError:
+            errors.append({"rel_path": rel_path,
+                           "error": "hors du target", "status": 400})
+            continue
+        if not abs_path.exists():
+            errors.append({"rel_path": rel_path,
+                           "error": "fichier introuvable", "status": 404})
+            continue
+
+        # Compute cache_key — this is the override's primary key. Needs
+        # to read the file's head bytes; cheap (few KB) per file.
+        key = vision_cache.compute_cache_key(
+            str(abs_path), model=model, n_pages=n_pages)
+        if not key:
+            errors.append({"rel_path": rel_path,
+                           "error": "cache_key indisponible", "status": 500})
+            continue
+
+        if clear:
+            removed = overrides.pop(key, None)
+            successes.append({
+                "rel_path": rel_path,
+                "cache_key": key,
+                "cleared": removed is not None,
+            })
+            touched_rels.append(rel_path)
+        else:
+            category = (item or {}).get("category") or ""
+            if category not in _OVERRIDE_ALLOWED_CATEGORIES:
+                errors.append({
+                    "rel_path": rel_path,
+                    "error": (f"catégorie '{category}' non autorisée "
+                              f"(autorisées : "
+                              f"{sorted(_OVERRIDE_ALLOWED_CATEGORIES)})"),
+                    "status": 400,
+                })
+                continue
+            overrides[key] = {
+                "category": category,
+                "ts": datetime.now().isoformat(timespec="seconds"),
+            }
+            successes.append({
+                "rel_path": rel_path,
+                "cache_key": key,
+                "category": category,
+            })
+            touched_rels.append(rel_path)
+
+    if successes:
+        _save_overrides(profile, overrides)
+        # Targeted patch: re-audit each touched file. The override is
+        # now in the persisted JSON, so _audit_single_file will pick it
+        # up. Re-using the rename patch path means we get the
+        # candidates-list mutation + stats update + sort for free.
+        pairs = [(r, r) for r in touched_rels]
+        _patch_audit_after_renames(profile, pairs)
+
+    return {
+        "ok": True,
+        "n_total": len(items),
+        "n_set": len(successes),
+        "n_errors": len(errors),
+        "successes": successes,
+        "errors": errors,
+        "clear": clear,
     }

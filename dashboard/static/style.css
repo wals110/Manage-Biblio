@@ -3324,6 +3324,19 @@ th {
 }
 .tax-rename-row.bulk-selected { background: rgba(88, 166, 255, 0.07); }
 .tax-rename-row.bulk-selected:hover { background: rgba(88, 166, 255, 0.12); }
+/* User has manually marked this candidate as OK — surface it with a
+ * subtle green tint + ✓ badge so the override is visible at a glance. */
+.tax-rename-row.is-overridden {
+    background: rgba(63, 185, 80, 0.06);
+}
+.tax-rename-row.is-overridden:hover { background: rgba(63, 185, 80, 0.12); }
+.tax-rename-row-override-badge {
+    color: #3fb950;
+    font-weight: 600;
+    margin-left: 4px;
+    font-size: 10px;
+    opacity: 0.8;
+}
 .tax-rename-row:hover { background: rgba(255,255,255,0.04); }
 .tax-rename-row.selected { background: rgba(88, 166, 255, 0.12); }
 .tax-rename-row-current {

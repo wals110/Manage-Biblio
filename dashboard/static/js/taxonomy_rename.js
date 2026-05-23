@@ -192,6 +192,27 @@
     return body;
   }
 
+  async function postOverride(items, clear) {
+    const r = await fetch('/api/rename/override', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profile: state.profile,
+        items: items,
+        clear: !!clear,
+      }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { /* ignore */ }
+    if (!r.ok) {
+      const msg = (body && body.error) || `HTTP ${r.status}`;
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    return body;
+  }
+
   // Reuses the shared modal HTML (#tax-confirm-modal) declared in
   // taxonomy.html — same pattern as taxonomy_categories.js. We can't
   // share the JS helper because each sub-tab module lives in its own
@@ -398,8 +419,11 @@
       wrap.appendChild(el('div', {
         class: 'tax-rename-row'
              + (selected ? ' selected' : '')
-             + (checked ? ' bulk-selected' : ''),
-        title: c.rel_path,
+             + (checked ? ' bulk-selected' : '')
+             + (c.is_overridden ? ' is-overridden' : ''),
+        title: c.is_overridden
+          ? `${c.rel_path}\n[Marqué OK manuellement — auto: ${c.auto_category}]`
+          : c.rel_path,
         onclick: () => selectCandidate(c.rel_path),
       }, [
         checkbox,
@@ -407,7 +431,15 @@
           class: 'tax-rename-cat tax-rename-cat-' + c.category,
           title: 'Catégorie : ' + c.category,
         }, [_catShortLabel(c.category)]),
-        el('span', { class: 'tax-rename-row-current' }, [c.current_name]),
+        el('span', { class: 'tax-rename-row-current' }, [
+          c.current_name,
+          c.is_overridden
+            ? el('span', {
+                class: 'tax-rename-row-override-badge',
+                title: `Marqué OK manuellement (auto: ${c.auto_category})`,
+              }, [' ✓'])
+            : null,
+        ].filter(Boolean)),
         el('span', { class: 'tax-rename-row-sim',
                      title: 'Similarité courant vs proposition' },
                    [sim + '%']),
@@ -715,6 +747,20 @@
       'data-tax-rename-apply': '1',
       onclick: () => applyRename(c.rel_path),
     }, ['Renommer']);
+    // Override button: toggles between "Marquer comme OK" and
+    // "Annuler l'override" based on current state.
+    const overrideBtn = c.is_overridden
+      ? el('button', {
+          class: 'btn-secondary',
+          title: 'Restaurer la catégorie auto (' + c.auto_category + ')',
+          onclick: () => toggleOverride(c.rel_path, /*clear=*/true),
+        }, ['↺ Annuler l’override'])
+      : el('button', {
+          class: 'btn-secondary',
+          title: 'Marquer ce fichier comme OK — il sortira du bucket "'
+                 + c.category + '" et n’apparaîtra plus comme à traiter',
+          onclick: () => toggleOverride(c.rel_path, /*clear=*/false),
+        }, ['✓ Marquer comme OK']);
     wrap.appendChild(el('div', { class: 'tax-rename-field',
                                   style: 'border-bottom:none;' }, [
       el('label', null, ['Actions']),
@@ -722,10 +768,7 @@
                  ['Le rename est appliqué sur disque et journalisé pour undo.']),
       renameBtn,
       ' ',
-      el('button', {
-        class: 'btn-secondary', disabled: true,
-        title: 'Disponible en PR4',
-      }, ['Ajouter au batch']),
+      overrideBtn,
     ]));
     _refreshRenameButtonState(c, nameInput);
     // Template config preview (read-only)
@@ -1366,6 +1409,102 @@
     });
   }
 
+  // ── User category override (mark a candidate as OK manually) ────────
+
+  async function toggleOverride(relPath, clear) {
+    const c = state.data && state.data.candidates.find(
+      x => x.rel_path === relPath);
+    if (!c) return;
+    const verb = clear ? 'Annuler' : 'Marquer';
+    const ok = await showConfirm({
+      title: clear
+        ? 'Annuler l\'override manuel ?'
+        : 'Marquer ce fichier comme OK ?',
+      body: clear
+        ? `Le fichier retrouvera sa catégorie auto : ${c.auto_category}.`
+        : `Catégorie actuelle : ${c.category}. Après override, ce fichier sera marqué OK et n'apparaîtra plus comme à traiter.\n\nL'override est persisté par contenu (cache_key) — il survit aux renommages.`,
+      confirmLabel: clear ? 'Annuler l\'override' : 'Marquer OK',
+      cancelLabel: 'Garder',
+      variant: clear ? 'danger' : 'primary',
+    });
+    if (!ok) return;
+    await withBusy(`${verb} OK…`, async () => {
+      try {
+        const result = await postOverride(
+          [{ rel_path: relPath, category: 'ok' }],
+          clear);
+        if (result.n_errors > 0) {
+          showToast(
+            `✗ ${result.errors[0].error || 'échec de l\'override'}`,
+            'error');
+          return;
+        }
+        // Refresh audit so the badge + category update everywhere.
+        // The backend already patched the cache in place, but we still
+        // need to swap state.data and re-render.
+        state.data = await fetchAudit();
+        renderAll();
+        showToast(
+          clear
+            ? `↺ Override annulé : ${c.current_name}`
+            : `✓ Marqué OK : ${c.current_name}`,
+          'success');
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec : ${detail}`, 'error');
+      }
+    });
+  }
+
+  async function _applyBulkOverride() {
+    if (state.bulkSelected.size === 0 || !state.data) return;
+    const byPath = new Map(state.data.candidates.map(c => [c.rel_path, c]));
+    // Only mark not-yet-overridden candidates; an already-overridden
+    // entry would be a no-op but we surface the count so the user
+    // knows what'll happen.
+    const items = [];
+    const alreadyOk = [];
+    for (const relPath of state.bulkSelected) {
+      const c = byPath.get(relPath);
+      if (!c) continue;
+      if (c.is_overridden) { alreadyOk.push(relPath); continue; }
+      items.push({ rel_path: relPath, category: 'ok' });
+    }
+    if (items.length === 0) {
+      showToast('Tous les fichiers sélectionnés sont déjà marqués OK.', 'info');
+      return;
+    }
+    const ok = await showConfirm({
+      title: `Marquer ${items.length} fichier(s) comme OK ?`,
+      body: `Ces fichiers sortiront de leur bucket actuel (placeholder / divergent / minor_case) et ne seront plus présentés comme à traiter.\n\nL'override est annulable individuellement depuis le détail de chaque fichier.${alreadyOk.length ? `\n\n${alreadyOk.length} déjà marqué(s) — seront ignorés.` : ''}`,
+      confirmLabel: `Marquer ${items.length} comme OK`,
+      cancelLabel: 'Annuler',
+      variant: 'primary',
+    });
+    if (!ok) return;
+    await withBusy(`Override de ${items.length} fichier(s)…`, async () => {
+      try {
+        const result = await postOverride(items, /*clear=*/false);
+        state.bulkSelected.clear();
+        state.data = await fetchAudit();
+        renderAll();
+        if (result.n_errors > 0) {
+          showToast(
+            `✓ ${result.n_set} marqués OK, ${result.n_errors} en erreur (voir console)`,
+            'info');
+          console.warn('Bulk override errors:', result.errors);
+        } else {
+          showToast(
+            `✓ ${result.n_set} fichier(s) marqué(s) OK`,
+            'success');
+        }
+      } catch (e) {
+        const detail = e.status ? `(${e.status}) ${e.message}` : e.message;
+        showToast(`✗ Échec : ${detail}`, 'error');
+      }
+    });
+  }
+
   async function loadAndRender() {
     await withBusy('Audit rename…', async () => {
       try {
@@ -1528,6 +1667,10 @@
     const bulkApplyBtn = $('#tax-rename-bulkbar-apply');
     if (bulkApplyBtn) {
       bulkApplyBtn.addEventListener('click', () => _applyBulkSuggestion());
+    }
+    const bulkMarkOkBtn = $('#tax-rename-bulkbar-mark-ok');
+    if (bulkMarkOkBtn) {
+      bulkMarkOkBtn.addEventListener('click', () => _applyBulkOverride());
     }
     const bulkClearBtn = $('#tax-rename-bulkbar-clear');
     if (bulkClearBtn) {
