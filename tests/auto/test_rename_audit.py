@@ -1035,5 +1035,167 @@ class TestBulkEndpoints(RenameAuditTestBase):
         self.assertEqual(r.status_code, 404)
 
 
+# ─── Targeted cache invalidation (perf — no full rescan after rename) ───
+
+
+class TestTargetedAuditPatch(RenameAuditTestBase):
+    """commit_rename / commit_rename_bulk / undo_* must mutate the audit
+    cache in place instead of dropping it (the previous behaviour forced
+    a full os.walk + 18k-file rescan after every single rename).
+
+    Each test verifies BOTH that the patched cache is correct AND that
+    no rebuild happened (we replace ``_audit_cache`` with a sentinel
+    after the rename and check it's still there)."""
+
+    def test_single_rename_patches_in_place(self):
+        self._add_file_with_cache("ugly.pdf", title="Clean Title")
+        # Prime the cache
+        audit_before = rename.rename_audit(self.profile_name)
+        cached = rename._audit_cache[self.profile_name]
+        self.assertIs(audit_before, cached, "Cached object reference")
+        # Sentinel so we detect a full rebuild
+        cached["_sentinel"] = "must-survive-patch"
+
+        rename.commit_rename(self.profile_name, "ugly.pdf", "Clean Title.pdf")
+
+        cached_after = rename._audit_cache[self.profile_name]
+        # Same dict instance → mutated in place, not replaced
+        self.assertIs(cached_after, cached)
+        self.assertEqual(cached_after.get("_sentinel"), "must-survive-patch")
+        # And the candidate now reflects the new name
+        names = {c["current_name"] for c in cached_after["candidates"]}
+        self.assertIn("Clean Title.pdf", names)
+        self.assertNotIn("ugly.pdf", names)
+
+    def test_patch_keeps_stats_accurate(self):
+        # Three placeholders + one already-OK
+        self._add_file_with_cache("Title Author.pdf",
+                                   title="Real Book", author="X")
+        self._add_file_with_cache("Title Author (2).pdf",
+                                   title="Other Book", author="Y")
+        self._add_file_with_cache("Real Book - X.pdf",
+                                   title="Real Book", author="X")
+        rename.rename_audit(self.profile_name)
+        stats_before = dict(rename._audit_cache[self.profile_name]["stats"])
+        self.assertEqual(stats_before["n_placeholder"], 2)
+
+        # Rename one placeholder → it now matches "Real Book - X" template
+        # (which is "ok"). Stats must decrement placeholder, increment ok.
+        rename.commit_rename(
+            self.profile_name, "Title Author.pdf", "Real Book - X (v2).pdf")
+        stats_after = rename._audit_cache[self.profile_name]["stats"]
+        self.assertEqual(stats_after["n_placeholder"],
+                         stats_before["n_placeholder"] - 1)
+        # n_with_title unchanged (file count is the same, just relabeled)
+        self.assertEqual(stats_after["n_with_title"],
+                         stats_before["n_with_title"])
+        # n_total unchanged
+        self.assertEqual(stats_after["n_total"], stats_before["n_total"])
+
+    def test_patch_result_matches_full_rebuild(self):
+        # Same lib, two ways to reach the post-rename state — must match
+        self._add_file_with_cache("a.pdf", title="A book", author="A")
+        self._add_file_with_cache("b.pdf", title="B book", author="B")
+        self._add_file_with_cache("placeholder.pdf",
+                                   title="Real C", author="C")
+        rename.rename_audit(self.profile_name)
+        rename.commit_rename(
+            self.profile_name, "placeholder.pdf", "Real C - C.pdf")
+        patched = dict(rename._audit_cache[self.profile_name])
+        patched_candidates = [
+            {**c} for c in patched["candidates"]
+        ]
+        patched_stats = dict(patched["stats"])
+
+        # Force a full rebuild and compare
+        rename.reset_cache(self.profile_name)
+        rebuilt = rename.rename_audit(
+            self.profile_name, force_reload=True)
+        rebuilt_candidates = [{**c} for c in rebuilt["candidates"]]
+        rebuilt_stats = dict(rebuilt["stats"])
+
+        # Same order, same content
+        self.assertEqual(
+            [c["rel_path"] for c in patched_candidates],
+            [c["rel_path"] for c in rebuilt_candidates])
+        self.assertEqual(patched_stats, rebuilt_stats)
+
+    def test_bulk_rename_single_sort_in_place(self):
+        for i in range(5):
+            self._add_file_with_cache(
+                f"Title Author ({i}).pdf",
+                title=f"Real {i}", author="Author")
+        rename.rename_audit(self.profile_name)
+        cached = rename._audit_cache[self.profile_name]
+        cached["_sentinel"] = "bulk-survivor"
+
+        rename.commit_rename_bulk(
+            self.profile_name,
+            items=[{"rel_path": f"Title Author ({i}).pdf",
+                    "new_name": f"Real {i} - Author.pdf"} for i in range(5)],
+        )
+        # No rebuild happened: same dict + sentinel survives
+        self.assertIs(rename._audit_cache[self.profile_name], cached)
+        self.assertEqual(cached.get("_sentinel"), "bulk-survivor")
+        names = {c["current_name"] for c in cached["candidates"]}
+        for i in range(5):
+            self.assertIn(f"Real {i} - Author.pdf", names)
+            self.assertNotIn(f"Title Author ({i}).pdf", names)
+
+    def test_undo_patches_in_place(self):
+        self._add_file_with_cache("orig.pdf", title="Renamed", author="X")
+        # Audit before rename so the cache exists to be patched
+        rename.rename_audit(self.profile_name)
+        rename.commit_rename(
+            self.profile_name, "orig.pdf", "Renamed - X.pdf")
+        cached = rename._audit_cache[self.profile_name]
+        cached["_sentinel"] = "undo-survivor"
+        # Find the journal entry to undo
+        j = rename.get_journal(self.profile_name)
+        rec = j["records"][0]
+        rename.undo_single_rename(
+            self.profile_name, rec["ts"], rec["old"], rec["new"])
+        # Same dict, sentinel survives
+        self.assertIs(rename._audit_cache[self.profile_name], cached)
+        self.assertEqual(cached.get("_sentinel"), "undo-survivor")
+        names = {c["current_name"] for c in cached["candidates"]}
+        self.assertIn("orig.pdf", names)
+        self.assertNotIn("Renamed - X.pdf", names)
+
+    def test_falls_back_when_no_audit_loaded(self):
+        # No audit done — _audit_cache is empty. Patch should be a no-op,
+        # and the next audit should rebuild fresh (and be correct).
+        self._add_file_with_cache("foo.pdf", title="Foo", author="X")
+        # Sanity: no cache yet
+        self.assertNotIn(self.profile_name, rename._audit_cache)
+        rename.commit_rename(
+            self.profile_name, "foo.pdf", "Foo - X.pdf")
+        # Still no cache (no audit was loaded, so no patch happened)
+        self.assertNotIn(self.profile_name, rename._audit_cache)
+        # The lazy rebuild on next read produces a correct audit
+        r = rename.rename_audit(self.profile_name)
+        names = {c["current_name"] for c in r["candidates"]}
+        self.assertIn("Foo - X.pdf", names)
+
+    def test_falls_back_when_old_entry_not_in_candidates(self):
+        # File audited as n_no_metadata (no cache hit) — its rename can't
+        # be safely patched because we don't know its bucket. Fall back
+        # to a full rebuild (cache dropped).
+        # Setup: a file with no vision_cache entry
+        (self.target / "untracked.pdf").write_bytes(b"%PDF noop")
+        # Add another file WITH cache so the audit has something to scan
+        self._add_file_with_cache("tracked.pdf", title="Tracked", author="X")
+        rename.rename_audit(self.profile_name)
+        cached = rename._audit_cache[self.profile_name]
+        cached["_sentinel"] = "should-be-dropped"
+        # Rename the untracked file
+        rename.commit_rename(
+            self.profile_name, "untracked.pdf", "Different.pdf")
+        # Cache was dropped — sentinel is gone (either key absent or new dict)
+        # Wait — n_no_metadata files don't actually appear in candidates.
+        # The patch logic recognises this and drops the profile cache.
+        self.assertNotIn(self.profile_name, rename._audit_cache)
+
+
 if __name__ == "__main__":
     unittest.main()

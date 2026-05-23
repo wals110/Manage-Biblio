@@ -81,6 +81,12 @@
 
   // ── API ──────────────────────────────────────────────────────────────
 
+  // Note: callers after a rename or undo should NOT pass force=true.
+  // The backend patches the audit cache in place (see
+  // dashboard.rename._patch_audit_after_renames), so a normal fetch
+  // returns the already-up-to-date cache without paying the ~5s full
+  // rescan of an 18k-file lib. force=true is reserved for the
+  // "manual refresh" button when the user wants a fresh os.walk.
   async function fetchAudit(force) {
     const url = `/api/rename/audit?profile=${encodeURIComponent(state.profile)}${force ? '&force=true' : ''}`;
     const r = await fetch(url);
@@ -805,7 +811,7 @@
           undone: false,
         });
         // Refresh the audit so the renamed file shows up under its new name
-        state.data = await fetchAudit(true);
+        state.data = await fetchAudit();
         // Try to re-select the renamed file under its new path
         const found = (state.data.candidates || []).find(
           x => x.rel_path === newRel);
@@ -951,7 +957,7 @@
         _saveSessionToStorage();
         // Refresh the audit so the restored file shows up under its
         // original name. Try to select it.
-        state.data = await fetchAudit(true);
+        state.data = await fetchAudit();
         const found = (state.data.candidates || []).find(
           c => c.rel_path === entry.old_rel_path);
         if (found) {
@@ -1111,7 +1117,7 @@
           }
         }
         _saveSessionToStorage();
-        state.data = await fetchAudit(true);
+        state.data = await fetchAudit();
         renderAll();
         const data = await fetchJournal(200);
         state._historyData = data;
@@ -1211,7 +1217,7 @@
         }
         _saveSessionToStorage();
         // Refresh both the audit and the modal list
-        state.data = await fetchAudit(true);
+        state.data = await fetchAudit();
         renderAll();
         const data = await fetchJournal(200);
         state._historyData = data;
@@ -1334,7 +1340,7 @@
           });
         }
         state.bulkSelected.clear();
-        state.data = await fetchAudit(true);
+        state.data = await fetchAudit();
         renderAll();
         _refreshHistoryCount();
         if (result.n_errors > 0) {

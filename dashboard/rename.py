@@ -116,6 +116,90 @@ def _categorize(current_stem: str, similarity: float) -> str:
     return "ok"
 
 
+def _audit_single_file(
+    abs_path: str,
+    rel: str,
+    cache: dict,
+    cfg: dict,
+    model: str,
+    n_pages: int,
+) -> dict:
+    """Compute the audit verdict for ONE file.
+
+    Returns one of three shapes:
+      - ``{"_no_metadata": True}``     — no vision_cache hit or empty title
+      - ``{"_low_confidence": True}``  — cache hit below ``min_title_confidence``
+      - ``{"_render_failed": True, "issues": [...]}`` — template rejected
+      - the full candidate dict ready to insert in ``candidates``
+
+    Pulled out of ``rename_audit`` so the targeted-patch path
+    (``_patch_audit_after_rename``) can re-audit one file without
+    rescanning the whole library.
+    """
+    filename = os.path.basename(abs_path)
+    stem, ext = os.path.splitext(filename)
+    ext = ext.lower() or ".pdf"
+
+    key = vision_cache.compute_cache_key(
+        abs_path, model=model, n_pages=n_pages)
+    result = vision_cache.lookup(cache, key) if key else None
+    if not isinstance(result, dict):
+        return {"_no_metadata": True}
+
+    conf = float(result.get("confidence") or 0.0)
+    if conf < cfg["min_title_confidence"]:
+        return {"_low_confidence": True}
+
+    meta = _extract_metadata(result)
+    if not meta["title"]:
+        return {"_no_metadata": True}
+
+    rendered = rename_template.render_with_fallback(
+        template=cfg["template"],
+        fallback=cfg["fallback"],
+        metadata=meta,
+        extension=ext,
+        sanitize_cfg=cfg["sanitize"],
+        max_length=cfg["max_length"],
+    )
+    if not rendered.is_valid:
+        return {"_render_failed": True, "issues": rendered.issues}
+
+    similarity = _jaccard_3grams(stem, rendered.new_stem)
+    category = _categorize(stem, similarity)
+
+    return {
+        "rel_path": rel,
+        "current_name": filename,
+        "current_stem": stem,
+        "suggested_name": rendered.new_name,
+        "suggested_stem": rendered.new_stem,
+        "similarity": round(similarity, 3),
+        "category": category,
+        "title": meta["title"],
+        "author": meta["author"],
+        "confidence": round(conf, 2),
+        "issues": rendered.issues,
+        "used_fallback": rendered.used_fallback,
+    }
+
+
+# Single source of truth for the candidate sort order — used by the
+# full-rebuild path AND the targeted-patch path so both produce the
+# same ordering.
+_CATEGORY_SORT_ORDER = {
+    "placeholder": 0, "divergent": 1, "minor_case": 2, "ok": 3,
+}
+
+
+def _candidate_sort_key(c: dict) -> tuple:
+    return (
+        _CATEGORY_SORT_ORDER.get(c["category"], 9),
+        c["similarity"],
+        c["rel_path"].lower(),
+    )
+
+
 def _extract_metadata(result: dict) -> dict:
     """Pull out the variables the template engine knows about."""
     if not isinstance(result, dict):
@@ -213,53 +297,8 @@ def rename_audit(profile: str, force_reload: bool = False) -> dict:
 
     def _process(item: tuple[str, str]) -> dict | None:
         abs_path, rel = item
-        filename = os.path.basename(abs_path)
-        stem, ext = os.path.splitext(filename)
-        ext = ext.lower() or ".pdf"
-
-        # Cache lookup
-        key = vision_cache.compute_cache_key(
-            abs_path, model=model, n_pages=n_pages)
-        result = vision_cache.lookup(cache, key) if key else None
-        if not isinstance(result, dict):
-            return {"_no_metadata": True}
-
-        conf = float(result.get("confidence") or 0.0)
-        if conf < cfg["min_title_confidence"]:
-            return {"_low_confidence": True}
-
-        meta = _extract_metadata(result)
-        if not meta["title"]:
-            return {"_no_metadata": True}
-
-        rendered = rename_template.render_with_fallback(
-            template=cfg["template"],
-            fallback=cfg["fallback"],
-            metadata=meta,
-            extension=ext,
-            sanitize_cfg=cfg["sanitize"],
-            max_length=cfg["max_length"],
-        )
-        if not rendered.is_valid:
-            return {"_render_failed": True, "issues": rendered.issues}
-
-        similarity = _jaccard_3grams(stem, rendered.new_stem)
-        category = _categorize(stem, similarity)
-
-        return {
-            "rel_path": rel,
-            "current_name": filename,
-            "current_stem": stem,
-            "suggested_name": rendered.new_name,
-            "suggested_stem": rendered.new_stem,
-            "similarity": round(similarity, 3),
-            "category": category,
-            "title": meta["title"],
-            "author": meta["author"],
-            "confidence": round(conf, 2),
-            "issues": rendered.issues,
-            "used_fallback": rendered.used_fallback,
-        }
+        return _audit_single_file(
+            abs_path, rel, cache, cfg, model, n_pages)
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         for r in ex.map(_process, file_list):
@@ -280,10 +319,7 @@ def rename_audit(profile: str, force_reload: bool = False) -> dict:
             candidates.append(r)
 
     # Sort: placeholder first, then divergent (worst sim), then minor, then ok
-    cat_order = {"placeholder": 0, "divergent": 1, "minor_case": 2, "ok": 3}
-    candidates.sort(key=lambda c: (cat_order.get(c["category"], 9),
-                                    c["similarity"],
-                                    c["rel_path"].lower()))
+    candidates.sort(key=_candidate_sort_key)
 
     result_dict = {
         "candidates": candidates,
@@ -360,13 +396,161 @@ def _validate_new_basename(new_name: str) -> str:
     return name
 
 
-def _invalidate_dependent_caches(profile: str) -> None:
-    """After any FS rename (apply OR undo), drop the rename / taxonomy /
-    categories caches so subsequent reads rebuild from the current state.
-    Failures to import a sibling module are swallowed: the rename
-    succeeded, a missing cache is at worst a stale read.
+def _load_vision_cache_for_patch(profile: str) -> dict:
+    """Read the profile's vision_cache.json once for a patch operation.
+    Cheap (~50 MB JSON read, parsed by C json module) compared to a
+    full audit rescan, but still better to do once per patch batch
+    than once per file."""
+    cache_path = _vision_cache_path(profile)
+    if not cache_path.exists():
+        return {}
+    try:
+        vc = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return vc if isinstance(vc, dict) else {}
+
+
+def _profile_audit_context(profile: str) -> tuple[Path, dict, dict, str, int] | None:
+    """Bundle everything ``_audit_single_file`` needs in one call.
+    Returns ``(target_resolved, vc, cfg, model, n_pages)`` or ``None``
+    if the profile is misconfigured."""
+    target = _profile_target(profile)
+    if target is None or not target.exists():
+        return None
+    cfg = get_rename_config(profile)
+    vc = _load_vision_cache_for_patch(profile)
+    profile_yaml = _load_profile_yaml(profile)
+    model = ((profile_yaml.get("llm") or {}).get("model")
+             or "Qwen/Qwen3-VL-32B-Instruct")
+    n_pages = int((profile_yaml.get("defaults") or {}).get("pages") or 2)
+    return target.resolve(), vc, cfg, model, n_pages
+
+
+def _apply_patch_to_audit(
+    cached: dict,
+    pairs: list[tuple[str, str]],
+    ctx: tuple[Path, dict, dict, str, int],
+) -> bool:
+    """Mutate ``cached`` in place for each ``(old_rel, new_rel)`` pair.
+
+    Returns True on success, False if any pair couldn't be patched
+    cleanly (caller should drop the cache for safety).
+
+    Single sort at the end — for a bulk of 100 renames we pay one
+    ``candidates.sort()`` (~50ms on 10k entries) instead of 100.
     """
-    reset_cache(profile)
+    target_resolved, vc, cfg, model, n_pages = ctx
+    candidates: list[dict] = cached["candidates"]
+    stats: dict = cached["stats"]
+    # Build an index for O(1) lookup of old entries
+    by_rel: dict[str, int] = {
+        c["rel_path"]: i for i, c in enumerate(candidates)
+    }
+    # Track removed indices to delete in one pass at the end
+    to_remove: set[int] = set()
+    additions: list[dict] = []
+
+    for old_rel, new_rel in pairs:
+        idx = by_rel.get(old_rel)
+        if idx is None:
+            # Old entry sat in a non-candidate bucket (n_no_metadata /
+            # n_low_confidence / n_render_failed). We can't know which
+            # without re-scanning the now-vanished file. Bail to a full
+            # rebuild so stats don't drift.
+            return False
+        if idx in to_remove:
+            # Same file referenced twice in the batch — shouldn't happen
+            return False
+        to_remove.add(idx)
+        old_entry = candidates[idx]
+        stats[f"n_{old_entry['category']}"] -= 1
+        stats["n_with_title"] -= 1
+
+        abs_new = target_resolved / new_rel
+        if not abs_new.exists():
+            return False
+        new_result = _audit_single_file(
+            str(abs_new), new_rel, vc, cfg, model, n_pages)
+
+        if new_result.get("_no_metadata"):
+            stats["n_no_metadata"] += 1
+        elif new_result.get("_low_confidence"):
+            stats["n_low_confidence"] += 1
+        elif new_result.get("_render_failed"):
+            stats["n_render_failed"] += 1
+        else:
+            stats["n_with_title"] += 1
+            stats[f"n_{new_result['category']}"] += 1
+            additions.append(new_result)
+
+    # Apply removals + additions in one pass, then a single sort
+    if to_remove:
+        cached["candidates"] = [
+            c for i, c in enumerate(candidates) if i not in to_remove
+        ]
+        candidates = cached["candidates"]
+    if additions:
+        candidates.extend(additions)
+    if to_remove or additions:
+        candidates.sort(key=_candidate_sort_key)
+    return True
+
+
+def _patch_audit_after_renames(
+    profile: str, pairs: list[tuple[str, str]],
+) -> None:
+    """Targeted invalidation of the in-memory rename audit cache.
+
+    Each ``(old_rel, new_rel)`` pair has its old entry dropped from
+    ``candidates`` and its new entry re-audited and re-inserted.
+    Stats are mutated in place. Saves the ~5s full os.walk +
+    ThreadPoolExecutor rescan after every rename on an 18k-file lib.
+
+    Falls back to a full ``reset_cache(profile)`` when:
+      - no cache is loaded (lazy rebuild on next read anyway)
+      - the profile is misconfigured
+      - any old entry sat in a non-candidate bucket (stats drift risk)
+      - any new file is missing on disk (patch is stale)
+    """
+    if not pairs:
+        return
+    with _cache_lock:
+        cached = _audit_cache.get(profile)
+    if cached is None:
+        return  # nothing to patch, next read does a full scan anyway
+
+    ctx = _profile_audit_context(profile)
+    if ctx is None:
+        reset_cache(profile)
+        return
+
+    with _cache_lock:
+        cached = _audit_cache.get(profile)
+        if cached is None:
+            return
+        ok = _apply_patch_to_audit(cached, pairs, ctx)
+        if not ok:
+            _audit_cache.pop(profile, None)
+
+
+def _patch_audit_after_rename(
+    profile: str, old_rel: str, new_rel: str,
+) -> None:
+    """Single-rename convenience wrapper around _patch_audit_after_renames."""
+    _patch_audit_after_renames(profile, [(old_rel, new_rel)])
+
+
+def _invalidate_dependent_caches(profile: str) -> None:
+    """Drop the taxonomy + categories caches after an FS rename.
+
+    The rename audit cache is NOT dropped here — callers should use
+    ``_patch_audit_after_rename(s)`` for that, which mutates in place
+    instead of forcing a full rescan. Taxonomy + categories are
+    cheaper to rebuild (lazy on next view visit) so a full drop is
+    still acceptable for them. Failures to import a sibling module
+    are swallowed: the rename succeeded, a stale cache is harmless.
+    """
     try:
         from dashboard import taxonomy as _tx
         _tx.reset_cache(profile)
@@ -462,15 +646,18 @@ def commit_rename(
         batch_id=batch_id,
     )
 
-    # Invalidate dependent caches. They're all keyed by rel_path so a
-    # filename change makes them stale. They rebuild lazily on next query.
-    _invalidate_dependent_caches(profile)
-
     # ``target.resolve()`` is required because ``abs_new`` came from
     # ``abs_old.resolve().parent`` — on macOS ``/var`` is a symlink to
     # ``/private/var``, so an un-resolved ``target`` would not be a parent
     # of ``abs_new`` and ``relative_to`` would raise.
     new_rel = str(abs_new.relative_to(target.resolve())).replace("\\", "/")
+
+    # Targeted patch of the rename audit cache (no full rescan); still
+    # drop the taxonomy + categories caches since they're cheaper and
+    # rebuild lazily on tab visit.
+    _patch_audit_after_rename(profile, rel_path, new_rel)
+    _invalidate_dependent_caches(profile)
+
     return {
         "ok": True,
         "old_rel_path": rel_path,
@@ -671,8 +858,13 @@ def commit_rename_bulk(
             "journal_entry": record,
         })
 
-    # Single cache invalidation for the whole batch
+    # Targeted patch of the audit cache + lazy invalidation of
+    # taxonomy / categories. Building the (old, new) pair list lets
+    # _patch_audit_after_renames do ONE sort at the end of the batch.
     if successes:
+        pairs = [(s["rel_path"], s["new_rel_path"])
+                 for s in successes if not s.get("unchanged")]
+        _patch_audit_after_renames(profile, pairs)
         _invalidate_dependent_caches(profile)
 
     return {
@@ -703,13 +895,45 @@ def undo_batch_for_profile(profile: str, batch_id: str) -> dict:
 
     from lib import rename_journal
     profile_dir = _profile_dir(profile)
+
+    # Snapshot the batch's (old, new) pairs BEFORE undoing — after the
+    # undo runs, the files are at their `old` paths and the audit
+    # patch needs to know which `new` paths to drop from candidates.
+    pre_records = [
+        (r["old"], r["new"])
+        for r in rename_journal.read_journal(profile_dir)
+        if (r.get("batch") or "") == batch_id
+    ]
+    target_resolved = target.resolve()
+
     try:
         summary = rename_journal.undo_batch(profile_dir, batch_id)
     except FileNotFoundError as exc:
         raise RenameError(str(exc), 404) from exc
 
-    # Even partial success warrants a cache invalidation (the FS moved)
     if summary.get("n_undone", 0) > 0:
+        # Build pairs as (post_rel = file's new path = the one being
+        # dropped, pre_rel = old path = where the file lives after undo).
+        # Restrict to records that actually got undone (in summary["undone"]).
+        undone_olds = set(summary.get("undone", []))
+        pairs: list[tuple[str, str]] = []
+        for old_abs, new_abs in pre_records:
+            if old_abs not in undone_olds:
+                continue
+            try:
+                pre_rel = str(Path(new_abs).resolve()
+                              .relative_to(target_resolved)).replace("\\", "/")
+                post_rel = str(Path(old_abs).resolve()
+                               .relative_to(target_resolved)).replace("\\", "/")
+            except (ValueError, OSError):
+                # Path outside target — abandon the patch, fall back full
+                pairs = []
+                break
+            pairs.append((pre_rel, post_rel))
+        if pairs:
+            _patch_audit_after_renames(profile, pairs)
+        else:
+            reset_cache(profile)
         _invalidate_dependent_caches(profile)
 
     return {"ok": True, **summary}
@@ -791,14 +1015,31 @@ def undo_single_rename(
     except OSError as exc:
         raise RenameError(f"Échec de l'undo : {exc}", 500) from exc
 
+    # Compute the rel paths for the targeted audit patch. The file
+    # moved from match["new"] back to match["old"] — so the audit
+    # entry keyed at the post-rename path must drop, and the entry
+    # at the pre-rename (restored) path must be (re-)inserted.
+    def _maybe_rel(abs_path: str) -> str | None:
+        if not _path_under(target_resolved, abs_path):
+            return None
+        try:
+            return str(Path(abs_path).resolve()
+                       .relative_to(target_resolved)).replace("\\", "/")
+        except (ValueError, OSError):
+            return None
+
+    pre_rel = _maybe_rel(match["new"])   # path the file lived at, now gone
+    post_rel = _maybe_rel(match["old"])  # path the file now sits at
+    if pre_rel and post_rel:
+        _patch_audit_after_rename(profile, pre_rel, post_rel)
+    else:
+        # Edge case: paths outside target. Bail to a full rebuild.
+        reset_cache(profile)
     _invalidate_dependent_caches(profile)
 
     return {
         "ok": True,
         "inverse_entry": inverse,
         "restored_abs": match["old"],
-        "restored_rel": str(
-            Path(match["old"]).resolve().relative_to(target_resolved)
-        ).replace("\\", "/") if _path_under(target_resolved, match["old"])
-            else match["old"],
+        "restored_rel": post_rel or match["old"],
     }
