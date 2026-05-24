@@ -100,11 +100,16 @@ class TestMaFeature(unittest.TestCase):
 Voici des pistes pour contribuer :
 
 - **Nouveaux providers LLM** — Support OpenAI, Anthropic, Mistral, Google
-- **Interface web** — Dashboard pour visualiser et reviewer les suggestions
 - **Détection de langue** — Identifier automatiquement la langue du PDF
 - **Index SQLite** — Base de données légère pour recherche rapide
-- **Couvertures** — Extraction et stockage des thumbnails pour aperçu visuel
 - **Prompts templatisés** — Permettre de surcharger les prompts LLM par profil
+- **Agents IA** — Cf. [refonte-agent-spec.md](refonte-agent-spec.md) pour le premier agent envisagé (refonte de taxonomy en 3 phases : diagnostic → proposition → dialog), puis onboarding nouveau profil et curation interactive
+
+Idées déjà livrées (à titre de référence) :
+
+- ✅ **Interface web** — dashboard FastAPI + HTMX (Taxonomie, Rename, Curation, etc.)
+- ✅ **Couvertures** — `lib/thumbnail.py` + cache content-keyed unifié + CLI `./klodo.sh thumbnails`
+- ✅ **Audit de renommages + undo** — journal append-only JSONL avec batch + override par contenu
 
 ## Structure des rapports
 

@@ -99,7 +99,7 @@ L'option `--pages N` envoie les N premières pages au lieu de la seule couvertur
 
 **Module** : `lib/vision.py` — Fonctions : `extract_cover_image()`, `image_to_base64()`, `call_vision_api()`, `analyze_cover()`.
 
-## Niveau 1 : Theme Mapping
+## Niveau 1 : Theme Mapping (+ trigger conditionnel N3)
 
 Recherche directe du thème dans un dictionnaire de 355+ entrées (`theme_mapping.yaml`).
 
@@ -113,6 +113,37 @@ Islamic Finance: 05-RELIGIONS/ISLAM
 ```
 
 C'est le chemin le plus rapide : une simple lookup dans un dictionnaire. Aucun appel API, aucun calcul. Résout ~80% des fichiers au premier passage.
+
+### Trigger conditionnel N3 sur catch-all
+
+Le mapping résout parfois sur un **dossier catch-all** : `02-INFORMATIQUE/03-Langages-Programmation/Autres`, `05-RELIGIONS/AUTRES-RELIGIONS`, `01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales`, etc. C'est l'aveu éditorial que `theme_mapping.yaml` n'a pas plus précis pour ce thème — alors qu'un sous-dossier sœur plus spécifique existe dans `tree.yaml`.
+
+Pour ces ~12% des fichiers, le système appelle conditionnellement le **LLM Mapper (Niveau 3)** pour challenger N1, **sans toucher aux 88% restants** (qui sortent du Niveau 1 propres et gratuits).
+
+Garde-fous (cf. `lib.classifier._challenge_generic_fallback`) :
+
+- **Même section top-level** : refus des swaps inter-sections (ceux-là sont de vrais désaccords, traités ailleurs)
+- **Cible non catch-all elle-même** : pas de swap inutile vers un autre `/Autres`
+- **Profondeur ≥ N1** : N3 ne peut pas promouvoir vers un ancêtre générique
+
+Exemples mesurés empiriquement (audit 100 fichiers, seed=42) :
+
+| N1 (catch-all) | N3 (trigger fired) |
+|---|---|
+| `/Langages-Programmation/Autres` | `/Langages-Programmation/Java` (Java I/O) |
+| `/Langages-Programmation/Autres` | `/Langages-Programmation/C-Cpp-CSharp` (Exceptional C++) |
+| `/Langages-Programmation/Autres` | `/Systemes-OS/Linux-Unix` (Advanced UNIX Programming) |
+
+**Coût / bénéfice mesuré** :
+
+- Trigger fire sur **12%** des fichiers (les catch-all)
+- Upgrade effectif sur **6%** des fichiers (50% taux de succès sur les catch-all)
+- Coût LLM additionnel : **~+12%** vs cascade pure
+- **5/6 upgrades objectivement meilleurs** (revue manuelle des 6 cas)
+
+L'alternative envisagée (parallélisation systématique N1+N2+N3 sur 100% des fichiers) aurait coûté ×5 pour ~3% de gain marginal — non rentable. Le trigger ciblé est le bon compromis.
+
+Le résultat retourne sous le label **`LLM (theme→N3-refined)`** dans le CSV de classification pour distinguer les cas où le trigger a tiré.
 
 ## Niveau 2 : Keyword Matcher
 
