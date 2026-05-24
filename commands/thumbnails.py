@@ -75,9 +75,11 @@ def cmd_thumbnails(args, profile) -> None:
         log.info("   limite = %d fichiers (--max)", max_files)
     log.info("   scope  = %d fichiers PDF/ePub trouvés\n", len(files))
 
-    # Pre-pass: count what would be done. "Cached" = the highest
-    # requested page already exists (generate_thumbnail produces pages
-    # 1..N contiguously, so if page N is on disk, pages 1..N-1 are too).
+    # Pre-pass: count what would be done. A file is "cached" if EVERY
+    # requested page already exists on disk. ``generate_thumbnail`` is
+    # idempotent at the page level (only renders what's missing) so
+    # listing partially-cached files in to_generate is cheap — they
+    # only pay for their missing pages.
     to_generate: list[tuple[Path, Path]] = []     # (source, cache_dir)
     already_cached = 0
     unreadable = 0
@@ -87,10 +89,14 @@ def cmd_thumbnails(args, profile) -> None:
             unreadable += 1
             continue
         dest_dir = cache_root / key
-        deepest_page = dest_dir / f"{n_pages}.jpg"
-        if deepest_page.exists() and not force:
-            already_cached += 1
-            continue
+        if not force:
+            all_pages_present = all(
+                (dest_dir / f"{p}.jpg").exists()
+                for p in range(1, n_pages + 1)
+            )
+            if all_pages_present:
+                already_cached += 1
+                continue
         to_generate.append((src, dest_dir))
 
     log.info("📊 État actuel :")
@@ -125,6 +131,14 @@ def cmd_thumbnails(args, profile) -> None:
     for i, (src, dest_dir) in enumerate(to_generate, start=1):
         try:
             dest_dir.mkdir(parents=True, exist_ok=True)
+            # --force : on vide les pages existantes pour que la
+            # génération idempotente les considère manquantes. Sinon
+            # generate_thumbnail les skipperait silencieusement.
+            if force:
+                for p in range(1, n_pages + 1):
+                    existing = dest_dir / f"{p}.jpg"
+                    if existing.exists():
+                        existing.unlink()
             n = generate_thumbnail(src, dest_dir, n_pages=n_pages, start_page=1)
             if n > 0:
                 n_done += 1
