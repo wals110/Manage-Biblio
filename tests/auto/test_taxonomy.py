@@ -2178,5 +2178,262 @@ class TestAuditLogEndpoints(TaxonomyTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+# ─── Per-file FS ops (feature/mapping-file-actions) ─────────────────────
+
+
+class TestSoftDeleteFile(TaxonomyTestBase):
+
+    def test_moves_to_trash(self):
+        # File exists pre-test
+        src = self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf"
+        self.assertTrue(src.exists())
+        r = taxonomy.soft_delete_file(
+            self.profile_name, "01-SCIENCES/PHYSIQUE/mechanics.pdf")
+        self.assertTrue(r["ok"])
+        self.assertFalse(src.exists())
+        # Trashed under .trash/<ts>/mechanics.pdf
+        trash = self.target / ".trash"
+        self.assertTrue(trash.exists())
+        trashed_files = list(trash.rglob("mechanics.pdf"))
+        self.assertEqual(len(trashed_files), 1)
+
+    def test_journal_record_appended(self):
+        taxonomy.soft_delete_file(
+            self.profile_name, "01-SCIENCES/PHYSIQUE/quantum.pdf")
+        journal = self.profile_dir / ".cache" / "file-trash-journal.jsonl"
+        self.assertTrue(journal.exists())
+        lines = journal.read_text(encoding="utf-8").splitlines()
+        rec = json.loads(lines[-1])
+        self.assertEqual(rec["original_rel_path"],
+                          "01-SCIENCES/PHYSIQUE/quantum.pdf")
+        self.assertIn(".trash/", rec["trash_rel_path"])
+        self.assertIn("ts", rec)
+
+    def test_collision_suffix(self):
+        # Two deletes of same-basename files within the same second.
+        # Create two distinct files with the same basename in different
+        # source folders.
+        (self.target / "01-SCIENCES/PHYSIQUE/dup.pdf").write_bytes(b"%PDF a")
+        (self.target / "01-SCIENCES/MATHEMATIQUES/dup.pdf").write_bytes(b"%PDF b")
+        r1 = taxonomy.soft_delete_file(
+            self.profile_name, "01-SCIENCES/PHYSIQUE/dup.pdf")
+        r2 = taxonomy.soft_delete_file(
+            self.profile_name, "01-SCIENCES/MATHEMATIQUES/dup.pdf")
+        # Both must succeed
+        self.assertTrue(r1["ok"])
+        self.assertTrue(r2["ok"])
+        # Both physically exist under .trash/ (one with collision suffix
+        # if they landed in the same ts dir)
+        all_dups = list((self.target / ".trash").rglob("dup*.pdf"))
+        self.assertEqual(len(all_dups), 2)
+
+    def test_refuses_path_outside_target(self):
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.soft_delete_file(
+                self.profile_name, "../outside.pdf")
+        # Either 400 (escapes) or 404 (doesn't exist) — both acceptable
+        self.assertIn(cm.exception.status, (400, 404))
+
+    def test_refuses_file_already_in_trash(self):
+        # First delete to populate trash
+        r1 = taxonomy.soft_delete_file(
+            self.profile_name, "01-SCIENCES/intro.pdf")
+        trash_rel = r1["trash_rel_path"]
+        # Now try to delete the trashed file
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.soft_delete_file(self.profile_name, trash_rel)
+        self.assertEqual(cm.exception.status, 400)
+        self.assertIn("corbeille", str(cm.exception))
+
+    def test_404_when_file_missing(self):
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.soft_delete_file(
+                self.profile_name, "01-SCIENCES/ghost.pdf")
+        self.assertEqual(cm.exception.status, 404)
+
+
+class TestMoveFile(TaxonomyTestBase):
+
+    def test_happy_path(self):
+        r = taxonomy.move_file(
+            self.profile_name,
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "02-INFORMATIQUE")
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["new_rel_path"],
+                          "02-INFORMATIQUE/mechanics.pdf")
+        self.assertFalse(
+            (self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf").exists())
+        self.assertTrue(
+            (self.target / "02-INFORMATIQUE/mechanics.pdf").exists())
+
+    def test_same_folder_no_op(self):
+        r = taxonomy.move_file(
+            self.profile_name,
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "01-SCIENCES/PHYSIQUE")
+        self.assertTrue(r["ok"])
+        self.assertTrue(r.get("unchanged"))
+        self.assertTrue(
+            (self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf").exists())
+
+    def test_collision_409(self):
+        # Pre-create a name collision at the destination
+        (self.target / "02-INFORMATIQUE/mechanics.pdf").write_bytes(b"%PDF squatter")
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.move_file(
+                self.profile_name,
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "02-INFORMATIQUE")
+        self.assertEqual(cm.exception.status, 409)
+        # Source still in place
+        self.assertTrue(
+            (self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf").exists())
+
+    def test_dest_folder_must_exist(self):
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.move_file(
+                self.profile_name,
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "99-NONEXISTENT/SUBDIR")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_404_when_source_missing(self):
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.move_file(
+                self.profile_name,
+                "01-SCIENCES/PHYSIQUE/ghost.pdf",
+                "02-INFORMATIQUE")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_dest_traversal_refused(self):
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.move_file(
+                self.profile_name,
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "../outside")
+        self.assertIn(cm.exception.status, (400, 404))
+
+
+class TestComputeMoveImpact(TaxonomyTestBase):
+
+    def _seed_vision_cache(self, themes: list[str]):
+        """Seed a vision_cache entry for mechanics.pdf with the given
+        ordered themes. The classifier will use the first one that
+        maps."""
+        from lib import vision_cache as vc
+        abs_path = self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf"
+        key = vc.compute_cache_key(
+            str(abs_path),
+            model="Qwen/Qwen3-VL-32B-Instruct", n_pages=2)
+        cache_path = self.profile_dir / ".cache" / "vision_cache.json"
+        cache = {}
+        if cache_path.exists():
+            cache = json.loads(cache_path.read_text())
+        cache[key] = {
+            "result": {
+                "title": "Classical Mechanics",
+                "themes": [
+                    {"theme": t, "confidence": 0.95} for t in themes
+                ],
+                "confidence": 0.95,
+            },
+            "model": "Qwen/Qwen3-VL-32B-Instruct",
+            "prompt_version": "v3",
+        }
+        cache_path.write_text(json.dumps(cache))
+
+    def test_consistent_when_dest_matches_prediction(self):
+        # vision_cache says theme=physics → mapped to /01-SCIENCES/PHYSIQUE
+        # The file IS currently at /01-SCIENCES/PHYSIQUE — so move to
+        # the same folder is consistent.
+        self._seed_vision_cache(["physics"])
+        impact = taxonomy.compute_move_impact(
+            self.profile_name,
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(impact["predicted_folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertTrue(impact["is_consistent"])
+        self.assertIn("physics", impact["themes_used"])
+
+    def test_inconsistent_when_dest_diverges(self):
+        # Theme maps to PHYSIQUE but user asks to move to MATHEMATIQUES
+        self._seed_vision_cache(["physics"])
+        impact = taxonomy.compute_move_impact(
+            self.profile_name,
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "01-SCIENCES/MATHEMATIQUES")
+        self.assertEqual(impact["predicted_folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(impact["dest_folder"], "01-SCIENCES/MATHEMATIQUES")
+        self.assertFalse(impact["is_consistent"])
+
+    def test_no_prediction_when_no_vision_cache(self):
+        impact = taxonomy.compute_move_impact(
+            self.profile_name,
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "02-INFORMATIQUE")
+        self.assertIsNone(impact["predicted_folder"])
+        self.assertFalse(impact["is_consistent"])
+        # Still reports current_folder and dest_folder correctly
+        self.assertEqual(impact["current_folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(impact["dest_folder"], "02-INFORMATIQUE")
+
+
+class TestFileOpsEndpoints(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_delete_endpoint_happy(self):
+        r = self.client.post("/api/taxonomy/file/delete", json={
+            "profile": self.profile_name,
+            "rel_path": "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.assertFalse(
+            (self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf").exists())
+
+    def test_delete_endpoint_404(self):
+        r = self.client.post("/api/taxonomy/file/delete", json={
+            "profile": self.profile_name,
+            "rel_path": "ghost.pdf",
+        })
+        self.assertEqual(r.status_code, 404)
+
+    def test_move_endpoint_happy(self):
+        r = self.client.post("/api/taxonomy/file/move", json={
+            "profile": self.profile_name,
+            "rel_path": "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "dest_folder": "02-INFORMATIQUE",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["new_rel_path"],
+                          "02-INFORMATIQUE/mechanics.pdf")
+
+    def test_move_endpoint_409_on_collision(self):
+        (self.target / "02-INFORMATIQUE/mechanics.pdf").write_bytes(b"%PDF")
+        r = self.client.post("/api/taxonomy/file/move", json={
+            "profile": self.profile_name,
+            "rel_path": "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "dest_folder": "02-INFORMATIQUE",
+        })
+        self.assertEqual(r.status_code, 409)
+
+    def test_move_impact_endpoint(self):
+        r = self.client.get(
+            f"/api/taxonomy/file/move-impact?profile={self.profile_name}"
+            f"&path=01-SCIENCES/PHYSIQUE/mechanics.pdf"
+            f"&dest=02-INFORMATIQUE")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["current_folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(body["dest_folder"], "02-INFORMATIQUE")
+
+
 if __name__ == "__main__":
     unittest.main()

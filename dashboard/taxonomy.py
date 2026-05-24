@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import threading
 import time
 from collections import defaultdict
@@ -2534,3 +2535,348 @@ def restore_last_backup(profile: str) -> dict:
         reset_cache(profile)
         result["ok"] = True
         return result
+
+
+# ─── Per-file FS operations (feature/mapping-file-actions) ──────────────
+
+
+class TaxonomyFileError(Exception):
+    """User-facing error for file-level FS operations (delete / move).
+    Carries an HTTP-style status code so the endpoint can map it
+    directly. Calqued on dashboard.rename.RenameError."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+_TRASH_FOLDER_NAME = ".trash"
+_TRASH_JOURNAL_NAME = "file-trash-journal.jsonl"
+
+
+def _trash_root(profile: str) -> Path | None:
+    """Trash root for a profile: ``<target>/.trash/``. Returns None if
+    the profile is misconfigured."""
+    target = _profile_target_path(profile)
+    if target is None:
+        return None
+    return target / _TRASH_FOLDER_NAME
+
+
+def _trash_journal_path(profile: str) -> Path:
+    return _profile_dir(profile) / ".cache" / _TRASH_JOURNAL_NAME
+
+
+def _is_safe_under_target(profile: str, rel_path: str) -> Path:
+    """Resolve ``rel_path`` against the profile target and assert it
+    stays inside. Returns the absolute Path on success, raises
+    TaxonomyFileError on any failure.
+    """
+    if not rel_path:
+        raise TaxonomyFileError("rel_path requis", 400)
+    target = _profile_target_path(profile)
+    if target is None or not target.exists():
+        raise TaxonomyFileError("profil sans target configuré", 400)
+    abs_path = (target / rel_path).resolve()
+    try:
+        abs_path.relative_to(target.resolve())
+    except ValueError as exc:
+        raise TaxonomyFileError(
+            "rel_path hors du target", 400) from exc
+    return abs_path
+
+
+def _invalidate_post_fs_op(profile: str) -> None:
+    """After a per-file FS op (delete/move), drop the taxonomy snapshot
+    cache + the rename audit cache + the categories cache so the next
+    reads rebuild from disk. The rename audit cache lacks a targeted
+    patch path for delete (the file vanished, not just moved), and
+    the taxonomy snapshot is keyed by counts — both need a full drop.
+    """
+    reset_cache(profile)
+    try:
+        from dashboard import rename as _rn
+        _rn.reset_cache(profile)
+    except Exception:
+        pass
+    try:
+        from dashboard import categories as _cat
+        _cat.reset_cache(profile)
+    except Exception:
+        pass
+
+
+def soft_delete_file(profile: str, rel_path: str) -> dict:
+    """Move a file from ``<target>/<rel_path>`` to
+    ``<target>/.trash/<YYYYMMDD-HHMMSS>/<basename>``. Reversible via
+    Finder. Appends an entry to ``.cache/file-trash-journal.jsonl``.
+
+    Raises TaxonomyFileError on:
+      400 — bad rel_path / outside target / file is itself inside .trash/
+      404 — file not found on disk
+      500 — FS error during move
+    """
+    abs_old = _is_safe_under_target(profile, rel_path)
+    if not abs_old.exists():
+        raise TaxonomyFileError(
+            f"fichier introuvable : {rel_path}", 404)
+    if not abs_old.is_file():
+        raise TaxonomyFileError(
+            "ce n'est pas un fichier", 400)
+
+    # Refuse to trash items already in trash — would be an infinite-
+    # nesting accident on a wrong click. Resolve both sides so the
+    # comparison works on macOS where /var symlinks to /private/var.
+    trash_root = _trash_root(profile)
+    if trash_root is not None and trash_root.exists():
+        trash_root_resolved = trash_root.resolve()
+        if trash_root_resolved in abs_old.parents:
+            raise TaxonomyFileError(
+                "ce fichier est déjà dans la corbeille", 400)
+
+    # Build the destination: .trash/<ts>/<basename>. Collision suffix
+    # on basename (-1, -2, …) so two deletes within the same second
+    # don't overwrite each other.
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    trash_dir = trash_root / ts
+    trash_dir.mkdir(parents=True, exist_ok=True)
+
+    basename = abs_old.name
+    dest = trash_dir / basename
+    suffix = 0
+    stem, ext = os.path.splitext(basename)
+    while dest.exists():
+        suffix += 1
+        dest = trash_dir / f"{stem}-{suffix}{ext}"
+
+    try:
+        shutil.move(str(abs_old), str(dest))
+    except OSError as exc:
+        raise TaxonomyFileError(
+            f"échec du déplacement vers la corbeille : {exc}", 500
+        ) from exc
+
+    # Append journal entry. Best-effort: a failure here doesn't undo
+    # the FS move (the file IS in .trash/, that's what matters).
+    record = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "original_rel_path": rel_path,
+        "trash_rel_path": str(dest.relative_to(
+            _profile_target_path(profile))).replace("\\", "/"),
+    }
+    try:
+        journal = _trash_journal_path(profile)
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        with open(journal, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+    _invalidate_post_fs_op(profile)
+
+    return {
+        "ok": True,
+        "original_rel_path": rel_path,
+        "trash_rel_path": record["trash_rel_path"],
+        "journal_entry": record,
+    }
+
+
+def _resolve_dest_folder(profile: str, dest_folder: str) -> Path:
+    """Resolve ``dest_folder`` (a path relative to target) into an
+    absolute path and assert it exists + is a directory + is inside
+    target. Empty string = target root."""
+    if dest_folder is None:
+        raise TaxonomyFileError("dest_folder requis", 400)
+    target = _profile_target_path(profile)
+    if target is None or not target.exists():
+        raise TaxonomyFileError("profil sans target configuré", 400)
+    target_resolved = target.resolve()
+    # Treat empty / "/" / "." as root
+    cleaned = (dest_folder or "").strip().strip("/")
+    abs_dest = (target / cleaned).resolve() if cleaned else target_resolved
+    try:
+        abs_dest.relative_to(target_resolved)
+    except ValueError as exc:
+        raise TaxonomyFileError(
+            "dest_folder hors du target", 400) from exc
+    if not abs_dest.exists():
+        raise TaxonomyFileError(
+            f"dossier destination introuvable : {dest_folder}", 404)
+    if not abs_dest.is_dir():
+        raise TaxonomyFileError(
+            f"dest_folder n'est pas un dossier : {dest_folder}", 400)
+    return abs_dest
+
+
+def move_file(profile: str, rel_path: str, dest_folder: str) -> dict:
+    """Move a file from its current folder to ``dest_folder`` (kept
+    basename). Reuses the audit cache invalidation path so the UI
+    reflects the change without a full rebuild on the rename side
+    (the taxonomy snapshot is rebuilt lazily — there's no targeted
+    patch for it).
+
+    Raises TaxonomyFileError on:
+      400 — bad inputs / outside target / dest_folder not a dir
+      404 — source file or dest folder missing
+      409 — destination already has a file with that basename
+      500 — FS error during move
+    """
+    abs_old = _is_safe_under_target(profile, rel_path)
+    if not abs_old.exists():
+        raise TaxonomyFileError(
+            f"fichier introuvable : {rel_path}", 404)
+    if not abs_old.is_file():
+        raise TaxonomyFileError(
+            "ce n'est pas un fichier", 400)
+
+    abs_dest_dir = _resolve_dest_folder(profile, dest_folder)
+    abs_new = abs_dest_dir / abs_old.name
+
+    # Same-folder no-op
+    if abs_new.resolve() == abs_old.resolve():
+        return {
+            "ok": True,
+            "unchanged": True,
+            "rel_path": rel_path,
+            "new_rel_path": rel_path,
+        }
+
+    if abs_new.exists():
+        # APFS case-insensitive guard: only refuse if it's a different
+        # inode than the source.
+        try:
+            same = abs_new.samefile(abs_old)
+        except OSError:
+            same = False
+        if not same:
+            raise TaxonomyFileError(
+                f"un fichier porte déjà ce nom dans la destination : "
+                f"{abs_old.name}", 409)
+
+    try:
+        shutil.move(str(abs_old), str(abs_new))
+    except OSError as exc:
+        raise TaxonomyFileError(
+            f"échec du déplacement : {exc}", 500) from exc
+
+    target = _profile_target_path(profile)
+    new_rel = str(abs_new.resolve().relative_to(
+        target.resolve())).replace("\\", "/")
+
+    _invalidate_post_fs_op(profile)
+
+    return {
+        "ok": True,
+        "rel_path": rel_path,
+        "new_rel_path": new_rel,
+        "from_folder": str(abs_old.parent.relative_to(
+            target.resolve())).replace("\\", "/"),
+        "to_folder": str(abs_dest_dir.resolve().relative_to(
+            target.resolve())).replace("\\", "/"),
+    }
+
+
+def compute_move_impact(
+    profile: str, rel_path: str, dest_folder: str,
+) -> dict:
+    """Preview the impact of moving ``rel_path`` to ``dest_folder``:
+    does it match what the classifier would predict at the next
+    reclassify pass?
+
+    Returns::
+
+        {
+          "current_folder": "01-SCIENCES/PHYSIQUE",
+          "dest_folder":    "02-INFORMATIQUE/AI",
+          "predicted_folder": "02-INFORMATIQUE/AI",  # or None if classifier failed
+          "predicted_source": "LLM (theme)",
+          "predicted_score":  0.87,
+          "is_consistent":  true,
+          "themes_used":    ["machine learning", ...]
+        }
+
+    Doesn't touch the FS. Pure preview, safe to call repeatedly.
+    """
+    abs_old = _is_safe_under_target(profile, rel_path)
+    if not abs_old.exists():
+        raise TaxonomyFileError(
+            f"fichier introuvable : {rel_path}", 404)
+
+    target = _profile_target_path(profile)
+    current_folder = str(abs_old.parent.resolve().relative_to(
+        target.resolve())).replace("\\", "/")
+
+    # Validate dest_folder shape (existence is allowed to fail — the
+    # user might be previewing toward a folder they'll create later;
+    # but for safety we still require it to be a real directory).
+    abs_dest = _resolve_dest_folder(profile, dest_folder)
+    dest_rel = str(abs_dest.resolve().relative_to(
+        target.resolve())).replace("\\", "/")
+
+    # Now compute the predicted destination via the classifier — same
+    # logic as get_file_metadata_full_pipeline, but we extract themes
+    # too so the UI can name them in the warning message.
+    cfg = _load_profile_yaml(profile)
+    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    cache_path = _vision_cache_path(profile)
+    vision_result: dict = {}
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+            key = vision_cache.compute_cache_key(
+                str(abs_old), model=model, n_pages=n_pages)
+            if key:
+                looked = vision_cache.lookup(cache, key)
+                if isinstance(looked, dict):
+                    vision_result = looked
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    themes_used: list[str] = []
+    raw_themes = vision_result.get("themes") if vision_result else None
+    if isinstance(raw_themes, list):
+        themes_used = [
+            str(t.get("theme", "")).strip()
+            for t in raw_themes if isinstance(t, dict) and t.get("theme")
+        ]
+    elif vision_result and vision_result.get("theme"):
+        themes_used = [str(vision_result.get("theme", "")).strip()]
+
+    predicted_folder: str | None = None
+    predicted_source = ""
+    predicted_score = 0.0
+    if vision_result:
+        mapping = _load_mapping(profile)
+        categories_path = _profile_dir(profile) / "categories.yaml"
+        classifier = (load_keyword_classifier(str(categories_path))
+                      if categories_path.exists() else None)
+        try:
+            dest, score, source = classify_combined(
+                vision_result, abs_old.name, mapping,
+                classifier=classifier, llm_mapper=None,
+                pdf_path=str(abs_old),
+            )
+            if dest:
+                predicted_folder = dest
+                predicted_source = source
+                predicted_score = float(score) if score else 0.0
+        except Exception:
+            # Classifier failure is non-fatal here — we just report
+            # "no prediction" and let the user decide.
+            pass
+
+    is_consistent = (predicted_folder is not None
+                     and predicted_folder == dest_rel)
+
+    return {
+        "current_folder": current_folder,
+        "dest_folder": dest_rel,
+        "predicted_folder": predicted_folder,
+        "predicted_source": predicted_source,
+        "predicted_score": round(predicted_score, 2),
+        "is_consistent": is_consistent,
+        "themes_used": themes_used,
+    }

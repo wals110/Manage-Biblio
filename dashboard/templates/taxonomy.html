@@ -429,6 +429,25 @@
     </div>
 </div>
 
+<!-- Popover "déplacer fichier" (feature/mapping-file-actions) -->
+<div id="tax-movefile-popover" class="tax-map-popover" style="display:none;">
+    <div class="tax-map-popover-title">Déplacer ce fichier</div>
+    <div class="tax-map-popover-theme">
+        <span class="muted">déplacer</span>
+        <code id="tax-movefile-source"></code>
+    </div>
+    <input id="tax-movefile-input" type="text"
+           placeholder="Dossier destination (ex: 01-SCIENCES/PHYSIQUE)"
+           autocomplete="off">
+    <div id="tax-movefile-suggestions" class="tax-map-popover-suggestions"></div>
+    <!-- Impact preview area — populated by computeMoveImpact() -->
+    <div id="tax-movefile-impact" class="tax-movefile-impact" hidden></div>
+    <div class="tax-map-popover-actions">
+        <button id="tax-movefile-cancel" class="btn-secondary">Annuler</button>
+        <button id="tax-movefile-confirm" class="btn-primary" disabled>Déplacer</button>
+    </div>
+</div>
+
 <!-- Popover "+ sous-dossier" (Phase 3 Étape A) -->
 <div id="tax-newfolder-popover" class="tax-map-popover" style="display:none;">
     <div class="tax-map-popover-title">Créer un sous-dossier</div>

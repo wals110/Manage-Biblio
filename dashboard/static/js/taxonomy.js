@@ -1749,6 +1749,25 @@
       onclick: () => loadFullPipelinePrediction(fullBtn),
     }, ['Voir prédiction pipeline (étapes 1+2) →']);
     body.appendChild(fullBtn);
+
+    // ── Actions sur le fichier (feature/mapping-file-actions) ──
+    // Per-file FS ops: soft-delete (to .trash/) + move-to-folder with
+    // impact preview. Only shown when a file is actually selected.
+    const filePath = meta.file && meta.file.rel_path;
+    if (filePath) {
+      const actions = el('div', { class: 'tax-llm-file-actions' });
+      actions.appendChild(el('button', {
+        class: 'btn-danger',
+        title: 'Déplacer ce fichier vers la corbeille (.trash/<ts>/) du target — réversible via Finder',
+        onclick: () => deleteCurrentFile(filePath),
+      }, ['🗑 Supprimer']));
+      actions.appendChild(el('button', {
+        class: 'btn-move',
+        title: 'Déplacer ce fichier vers un autre dossier — affiche d\'abord l\'impact (cohérence avec le mapping de thème)',
+        onclick: (e) => openMoveFileDialog(filePath, e.currentTarget),
+      }, ['➡ Déplacer vers…']));
+      body.appendChild(actions);
+    }
   }
 
   async function loadFullPipelinePrediction(btn) {
@@ -1778,6 +1797,204 @@
       btn.textContent = 'Voir prédiction pipeline (étapes 1+2) →';
       showToast('Erreur pipeline complet : ' + e.message, 'error');
     }
+  }
+
+  // ── File operations (feature/mapping-file-actions) ──────────────────
+
+  async function deleteCurrentFile(relPath) {
+    if (!relPath) return;
+    const basename = relPath.split('/').pop();
+    const ok = await showConfirm({
+      title: 'Supprimer ce fichier ?',
+      body: `${basename}\n\nLe fichier sera déplacé vers la corbeille :\n<target>/.trash/<timestamp>/\n\nIl reste accessible via Finder — tu peux le restaurer ou le purger toi-même.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      const r = await fetch('/api/taxonomy/file/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile: state.profile,
+          rel_path: relPath,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        showToast('✗ ' + (body.error || `HTTP ${r.status}`), 'error');
+        return;
+      }
+      showToast(`🗑 Déplacé en corbeille : ${basename}`, 'success');
+      // Drop the selection (file no longer at rel_path) and reload tree
+      state.selection = { type: null, path: '' };
+      state.snapshot = await fetchSnapshot(true);
+      renderAll();
+    } catch (e) {
+      showToast('✗ Échec de la suppression : ' + e.message, 'error');
+    }
+  }
+
+  // Move dialog: clones the folder-move popover positioning logic but
+  // wires the per-file impact preview underneath the suggestion list.
+  let _moveFileState = null;
+
+  function openMoveFileDialog(relPath, anchorEl) {
+    const popover = $('#tax-movefile-popover');
+    const srcEl = $('#tax-movefile-source');
+    const input = $('#tax-movefile-input');
+    const sugWrap = $('#tax-movefile-suggestions');
+    const impactWrap = $('#tax-movefile-impact');
+    const confirmBtn = $('#tax-movefile-confirm');
+    if (!popover) return;
+    _moveFileState = { relPath, chosen: null, impact: null };
+    srcEl.textContent = relPath;
+    input.value = '';
+    sugWrap.innerHTML = '';
+    impactWrap.innerHTML = '';
+    impactWrap.hidden = true;
+    confirmBtn.disabled = true;
+    // Position the popover near the click anchor
+    const rect = anchorEl.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
+    popover.style.top = (rect.bottom + 6) + 'px';
+    // Populate suggestions from the snapshot's folder tree
+    renderMoveFileSuggestions('');
+    setTimeout(() => input.focus(), 50);
+  }
+
+  function renderMoveFileSuggestions(query) {
+    const sugWrap = $('#tax-movefile-suggestions');
+    if (!sugWrap || !state.snapshot) return;
+    const folders = (state.snapshot.folders || [])
+      .filter(f => !query || f.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 50);
+    sugWrap.innerHTML = '';
+    if (folders.length === 0) {
+      sugWrap.appendChild(el('div', { class: 'muted small',
+                                       style: 'padding:8px;' },
+        ['Aucun dossier ne matche.']));
+      return;
+    }
+    for (const f of folders) {
+      sugWrap.appendChild(el('div', {
+        class: 'tax-map-suggestion',
+        onclick: () => _moveFilePickDest(f),
+      }, [f]));
+    }
+  }
+
+  async function _moveFilePickDest(folder) {
+    const input = $('#tax-movefile-input');
+    input.value = folder;
+    _moveFileState.chosen = folder;
+    // Fetch the impact preview
+    const impactWrap = $('#tax-movefile-impact');
+    impactWrap.hidden = false;
+    impactWrap.className = 'tax-movefile-impact';
+    impactWrap.innerHTML = '<span class="muted">Calcul de l\'impact…</span>';
+    try {
+      const url = `/api/taxonomy/file/move-impact?profile=${encodeURIComponent(state.profile)}`
+                + `&path=${encodeURIComponent(_moveFileState.relPath)}`
+                + `&dest=${encodeURIComponent(folder)}`;
+      const r = await fetch(url);
+      const body = await r.json();
+      if (!r.ok) {
+        impactWrap.className = 'tax-movefile-impact warn';
+        impactWrap.innerHTML = '✗ ' + (body.error || `HTTP ${r.status}`);
+        $('#tax-movefile-confirm').disabled = true;
+        return;
+      }
+      _moveFileState.impact = body;
+      _renderMoveFileImpact(body);
+      $('#tax-movefile-confirm').disabled = false;
+    } catch (e) {
+      impactWrap.className = 'tax-movefile-impact warn';
+      impactWrap.innerHTML = '✗ ' + e.message;
+    }
+  }
+
+  function _renderMoveFileImpact(impact) {
+    const wrap = $('#tax-movefile-impact');
+    wrap.innerHTML = '';
+    if (impact.predicted_folder === null) {
+      wrap.className = 'tax-movefile-impact no-prediction';
+      wrap.appendChild(el('div', null, [
+        el('span', { class: 'tax-movefile-impact-icon' }, ['ℹ️']),
+        'Aucune prédiction (vision_cache absent ou classifier en échec). ',
+        'Le déplacement est sans risque côté reclassify.',
+      ]));
+      return;
+    }
+    if (impact.is_consistent) {
+      wrap.className = 'tax-movefile-impact ok';
+      wrap.appendChild(el('div', null, [
+        el('span', { class: 'tax-movefile-impact-icon' }, ['✓']),
+        'Cohérent avec le mapping de thème — pas d\'effet de bord au prochain reclassify.',
+      ]));
+      if (impact.themes_used.length) {
+        wrap.appendChild(el('div', { class: 'muted small',
+                                      style: 'margin-top:4px;' }, [
+          'Thèmes utilisés : ' + impact.themes_used.slice(0, 3).join(', '),
+        ]));
+      }
+    } else {
+      wrap.className = 'tax-movefile-impact warn';
+      const topTheme = impact.themes_used[0] || '(inconnu)';
+      wrap.appendChild(el('div', null, [
+        el('span', { class: 'tax-movefile-impact-icon' }, ['⚠']),
+        'Au prochain reclassify, ce fichier sera proposé pour retour vers ',
+        el('code', null, [impact.predicted_folder]),
+        ' (théme « ', topTheme, ' »).',
+      ]));
+      wrap.appendChild(el('div', { class: 'muted small',
+                                    style: 'margin-top:6px;' }, [
+        'Pour rendre ce déplacement permanent, mappe le thème « ',
+        topTheme,
+        ' » vers ',
+        el('code', null, [impact.dest_folder]),
+        ' (via drag-drop dans la vue Mappings).',
+      ]));
+    }
+  }
+
+  async function _moveFileConfirm() {
+    if (!_moveFileState || !_moveFileState.chosen) return;
+    const popover = $('#tax-movefile-popover');
+    try {
+      const r = await fetch('/api/taxonomy/file/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile: state.profile,
+          rel_path: _moveFileState.relPath,
+          dest_folder: _moveFileState.chosen,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        showToast('✗ ' + (body.error || `HTTP ${r.status}`), 'error');
+        return;
+      }
+      popover.style.display = 'none';
+      showToast(`➡ Déplacé : ${body.new_rel_path || _moveFileState.relPath}`,
+                'success');
+      // Re-select the file at its new location + refresh tree
+      const newRel = body.new_rel_path;
+      state.selection = { type: 'file', path: newRel };
+      state.snapshot = await fetchSnapshot(true);
+      renderAll();
+    } catch (e) {
+      showToast('✗ Échec du déplacement : ' + e.message, 'error');
+    }
+  }
+
+  function _moveFileCancel() {
+    const popover = $('#tax-movefile-popover');
+    if (popover) popover.style.display = 'none';
+    _moveFileState = null;
   }
 
   // ── Selection (synchronizes everything) ──────────────────────────────
@@ -2823,6 +3040,32 @@
     });
     $('#tax-movefolder-cancel').addEventListener('click', closeMovePopover);
     $('#tax-movefolder-confirm').addEventListener('click', confirmMovePopover);
+    // Move-file popover (per-file FS op, feature/mapping-file-actions)
+    const movefileInput = $('#tax-movefile-input');
+    if (movefileInput) {
+      movefileInput.addEventListener('input', e => {
+        renderMoveFileSuggestions(e.target.value);
+        // Clear stale impact when the user re-types
+        _moveFileState && (_moveFileState.chosen = null);
+        const impactWrap = $('#tax-movefile-impact');
+        if (impactWrap) {
+          impactWrap.hidden = true;
+          impactWrap.innerHTML = '';
+        }
+        $('#tax-movefile-confirm').disabled = true;
+      });
+      movefileInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && _moveFileState && _moveFileState.chosen) {
+          e.preventDefault();
+          _moveFileConfirm();
+        }
+        if (e.key === 'Escape') _moveFileCancel();
+      });
+    }
+    const movefileCancel = $('#tax-movefile-cancel');
+    if (movefileCancel) movefileCancel.addEventListener('click', _moveFileCancel);
+    const movefileConfirm = $('#tax-movefile-confirm');
+    if (movefileConfirm) movefileConfirm.addEventListener('click', _moveFileConfirm);
     document.addEventListener('click', e => {
       if (state.popover.open && !e.target.closest('#tax-map-popover')
           && !e.target.classList.contains('tax-llm-map-btn')) closeMapPopover();
