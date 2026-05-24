@@ -2252,6 +2252,125 @@ class TestSoftDeleteFile(TaxonomyTestBase):
         self.assertEqual(cm.exception.status, 404)
 
 
+class TestSoftDeleteBulk(TaxonomyTestBase):
+
+    def test_happy_path_all_succeed(self):
+        r = taxonomy.soft_delete_bulk(
+            self.profile_name,
+            rel_paths=[
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "01-SCIENCES/PHYSIQUE/quantum.pdf",
+                "01-SCIENCES/MATHEMATIQUES/algebra.pdf",
+            ])
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["n_deleted"], 3)
+        self.assertEqual(r["n_errors"], 0)
+        # All three sources gone, all three in .trash/
+        for orig in (
+            "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            "01-SCIENCES/PHYSIQUE/quantum.pdf",
+            "01-SCIENCES/MATHEMATIQUES/algebra.pdf",
+        ):
+            self.assertFalse((self.target / orig).exists())
+        trashed = list((self.target / ".trash").rglob("*.pdf"))
+        self.assertEqual(len(trashed), 3)
+
+    def test_shared_timestamp_groups_them(self):
+        # All deletions in one batch land under the same .trash/<ts>/
+        # subdir, since the function uses a single timestamp.
+        r = taxonomy.soft_delete_bulk(
+            self.profile_name,
+            rel_paths=[
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "01-SCIENCES/PHYSIQUE/quantum.pdf",
+            ])
+        self.assertEqual(r["n_deleted"], 2)
+        # The two trash_rel_paths share the same <ts> folder
+        ts_folders = {
+            s["trash_rel_path"].split("/")[1]
+            for s in r["successes"]
+        }
+        self.assertEqual(len(ts_folders), 1)
+
+    def test_partial_failure_continues_batch(self):
+        # Mix valid + invalid items — batch must continue
+        r = taxonomy.soft_delete_bulk(
+            self.profile_name,
+            rel_paths=[
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",  # OK
+                "ghost.pdf",                            # 404
+                "../outside.pdf",                       # 400 (traversal)
+                "01-SCIENCES/intro.pdf",               # OK
+            ])
+        self.assertEqual(r["n_deleted"], 2)
+        self.assertEqual(r["n_errors"], 2)
+        success_paths = {s["rel_path"] for s in r["successes"]}
+        self.assertIn("01-SCIENCES/PHYSIQUE/mechanics.pdf", success_paths)
+        self.assertIn("01-SCIENCES/intro.pdf", success_paths)
+
+    def test_dedupes_duplicate_paths(self):
+        # Same path twice in the input: first one deletes, second one
+        # is rejected as a duplicate (not as 404).
+        r = taxonomy.soft_delete_bulk(
+            self.profile_name,
+            rel_paths=[
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+            ])
+        self.assertEqual(r["n_deleted"], 1)
+        self.assertEqual(r["n_errors"], 1)
+        self.assertIn("doublon", r["errors"][0]["error"])
+
+    def test_empty_rel_paths_400(self):
+        with self.assertRaises(taxonomy.TaxonomyFileError) as cm:
+            taxonomy.soft_delete_bulk(self.profile_name, rel_paths=[])
+        self.assertEqual(cm.exception.status, 400)
+
+    def test_journal_records_each_success(self):
+        taxonomy.soft_delete_bulk(
+            self.profile_name,
+            rel_paths=[
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "01-SCIENCES/intro.pdf",
+            ])
+        journal = self.profile_dir / ".cache" / "file-trash-journal.jsonl"
+        lines = journal.read_text(encoding="utf-8").splitlines()
+        # At least our two new entries (file may have prior entries from
+        # other tests sharing the fixture — but each test gets a fresh
+        # tmpdir, so it's exactly 2).
+        self.assertEqual(len(lines), 2)
+
+
+class TestSoftDeleteBulkEndpoint(TaxonomyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_endpoint_happy(self):
+        r = self.client.post("/api/taxonomy/file/delete-bulk", json={
+            "profile": self.profile_name,
+            "rel_paths": [
+                "01-SCIENCES/PHYSIQUE/mechanics.pdf",
+                "01-SCIENCES/PHYSIQUE/quantum.pdf",
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_deleted"], 2)
+        self.assertEqual(body["n_errors"], 0)
+
+    def test_endpoint_empty_400(self):
+        r = self.client.post("/api/taxonomy/file/delete-bulk", json={
+            "profile": self.profile_name,
+            "rel_paths": [],
+        })
+        self.assertEqual(r.status_code, 400)
+
+
 class TestMoveFile(TaxonomyTestBase):
 
     def test_happy_path(self):

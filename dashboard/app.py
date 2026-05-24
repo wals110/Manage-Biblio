@@ -2226,6 +2226,24 @@ async def taxonomy_file_delete_api(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
 
 
+@app.post("/api/taxonomy/file/delete-bulk")
+async def taxonomy_file_delete_bulk_api(request: Request):
+    """Bulk soft-delete: move N files to <target>/.trash/<ts>/ in one
+    call. Body: {profile, rel_paths: [...]}. Best-effort — per-item
+    failures surface in errors[]. Single cache invalidation at the
+    end so a 100-file deletion doesn't pay 100× the overhead."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    try:
+        result = taxonomy.soft_delete_bulk(
+            profile=body.get("profile"),
+            rel_paths=body.get("rel_paths") or [],
+        )
+        return JSONResponse(result)
+    except taxonomy.TaxonomyFileError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/taxonomy/file/move-impact")
 async def taxonomy_file_move_impact_api(
     profile: str, path: str, dest: str,

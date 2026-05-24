@@ -90,6 +90,21 @@
         <div class="tax-tree-scroll">
             <div id="tax-tree" class="tax-tree"></div>
         </div>
+        <!-- Sticky bulkbar for multi-file delete in the tree -->
+        <div class="tax-tree-bulkbar" id="tax-tree-bulkbar" hidden>
+            <span class="tax-tree-bulkbar-count">
+                <strong id="tax-tree-bulkbar-n">0</strong> sélectionné(s)
+            </span>
+            <button type="button" class="btn-danger btn-sm"
+                    id="tax-tree-bulkbar-delete"
+                    title="Déplacer tous les fichiers cochés vers la corbeille (.trash/<ts>/) — réversible via Finder">
+                🗑 Supprimer la sélection
+            </button>
+            <button type="button" class="btn-secondary btn-sm"
+                    id="tax-tree-bulkbar-clear">
+                Tout désélectionner
+            </button>
+        </div>
     </section>
 
     <!-- Colonne 2 — Viewer + Analyse LLM + Treemap -->
