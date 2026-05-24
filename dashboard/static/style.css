@@ -5268,6 +5268,74 @@ th {
     font-size: 12.5px;
 }
 .tax-map-suggestion:hover { background: rgba(88, 166, 255, 0.08); }
+/* Move-file impact preview — surfaces the classifier's prediction so
+ * the user understands whether the destination is consistent with
+ * theme_mapping (green) or will be reverted at next reclassify (orange). */
+.tax-movefile-impact {
+    margin: 10px 0 4px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    line-height: 1.4;
+}
+.tax-movefile-impact.ok {
+    background: rgba(63, 185, 80, 0.08);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    color: #c9d1d9;
+}
+.tax-movefile-impact.warn {
+    background: rgba(217, 130, 43, 0.1);
+    border: 1px solid rgba(217, 130, 43, 0.35);
+    color: #c9d1d9;
+}
+.tax-movefile-impact.no-prediction {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted, #8b949e);
+}
+.tax-movefile-impact code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10.5px;
+}
+.tax-movefile-impact-icon {
+    font-size: 14px;
+    margin-right: 4px;
+}
+/* Actions sur le fichier en col 2 (delete + move) */
+.tax-llm-file-actions {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.tax-llm-file-actions .btn-danger {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    color: #ff7b72;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+}
+.tax-llm-file-actions .btn-danger:hover {
+    background: rgba(248, 81, 73, 0.2);
+}
+.tax-llm-file-actions .btn-move {
+    background: rgba(88, 166, 255, 0.08);
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    color: #c9d1d9;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+}
+.tax-llm-file-actions .btn-move:hover {
+    background: rgba(88, 166, 255, 0.18);
+}
 .tax-map-popover-actions {
     display: flex;
     gap: 8px;

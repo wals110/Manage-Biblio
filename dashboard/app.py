@@ -2207,3 +2207,54 @@ async def taxonomy_file_full_pipeline_api(profile: str, path: str):
     included). Doesn't call the LLM Mapper to avoid token spending."""
     from fastapi.responses import JSONResponse
     return JSONResponse(taxonomy.get_file_metadata_full_pipeline(profile, path))
+
+
+@app.post("/api/taxonomy/file/delete")
+async def taxonomy_file_delete_api(request: Request):
+    """Soft-delete a file: move it to <target>/.trash/<ts>/<basename>.
+    Body: {profile, rel_path}. Reversible via Finder. Refuses to
+    re-delete files already inside .trash/."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    try:
+        result = taxonomy.soft_delete_file(
+            profile=body.get("profile"),
+            rel_path=body.get("rel_path"),
+        )
+        return JSONResponse(result)
+    except taxonomy.TaxonomyFileError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.get("/api/taxonomy/file/move-impact")
+async def taxonomy_file_move_impact_api(
+    profile: str, path: str, dest: str,
+):
+    """Preview the impact of moving a file to ``dest``. Returns the
+    classifier's predicted folder so the UI can warn the user if the
+    chosen destination diverges (= the file would be proposed for
+    return at the next reclassify)."""
+    from fastapi.responses import JSONResponse
+    try:
+        result = taxonomy.compute_move_impact(profile, path, dest)
+        return JSONResponse(result)
+    except taxonomy.TaxonomyFileError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/taxonomy/file/move")
+async def taxonomy_file_move_api(request: Request):
+    """Move a file to ``dest_folder`` (kept basename).
+    Body: {profile, rel_path, dest_folder}. Invalidates the taxonomy /
+    rename / categories caches so the next reads see the new state."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    try:
+        result = taxonomy.move_file(
+            profile=body.get("profile"),
+            rel_path=body.get("rel_path"),
+            dest_folder=body.get("dest_folder"),
+        )
+        return JSONResponse(result)
+    except taxonomy.TaxonomyFileError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
