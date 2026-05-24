@@ -9,6 +9,7 @@ Le cache est stocké dans `{INBOX}/.thumbnail-cache/{stem}.jpg`.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import xml.etree.ElementTree as ET
 import zipfile
@@ -26,6 +27,33 @@ THUMBNAIL_HEIGHT = 550
 THUMBNAIL_QUALITY = 80
 PLACEHOLDER_BG = (26, 29, 36)        # #1a1d24 — gris foncé du dark theme
 PLACEHOLDER_FG = (220, 220, 220)     # blanc cassé
+
+# Number of bytes hashed to compute the content key. Same as
+# lib.vision_cache so the two caches are conceptually aligned (file
+# identity is "first 8 KiB of bytes"). Identical content under a
+# different rel_path → same key → cache hit (survives renames).
+_HEAD_BYTES = 8192
+
+
+def compute_content_key(file_path: str | Path, length: int = 16) -> str | None:
+    """Stable thumbnail cache key derived from the file's head bytes.
+
+    Returns the first ``length`` hex chars of ``md5(first 8 KiB)``, or
+    ``None`` if the file can't be read. Pure content-based so:
+      - A rename does NOT invalidate the cache (rel_path-independent).
+      - Two identical files under different paths share one thumbnail.
+
+    Used by the dashboard's thumbnail cache directory layout
+    ``profile/.cache/thumbnails/<key>/{1..n}.jpg``.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            head = f.read(_HEAD_BYTES)
+    except OSError:
+        return None
+    if not head:
+        return None
+    return hashlib.md5(head).hexdigest()[:length]
 
 
 def generate_thumbnail(
@@ -69,6 +97,41 @@ def generate_thumbnail(
             return 1
         except Exception:
             return 0
+
+
+def save_pil_images_as_thumbnails(
+    images: list['Image.Image'],
+    doc_dir: Path,
+    overwrite: bool = False,
+) -> int:
+    """Persist a list of in-memory PIL images as ``doc_dir/{1..N}.jpg``.
+
+    Used by the LLM pipeline to "capitalize" on the cover extraction
+    it already does: after sending images to the LLM, save them to
+    the dashboard's thumbnail cache instead of throwing them away.
+
+    Saves at the same 400×550 resolution + JPEG quality as the
+    on-demand generator (``generate_thumbnail``), so the two paths
+    produce visually identical caches.
+
+    ``overwrite=False`` (default) skips pages whose file already
+    exists — cheap idempotent re-runs. Returns the number of images
+    actually written.
+    """
+    if not images:
+        return 0
+    doc_dir.mkdir(parents=True, exist_ok=True)
+    n_written = 0
+    for i, img in enumerate(images, start=1):
+        dest = doc_dir / f"{i}.jpg"
+        if dest.exists() and not overwrite:
+            continue
+        try:
+            _resize_and_save(img, dest)
+            n_written += 1
+        except Exception as exc:  # pragma: no cover — defensive
+            log.warning(f"  ⚠ Erreur save thumbnail {dest.name}: {exc}")
+    return n_written
 
 
 def _generate_pdf_thumbnails(

@@ -53,6 +53,7 @@ from commands import (
     cmd_refine,
     cmd_rename,
     cmd_suggest,
+    cmd_thumbnails,
 )
 from lib.exceptions import ConfigError
 from lib.logger import get_logger, setup_logger
@@ -216,6 +217,17 @@ def _build_parser():
     p_dashboard.add_argument('--port', type=int, default=8080,
                              help='Port (défaut: 8080)')
 
+    # ── thumbnails ── (backfill du cache thumbnail du dashboard)
+    p_thumb = subparsers.add_parser(
+        'thumbnails', parents=[common],
+        help='Pré-remplir le cache thumbnail du dashboard pour tous les '
+             'fichiers du profil (évite la génération à la demande au '
+             'premier clic dans le viewer).')
+    p_thumb.add_argument('--max', type=int, default=0,
+                         help='Limiter le nombre de fichiers traités (0 = tous)')
+    p_thumb.add_argument('--force', action='store_true',
+                         help='Re-générer même les thumbnails déjà en cache')
+
     return parser
 
 
@@ -266,6 +278,7 @@ def main():
         'suggest': cmd_suggest,
         'clean': cmd_clean,
         'detect': cmd_detect,
+        'thumbnails': cmd_thumbnails,
     }
     handler = dispatch.get(args.command)
     if handler:
