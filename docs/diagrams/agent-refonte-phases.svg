@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
+  <defs>
+    <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="21"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.2"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6"/>
+    </marker>
+  </defs>
+
+  <g filter="url(#h)">
+    <!-- Title -->
+    <text x="500" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#5b21b6">🤖 Agent IA Refonte — 3 phases shippables</text>
+    <text x="500" y="50" text-anchor="middle" font-size="11" fill="#7c3aed" font-style="italic">orchestration LangGraph · ~35-50 j-h · 6-8 semaines</text>
+
+    <!-- ── Phase A : Diagnostic (read-only) ── -->
+    <rect x="30" y="80" width="290" height="350" rx="14" fill="#dbeafe" stroke="#3b82f6" stroke-width="2.5"/>
+    <text x="175" y="106" text-anchor="middle" font-size="15" font-weight="bold" fill="#1e40af">Phase A — Diagnostic</text>
+    <text x="175" y="124" text-anchor="middle" font-size="11" fill="#3b82f6" font-style="italic">read-only · ~10-15 j-h</text>
+
+    <!-- A inputs -->
+    <text x="50" y="148" font-size="10" font-style="italic" fill="#1e40af">Inputs</text>
+    <rect x="45" y="155" width="260" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="170" text-anchor="middle" font-size="10" fill="#1e40af">tree.yaml + theme_mapping.yaml + biblio FS</text>
+
+    <!-- A tools -->
+    <text x="50" y="200" font-size="10" font-style="italic" fill="#1e40af">Tools (read-only)</text>
+    <rect x="45" y="207" width="125" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="107" y="222" text-anchor="middle" font-size="10" fill="#1e40af">list_tree()</text>
+    <rect x="180" y="207" width="125" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="242" y="222" text-anchor="middle" font-size="10" fill="#1e40af">count_files()</text>
+
+    <rect x="45" y="234" width="260" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="249" text-anchor="middle" font-size="10" fill="#1e40af">sample_theme_mapping(theme, n=5)</text>
+
+    <rect x="45" y="261" width="260" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="276" text-anchor="middle" font-size="10" fill="#1e40af">read_catch_all_distribution()</text>
+
+    <!-- A tasks -->
+    <text x="50" y="306" font-size="10" font-style="italic" fill="#1e40af">Tâches</text>
+    <text x="55" y="322" font-size="10" fill="#1e40af">• A.1 — Bootstrap LangGraph + state</text>
+    <text x="55" y="338" font-size="10" fill="#1e40af">• A.2 — Outils read-only (5)</text>
+    <text x="55" y="354" font-size="10" fill="#1e40af">• A.3 — Prompt diagnostic</text>
+    <text x="55" y="370" font-size="10" fill="#1e40af">• A.4 — Rapport markdown</text>
+    <text x="55" y="386" font-size="10" fill="#1e40af">• A.5 — Tests + smoke run</text>
+
+    <!-- A output -->
+    <rect x="45" y="400" width="260" height="22" rx="4" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="175" y="415" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">📄 diagnostic-&lt;date&gt;.md</text>
+
+    <!-- ── Phase B : Proposition (side YAMLs) ── -->
+    <rect x="355" y="80" width="290" height="350" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2.5"/>
+    <text x="500" y="106" text-anchor="middle" font-size="15" font-weight="bold" fill="#5b21b6">Phase B — Proposition</text>
+    <text x="500" y="124" text-anchor="middle" font-size="11" fill="#7c3aed" font-style="italic">side YAMLs · ~10-15 j-h</text>
+
+    <text x="375" y="148" font-size="10" font-style="italic" fill="#5b21b6">Inputs</text>
+    <rect x="370" y="155" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="170" text-anchor="middle" font-size="10" fill="#5b21b6">Phase A + objectifs user</text>
+
+    <text x="375" y="200" font-size="10" font-style="italic" fill="#5b21b6">Tools (read + propose)</text>
+    <rect x="370" y="207" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="222" text-anchor="middle" font-size="10" fill="#5b21b6">tous les A.* + propose_changes()</text>
+
+    <rect x="370" y="234" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="249" text-anchor="middle" font-size="10" fill="#5b21b6">simulate_reclassify(--dry-run)</text>
+
+    <rect x="370" y="261" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="276" text-anchor="middle" font-size="10" fill="#5b21b6">compute_impact(propositions)</text>
+
+    <text x="375" y="306" font-size="10" font-style="italic" fill="#5b21b6">Tâches</text>
+    <text x="380" y="322" font-size="10" fill="#5b21b6">• B.1 — propose_changes → side YAMLs</text>
+    <text x="380" y="338" font-size="10" fill="#5b21b6">• B.2 — Simulateur dry-run</text>
+    <text x="380" y="354" font-size="10" fill="#5b21b6">• B.3 — Tableau d'impact</text>
+    <text x="380" y="370" font-size="10" fill="#5b21b6">• B.4 — Tests + smoke run</text>
+
+    <rect x="370" y="400" width="260" height="22" rx="4" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="500" y="415" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">📄 tree-proposed + mapping-proposed</text>
+
+    <!-- ── Phase C : Dialog (mutations) ── -->
+    <rect x="680" y="80" width="290" height="350" rx="14" fill="#fce7f3" stroke="#ec4899" stroke-width="2.5"/>
+    <text x="825" y="106" text-anchor="middle" font-size="15" font-weight="bold" fill="#9d174d">Phase C — Dialog</text>
+    <text x="825" y="124" text-anchor="middle" font-size="11" fill="#ec4899" font-style="italic">mutations · ~15-20 j-h</text>
+
+    <text x="700" y="148" font-size="10" font-style="italic" fill="#9d174d">Inputs</text>
+    <rect x="695" y="155" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="170" text-anchor="middle" font-size="10" fill="#9d174d">Phase B + validation interactive</text>
+
+    <text x="700" y="200" font-size="10" font-style="italic" fill="#9d174d">Tools (mutables, locked)</text>
+    <rect x="695" y="207" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="222" text-anchor="middle" font-size="10" fill="#9d174d">tous les B.* + apply_changes()</text>
+
+    <rect x="695" y="234" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="249" text-anchor="middle" font-size="10" fill="#9d174d">rename_folder + remap_theme</text>
+
+    <rect x="695" y="261" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="276" text-anchor="middle" font-size="10" fill="#9d174d">🔒 taxonomy.lock (concurrence)</text>
+
+    <text x="700" y="306" font-size="10" font-style="italic" fill="#9d174d">Tâches</text>
+    <text x="705" y="322" font-size="10" fill="#9d174d">• C.1 — apply_changes (atomique)</text>
+    <text x="705" y="338" font-size="10" fill="#9d174d">• C.2 — Journal agent (JSONL)</text>
+    <text x="705" y="354" font-size="10" fill="#9d174d">• C.3 — UI dialog dashboard</text>
+    <text x="705" y="370" font-size="10" fill="#9d174d">• C.4 — Rollback + tests E2E</text>
+
+    <rect x="695" y="400" width="260" height="22" rx="4" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="825" y="415" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">📄 YAMLs mutés + agent-journal.jsonl</text>
+
+    <!-- Arrows between phases -->
+    <line x1="320" y1="255" x2="353" y2="255" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arrowPurple)"/>
+    <text x="337" y="248" font-size="9" text-anchor="middle" fill="#7c3aed" font-style="italic">A → B</text>
+
+    <line x1="645" y1="255" x2="678" y2="255" stroke="#ec4899" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="662" y="248" font-size="9" text-anchor="middle" fill="#9d174d" font-style="italic">B → C</text>
+
+    <!-- Bottom : framework + risks -->
+    <rect x="30" y="455" width="940" height="80" rx="12" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+    <text x="500" y="478" text-anchor="middle" font-size="13" font-weight="bold" fill="#854d0e">Framework &amp; garde-fous</text>
+    <text x="50" y="500" font-size="11" fill="#a16207">• LangGraph : orchestration + state typé + interruption/resume</text>
+    <text x="50" y="516" font-size="11" fill="#a16207">• Coût LLM contenu : budget par phase + checkpointing + cache prompt</text>
+    <text x="500" y="500" font-size="11" fill="#a16207">• Phase A jamais bloquante (read-only, peut tourner en CI)</text>
+    <text x="500" y="516" font-size="11" fill="#a16207">• Phase C : tout passe par apply_changes() + journal append-only</text>
+
+    <!-- Timeline -->
+    <text x="500" y="565" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">Chaque phase est shippable seule — Phase A déjà livrable en sprint 1, valide l'archi avant d'engager B/C</text>
+    <text x="500" y="585" text-anchor="middle" font-size="10" fill="#9ca3af" font-style="italic">Cf. docs/refonte-agent-spec.md pour le détail des tâches A.1-A.5 / B.1-B.4 / C.1-C.4</text>
+  </g>
+</svg>

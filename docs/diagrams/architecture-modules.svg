@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 460" font-family="Segoe Print, Comic Sans MS, cursive" font-size="12">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 560" font-family="Segoe Print, Comic Sans MS, cursive" font-size="12">
   <defs>
     <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
       <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="13"/>
@@ -10,94 +10,158 @@
   </defs>
   <g filter="url(#h)">
     <!-- CLI layer -->
-    <rect x="250" y="10" width="280" height="55" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-    <text x="390" y="33" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e40af">klodo.py — Point d'entrée CLI</text>
-    <text x="390" y="52" text-anchor="middle" font-size="11" fill="#3b82f6">Parser argparse + sous-commandes</text>
+    <rect x="300" y="10" width="280" height="55" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <text x="440" y="33" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e40af">klodo.py — Point d'entrée CLI</text>
+    <text x="440" y="52" text-anchor="middle" font-size="11" fill="#3b82f6">Parser argparse + sous-commandes</text>
 
-    <!-- Arrows from CLI to lib modules -->
-    <line x1="390" y1="65" x2="390" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- Arrow CLI → lib -->
+    <line x1="440" y1="65" x2="440" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
 
     <!-- LIB layer -->
-    <rect x="30" y="110" width="720" height="170" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
-    <text x="390" y="132" text-anchor="middle" font-size="14" font-weight="bold" fill="#5b21b6">lib/ — Modules métier</text>
+    <rect x="30" y="110" width="820" height="240" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+    <text x="440" y="132" text-anchor="middle" font-size="14" font-weight="bold" fill="#5b21b6">lib/ — Modules métier</text>
 
-    <!-- Module boxes -->
-    <rect x="50" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="107" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">vision.py</text>
-    <text x="107" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">LLM Vision</text>
+    <!-- Row 1 : pipeline classification -->
+    <text x="60" y="155" font-size="10" font-style="italic" fill="#7c3aed">Classification</text>
 
-    <rect x="180" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="237" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">classifier.py</text>
-    <text x="237" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Classification</text>
+    <rect x="50" y="160" width="115" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="107" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">vision.py</text>
+    <text x="107" y="196" text-anchor="middle" font-size="10" fill="#7c3aed">LLM Vision</text>
 
-    <rect x="310" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="367" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">llm_mapper.py</text>
-    <text x="367" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Résolution thèmes</text>
+    <rect x="180" y="160" width="115" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="237" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">classifier.py</text>
+    <text x="237" y="196" text-anchor="middle" font-size="10" fill="#7c3aed">Cascade 4 niveaux</text>
 
-    <rect x="440" y="145" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="497" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">refiner.py</text>
-    <text x="497" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Raffinement</text>
+    <rect x="310" y="160" width="115" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="367" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">llm_mapper.py</text>
+    <text x="367" y="196" text-anchor="middle" font-size="10" fill="#7c3aed">Résolution thèmes</text>
 
-    <rect x="570" y="145" width="80" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="610" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">utils.py</text>
-    <text x="610" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Rapports</text>
+    <rect x="440" y="160" width="115" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="497" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">refiner.py</text>
+    <text x="497" y="196" text-anchor="middle" font-size="10" fill="#7c3aed">Raffinement</text>
 
-    <rect x="665" y="145" width="75" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="702" y="167" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">profile.py</text>
-    <text x="702" y="183" text-anchor="middle" font-size="10" fill="#7c3aed">Profils</text>
+    <rect x="570" y="160" width="125" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="632" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">pattern_detector.py</text>
+    <text x="632" y="196" text-anchor="middle" font-size="10" fill="#7c3aed">Détection patterns</text>
 
-    <!-- Second row of lib -->
-    <rect x="50" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="107" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">wordcheck.py</text>
-    <text x="107" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Validation noms</text>
+    <rect x="710" y="160" width="125" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="772" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">vision_cache.py</text>
+    <text x="772" y="196" text-anchor="middle" font-size="10" fill="#7c3aed">Cache LLM</text>
 
-    <rect x="180" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="237" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">checkpoint.py</text>
-    <text x="237" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Reprise</text>
+    <!-- Row 2 : rename pipeline -->
+    <text x="60" y="225" font-size="10" font-style="italic" fill="#7c3aed">Renommage</text>
 
-    <rect x="310" y="210" width="115" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
-    <text x="367" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">logger.py</text>
-    <text x="367" y="248" text-anchor="middle" font-size="10" fill="#7c3aed">Logging</text>
+    <rect x="50" y="230" width="115" height="48" rx="8" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="107" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">renamer.py</text>
+    <text x="107" y="266" text-anchor="middle" font-size="10" fill="#ec4899">Moteur cascade</text>
 
-    <!-- External modules -->
-    <rect x="30" y="310" width="300" height="65" rx="12" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
-    <text x="180" y="332" text-anchor="middle" font-size="14" font-weight="bold" fill="#92400e">Moteurs hérités</text>
+    <rect x="180" y="230" width="115" height="48" rx="8" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="237" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">rename_template</text>
+    <text x="237" y="266" text-anchor="middle" font-size="10" fill="#ec4899">Render {title}{ - auth}</text>
 
-    <rect x="45" y="340" width="130" height="28" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.5"/>
-    <text x="110" y="359" text-anchor="middle" font-size="11" fill="#92400e">klodo_renamer.py</text>
+    <rect x="310" y="230" width="115" height="48" rx="8" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="367" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">rename_journal</text>
+    <text x="367" y="266" text-anchor="middle" font-size="10" fill="#ec4899">JSONL append-only</text>
 
-    <rect x="190" y="340" width="130" height="28" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.5"/>
-    <text x="255" y="359" text-anchor="middle" font-size="11" fill="#92400e">klodo_organizer.py</text>
+    <rect x="440" y="230" width="115" height="48" rx="8" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="497" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">wordcheck.py</text>
+    <text x="497" y="266" text-anchor="middle" font-size="10" fill="#ec4899">Validation noms</text>
 
-    <!-- Arrows from classifier to organizer -->
-    <line x1="237" y1="195" x2="255" y2="340" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <rect x="570" y="230" width="125" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="632" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">thumbnail.py</text>
+    <text x="632" y="266" text-anchor="middle" font-size="10" fill="#7c3aed">Cache content-keyed</text>
+
+    <rect x="710" y="230" width="125" height="48" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="772" y="250" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">pdf_cover.py</text>
+    <text x="772" y="266" text-anchor="middle" font-size="10" fill="#7c3aed">Extraction couverture</text>
+
+    <!-- Row 3 : infra -->
+    <text x="60" y="295" font-size="10" font-style="italic" fill="#7c3aed">Infrastructure</text>
+
+    <rect x="50" y="300" width="115" height="40" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="107" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">profile.py</text>
+    <text x="107" y="332" text-anchor="middle" font-size="10" fill="#7c3aed">Profils YAML</text>
+
+    <rect x="180" y="300" width="115" height="40" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="237" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">checkpoint.py</text>
+    <text x="237" y="332" text-anchor="middle" font-size="10" fill="#7c3aed">Reprise</text>
+
+    <rect x="310" y="300" width="115" height="40" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="367" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">llm_client.py</text>
+    <text x="367" y="332" text-anchor="middle" font-size="10" fill="#7c3aed">HTTP session</text>
+
+    <rect x="440" y="300" width="115" height="40" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="497" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">constants.py</text>
+    <text x="497" y="332" text-anchor="middle" font-size="10" fill="#7c3aed">Seuils, timeouts</text>
+
+    <rect x="570" y="300" width="125" height="40" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="632" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">exceptions.py</text>
+    <text x="632" y="332" text-anchor="middle" font-size="10" fill="#7c3aed">Hiérarchie KlodoError</text>
+
+    <rect x="710" y="300" width="125" height="40" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="772" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">utils.py</text>
+    <text x="772" y="332" text-anchor="middle" font-size="10" fill="#7c3aed">sanitize + rapports</text>
+
+    <!-- Dashboard -->
+    <rect x="30" y="365" width="380" height="100" rx="12" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+    <text x="220" y="387" text-anchor="middle" font-size="14" font-weight="bold" fill="#9d174d">dashboard/ — FastAPI + HTMX + DuckDB</text>
+
+    <rect x="45" y="397" width="110" height="28" rx="6" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="100" y="416" text-anchor="middle" font-size="10" fill="#9d174d">taxonomy.py</text>
+
+    <rect x="165" y="397" width="110" height="28" rx="6" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="220" y="416" text-anchor="middle" font-size="10" fill="#9d174d">rename.py</text>
+
+    <rect x="285" y="397" width="110" height="28" rx="6" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="340" y="416" text-anchor="middle" font-size="10" fill="#9d174d">curation.py</text>
+
+    <rect x="45" y="430" width="110" height="28" rx="6" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="100" y="449" text-anchor="middle" font-size="10" fill="#9d174d">data.py (DuckDB)</text>
+
+    <rect x="165" y="430" width="110" height="28" rx="6" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="220" y="449" text-anchor="middle" font-size="10" fill="#9d174d">logs.py (SSE)</text>
+
+    <rect x="285" y="430" width="110" height="28" rx="6" fill="#ffffff" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="340" y="449" text-anchor="middle" font-size="10" fill="#9d174d">templates/ + static/</text>
 
     <!-- Profiles -->
-    <rect x="410" y="310" width="340" height="130" rx="12" fill="#d1fae5" stroke="#22c55e" stroke-width="2"/>
-    <text x="580" y="332" text-anchor="middle" font-size="14" font-weight="bold" fill="#166534">profiles/default/</text>
+    <rect x="430" y="365" width="420" height="180" rx="12" fill="#d1fae5" stroke="#22c55e" stroke-width="2"/>
+    <text x="640" y="387" text-anchor="middle" font-size="14" font-weight="bold" fill="#166534">profiles/&lt;name&gt;/</text>
 
-    <rect x="425" y="345" width="100" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
-    <text x="475" y="363" text-anchor="middle" font-size="10" fill="#166534">profile.yaml</text>
+    <text x="450" y="406" font-size="10" font-style="italic" fill="#15803d">Config</text>
+    <rect x="445" y="412" width="120" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="505" y="430" text-anchor="middle" font-size="10" fill="#166534">profile.yaml</text>
 
-    <rect x="540" y="345" width="85" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
-    <text x="582" y="363" text-anchor="middle" font-size="10" fill="#166534">tree.yaml</text>
+    <rect x="575" y="412" width="120" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="635" y="430" text-anchor="middle" font-size="10" fill="#166534">tree.yaml</text>
 
-    <rect x="640" y="345" width="100" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
-    <text x="690" y="363" text-anchor="middle" font-size="10" fill="#166534">theme_mapping</text>
+    <rect x="705" y="412" width="135" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="772" y="430" text-anchor="middle" font-size="10" fill="#166534">theme_mapping.yaml</text>
 
-    <rect x="425" y="380" width="110" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
-    <text x="480" y="398" text-anchor="middle" font-size="10" fill="#166534">categories.yaml</text>
+    <rect x="445" y="445" width="120" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="505" y="463" text-anchor="middle" font-size="10" fill="#166534">categories.yaml</text>
 
-    <rect x="550" y="380" width="110" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
-    <text x="605" y="398" text-anchor="middle" font-size="10" fill="#166534">refinement.yaml</text>
+    <rect x="575" y="445" width="120" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="635" y="463" text-anchor="middle" font-size="10" fill="#166534">refinement.yaml</text>
 
-    <!-- Arrows from profile.py to profiles -->
-    <line x1="702" y1="195" x2="580" y2="310" stroke="#22c55e" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <text x="450" y="492" font-size="10" font-style="italic" fill="#15803d">.cache/ (runtime)</text>
+    <rect x="445" y="498" width="125" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="507" y="516" text-anchor="middle" font-size="10" fill="#166534">vision_cache.json</text>
 
-    <!-- Arrows from classifier to theme_mapping -->
-    <line x1="367" y1="195" x2="580" y2="345" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <rect x="580" y="498" width="125" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="642" y="516" text-anchor="middle" font-size="10" fill="#166534">rename-journal.jsonl</text>
 
-    <!-- Arrows from refiner to refinement -->
-    <line x1="497" y1="195" x2="605" y2="380" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <rect x="715" y="498" width="125" height="25" rx="6" fill="#ffffff" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="777" y="516" text-anchor="middle" font-size="10" fill="#166534">thumbnails/&lt;key&gt;/</text>
+
+    <!-- Connections lib → profiles (dashed) -->
+    <line x1="237" y1="278" x2="640" y2="365" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <line x1="367" y1="278" x2="640" y2="365" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <line x1="632" y1="278" x2="780" y2="498" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <line x1="367" y1="278" x2="640" y2="498" stroke="#22c55e" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+
+    <!-- Dashboard → lib (uses) -->
+    <line x1="220" y1="365" x2="237" y2="278" stroke="#ec4899" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+    <line x1="100" y1="365" x2="237" y2="208" stroke="#ec4899" stroke-width="1" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
   </g>
 </svg>
