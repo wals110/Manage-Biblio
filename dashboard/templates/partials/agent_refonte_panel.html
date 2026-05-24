@@ -1,0 +1,212 @@
+{# ════════════════════════════════════════════════════════════════════════
+   Partial : panneau Agent Refonte
+   Inclus dans :
+     - taxonomy.html (4e sous-onglet)
+     - agent_refonte.html (page standalone, URL directe)
+
+   Self-contained : son propre HTML + JS (window.taxRefontePanel API).
+   Lit le profil depuis #tax-profile-select (header Taxonomie) en priorité,
+   sinon depuis la query string `?profile=` (page standalone).
+   ════════════════════════════════════════════════════════════════════════ #}
+<div class="tax-refonte-panel">
+    <div class="tax-refonte-toolbar">
+        <div class="tax-refonte-toolbar-group">
+            <label class="filter-label">Budget LLM :</label>
+            <input type="number" id="tax-refonte-budget" value="5" min="1" max="20"
+                   style="width: 60px; padding: 4px 8px;">
+        </div>
+        <div class="tax-refonte-toolbar-group">
+            <button id="tax-refonte-start" class="btn btn-primary">
+                🚀 Lancer le diagnostic
+            </button>
+        </div>
+        <div class="tax-refonte-toolbar-group" style="margin-left:auto;">
+            <span class="muted small">
+                Phase A — lecture seule. Aucune mutation YAML.
+            </span>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 320px 1fr; gap: 16px; margin-top: 16px;">
+        <!-- COL 1 : runs récents -->
+        <div>
+            <h3 style="margin-top: 0;">Runs récents</h3>
+            <div id="tax-refonte-runs">
+                <p class="muted small">Chargement…</p>
+            </div>
+        </div>
+        <!-- COL 2 : rapport courant -->
+        <div>
+            <h3 style="margin-top: 0;">Rapport</h3>
+            <div id="tax-refonte-report-container"
+                 style="padding: 16px; border: 1px solid var(--border);
+                        border-radius: 8px; min-height: 400px;
+                        background: var(--bg-secondary);">
+                <div id="tax-refonte-status" class="muted" style="margin-bottom: 12px;">
+                    Sélectionne un run à gauche ou lance un nouveau diagnostic.
+                </div>
+                <pre id="tax-refonte-report" style="white-space: pre-wrap;
+                                                    font-family: inherit;
+                                                    font-size: 13px; margin: 0;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // ─── Module local API exposée pour intégration Taxonomie ─────────────
+    const startBtn = document.getElementById('tax-refonte-start');
+    const budgetInput = document.getElementById('tax-refonte-budget');
+    const runsEl = document.getElementById('tax-refonte-runs');
+    const statusEl = document.getElementById('tax-refonte-status');
+    const reportEl = document.getElementById('tax-refonte-report');
+    let pollTimer = null;
+    let lastProfile = null;
+
+    function currentProfile() {
+        // 1) prioritaire : selector du header Taxonomie (quand intégré)
+        const taxSel = document.getElementById('tax-profile-select');
+        if (taxSel && taxSel.value) return taxSel.value;
+        // 2) fallback : data attribute posé par la page standalone
+        const root = document.querySelector('.tax-refonte-panel');
+        if (root && root.dataset.profile) return root.dataset.profile;
+        // 3) dernier recours : query string
+        const qs = new URLSearchParams(window.location.search);
+        return qs.get('profile') || 'default';
+    }
+
+    function setStatus(text) { statusEl.textContent = text; }
+
+    async function loadRuns() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/runs?profile='
+                                  + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            renderRuns(data.runs || []);
+        } catch (err) {
+            runsEl.innerHTML = '<p class="muted small">'
+                             + 'Erreur de chargement : ' + err.message + '</p>';
+        }
+    }
+
+    function renderRuns(runs) {
+        if (!runs.length) {
+            runsEl.innerHTML = '<p class="muted small">Aucun run pour ce profil. '
+                             + 'Lance ton premier diagnostic ↑</p>';
+            return;
+        }
+        runsEl.innerHTML = '';
+        for (const r of runs) {
+            const item = document.createElement('div');
+            item.className = 'tax-refonte-run-item';
+            item.dataset.runId = r.run_id;
+            item.style.cssText = 'padding:8px;border:1px solid var(--border);'
+                               + 'border-radius:6px;margin-bottom:8px;cursor:pointer;';
+            const llmInfo = r.llm_calls
+                ? '<div class="muted small">' + r.llm_calls + ' appel(s) LLM</div>'
+                : '';
+            item.innerHTML =
+                '<div style="display:flex;justify-content:space-between;align-items:center;">'
+              + '  <code style="font-size:11px;">' + r.run_id.slice(0, 8) + '…</code>'
+              + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
+              + '</div>'
+              + '<div class="muted small" style="margin-top:4px;">' + (r.started_at || '') + '</div>'
+              + llmInfo;
+            item.addEventListener('click', () => pollStatus(r.run_id));
+            runsEl.appendChild(item);
+        }
+    }
+
+    async function pollStatus(runId) {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/diagnostic/' + runId
+                                  + '?profile=' + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const s = await r.json();
+            const calls = s.llm_calls || 0;
+            const max = s.max_llm_calls || 5;
+            setStatus('Run ' + runId.slice(0, 8) + '… · ' + s.status
+                      + ' · ' + calls + '/' + max + ' appel(s) LLM');
+            if (s.status === 'done') {
+                reportEl.textContent = s.report_md || '(rapport vide)';
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                startBtn.disabled = false;
+                loadRuns();
+            } else if (s.status === 'error') {
+                reportEl.textContent = 'ERREUR : ' + (s.error || '(inconnu)');
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                startBtn.disabled = false;
+            }
+        } catch (err) {
+            console.error('poll error', err);
+        }
+    }
+
+    async function startDiagnostic() {
+        const profile = currentProfile();
+        startBtn.disabled = true;
+        setStatus('Démarrage…');
+        reportEl.textContent = '';
+        try {
+            const r = await fetch('/api/agent/refonte/diagnostic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    profile: profile,
+                    max_llm_calls: parseInt(budgetInput.value || '5', 10),
+                }),
+            });
+            if (!r.ok) {
+                const e = await r.json();
+                throw new Error(e.error || ('HTTP ' + r.status));
+            }
+            const data = await r.json();
+            setStatus('Run ' + data.run_id.slice(0, 8) + '… démarré');
+            pollTimer = setInterval(() => pollStatus(data.run_id), 2000);
+        } catch (err) {
+            setStatus('Erreur : ' + err.message);
+            startBtn.disabled = false;
+        }
+    }
+
+    function resetOnProfileChange() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        startBtn.disabled = false;
+        setStatus('Sélectionne un run à gauche ou lance un nouveau diagnostic.');
+        reportEl.textContent = '';
+        loadRuns();
+    }
+
+    // Init listeners
+    startBtn.addEventListener('click', startDiagnostic);
+
+    // Si on est intégré dans Taxonomie : écouter les changements de profil
+    const taxSel = document.getElementById('tax-profile-select');
+    if (taxSel) {
+        lastProfile = taxSel.value;
+        taxSel.addEventListener('change', () => {
+            if (taxSel.value !== lastProfile) {
+                lastProfile = taxSel.value;
+                resetOnProfileChange();
+            }
+        });
+    }
+
+    // Expose pour activation paresseuse depuis activateSubtab() de taxonomy_rename.js
+    window.taxRefontePanel = {
+        activate: () => loadRuns(),
+        refresh: () => loadRuns(),
+    };
+
+    // Chargement initial : si on est sur la page standalone (taxonomy.html ne nous
+    // affiche que sur clic), on charge tout de suite. Sinon attendre l'activation.
+    const inTaxonomyPage = !!document.querySelector('.tax-view-refonte');
+    if (!inTaxonomyPage) {
+        loadRuns();
+    }
+})();
+</script>
