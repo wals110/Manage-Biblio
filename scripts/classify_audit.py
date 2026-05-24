@@ -45,7 +45,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from lib.classifier import (  # noqa: E402
+    _is_generic_fallback,
     classify_by_theme,
+    classify_combined,
     load_keyword_classifier,
 )
 from lib.llm_mapper import LLMMapper  # noqa: E402
@@ -149,6 +151,34 @@ def _classify_for_audit(
         except Exception as exc:
             n3_source = "ERROR: " + str(exc)[:80]
 
+    # combined — what classify_combined() actually returns with the
+    # full cascade + the new generic-fallback trigger enabled. This is
+    # the value that the production reclassify would write. Comparing
+    # combined_path to n1_path tells us if the trigger fired and what
+    # it changed.
+    try:
+        combined_path, combined_score, combined_source = classify_combined(
+            vision_result, filename, theme_mapping,
+            classifier=classifier, llm_mapper=mapper,
+            pdf_path=str(abs_path),
+        )
+        combined_path = combined_path or ""
+    except Exception as exc:
+        combined_path = ""
+        combined_score = 0.0
+        combined_source = "ERROR: " + str(exc)[:80]
+
+    # Did the new trigger fire? Trigger only fires when:
+    #   - N1 returned a generic fallback path
+    #   - combined ended up returning a DIFFERENT path in the same section
+    n1_is_generic = bool(n1_path) and _is_generic_fallback(n1_path)
+    trigger_fired = (
+        n1_is_generic
+        and combined_path
+        and combined_path != n1_path
+        and "N3" in (combined_source or "")
+    )
+
     # Specificity: count of path segments (folders deep)
     def _depth(p: str) -> int:
         return p.count("/") + 1 if p else 0
@@ -156,6 +186,7 @@ def _classify_for_audit(
     n1_depth = _depth(n1_path)
     n2_depth = _depth(n2_path)
     n3_depth = _depth(n3_path)
+    combined_depth = _depth(combined_path)
 
     # Quick verdict on N1 vs N3
     if not n1_path and not n3_path:
@@ -188,6 +219,7 @@ def _classify_for_audit(
         "n1_path": n1_path,
         "n1_score": round(n1_score, 3),
         "n1_depth": n1_depth,
+        "n1_is_generic": int(n1_is_generic),
         "n2_path": n2_path,
         "n2_score": round(n2_score, 3),
         "n2_keyword": n2_keyword[:40],
@@ -196,6 +228,13 @@ def _classify_for_audit(
         "n3_source": n3_source,
         "n3_depth": n3_depth,
         "n1_n3_status": n1_n3_status,
+        # combined = ce que la production écrirait au reclassify, avec
+        # le trigger N3-on-catch-all en place
+        "combined_path": combined_path,
+        "combined_source": combined_source,
+        "combined_score": round(float(combined_score or 0), 3),
+        "combined_depth": combined_depth,
+        "trigger_fired": int(trigger_fired),
     }
 
 
@@ -369,12 +408,36 @@ def main() -> int:
     interesting = [r for r in rows if r["n1_n3_status"] == "n3_more_specific"]
     if interesting:
         log.info("")
-        log.info("🔎 N3 a affiné N1 (top 20) :")
+        log.info("🔎 N3 a affiné N1 — vue brute (top 20) :")
         for r in interesting[:20]:
             log.info("  %s", r["title"][:50])
             log.info("    N1: %s", r["n1_path"])
             log.info("    N3: %s", r["n3_path"])
             log.info("    theme: %s", r["top_theme"])
+            log.info("")
+
+    # Effet du nouveau trigger (combined vs n1)
+    n1_generic = [r for r in rows if r["n1_is_generic"]]
+    fired = [r for r in rows if r["trigger_fired"]]
+    log.info("")
+    log.info("════ EFFET DU TRIGGER catch-all → N3 ════")
+    log.info("  fichiers où N1 a tapé un catch-all  : %d / %d (%.1f%%)",
+              len(n1_generic), len(rows),
+              100 * len(n1_generic) / max(1, len(rows)))
+    log.info("  trigger a effectivement upgradé     : %d / %d (%.1f%%)",
+              len(fired), len(rows),
+              100 * len(fired) / max(1, len(rows)))
+    if n1_generic:
+        log.info("  taux d'upgrade sur les catch-all   : %.1f%%",
+                  100 * len(fired) / len(n1_generic))
+    log.info("")
+    if fired:
+        log.info("📈 Trigger fired — cas où la prod va effectivement bouger :")
+        for r in fired[:20]:
+            log.info("  %s", r["title"][:50])
+            log.info("    N1 (avant) : %s", r["n1_path"])
+            log.info("    combined   : %s", r["combined_path"])
+            log.info("    source     : %s", r["combined_source"])
             log.info("")
 
     # Mapper learned (en mémoire, non sauvé)
