@@ -12,5 +12,22 @@ Implémentation incrémentale :
 
 from agents.refonte.diagnostic import build_diagnostic_graph
 from agents.refonte.state import RefonteState
+from agents.refonte.tools import (
+    compute_folder_overlap,
+    count_files_per_folder,
+    get_classifier_breakdown,
+    list_folders,
+    list_themes_per_folder,
+    read_theme_mapping,
+)
 
-__all__ = ["RefonteState", "build_diagnostic_graph"]
+__all__ = [
+    "RefonteState",
+    "build_diagnostic_graph",
+    "compute_folder_overlap",
+    "count_files_per_folder",
+    "get_classifier_breakdown",
+    "list_folders",
+    "list_themes_per_folder",
+    "read_theme_mapping",
+]
