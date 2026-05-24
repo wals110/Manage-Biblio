@@ -137,50 +137,70 @@ def save_pil_images_as_thumbnails(
 def _generate_pdf_thumbnails(
     pdf_path: Path, doc_dir: Path, n_pages: int, start_page: int,
 ) -> int:
-    """Génère les pages start_page..start_page+n_pages-1 d'un PDF."""
-    from lib.vision import extract_cover_image
+    """Génère les pages start_page..start_page+n_pages-1 d'un PDF.
 
-    end_page = start_page + n_pages - 1
-    # extract_cover_image retourne les pages 1..end_page, on prend ce qu'il faut
-    images = extract_cover_image(str(pdf_path), n_pages=end_page)
+    Idempotent au niveau page : si ``doc_dir/N.jpg`` existe déjà pour
+    une page N demandée, elle est skippée — pas de re-rendering, pas
+    de ré-écriture. Seules les pages manquantes sont passées à
+    Poppler. Permet :
+
+      - reprises de runs interrompus sans gâcher le travail déjà fait
+      - upgrades incrémentaux (``--pages 1`` puis ``--pages 5`` ne
+        re-rend pas la page 1)
+    """
+    from lib.pdf_cover import get_cover_image
+
+    pages_wanted = list(range(start_page, start_page + n_pages))
+    pages_missing = [p for p in pages_wanted
+                     if not (doc_dir / f"{p}.jpg").exists()]
+    if not pages_missing:
+        return 0   # tout est déjà en cache, rien à écrire
+
+    # Une seule invocation Poppler couvrant les pages manquantes (le
+    # span first..last est rendu d'un coup, get_cover_image filtre).
+    images = get_cover_image(str(pdf_path), page_indices=tuple(pages_missing))
     if not images:
-        if start_page == 1:
+        if 1 in pages_missing:
             _generate_placeholder_thumbnail(
                 "Erreur PDF\nExtraction impossible", doc_dir / "1.jpg")
             return 1
         return 0
 
-    generated = 0
-    for i, img in enumerate(images, start=1):
-        if i < start_page:
-            continue
-        if i >= start_page + n_pages:
-            break
-        _resize_and_save(img, doc_dir / f"{i}.jpg")
-        generated += 1
-    return generated
+    # get_cover_image retourne les images dans l'ordre des page_indices
+    # SORTÉS. Si le PDF est plus court que ``last``, certaines pages
+    # de la fin sont silencieusement absentes : zip() tronque
+    # proprement à la liste la plus courte.
+    n_written = 0
+    for page_num, img in zip(pages_missing, images):
+        _resize_and_save(img, doc_dir / f"{page_num}.jpg")
+        n_written += 1
+    return n_written
 
 
 def _generate_epub_thumbnails(
     epub_path: Path, doc_dir: Path, _n_pages: int, start_page: int,
 ) -> int:
-    """ePub : on n'a que la cover, donc page 1 uniquement (n_pages ignoré)."""
+    """ePub : on n'a que la cover, donc page 1 uniquement (n_pages ignoré).
+    Idempotent : skip si 1.jpg existe déjà."""
     if start_page > 1:
         # Pas d'extraction de pages internes pour ePub : on signale "page absente"
+        return 0
+    dest = doc_dir / "1.jpg"
+    if dest.exists():
         return 0
     try:
         with zipfile.ZipFile(epub_path) as zf:
             cover_data = _extract_epub_cover(zf)
             if cover_data is None:
                 _generate_placeholder_thumbnail(
-                    "📖 ePub\nPas de couverture", doc_dir / "1.jpg")
+                    "📖 ePub\nPas de couverture", dest)
                 return 1
             img = Image.open(io.BytesIO(cover_data))
-            _resize_and_save(img, doc_dir / "1.jpg")
+            _resize_and_save(img, dest)
             return 1
     except (zipfile.BadZipFile, OSError):
         _generate_placeholder_thumbnail(
-            "📖 ePub\nFichier corrompu", doc_dir / "1.jpg")
+            "📖 ePub\nFichier corrompu", dest)
         return 1
 
 

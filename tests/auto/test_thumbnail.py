@@ -325,6 +325,38 @@ class TestComputeContentKey(unittest.TestCase):
         self.assertIsNone(compute_content_key(f))
 
 
+class TestGenerateThumbnailIdempotency(unittest.TestCase):
+    """generate_thumbnail must skip pages already on disk and only render
+    the missing ones — enables resumable runs and incremental upgrades
+    (--pages 1 then --pages 5 should not re-render page 1)."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="klodo-thumb-idemp-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_epub_skips_when_page1_present(self):
+        epub = _make_minimal_epub(self.tmpdir, with_cover=True)
+        doc_dir = self.tmpdir / "out"
+        # First call: writes 1.jpg
+        n1 = generate_thumbnail(epub, doc_dir, n_pages=1)
+        self.assertEqual(n1, 1)
+        page1 = doc_dir / "1.jpg"
+        self.assertTrue(page1.exists())
+        mtime_first = page1.stat().st_mtime_ns
+
+        # Capture file size to detect "was it rewritten?"
+        size_first = page1.stat().st_size
+
+        # Second call: must skip (no rewrite)
+        n2 = generate_thumbnail(epub, doc_dir, n_pages=1)
+        self.assertEqual(n2, 0)
+        # Mtime preserved → no write happened
+        self.assertEqual(page1.stat().st_mtime_ns, mtime_first)
+        self.assertEqual(page1.stat().st_size, size_first)
+
+
 class TestSavePilImagesAsThumbnails(unittest.TestCase):
     """save_pil_images_as_thumbnails persists in-memory PIL images so the
     LLM pipeline can capitalize on its cover extraction."""
