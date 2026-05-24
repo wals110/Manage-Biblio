@@ -124,6 +124,43 @@ Charge et valide les fichiers YAML d'un profil. Supporte les valeurs par défaut
 
 Sanitize des noms de fichiers, génération de rapports CSV, résumés console, et fonctions de renommage partagées.
 
+### `rename_template.py` — Moteur de template (audit dashboard)
+
+Parser + renderer pour le pattern de renommage configurable (`{title}{ - author}` par défaut, blocs optionnels `{ - var }`, sanitization NFKC + chars FS-safe, troncature word-boundary). Utilisé par le sous-onglet **Rename** du dashboard pour proposer un nom suggéré à partir des metadata LLM.
+
+### `rename_journal.py` — Journal de renommages
+
+Persistance append-only JSONL des opérations de renommage (`profile/.cache/rename-journal.jsonl`). Gère `append_rename`, `undo_record` (avec guard case-insensitive APFS), `undo_batch` (records groupés par `batch_id` partagé). Les undos sont eux-mêmes journalisés sous `batch: "undo-<batch_id>"` pour audit trail complet.
+
+→ [Documentation complète](renommage.md#renommage-dashboard--audit-journal-undo)
+
+### `thumbnail.py` — Génération de miniatures (PDF + ePub)
+
+Génère les pages JPEG 400×550 pour le viewer du dashboard. **Cache content-keyed** : `profile/.cache/thumbnails/<MD5_head_bytes>[16]/{1..n}.jpg` — la clé survit aux renames. Idempotent au niveau page (skip si `N.jpg` existe). Helper `compute_content_key(path)` exposé pour aligner le pipeline LLM (qui peut sauver le thumbnail au passage via `save_pil_images_as_thumbnails`).
+
+CLI dédiée : `./klodo.sh thumbnails --execute [--pages N] [--max M] [--force]` pour backfill batch.
+
+## Dashboard FastAPI
+
+Le module `dashboard/` est une appli FastAPI + Jinja2 + HTMX qui sert d'IDE pour la bibliothèque (port 8080). Quatre couches :
+
+- **Routes** (`dashboard/app.py`) — 12+ pages : Overview, Tests, Rapports, Comparer, Métriques, Historique, Logs, Curation, Baseline, Taxonomie, Suggestions, Admin
+- **Couche données** (`dashboard/data.py`) — fusion YAML + JSON + DuckDB + CSV + helpers viewer
+- **Modules dédiés** :
+  - `taxonomy.py` — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json`, drag-drop, backup auto, lock concurrence, ops fichier (delete soft / move avec impact preview / bulk)
+  - `rename.py` — audit + apply + journal + undo (record/batch) + override + cache patch ciblé
+  - `categories.py` — CRUD sur `categories.yaml`, audit des dormants
+  - `baseline.py` — agrégation des disagreements d'un baseline_run
+- **Couche présentation** — Jinja2 templates dans `dashboard/templates/`, JS modulaires dans `dashboard/static/js/` (`taxonomy.js`, `taxonomy_rename.js`, `taxonomy_categories.js`, etc.), CSS dark theme dans `dashboard/static/style.css`
+
+Onglet **Taxonomie** (cockpit principal d'édition) : 3 sous-onglets
+
+1. **Mappings** — arbre des dossiers + viewer PDF + card LLM + treemap interactif + drag-drop thème → dossier + ops fichier (delete / move avec impact preview classify_combined)
+2. **Catégories** — CRUD de `categories.yaml` (groupes + entrées + mots-clés) + audit des dormants
+3. **Rename** — audit divergence nom-actuel vs nom-suggéré + bulk rename + override + 📜 historique avec undo
+
+→ [Documentation complète du dashboard](functional-testing-and-dashboard.md)
+
 ## Flux de données
 
 <p align="center">

@@ -287,6 +287,53 @@ L'onglet **Curation** (`/viewer`) permet de constituer des jeux de tests sur mes
 
 **Mockup statique** : `/viewer-mockup` reste accessible comme reference visuelle (bandeau "Mockup non fonctionnel").
 
+### Onglet Taxonomie — cockpit d'édition
+
+L'onglet **Taxonomie** est l'IDE de la bibliothèque. 3 sous-onglets, profil sélectionnable via dropdown, lock concurrence (`.taxonomy.lock`) + backup auto avant chaque write (rotation 20).
+
+**Sous-onglet Mappings** — vue 3 colonnes :
+
+- Col 1 (arbre) : `tree.yaml` + comptes fichiers par dossier, lazy load 50 fichiers/page, drag-drop de dossiers, search par nom de dossier. Checkbox hover-revealed sur chaque ligne fichier + bouton 🗑 inline → multi-select bulk + soft-delete vers `<target>/.trash/<ts>/`
+- Col 2 (centre) : viewer PDF multi-pages + card "Analyse LLM" (titre, auteur, langue, themes détectés, prédiction classify_by_theme) + treemap interactif 1-niveau avec drill-down + sous-bloc "Renommage" (cross-link vers sous-onglet Rename) + actions fichier (🗑 Supprimer, ➡ Déplacer vers… avec impact preview)
+- Col 3 (thèmes) : top "Thèmes mappés" du dossier sélectionné + bottom "Thèmes LLM" filtrable (recherche, orphelins uniquement) avec drag-drop thème → dossier
+
+Ops fichier dans Mappings :
+
+- **🗑 Supprimer** : soft delete vers `<target>/.trash/<YYYYMMDD-HHMMSS>/` + journal `file-trash-journal.jsonl`. Réversible via Finder. Refus de re-trash.
+- **➡ Déplacer** : popover autocomplete sur l'arborescence + **impact preview** via `classify_combined` — si la dest ne matche pas le predicted_folder, l'UI avertit que le fichier sera proposé pour retour au prochain reclassify (le bon endroit pour rendre un déplacement permanent reste le mapping de thème, pas le move manuel)
+- **Bulk delete** : sticky bar en bas de col 1 quand ≥1 fichier coché, single batch_id partagé pour grouper
+
+Endpoints clés :
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| `POST` | `/api/taxonomy/file/delete` | Soft delete vers `.trash/` |
+| `GET` | `/api/taxonomy/file/move-impact` | Preview impact avant déplacement |
+| `POST` | `/api/taxonomy/file/move` | Move + cache invalidation |
+| `POST` | `/api/taxonomy/file/delete-bulk` | Soft delete batch (best-effort) |
+| `POST` | `/api/taxonomy/mapping` | Ajouter un mapping thème → dossier |
+| `POST` | `/api/taxonomy/folder` | Créer un sous-dossier |
+| `GET` | `/api/taxonomy/reclassify/dryrun` | Aperçu de ce que reclassify bougerait |
+
+**Sous-onglet Catégories** — 3 phases livrées :
+
+- **Phase A (read-only)** : navigation dans `categories.yaml`, groupes → entrées → mots-clés
+- **Phase B (CRUD)** : ajout / édition / suppression d'entrées et de mots-clés, drag-drop entre entrées
+- **Phase C (audit dormants)** : repère les entrées qui n'ont matché aucun fichier dans le dernier baseline_run
+
+**Sous-onglet Rename** — feature audit complet :
+
+- **Col 1** : liste filtrable des candidats (placeholder / divergent / minor_case / ok), search bar par nom, multi-select checkboxes + bulkbar sticky (Renommer suggestion / ✓ Marquer OK / Tout désélectionner)
+- **Col 2** : viewer multi-pages + card LLM + cross-link cliquable depuis le sous-onglet Mappings (`tax-navigate-file` event)
+- **Col 3** : nom suggéré éditable + bouton Renommer + confirm modal
+- **Modale 📜 Renommages** (sub-badge ⚠ count session-active sur le bouton) : 2 onglets *Tous* (record-by-record) et *Par lot* (groupé par batch_id) + bouton ↶ Annuler par ligne ou batch entier
+- **Override** : "Marquer comme OK" persisté dans `rename-overrides.json` keyé par cache_key MD5 — survit aux renames
+- **🔄 Rescan** : invalidation du cache audit + scan complet (utile après ajout manuel ou cycle `klodo.sh rename`)
+
+Performance : le cache audit (rebuild ~5s pour 18k fichiers) est patché en place après chaque rename (<50ms) → UI quasi-instantanée.
+
+→ Voir [renommage.md](renommage.md#renommage-dashboard--audit-journal-undo) pour le détail du journal + undo + override.
+
 ### Onglet Logs — viewer des rapports utilisateur
 
 L'onglet **Logs** (`/logs`) affiche les rapports CSV utilisateur dans `logs/` (rapport_rename, rapport_classify, rapport_process, refine). Filtre par type, recherche par nom, tri colonnes, pagination 50 lignes/page. Path traversal protege via `_is_safe_file_path()`.

@@ -10,6 +10,7 @@ Point d'entrée unique : [../klodo.py](../klodo.py) avec sous-commandes argparse
 - **[process.py](process.py)** — `cmd_process` (pipeline complet, import direct `lib.renamer`)
 - **[misc.py](misc.py)** — `cmd_profiles`, `cmd_init`, `cmd_suggest`, `cmd_clean`
 - **[detect.py](detect.py)** — `cmd_detect` : sélection interactive ou par `--files`/`--dir`, appelle `lib.pattern_detector.detect_pattern()`, affiche le résultat et peut injecter dans `profile.yaml` (préserve les commentaires) avec `--execute`
+- **[thumbnails.py](thumbnails.py)** — `cmd_thumbnails` : backfill du cache thumbnail du dashboard. Itère sur tous les PDF/ePub du profil, calcule la clé content-based (MD5 head bytes), génère les pages manquantes via `lib.thumbnail.generate_thumbnail` (idempotent — skip si déjà en cache). Options `--pages N` (1-5), `--max M`, `--force`. Affiche progress + ETA + cost estimate
 
 ## Flags importants
 - `--execute` : appliquer les changements (sinon dry-run). **Ne jamais lancer `--execute` sans review du rapport.**

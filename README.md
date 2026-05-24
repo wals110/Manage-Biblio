@@ -29,7 +29,7 @@
 
 **Klodo** est un outil CLI qui organise automatiquement de grandes bibliothèques de fichiers PDF. Il combine un modèle de vision (LLM Vision) pour identifier les livres par leur couverture, un système de classification hybride à 4 niveaux, et un mécanisme d'auto-apprentissage qui s'améliore à chaque utilisation.
 
-Déposez vos PDF, lancez une commande, récupérez une bibliothèque classée.
+Déposez vos PDF, lancez une commande, récupérez une bibliothèque classée. Affinez ensuite à la main via le **dashboard FastAPI** (sous-onglets Mappings / Catégories / Rename, drag-drop, audit + undo, multi-select bulk).
 
 <p align="center">
   <img src="docs/diagrams/pipeline-principal.svg" alt="Pipeline principal" width="700">
@@ -101,6 +101,9 @@ uv sync
 | `rename` | Renommage intelligent (ISBN, métadonnées, LLM Vision) | [renommage.md](docs/renommage.md) |
 | `refine` | Raffinement récursif des sous-catégories | [raffinement.md](docs/raffinement.md) |
 | `suggest` | Review des suggestions de nouveaux dossiers | [classification.md](docs/classification.md#niveau-4--suggestions) |
+| `thumbnails` | Backfill du cache thumbnail du dashboard (idempotent, resumable) | [architecture.md](docs/architecture.md) |
+| `detect` | Détecter un pattern de nommage via LLM depuis un échantillon | [renommage.md](docs/renommage.md) |
+| `dashboard` | Lancer le dashboard FastAPI (port 8080 par défaut) | [functional-testing-and-dashboard.md](docs/functional-testing-and-dashboard.md) |
 | `clean` | Nettoyer le cache du profil (progress, isbn, logs, all) | — |
 | `profiles` | Lister les profils disponibles | [profils.md](docs/profils.md) |
 | `init` | Créer un nouveau profil | [profils.md](docs/profils.md#créer-un-profil) |

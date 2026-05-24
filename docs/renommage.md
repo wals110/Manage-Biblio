@@ -150,6 +150,61 @@ Module : `lib/pattern_detector.py`. Commande : `commands/detect.py`.
 
 Les résultats de recherche ISBN sont stockés dans `profiles/<nom>/.cache/isbn_cache.json`. Ce cache accélère les prochains runs et réduit les appels réseau. Il contient ~3400 entrées après le traitement initial de la bibliothèque. Nettoyable via `./klodo.sh clean isbn --execute`.
 
+## Renommage dashboard — audit, journal, undo
+
+En complément du pipeline CLI ci-dessus, le dashboard expose une **feature audit de renommages** dans le sous-onglet **Rename** de la Taxonomie. Indépendante du pipeline classify : permet de renommer des fichiers déjà classifiés dont le nom diverge du titre extrait par LLM Vision.
+
+### Pipeline audit
+
+À partir de `vision_cache.json` (titre + auteur extraits par LLM), le système calcule pour chaque fichier :
+
+1. Un **nom suggéré** via un template configurable (par défaut `{title}{ - author}`) avec sanitization NFKC + filesystem-safe (`/` → `-`, `:` → `—`, chars interdits drop)
+2. Une **similarité Jaccard 3-grams** entre nom actuel et nom suggéré
+3. Une **catégorie** : `placeholder` (pattern "Title Author"), `divergent` (sim < 0.4), `minor_case` (0.4 ≤ sim < 0.7), `ok` (sim ≥ 0.7)
+
+L'utilisateur peut renommer **unitairement** ou **en bulk**, ou marquer manuellement un fichier comme **OK** (override) — dans tous les cas, chaque opération est journalisée.
+
+### Le journal — `rename-journal.jsonl`
+
+Append-only JSONL stocké dans `profiles/<p>/.cache/rename-journal.jsonl`. Chaque entrée :
+
+```json
+{"ts": "2026-05-17T19:09:06", "old": "/abs/Title Author.pdf",
+ "new": "/abs/Real Title - Real Author.pdf",
+ "batch": "20260517-190906-c94aee"}
+```
+
+- `batch` est partagé par tous les renames d'un même bulk (auto-undo batch en un clic)
+- Les undos sont eux-mêmes journalisés sous `batch: "undo-<original_batch_id>"` → audit trail complet, append-only par construction
+- `is_undone` calculé positionnellement (un record est annulé ssi un record d'undo plus récent dans le journal a son `old` = ce record's `new`) — pas d'ambiguïté sur les chemins qui se répètent au fil du temps
+
+### UI
+
+- **Sous-onglet Rename** : col 1 liste filtrable + multi-select bulk, col 2 viewer + LLM card avec sous-bloc Rename (cross-link Mappings ↔ Rename via `tax-navigate-file` event), col 3 input éditable + bouton Renommer + confirm modal
+- **Modale 📜 Renommages** (compteur + sub-badge ⚠ session-active) : 2 onglets (Tous / Par lot) avec bouton ↶ Annuler par ligne ou par batch entier
+- **Override** : bouton "Marquer comme OK" persisté dans `rename-overrides.json` keyé par cache_key MD5 — **survit aux renames** (sur le contenu, pas sur le path)
+- **Session log** (col 1, persistance `sessionStorage`) : trace en mémoire des actions du tab courant + bouton ↶ inline
+- **Search bar** col 1 + bulkbar sticky (Renommer suggestion / Marquer OK / Tout désélectionner)
+- **🔄 Rescan** : invalidation du cache audit + scan complet (utile après ajout manuel ou nouveau cycle `klodo.sh rename`)
+
+### Endpoints API
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| `GET` | `/api/rename/audit?profile=&force=` | Charger l'audit (force = bypass cache) |
+| `POST` | `/api/rename/file` | Renommer un fichier (commit + journal) |
+| `POST` | `/api/rename/bulk` | Renommer N fichiers en batch (shared batch_id) |
+| `GET` | `/api/rename/journal?profile=&limit=` | Historique du profil (newest first) |
+| `POST` | `/api/rename/undo/record` | Annuler un rename individuel (match ts+old+new) |
+| `POST` | `/api/rename/undo/batch` | Annuler tout un batch en une opération |
+| `POST` | `/api/rename/override` | Marquer N fichiers comme OK (ou clear) |
+
+### Performance — cache patch ciblé
+
+Avant : chaque rename invalidait tout l'audit cache (`~5s` de rescan os.walk + ThreadPoolExecutor sur 18k fichiers). Aujourd'hui : **patch ciblé en place** (`<50ms`) — drop de l'entrée concernée + re-audit du seul fichier + tri unique en fin de batch. Fallback automatique sur full-rebuild si le patch ne peut pas s'appliquer (profil mal configuré, fichier disparu, bucket non-candidat).
+
 ## Module
 
-**Fichiers** : `lib/renamer.py` (moteur), `lib/vision.py` (LLM Vision), `lib/wordcheck.py` (validation dictionnaire), `lib/utils.py` (sanitize).
+**Fichiers** : `lib/renamer.py` (moteur CLI), `lib/rename_template.py` (parser de template + sanitization), `lib/rename_journal.py` (journal append-only + undo), `lib/vision.py` (LLM Vision), `lib/wordcheck.py` (validation dictionnaire), `lib/utils.py` (sanitize).
+
+**Dashboard** : `dashboard/rename.py` (audit + apply + journal viewing + override + bulk + cache patch), templates `dashboard/templates/taxonomy.html` (sous-onglet + modale), JS `dashboard/static/js/taxonomy_rename.js`.
