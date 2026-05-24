@@ -1,6 +1,6 @@
 # Spec — Agent IA « Refonte de taxonomie »
 
-[← Retour au README](../README.md) · [Architecture](architecture.md) · [Classification](classification.md)
+[← Retour au README](../README.md) · [Architecture](architecture.md) · [Classification](classification.md) · [Spec agent Onboarding](onboarding-agent-spec.md) · [Spec agent Curation](curation-agent-spec.md)
 
 > **Statut** : spec en cours de validation · décomposition en 3 phases shippables (A → B → C).
 > **Audience** : devs Klodo + futurs contributeurs sur la couche agent.

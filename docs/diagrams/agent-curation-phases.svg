@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
+  <defs>
+    <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="25"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.2"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6"/>
+    </marker>
+  </defs>
+
+  <g filter="url(#h)">
+    <!-- Title -->
+    <text x="500" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#166534">🤖 Agent IA Curation — 3 phases shippables</text>
+    <text x="500" y="50" text-anchor="middle" font-size="11" fill="#22c55e" font-style="italic">orchestration LangGraph · ~22-35 j-h · 4-5 semaines</text>
+
+    <!-- ── Phase A : Analyze ── -->
+    <rect x="30" y="80" width="290" height="350" rx="14" fill="#dbeafe" stroke="#3b82f6" stroke-width="2.5"/>
+    <text x="175" y="106" text-anchor="middle" font-size="15" font-weight="bold" fill="#1e40af">Phase A — Analyze</text>
+    <text x="175" y="124" text-anchor="middle" font-size="11" fill="#3b82f6" font-style="italic">read-only stats · ~6-10 j-h</text>
+
+    <text x="50" y="148" font-size="10" font-style="italic" fill="#1e40af">Inputs</text>
+    <rect x="45" y="155" width="260" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="170" text-anchor="middle" font-size="10" fill="#1e40af">source_profile + criteria_hint</text>
+
+    <text x="50" y="200" font-size="10" font-style="italic" fill="#1e40af">Tools (read-only)</text>
+    <rect x="45" y="207" width="260" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="222" text-anchor="middle" font-size="10" fill="#1e40af">profile_stats() — DuckDB</text>
+
+    <rect x="45" y="234" width="260" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="249" text-anchor="middle" font-size="10" fill="#1e40af">find_classifier_disagreements()</text>
+
+    <rect x="45" y="261" width="125" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="107" y="276" text-anchor="middle" font-size="10" fill="#1e40af">find_duplicates()</text>
+    <rect x="180" y="261" width="125" height="22" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1"/>
+    <text x="242" y="276" text-anchor="middle" font-size="10" fill="#1e40af">find_broken_covers()</text>
+
+    <text x="50" y="306" font-size="10" font-style="italic" fill="#1e40af">Tâches</text>
+    <text x="55" y="322" font-size="10" fill="#1e40af">• A.1 — Sous-package agents/curation/</text>
+    <text x="55" y="338" font-size="10" fill="#1e40af">• A.2 — 5 outils read-only</text>
+    <text x="55" y="354" font-size="10" fill="#1e40af">• A.3 — Doublons MD5 + title Levenshtein</text>
+    <text x="55" y="370" font-size="10" fill="#1e40af">• A.4 — Endpoint + format rapport</text>
+    <text x="55" y="386" font-size="10" fill="#1e40af">• A.5 — Tests fixtures DuckDB</text>
+
+    <rect x="45" y="400" width="260" height="22" rx="4" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="175" y="415" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">📄 analysis-&lt;date&gt;.md</text>
+
+    <!-- ── Phase B : Select ── -->
+    <rect x="355" y="80" width="290" height="350" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2.5"/>
+    <text x="500" y="106" text-anchor="middle" font-size="15" font-weight="bold" fill="#5b21b6">Phase B — Select</text>
+    <text x="500" y="124" text-anchor="middle" font-size="11" fill="#7c3aed" font-style="italic">propose selection · ~10-15 j-h</text>
+
+    <text x="375" y="148" font-size="10" font-style="italic" fill="#5b21b6">Inputs</text>
+    <rect x="370" y="155" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="170" text-anchor="middle" font-size="10" fill="#5b21b6">criteria NL + n (target count)</text>
+
+    <text x="375" y="200" font-size="10" font-style="italic" fill="#5b21b6">Tools (read + propose)</text>
+    <rect x="370" y="207" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="222" text-anchor="middle" font-size="10" fill="#5b21b6">propose_selection(criteria, n)</text>
+
+    <rect x="370" y="234" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="249" text-anchor="middle" font-size="10" fill="#5b21b6">apply_strategy() — 8 stratégies</text>
+
+    <rect x="370" y="261" width="260" height="22" rx="4" fill="#ffffff" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="500" y="276" text-anchor="middle" font-size="10" fill="#5b21b6">refine_selection(adjustment)</text>
+
+    <text x="375" y="306" font-size="10" font-style="italic" fill="#5b21b6">Tâches</text>
+    <text x="380" y="322" font-size="10" fill="#5b21b6">• B.1 — propose_selection LLM → strategy</text>
+    <text x="380" y="338" font-size="10" fill="#5b21b6">• B.2 — 8 stratégies déterministes</text>
+    <text x="380" y="354" font-size="10" fill="#5b21b6">• B.3 — preview_target_impact</text>
+    <text x="380" y="370" font-size="10" fill="#5b21b6">• B.4 — UI chat dans onglet Curation</text>
+    <text x="380" y="386" font-size="10" fill="#5b21b6">• B.5/B.6 — Itération + tests</text>
+
+    <rect x="370" y="400" width="260" height="22" rx="4" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="500" y="415" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">📄 selection.json + selection.md</text>
+
+    <!-- ── Phase C : Apply ── -->
+    <rect x="680" y="80" width="290" height="350" rx="14" fill="#fce7f3" stroke="#ec4899" stroke-width="2.5"/>
+    <text x="825" y="106" text-anchor="middle" font-size="15" font-weight="bold" fill="#9d174d">Phase C — Apply</text>
+    <text x="825" y="124" text-anchor="middle" font-size="11" fill="#ec4899" font-style="italic">copy + journal · ~6-10 j-h</text>
+
+    <text x="700" y="148" font-size="10" font-style="italic" fill="#9d174d">Inputs</text>
+    <rect x="695" y="155" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="170" text-anchor="middle" font-size="10" fill="#9d174d">selection_id + target_profile</text>
+
+    <text x="700" y="200" font-size="10" font-style="italic" fill="#9d174d">Tools (mutables)</text>
+    <rect x="695" y="207" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="222" text-anchor="middle" font-size="10" fill="#9d174d">copy_to_target(on_collision=...)</text>
+
+    <rect x="695" y="234" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="249" text-anchor="middle" font-size="10" fill="#9d174d">journal_curation() — JSONL</text>
+
+    <rect x="695" y="261" width="260" height="22" rx="4" fill="#ffffff" stroke="#ec4899" stroke-width="1"/>
+    <text x="825" y="276" text-anchor="middle" font-size="10" fill="#9d174d">run_tests_on_target() (optionnel)</text>
+
+    <text x="700" y="306" font-size="10" font-style="italic" fill="#9d174d">Tâches</text>
+    <text x="705" y="322" font-size="10" fill="#9d174d">• C.1 — copy_to_target atomique</text>
+    <text x="705" y="338" font-size="10" fill="#9d174d">• C.2 — curation-journal.jsonl</text>
+    <text x="705" y="354" font-size="10" fill="#9d174d">• C.3 — UI modale + progress</text>
+    <text x="705" y="370" font-size="10" fill="#9d174d">• C.4 — Tests E2E source→target</text>
+
+    <rect x="695" y="400" width="260" height="22" rx="4" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="825" y="415" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">📄 target/&lt;files&gt; + journal</text>
+
+    <!-- Arrows between phases -->
+    <line x1="320" y1="255" x2="353" y2="255" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arrowPurple)"/>
+    <text x="337" y="248" font-size="9" text-anchor="middle" fill="#7c3aed" font-style="italic">A → B</text>
+
+    <line x1="645" y1="255" x2="678" y2="255" stroke="#ec4899" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="662" y="248" font-size="9" text-anchor="middle" fill="#9d174d" font-style="italic">B → C</text>
+
+    <!-- Bottom : specificities -->
+    <rect x="30" y="455" width="940" height="80" rx="12" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+    <text x="500" y="478" text-anchor="middle" font-size="13" font-weight="bold" fill="#854d0e">Spécificités curation</text>
+    <text x="50" y="500" font-size="11" fill="#a16207">• Anti-hallucination LLM : la sélection finale n'est composée que de Paths réels (DuckDB-backed)</text>
+    <text x="50" y="516" font-size="11" fill="#a16207">• Le LLM choisit la stratégie, la stratégie déterministe produit la liste</text>
+    <text x="500" y="500" font-size="11" fill="#a16207">• Stratégies reproductibles : seed fixe → mêmes fichiers</text>
+    <text x="500" y="516" font-size="11" fill="#a16207">• L'agent le + léger des 3 (s'appuie sur dashboard.curation existant)</text>
+
+    <!-- Timeline -->
+    <text x="500" y="565" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">Dépendances : Refonte Phase A (module agents/) + onglet Curation existant + DuckDB dashboard.data</text>
+    <text x="500" y="585" text-anchor="middle" font-size="10" fill="#9ca3af" font-style="italic">Cf. docs/curation-agent-spec.md pour le détail des tâches A.1-A.5 / B.1-B.6 / C.1-C.4</text>
+  </g>
+</svg>
