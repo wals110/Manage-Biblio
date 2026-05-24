@@ -1339,6 +1339,19 @@
           title: `Concerné par « ${spotlight.theme} » (${spotlight.mode === 'future' ? 'futur' : 'actuel'})`,
         }, ['📍']));
       }
+      // Inline delete button, hover-revealed. Reuses deleteCurrentFile()
+      // which handles confirm modal + soft delete + tree refresh, so the
+      // tree action is just shorthand for "select then delete".
+      children.push(el('button', {
+        type: 'button',
+        class: 'tax-tree-file-delete',
+        title: 'Supprimer ce fichier (corbeille — réversible via Finder)',
+        'aria-label': 'Supprimer ' + f.name,
+        onclick: (e) => {
+          e.stopPropagation();
+          deleteCurrentFile(filePath);
+        },
+      }, ['🗑']));
       wrap.appendChild(el('div', {
         class: cls,
         title: f.name,
