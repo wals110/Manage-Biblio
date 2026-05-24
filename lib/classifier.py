@@ -258,6 +258,91 @@ def _refine_to_subfolder(
     return None
 
 
+# Generic "catch-all" sub-folder suffixes — when N1's best match lands
+# on one of these, it's the editorial admission that the theme_mapping
+# couldn't be more specific. Worth challenging via N3 (LLM Mapper) to
+# see if a more specific sibling folder exists for THIS particular
+# title (e.g. "Java I/O" → /Langages/Autres should become /Langages/Java).
+#
+# Discovered via review/classify-audit-20260524 — folders in tree.yaml
+# that match these patterns are the only ones we challenge.
+_GENERIC_SUFFIX_PATTERNS: tuple[str, ...] = (
+    "/Autres",
+    "/AUTRES",
+    "/AUTRES-RELIGIONS",
+    "/Generale",
+    "/Generales",
+    "-Generales",      # 01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales
+    "-Generale",
+)
+
+
+def _is_generic_fallback(path: str) -> bool:
+    """True if ``path`` lands on a catch-all sub-folder. The match is
+    suffix-based so it stays robust to additions in tree.yaml."""
+    return any(path.endswith(suf) or path.endswith(suf + "/")
+               for suf in _GENERIC_SUFFIX_PATTERNS)
+
+
+def _challenge_generic_fallback(
+    n1_path: str,
+    n1_used_theme: str,
+    original_theme: str,
+    title: str,
+    filename: str,
+    llm_mapper: object | None,
+    pdf_path: str | None,
+    confidence: float,
+) -> tuple[str, float, str] | None:
+    """Targeted N3 trigger : when N1 landed on a generic catch-all
+    folder, ask the LLM Mapper for a more specific alternative in the
+    same top section. Keep N3's answer only if:
+
+      - N3 returned a non-empty path
+      - N3's path is in the SAME top section as N1 (don't cross sections)
+      - N3's path is NOT itself a generic fallback
+      - N3's path is strictly more specific (deeper) than N1's
+
+    Returns the new tuple (path, score, source) if N3 wins, else None
+    so the caller falls back to N1.
+    """
+    if llm_mapper is None or not _is_generic_fallback(n1_path):
+        return None
+    if not original_theme:
+        return None
+
+    try:
+        n3_path = llm_mapper.resolve(
+            original_theme, title=title, filename=filename, pdf_path=pdf_path)
+    except Exception:
+        return None
+    if not n3_path:
+        return None
+
+    # Must stay in the same top section (refuse cross-section swaps —
+    # those are real disagreements that need a different gate).
+    n1_top = n1_path.split("/", 1)[0]
+    n3_top = n3_path.split("/", 1)[0]
+    if n1_top != n3_top:
+        return None
+    # N3 must NOT also be a generic fallback (silly swap).
+    if _is_generic_fallback(n3_path):
+        return None
+    # N3 must be at least as deep as N1. Equal depth is OK because
+    # the typical case is /Langages/Autres → /Langages/Java (same
+    # depth, sibling folders — N3 is "more specific" by virtue of
+    # not being the catch-all). N1 strictly deeper would be weird;
+    # refuse to avoid spurious upgrades to a generic ancestor.
+    if n3_path.count("/") < n1_path.count("/"):
+        return None
+
+    # Use a slightly de-rated score so downstream code can tell this
+    # came from a challenge, but keep it close to the original.
+    label = "LLM (theme→N3-refined)" if n1_used_theme == original_theme \
+        else "LLM (theme→refined→N3)"
+    return (n3_path, confidence * MAPPER_PENALTY, label)
+
+
 def classify_combined(
     vision_result: dict[str, object],
     filename: str,
@@ -339,6 +424,18 @@ def classify_combined(
         if best_specific is not None:
             path, used_theme = best_specific
             label = "LLM (theme→refined)" if used_theme != theme else "LLM (theme)"
+            # Targeted N3 trigger : when N1 lands on a generic
+            # "catch-all" sub-folder (e.g. `*/Autres`, `*/Generale`),
+            # call N3 to see if it has a more specific match in the
+            # SAME top section. Empirical audit (review/classify-audit-
+            # 20260524) showed ~8-10% of files in `Langages/Autres`
+            # would belong under `Langages/Java`, `Langages/C-Cpp`,
+            # etc. — N3 catches these where N1 falls back to "Autres".
+            challenged = _challenge_generic_fallback(
+                path, used_theme, theme, title, filename,
+                llm_mapper, pdf_path, confidence)
+            if challenged is not None:
+                return challenged
             return (path, confidence, label)
         if best_generic is not None:
             path, _ = best_generic

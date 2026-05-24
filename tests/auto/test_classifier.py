@@ -389,5 +389,137 @@ class TestClassifyVisionParser(unittest.TestCase):
         self.assertTrue(args.vision)
 
 
+class TestGenericFallbackChallenge(unittest.TestCase):
+    """Targeted N3 trigger when N1's best_specific lands on a generic
+    catch-all folder (/Autres, /Generale, etc.). Cf. review/classify-
+    audit-20260524 + steel-man on docs/classification.md."""
+
+    def test_is_generic_fallback_positive(self):
+        from lib.classifier import _is_generic_fallback
+        for p in [
+            "02-INFORMATIQUE/03-Langages-Programmation/Autres",
+            "05-RELIGIONS/AUTRES-RELIGIONS",
+            "07-LANGUES/AUTRES",
+            "01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales",
+        ]:
+            self.assertTrue(_is_generic_fallback(p),
+                            f"{p!r} should be generic")
+
+    def test_is_generic_fallback_negative(self):
+        from lib.classifier import _is_generic_fallback
+        for p in [
+            "",
+            "01-SCIENCES/PHYSIQUE",
+            "02-INFORMATIQUE/03-Langages-Programmation/Java",
+            "02-INFORMATIQUE/05-IA-ML",
+            "06-MEDECINE",
+        ]:
+            self.assertFalse(_is_generic_fallback(p),
+                             f"{p!r} should NOT be generic")
+
+    def _mapper(self, returns):
+        """Fake LLM mapper whose .resolve() returns ``returns``."""
+        class _Fake:
+            def __init__(self, val):
+                self.val = val
+                self.calls = []
+
+            def resolve(self, theme, title='', filename='', pdf_path=None):
+                self.calls.append(theme)
+                return self.val
+        return _Fake(returns)
+
+    def test_n3_wins_when_more_specific_same_section(self):
+        from lib.classifier import _challenge_generic_fallback
+        mapper = self._mapper(
+            "02-INFORMATIQUE/03-Langages-Programmation/Java")
+        out = _challenge_generic_fallback(
+            n1_path="02-INFORMATIQUE/03-Langages-Programmation/Autres",
+            n1_used_theme="Java", original_theme="Java",
+            title="Java I/O", filename="java_io.pdf",
+            llm_mapper=mapper, pdf_path=None,
+            confidence=0.9,
+        )
+        self.assertIsNotNone(out)
+        path, _score, label = out
+        self.assertEqual(
+            path, "02-INFORMATIQUE/03-Langages-Programmation/Java")
+        self.assertIn("N3", label)
+        self.assertEqual(len(mapper.calls), 1)
+
+    def test_n3_refused_when_crossing_top_section(self):
+        from lib.classifier import _challenge_generic_fallback
+        mapper = self._mapper("01-SCIENCES/PHYSIQUE")
+        out = _challenge_generic_fallback(
+            n1_path="02-INFORMATIQUE/03-Langages-Programmation/Autres",
+            n1_used_theme="x", original_theme="x",
+            title="", filename="x.pdf",
+            llm_mapper=mapper, pdf_path=None, confidence=0.9,
+        )
+        self.assertIsNone(out)
+
+    def test_n3_refused_when_also_generic(self):
+        from lib.classifier import _challenge_generic_fallback
+        mapper = self._mapper(
+            "02-INFORMATIQUE/03-Langages-Programmation/Autres")
+        out = _challenge_generic_fallback(
+            n1_path="02-INFORMATIQUE/03-Langages-Programmation/Autres",
+            n1_used_theme="x", original_theme="x",
+            title="", filename="x.pdf",
+            llm_mapper=mapper, pdf_path=None, confidence=0.9,
+        )
+        self.assertIsNone(out)
+
+    def test_n3_refused_when_not_strictly_more_specific(self):
+        from lib.classifier import _challenge_generic_fallback
+        mapper = self._mapper("07-LANGUES/AUTRES")
+        out = _challenge_generic_fallback(
+            n1_path="07-LANGUES/AUTRES",
+            n1_used_theme="x", original_theme="x",
+            title="", filename="x.pdf",
+            llm_mapper=mapper, pdf_path=None, confidence=0.9,
+        )
+        self.assertIsNone(out)
+
+    def test_no_n3_call_when_n1_not_generic(self):
+        # If N1 is already specific, the mapper must NOT be called
+        # (no API cost on the 65-80% of files N1 resolves cleanly).
+        from lib.classifier import _challenge_generic_fallback
+        mapper = self._mapper(
+            "02-INFORMATIQUE/03-Langages-Programmation/JavaScript")
+        out = _challenge_generic_fallback(
+            n1_path="02-INFORMATIQUE/03-Langages-Programmation/Java",
+            n1_used_theme="Java", original_theme="Java",
+            title="", filename="x.pdf",
+            llm_mapper=mapper, pdf_path=None, confidence=0.9,
+        )
+        self.assertIsNone(out)
+        self.assertEqual(len(mapper.calls), 0,
+                          "Mapper must NOT be called when N1 is non-generic")
+
+    def test_no_n3_call_when_mapper_is_none(self):
+        from lib.classifier import _challenge_generic_fallback
+        out = _challenge_generic_fallback(
+            n1_path="02-INFORMATIQUE/03-Langages-Programmation/Autres",
+            n1_used_theme="x", original_theme="x",
+            title="", filename="x.pdf",
+            llm_mapper=None, pdf_path=None, confidence=0.9,
+        )
+        self.assertIsNone(out)
+
+    def test_no_n3_call_when_empty_theme(self):
+        from lib.classifier import _challenge_generic_fallback
+        mapper = self._mapper(
+            "02-INFORMATIQUE/03-Langages-Programmation/Java")
+        out = _challenge_generic_fallback(
+            n1_path="02-INFORMATIQUE/03-Langages-Programmation/Autres",
+            n1_used_theme="", original_theme="",
+            title="", filename="x.pdf",
+            llm_mapper=mapper, pdf_path=None, confidence=0.9,
+        )
+        self.assertIsNone(out)
+        self.assertEqual(len(mapper.calls), 0)
+
+
 if __name__ == '__main__':
     unittest.main()
