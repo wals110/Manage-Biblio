@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 540" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 620" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
   <defs>
     <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
       <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="9"/>
@@ -9,6 +9,9 @@
     </marker>
     <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrowPink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ec4899"/>
     </marker>
   </defs>
   <g filter="url(#h)">
@@ -79,4 +82,50 @@
 
   <!-- Label -->
   <text x="340" y="500" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">Cascade : chaque source est essayée si la précédente échoue</text>
+
+  <!-- ── Dashboard Rename : audit + journal + undo ── -->
+  <g filter="url(#h)">
+    <!-- rename_template.py : render entre la cascade et le résultat -->
+    <rect x="670" y="245" width="220" height="55" rx="10" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+    <text x="780" y="266" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">rename_template.py</text>
+    <text x="780" y="282" text-anchor="middle" font-size="10" fill="#7c3aed">{title}{ - author}</text>
+    <text x="780" y="295" text-anchor="middle" font-size="10" fill="#7c3aed">NFKC + FS-safe + troncature</text>
+
+    <!-- Arrow from Result box (x=535-660, y=87-457) to template -->
+    <line x1="660" y1="272" x2="668" y2="272" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- rename-journal.jsonl -->
+    <rect x="670" y="320" width="220" height="55" rx="10" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+    <text x="780" y="341" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">rename-journal.jsonl</text>
+    <text x="780" y="357" text-anchor="middle" font-size="10" fill="#ec4899">append-only — batch_id</text>
+    <text x="780" y="370" text-anchor="middle" font-size="10" fill="#ec4899">old → new + timestamp</text>
+
+    <line x1="780" y1="300" x2="780" y2="318" stroke="#ec4899" stroke-width="1.5" marker-end="url(#arrowPink)"/>
+    <text x="800" y="312" font-size="10" fill="#ec4899" font-style="italic">log</text>
+
+    <!-- Dashboard Rename UI -->
+    <rect x="670" y="395" width="220" height="55" rx="10" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+    <text x="780" y="416" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">🎛 Dashboard Rename</text>
+    <text x="780" y="432" text-anchor="middle" font-size="10" fill="#ec4899">audit + commit ciblé</text>
+    <text x="780" y="445" text-anchor="middle" font-size="10" fill="#ec4899">undo single + batch</text>
+
+    <line x1="780" y1="375" x2="780" y2="393" stroke="#ec4899" stroke-width="1.5" marker-end="url(#arrowPink)"/>
+    <text x="795" y="387" font-size="10" fill="#ec4899" font-style="italic">lit</text>
+
+    <!-- undo loop : Dashboard → journal (append undo record) -->
+    <path d="M 670 415 Q 620 415 620 360 Q 620 340 668 340" stroke="#ec4899" stroke-width="1.2" fill="none"
+          stroke-dasharray="4,3" marker-end="url(#arrowPink)"/>
+    <text x="600" y="380" font-size="9" fill="#ec4899" font-style="italic" text-anchor="end">undo (append)</text>
+
+    <!-- rename-overrides.json (cache_key MD5) -->
+    <rect x="670" y="470" width="220" height="48" rx="10" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+    <text x="780" y="490" text-anchor="middle" font-size="11" font-weight="bold" fill="#854d0e">rename-overrides.json</text>
+    <text x="780" y="506" text-anchor="middle" font-size="10" fill="#a16207">keyé MD5 head — survit aux renames</text>
+
+    <line x1="780" y1="450" x2="780" y2="468" stroke="#ca8a04" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- Section label -->
+    <text x="780" y="232" text-anchor="middle" font-size="11" font-weight="bold" fill="#9d174d">— Dashboard Rename —</text>
+    <text x="780" y="540" text-anchor="middle" font-size="10" fill="#9ca3af" font-style="italic">Audit · Journal append-only · Undo single/batch</text>
+  </g>
 </svg>

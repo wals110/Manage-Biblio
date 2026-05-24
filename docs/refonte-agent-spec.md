@@ -27,6 +27,10 @@ Les trois agents partagent **les mêmes outils sous-jacents** (theme_mapping, cl
 
 ## Architecture cible
 
+<p align="center">
+  <img src="diagrams/agent-refonte-phases.svg" alt="Agent refonte — 3 phases" width="800">
+</p>
+
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
 │                    Refonte Agent (LangGraph)                     │

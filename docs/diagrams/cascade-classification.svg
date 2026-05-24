@@ -39,6 +39,14 @@
     <text x="500" y="192" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e40af">1. Theme Mapping</text>
     <text x="500" y="208" text-anchor="middle" font-size="11" fill="#3b82f6">classify_by_theme() — instantané, gratuit</text>
 
+    <!-- Trigger conditionnel : si N1 atterrit sur /Autres → challenge N3 -->
+    <path d="M 630 215 Q 735 285 630 355" stroke="#f97316" stroke-width="1.8" fill="none"
+          stroke-dasharray="5,3" marker-end="url(#arrowOrange)"/>
+    <text x="715" y="238" font-size="10" fill="#c2410c" font-style="italic" text-anchor="middle">catch-all</text>
+    <text x="715" y="251" font-size="10" fill="#c2410c" font-style="italic" text-anchor="middle">→ challenge N3</text>
+    <text x="715" y="328" font-size="10" fill="#c2410c" font-style="italic" text-anchor="middle">~12% fichiers</text>
+    <text x="715" y="341" font-size="10" fill="#c2410c" font-style="italic" text-anchor="middle">6% upgradés</text>
+
     <!-- YAML file box LEFT: theme_mapping.yaml -->
     <rect x="60" y="170" width="220" height="50" rx="8" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
     <text x="170" y="190" text-anchor="middle" font-size="12" font-weight="bold" fill="#854d0e">📋 theme_mapping.yaml</text>
