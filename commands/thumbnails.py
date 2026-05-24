@@ -12,10 +12,11 @@ reste valide tant que le contenu n'a pas bougé.
 
 Usage::
 
-    ./klodo.sh thumbnails                  # dry-run (compte ce qu'il faut faire)
-    ./klodo.sh thumbnails --execute        # génère vraiment
-    ./klodo.sh thumbnails --execute --max 100  # limiter pour tester
-    ./klodo.sh thumbnails --execute --force    # régénère même les caches existants
+    ./klodo.sh thumbnails                         # dry-run (compte ce qu'il faut faire)
+    ./klodo.sh thumbnails --execute               # génère la page 1 (cover seule)
+    ./klodo.sh thumbnails --execute --pages 5     # génère les 5 premières pages
+    ./klodo.sh thumbnails --execute --max 100     # limiter pour tester
+    ./klodo.sh thumbnails --execute --force       # régénère même les caches existants
 """
 
 import os
@@ -59,10 +60,12 @@ def cmd_thumbnails(args, profile) -> None:
     execute = getattr(args, "execute", False)
     force = getattr(args, "force", False)
     max_files = int(getattr(args, "max", 0) or 0)
+    n_pages = max(1, min(5, int(getattr(args, "pages", 1) or 1)))
 
     log.info("📸 Backfill thumbnail cache pour profil « %s »", profile.name)
     log.info("   target = %s", target)
     log.info("   cache  = %s", cache_root)
+    log.info("   pages  = %d par fichier", n_pages)
     if not execute:
         log.info("   mode   = DRY-RUN (ajouter --execute pour générer)")
 
@@ -72,7 +75,9 @@ def cmd_thumbnails(args, profile) -> None:
         log.info("   limite = %d fichiers (--max)", max_files)
     log.info("   scope  = %d fichiers PDF/ePub trouvés\n", len(files))
 
-    # Pre-pass: count what would be done (cheap; just file.exists() per cache dir)
+    # Pre-pass: count what would be done. "Cached" = the highest
+    # requested page already exists (generate_thumbnail produces pages
+    # 1..N contiguously, so if page N is on disk, pages 1..N-1 are too).
     to_generate: list[tuple[Path, Path]] = []     # (source, cache_dir)
     already_cached = 0
     unreadable = 0
@@ -82,8 +87,8 @@ def cmd_thumbnails(args, profile) -> None:
             unreadable += 1
             continue
         dest_dir = cache_root / key
-        page1 = dest_dir / "1.jpg"
-        if page1.exists() and not force:
+        deepest_page = dest_dir / f"{n_pages}.jpg"
+        if deepest_page.exists() and not force:
             already_cached += 1
             continue
         to_generate.append((src, dest_dir))
@@ -120,7 +125,7 @@ def cmd_thumbnails(args, profile) -> None:
     for i, (src, dest_dir) in enumerate(to_generate, start=1):
         try:
             dest_dir.mkdir(parents=True, exist_ok=True)
-            n = generate_thumbnail(src, dest_dir, n_pages=1, start_page=1)
+            n = generate_thumbnail(src, dest_dir, n_pages=n_pages, start_page=1)
             if n > 0:
                 n_done += 1
             else:

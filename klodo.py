@@ -227,6 +227,10 @@ def _build_parser():
                          help='Limiter le nombre de fichiers traités (0 = tous)')
     p_thumb.add_argument('--force', action='store_true',
                          help='Re-générer même les thumbnails déjà en cache')
+    p_thumb.add_argument('--pages', type=int, default=1, choices=range(1, 6),
+                         help='Nombre de pages à générer par fichier (1-5, '
+                              'défaut: 1). Le viewer du dashboard affiche '
+                              'jusqu\'à 5 pages.')
 
     return parser
 
