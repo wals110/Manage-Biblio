@@ -17,10 +17,12 @@ from lib.thumbnail import (
     THUMBNAIL_WIDTH,
     _generate_placeholder_thumbnail,
     clear_cache,
+    compute_content_key,
     count_pages,
     generate_thumbnail,
     get_cache_stats,
     get_doc_dir,
+    save_pil_images_as_thumbnails,
 )
 
 
@@ -278,6 +280,101 @@ class TestCache(unittest.TestCase):
         stats = get_cache_stats(self.tmp / "missing")
         self.assertEqual(stats["count"], 0)
         self.assertEqual(stats["size_bytes"], 0)
+
+
+class TestComputeContentKey(unittest.TestCase):
+    """compute_content_key returns a stable MD5 of the file's head bytes,
+    independent of the file path."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="klodo-thumb-key-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_returns_16_char_hex(self):
+        f = self.tmpdir / "foo.pdf"
+        f.write_bytes(b"%PDF-1.4 some content")
+        key = compute_content_key(f)
+        self.assertIsNotNone(key)
+        self.assertEqual(len(key), 16)
+        self.assertRegex(key, r"^[0-9a-f]{16}$")
+
+    def test_same_content_same_key_regardless_of_path(self):
+        # The whole point of this key: survives renames.
+        a = self.tmpdir / "original-name.pdf"
+        b = self.tmpdir / "renamed-totally-differently.pdf"
+        payload = b"%PDF-1.4 same bytes here"
+        a.write_bytes(payload)
+        b.write_bytes(payload)
+        self.assertEqual(compute_content_key(a), compute_content_key(b))
+
+    def test_different_content_different_key(self):
+        a = self.tmpdir / "a.pdf"
+        b = self.tmpdir / "b.pdf"
+        a.write_bytes(b"%PDF-1.4 first")
+        b.write_bytes(b"%PDF-1.4 second")
+        self.assertNotEqual(compute_content_key(a), compute_content_key(b))
+
+    def test_missing_file_returns_none(self):
+        self.assertIsNone(compute_content_key(self.tmpdir / "ghost.pdf"))
+
+    def test_empty_file_returns_none(self):
+        f = self.tmpdir / "empty.pdf"
+        f.write_bytes(b"")
+        self.assertIsNone(compute_content_key(f))
+
+
+class TestSavePilImagesAsThumbnails(unittest.TestCase):
+    """save_pil_images_as_thumbnails persists in-memory PIL images so the
+    LLM pipeline can capitalize on its cover extraction."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="klodo-thumb-save-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _img(self, color=(200, 50, 50)):
+        return Image.new("RGB", (800, 1200), color)
+
+    def test_writes_n_jpgs(self):
+        imgs = [self._img(), self._img(color=(50, 200, 50)),
+                self._img(color=(50, 50, 200))]
+        n = save_pil_images_as_thumbnails(imgs, self.tmpdir)
+        self.assertEqual(n, 3)
+        for i in (1, 2, 3):
+            f = self.tmpdir / f"{i}.jpg"
+            self.assertTrue(f.exists())
+            # All at the standard thumbnail size
+            with Image.open(f) as out:
+                self.assertLessEqual(out.width, THUMBNAIL_WIDTH)
+                self.assertLessEqual(out.height, THUMBNAIL_HEIGHT)
+
+    def test_idempotent_skips_existing(self):
+        imgs = [self._img()]
+        save_pil_images_as_thumbnails(imgs, self.tmpdir)
+        # Second call should skip (overwrite=False is the default)
+        n = save_pil_images_as_thumbnails(imgs, self.tmpdir)
+        self.assertEqual(n, 0)
+
+    def test_overwrite_true_rewrites(self):
+        imgs = [self._img()]
+        save_pil_images_as_thumbnails(imgs, self.tmpdir)
+        n = save_pil_images_as_thumbnails(imgs, self.tmpdir, overwrite=True)
+        self.assertEqual(n, 1)
+
+    def test_empty_list_no_op(self):
+        n = save_pil_images_as_thumbnails([], self.tmpdir)
+        self.assertEqual(n, 0)
+
+    def test_creates_doc_dir_if_missing(self):
+        nested = self.tmpdir / "deeply" / "nested" / "newdir"
+        self.assertFalse(nested.exists())
+        n = save_pil_images_as_thumbnails([self._img()], nested)
+        self.assertEqual(n, 1)
+        self.assertTrue(nested.exists())
+        self.assertTrue((nested / "1.jpg").exists())
 
 
 if __name__ == "__main__":

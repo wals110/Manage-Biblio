@@ -200,13 +200,21 @@ def process_single_file(pdf_path, api_key, endpoint, model,
                         theme_mapping, classifier=None, llm_mapper=None,
                         verbose=False, min_confidence=CONFIDENCE_THRESHOLD, n_pages=1,
                         n_candidates=0,
-                        vision_cache_path=None):
-    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int, int, str | None) -> dict
+                        vision_cache_path=None,
+                        thumbnails_base_dir=None):
+    # type: (str, str, str, str, dict[str, str], object, object, bool, float, int, int, str | None, str | None) -> dict
     """
     Pipeline de classification pour un fichier :
     1. Extraction couverture → image (smart selection si n_candidates>n_pages)
     2. Envoi au LLM Vision → titre, auteur, thème (via cache si `vision_cache_path` fourni)
     3. Classification thématique
+
+    Si `thumbnails_base_dir` est fourni, capitalise sur l'extraction
+    déjà faite pour pré-remplir le cache thumbnail du dashboard (gratuit,
+    évite une 2e extraction au moment où l'utilisateur ouvre le fichier
+    dans le viewer). Le sous-dossier par fichier est calculé via
+    `lib.thumbnail.compute_content_key()` (MD5 des head bytes, identique
+    au dashboard).
     """
     filename = os.path.basename(pdf_path)
     result = {
@@ -223,15 +231,28 @@ def process_single_file(pdf_path, api_key, endpoint, model,
         'status': 'pending',
     }  # type: dict
 
+    # Compute the per-file thumbnail dir once. Uses the file's content
+    # key (MD5 of head bytes) — same key the dashboard uses, so the
+    # write here is visible from the dashboard without any further
+    # bookkeeping.
+    thumb_dir = None
+    if thumbnails_base_dir:
+        from lib.thumbnail import compute_content_key
+        ck = compute_content_key(pdf_path)
+        if ck:
+            thumb_dir = os.path.join(thumbnails_base_dir, ck)
+
     if vision_cache_path:
         vision = analyze_cover_cached(pdf_path, vision_cache_path,
                                       api_key, endpoint, model,
                                       verbose=verbose, n_pages=n_pages,
-                                      n_candidates=n_candidates)
+                                      n_candidates=n_candidates,
+                                      thumbnail_dir=thumb_dir)
     else:
         vision = analyze_cover(pdf_path, api_key, endpoint, model,
                                verbose=verbose, n_pages=n_pages,
-                               n_candidates=n_candidates)
+                               n_candidates=n_candidates,
+                               thumbnail_dir=thumb_dir)
 
     if vision.get('error') == 'extraction':
         result['status'] = 'erreur_extraction'
@@ -357,15 +378,28 @@ def save_mapper_results(mapper, profile, logs_dir):
 
 
 def make_llm_rename_callback(api_key, endpoint, model, verbose=False, n_pages=1,
-                             vision_cache_path=None):
-    # type: (str, str, str, bool, int, str | None) -> object
-    """Crée un callback LLM Vision pour le renommage (passe par le cache si fourni)."""
+                             vision_cache_path=None,
+                             thumbnails_base_dir=None):
+    # type: (str, str, str, bool, int, str | None, str | None) -> object
+    """Crée un callback LLM Vision pour le renommage (passe par le cache si fourni).
+
+    Si `thumbnails_base_dir` est fourni, capitalise sur l'extraction du
+    LLM pour pré-remplir le cache thumbnail du dashboard (gratuit).
+    """
     def callback(pdf_path):
         # type: (str) -> dict
+        thumb_dir = None
+        if thumbnails_base_dir:
+            from lib.thumbnail import compute_content_key
+            ck = compute_content_key(pdf_path)
+            if ck:
+                thumb_dir = os.path.join(thumbnails_base_dir, ck)
         if vision_cache_path:
             return analyze_cover_cached(pdf_path, vision_cache_path,
                                         api_key, endpoint, model,
-                                        verbose=verbose, n_pages=n_pages)
+                                        verbose=verbose, n_pages=n_pages,
+                                        thumbnail_dir=thumb_dir)
         return analyze_cover(pdf_path, api_key, endpoint, model,
-                             verbose=verbose, n_pages=n_pages)
+                             verbose=verbose, n_pages=n_pages,
+                             thumbnail_dir=thumb_dir)
     return callback

@@ -367,7 +367,8 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
                   max_retries: int = 3,
                   n_pages: int = 1,
                   n_candidates: int = 0,
-                  client: 'LLMClient | None' = None) -> dict | None:
+                  client: 'LLMClient | None' = None,
+                  thumbnail_dir: 'os.PathLike | None' = None) -> dict | None:
     """
     Analyse complète d'une couverture de livre (une ou plusieurs pages).
 
@@ -414,6 +415,20 @@ def analyze_cover(pdf_path: str, api_key: str = '', endpoint: str = '',
             log.info("  ✗ Échec extraction image")
         return {'error': 'extraction'}
 
+    # Étape 1bis: si on a un thumbnail_dir fourni, capitalise sur
+    # l'extraction (déjà faite, gratuite) pour pré-remplir le cache
+    # thumbnail du dashboard. Idempotent — saute les pages déjà en
+    # cache. Pas d'erreur fatale si l'écriture échoue.
+    if thumbnail_dir is not None:
+        try:
+            from pathlib import Path as _Path
+
+            from lib.thumbnail import save_pil_images_as_thumbnails
+            save_pil_images_as_thumbnails(images, _Path(thumbnail_dir))
+        except Exception as exc:  # pragma: no cover — defensive
+            if verbose:
+                log.warning("  ⚠ Save thumbnails KO : {}".format(exc))
+
     if verbose:
         log.info("  → {} page(s) extraite(s)".format(len(images)))
 
@@ -454,7 +469,8 @@ def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
                          max_retries: int = 3,
                          n_pages: int = 1,
                          n_candidates: int = 0,
-                         client: 'LLMClient | None' = None) -> dict | None:
+                         client: 'LLMClient | None' = None,
+                         thumbnail_dir: 'os.PathLike | None' = None) -> dict | None:
     """Version cachée de `analyze_cover()` — lookup JSON avant appel LLM.
 
     Cache hit → retourne le résultat direct (0 token, ~5 ms).
@@ -497,7 +513,8 @@ def analyze_cover_cached(pdf_path: str, cache_path: 'str | os.PathLike',
     result = analyze_cover(
         pdf_path, api_key=api_key, endpoint=endpoint, model=model,
         dpi=dpi, verbose=verbose, max_retries=max_retries,
-        n_pages=n_pages, n_candidates=n_candidates, client=client)
+        n_pages=n_pages, n_candidates=n_candidates, client=client,
+        thumbnail_dir=thumbnail_dir)
 
     if (
         key is not None

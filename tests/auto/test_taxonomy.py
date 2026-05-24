@@ -2371,6 +2371,36 @@ class TestSoftDeleteBulkEndpoint(TaxonomyTestBase):
         self.assertEqual(r.status_code, 400)
 
 
+class TestThumbnailCacheKeyAlignment(TaxonomyTestBase):
+    """The thumbnail cache dir must be keyed by content (MD5 of head
+    bytes), not by rel_path — so a rename does NOT invalidate the
+    cached cover image. Same key as ``lib.thumbnail.compute_content_key``."""
+
+    def test_cache_dir_keyed_by_content(self):
+        # Two paths, same file content → same cache dir
+        from lib.thumbnail import compute_content_key
+        a = self.target / "01-SCIENCES/PHYSIQUE/mechanics.pdf"
+        b = self.target / "01-SCIENCES/MATHEMATIQUES/algebra.pdf"
+        same_bytes = b"%PDF-1.4 identical bytes for the test"
+        a.write_bytes(same_bytes)
+        b.write_bytes(same_bytes)
+        key_a = compute_content_key(a)
+        key_b = compute_content_key(b)
+        self.assertIsNotNone(key_a)
+        self.assertEqual(key_a, key_b)
+        # taxonomy._thumbnail_cache_dir uses the same key for both
+        dir_a = taxonomy._thumbnail_cache_dir(self.profile_name, a)
+        dir_b = taxonomy._thumbnail_cache_dir(self.profile_name, b)
+        self.assertEqual(dir_a, dir_b)
+
+    def test_cache_dir_returns_none_for_unreadable(self):
+        # Empty file (no head bytes) → no key → no cache dir
+        ghost = self.target / "ghost.pdf"
+        ghost.write_bytes(b"")
+        self.assertIsNone(
+            taxonomy._thumbnail_cache_dir(self.profile_name, ghost))
+
+
 class TestMoveFile(TaxonomyTestBase):
 
     def test_happy_path(self):

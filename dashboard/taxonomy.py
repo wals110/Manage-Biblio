@@ -23,7 +23,6 @@ a baseline_run) to block writes.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -1231,10 +1230,22 @@ def _rename_diagnostic_for(
 # ─── Thumbnails (cover + multipage lazy) ──────────────────────────────────
 
 
-def _thumbnail_cache_dir(profile: str, rel_path: str) -> Path:
-    """Cache thumbnails at profile/.cache/thumbnails/<hash16>/."""
-    h = hashlib.sha1(rel_path.encode("utf-8")).hexdigest()[:16]
-    d = _profile_dir(profile) / ".cache" / "thumbnails" / h
+def _thumbnail_cache_dir(profile: str, abs_path: Path | str) -> Path | None:
+    """Cache thumbnails at ``profile/.cache/thumbnails/<content_key>/``.
+
+    ``content_key`` is derived from the file's head bytes (see
+    ``lib.thumbnail.compute_content_key``), NOT from its rel_path —
+    so a rename or a move doesn't invalidate the cached image.
+
+    Returns ``None`` if the file can't be hashed (caller should
+    surface "fichier introuvable" / "indisponible" rather than try to
+    generate into a meaningless dir).
+    """
+    from lib.thumbnail import compute_content_key
+    key = compute_content_key(abs_path)
+    if not key:
+        return None
+    d = _profile_dir(profile) / ".cache" / "thumbnails" / key
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -1251,7 +1262,9 @@ def get_thumbnail(profile: str, rel_path: str, page: int) -> tuple[Path | None, 
     abs_path = target / rel_path
     if not abs_path.exists():
         return None, "fichier introuvable"
-    cache_dir = _thumbnail_cache_dir(profile, rel_path)
+    cache_dir = _thumbnail_cache_dir(profile, abs_path)
+    if cache_dir is None:
+        return None, "fichier illisible"
     img = cache_dir / f"{page}.jpg"
     if img.exists():
         return img, "image/jpeg"

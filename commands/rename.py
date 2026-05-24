@@ -33,10 +33,12 @@ def cmd_rename(args, profile) -> None:
             sys.exit(1)
         n_pages = getattr(args, 'pages', 1)
         vision_cache_path = os.path.join(profile.cache_dir, 'vision_cache.json')
+        thumbnails_base_dir = os.path.join(profile.cache_dir, 'thumbnails')
         llm_callback = make_llm_rename_callback(
             api_key, profile.llm_endpoint, profile.llm_model,
             verbose=args.verbose, n_pages=n_pages,
-            vision_cache_path=vision_cache_path)
+            vision_cache_path=vision_cache_path,
+            thumbnails_base_dir=thumbnails_base_dir)
 
     max_files = getattr(args, 'max', 0)
     force = getattr(args, 'force', False)

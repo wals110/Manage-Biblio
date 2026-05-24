@@ -9,3 +9,4 @@ from commands.misc import cmd_suggest as cmd_suggest
 from commands.process import cmd_process as cmd_process
 from commands.refine import cmd_refine as cmd_refine
 from commands.rename import cmd_rename as cmd_rename
+from commands.thumbnails import cmd_thumbnails as cmd_thumbnails
