@@ -17,7 +17,7 @@ import os
 from langchain_openai import ChatOpenAI
 
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2-Exp"
-DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
+DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
 
 
 def get_agent_llm(

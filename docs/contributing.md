@@ -104,12 +104,13 @@ Voici des pistes pour contribuer :
 - **Index SQLite** — Base de données légère pour recherche rapide
 - **Prompts templatisés** — Permettre de surcharger les prompts LLM par profil
 - **Agents IA** — 3 agents IA spécifiés, à développer dans l'ordre :
-  1. [refonte-agent-spec.md](refonte-agent-spec.md) — refonte de taxonomy en 3 phases (diagnostic → proposition → dialog), ~35-50 j-h
+  1. [refonte-agent-spec.md](refonte-agent-spec.md) — refonte de taxonomy en 3 phases (diagnostic → proposition → dialog), ~35-50 j-h. **Phase A livrée** ([guide d'usage](agent-refonte-guide.md))
   2. [onboarding-agent-spec.md](onboarding-agent-spec.md) — bootstrap d'un nouveau profil depuis une inbox (discovery → proposition → bootstrap), ~28-42 j-h
   3. [curation-agent-spec.md](curation-agent-spec.md) — constitution de sous-ensembles intelligents entre profils (analyze → select → apply), ~22-35 j-h
 
 Idées déjà livrées (à titre de référence) :
 
+- ✅ **Agent Refonte (Phase A)** — diagnostic LLM read-only de la taxonomie ([guide](agent-refonte-guide.md))
 - ✅ **Interface web** — dashboard FastAPI + HTMX (Taxonomie, Rename, Curation, etc.)
 - ✅ **Couvertures** — `lib/thumbnail.py` + cache content-keyed unifié + CLI `./klodo.sh thumbnails`
 - ✅ **Audit de renommages + undo** — journal append-only JSONL avec batch + override par contenu
