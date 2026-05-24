@@ -4304,6 +4304,56 @@ th {
     background: rgba(248, 81, 73, 0.18);
     color: #ff7b72;
 }
+/* Multi-select checkbox on each tree file row. Hidden by default to
+ * keep the tree clean; appears on row hover. Stays visible once
+ * checked so the user can see what they've picked. */
+.tax-tree-file-check {
+    width: 13px;
+    height: 13px;
+    cursor: pointer;
+    accent-color: #58a6ff;
+    opacity: 0;
+    transition: opacity 0.1s;
+    flex-shrink: 0;
+}
+.tax-tree-file:hover .tax-tree-file-check { opacity: 0.7; }
+.tax-tree-file-check:checked { opacity: 1 !important; }
+.tax-tree-file.bulk-selected {
+    background: rgba(88, 166, 255, 0.08);
+}
+.tax-tree-file.bulk-selected:hover {
+    background: rgba(88, 166, 255, 0.14);
+}
+
+/* Sticky bulkbar at the bottom of col 1 — appears when ≥ 1 file is
+ * checked. Same visual language as the Rename bulkbar. */
+.tax-tree-bulkbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(88, 166, 255, 0.1);
+    border-top: 1px solid rgba(88, 166, 255, 0.25);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+.tax-tree-bulkbar[hidden] { display: none; }
+.tax-tree-bulkbar-count { color: var(--text, #c9d1d9); flex: 1; }
+.tax-tree-bulkbar-count strong { color: #58a6ff; }
+.tax-tree-bulkbar .btn-sm {
+    padding: 3px 8px;
+    font-size: 11px;
+    border-radius: 3px;
+}
+.tax-tree-bulkbar .btn-danger {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    color: #ff7b72;
+    cursor: pointer;
+}
+.tax-tree-bulkbar .btn-danger:hover {
+    background: rgba(248, 81, 73, 0.2);
+}
 .tax-tree-file:hover {
     background: rgba(255, 255, 255, 0.05);
     color: var(--text, #c9d1d9);

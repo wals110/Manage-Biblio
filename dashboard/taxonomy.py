@@ -2709,6 +2709,137 @@ def _resolve_dest_folder(profile: str, dest_folder: str) -> Path:
     return abs_dest
 
 
+def soft_delete_bulk(profile: str, rel_paths: list[str]) -> dict:
+    """Bulk-soft-delete N files in one call. Each one goes through the
+    same FS move + journal append as ``soft_delete_file``, but the
+    cache invalidation runs ONCE at the end (instead of N times) and
+    a per-second timestamp is reused — files trashed within the same
+    call land under the same ``<target>/.trash/<ts>/`` folder, with
+    -1/-2 suffixes on basename collisions.
+
+    Best-effort: a per-item failure is captured in ``errors[]`` and
+    does NOT abort the batch. Returns:
+
+      {
+        ok: True,
+        n_total: int,
+        n_deleted: int,
+        n_errors: int,
+        successes: [{rel_path, trash_rel_path}, ...],
+        errors:    [{rel_path, error, status}, ...],
+      }
+    """
+    if not isinstance(rel_paths, list) or not rel_paths:
+        raise TaxonomyFileError("rel_paths vide ou invalide", 400)
+
+    target = _profile_target_path(profile)
+    if target is None or not target.exists():
+        raise TaxonomyFileError("profil sans target configuré", 400)
+    target_resolved = target.resolve()
+
+    trash_root = _trash_root(profile)
+    trash_root_resolved = None
+    if trash_root is not None and trash_root.exists():
+        trash_root_resolved = trash_root.resolve()
+
+    # Single timestamp + journal handle for the whole batch — keeps
+    # related deletions grouped on disk.
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    trash_dir = trash_root / ts
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    journal_path = _trash_journal_path(profile)
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+
+    successes: list[dict] = []
+    errors: list[dict] = []
+
+    # De-dup the input list — the same rel_path twice in a batch is
+    # a UI bug, not a user intent.
+    seen: set[str] = set()
+
+    with open(journal_path, "a", encoding="utf-8") as journal_fh:
+        for raw in rel_paths:
+            rel_path = str(raw or "").strip()
+            if not rel_path:
+                errors.append({"rel_path": rel_path,
+                               "error": "rel_path manquant", "status": 400})
+                continue
+            if rel_path in seen:
+                errors.append({"rel_path": rel_path,
+                               "error": "doublon dans la batch",
+                               "status": 400})
+                continue
+            seen.add(rel_path)
+
+            try:
+                abs_old = (target / rel_path).resolve()
+                abs_old.relative_to(target_resolved)
+            except (ValueError, OSError):
+                errors.append({"rel_path": rel_path,
+                               "error": "hors du target", "status": 400})
+                continue
+            if not abs_old.exists():
+                errors.append({"rel_path": rel_path,
+                               "error": "fichier introuvable",
+                               "status": 404})
+                continue
+            if not abs_old.is_file():
+                errors.append({"rel_path": rel_path,
+                               "error": "pas un fichier", "status": 400})
+                continue
+            if (trash_root_resolved is not None
+                    and trash_root_resolved in abs_old.parents):
+                errors.append({"rel_path": rel_path,
+                               "error": "déjà dans la corbeille",
+                               "status": 400})
+                continue
+
+            basename = abs_old.name
+            dest = trash_dir / basename
+            suffix = 0
+            stem, ext = os.path.splitext(basename)
+            while dest.exists():
+                suffix += 1
+                dest = trash_dir / f"{stem}-{suffix}{ext}"
+
+            try:
+                shutil.move(str(abs_old), str(dest))
+            except OSError as exc:
+                errors.append({"rel_path": rel_path,
+                               "error": f"échec FS : {exc}", "status": 500})
+                continue
+
+            trash_rel = str(dest.relative_to(target)).replace("\\", "/")
+            record = {
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "original_rel_path": rel_path,
+                "trash_rel_path": trash_rel,
+            }
+            try:
+                journal_fh.write(
+                    json.dumps(record, ensure_ascii=False) + "\n")
+            except OSError:
+                # Journal write failure doesn't undo the FS move.
+                pass
+            successes.append({
+                "rel_path": rel_path,
+                "trash_rel_path": trash_rel,
+            })
+
+    # Single cache drop for the whole batch — way cheaper than N drops.
+    if successes:
+        _invalidate_post_fs_op(profile)
+
+    return {
+        "ok": True,
+        "n_total": len(rel_paths),
+        "n_deleted": len(successes),
+        "n_errors": len(errors),
+        "successes": successes,
+        "errors": errors,
+    }
+
+
 def move_file(profile: str, rel_path: str, dest_folder: str) -> dict:
     """Move a file from its current folder to ``dest_folder`` (kept
     basename). Reuses the audit cache invalidation path so the UI

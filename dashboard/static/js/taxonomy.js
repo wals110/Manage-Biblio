@@ -62,6 +62,11 @@
     // decide whether to allow the drop (cycle prevention).
     draggingFolderPath: null,
 
+    // Tree bulk selection for file delete. Set of rel_paths checked
+    // in the tree's hover-revealed checkboxes. Cleared on profile
+    // change and on a successful bulk delete.
+    treeBulkSelected: new Set(),
+
     // Mapped panel — when an item is clicked, fetches the list of files
     // concerned (future = vision_cache theme, current = files in target folder).
     // selectedMappedTheme stores the lowercased theme key for highlight.
@@ -1329,7 +1334,20 @@
       if (isSel) cls += ' selected';
       if (isSpotlit) cls += ' spotlight-file-affected';
       else if (isDimmed) cls += ' spotlight-file-dim';
+      const isChecked = state.treeBulkSelected.has(filePath);
+      const checkbox = el('input', {
+        type: 'checkbox',
+        class: 'tax-tree-file-check',
+        title: 'Cocher pour inclure dans la sélection multiple',
+        checked: isChecked || undefined,
+      });
+      checkbox.addEventListener('click', (e) => e.stopPropagation());
+      checkbox.addEventListener('change', () => {
+        _toggleTreeBulk(filePath, checkbox.checked);
+      });
+      if (isChecked) cls += ' bulk-selected';
       const children = [
+        checkbox,
         el('span', { class: 'tax-tree-icon' }, ['📄']),
         el('span', { class: 'tax-tree-name' }, [f.name]),
       ];
@@ -1846,6 +1864,88 @@
       renderAll();
     } catch (e) {
       showToast('✗ Échec de la suppression : ' + e.message, 'error');
+    }
+  }
+
+  // ── Tree bulk selection + bulk delete ────────────────────────────────
+
+  function _toggleTreeBulk(relPath, checked) {
+    if (checked) state.treeBulkSelected.add(relPath);
+    else state.treeBulkSelected.delete(relPath);
+    renderTreeBulkbar();
+    // Re-render the tree so the .bulk-selected class on the row updates.
+    // Cheap relative to the visible row count (already lazy-loaded).
+    renderTree();
+  }
+
+  function _clearTreeBulk() {
+    if (state.treeBulkSelected.size === 0) return;
+    state.treeBulkSelected.clear();
+    renderTreeBulkbar();
+    renderTree();
+  }
+
+  function renderTreeBulkbar() {
+    const bar = $('#tax-tree-bulkbar');
+    const n = $('#tax-tree-bulkbar-n');
+    if (!bar || !n) return;
+    const count = state.treeBulkSelected.size;
+    n.textContent = String(count);
+    bar.hidden = count === 0;
+  }
+
+  async function _deleteTreeBulk() {
+    if (state.treeBulkSelected.size === 0) return;
+    const paths = Array.from(state.treeBulkSelected);
+    const preview = paths.slice(0, 5)
+      .map(p => '• ' + (p.split('/').pop()))
+      .join('\n');
+    const extra = paths.length > 5
+      ? `\n…et ${paths.length - 5} autres` : '';
+    const ok = await showConfirm({
+      title: `Supprimer ${paths.length} fichier(s) ?`,
+      body: `Les fichiers seront déplacés vers la corbeille du target :\n<target>/.trash/<timestamp>/\n\n${preview}${extra}\n\nRéversible via Finder.`,
+      confirmLabel: `Supprimer ${paths.length} fichier(s)`,
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      const r = await fetch('/api/taxonomy/file/delete-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile: state.profile,
+          rel_paths: paths,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        showToast('✗ ' + (body.error || `HTTP ${r.status}`), 'error');
+        return;
+      }
+      // Drop selection (the files are gone), refresh snapshot, rerender.
+      // Clear the LLM-card selection if the displayed file was in the batch.
+      if (state.selection.type === 'file'
+          && state.treeBulkSelected.has(state.selection.path)) {
+        state.selection = { type: null, path: '' };
+      }
+      state.treeBulkSelected.clear();
+      renderTreeBulkbar();
+      state.snapshot = await fetchSnapshot(true);
+      renderAll();
+      if (body.n_errors > 0) {
+        showToast(
+          `🗑 ${body.n_deleted} supprimé(s), ${body.n_errors} en erreur (voir console)`,
+          'info');
+        console.warn('Bulk delete errors:', body.errors);
+      } else {
+        showToast(
+          `🗑 ${body.n_deleted} fichier(s) déplacé(s) en corbeille`,
+          'success');
+      }
+    } catch (e) {
+      showToast('✗ Échec : ' + e.message, 'error');
     }
   }
 
@@ -2957,8 +3057,15 @@
       state.expanded = new Set();
       state.filesByPath = new Map();
       state.selectedMappedTheme = null;   // spotlight is per-profile
+      state.treeBulkSelected.clear();     // bulk selection is per-profile
+      renderTreeBulkbar();
       await loadAndRender();
     }));
+    // Tree bulk delete bar
+    const treeBulkDelete = $('#tax-tree-bulkbar-delete');
+    if (treeBulkDelete) treeBulkDelete.addEventListener('click', _deleteTreeBulk);
+    const treeBulkClear = $('#tax-tree-bulkbar-clear');
+    if (treeBulkClear) treeBulkClear.addEventListener('click', _clearTreeBulk);
     $('#tax-refresh').addEventListener('click', () => withBusy('Rechargement…', async () => {
       state.filesByPath = new Map();
       try { state.snapshot = await fetchSnapshot(true); renderAll(); showToast('Snapshot rechargé', 'success'); }
