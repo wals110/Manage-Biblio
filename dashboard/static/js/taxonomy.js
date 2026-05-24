@@ -1339,11 +1339,16 @@
         type: 'checkbox',
         class: 'tax-tree-file-check',
         title: 'Cocher pour inclure dans la sélection multiple',
-        checked: isChecked || undefined,
       });
+      // Use the .checked PROPERTY (runtime state) rather than the
+      // `checked` attribute (default state). setAttribute('checked', ...)
+      // sets defaultChecked, which can desync with the visible state
+      // after re-renders and was causing rows to render as already
+      // checked on first load.
+      checkbox.checked = isChecked;
       checkbox.addEventListener('click', (e) => e.stopPropagation());
       checkbox.addEventListener('change', () => {
-        _toggleTreeBulk(filePath, checkbox.checked);
+        _toggleTreeBulk(filePath, checkbox.checked, checkbox);
       });
       if (isChecked) cls += ' bulk-selected';
       const children = [
@@ -1869,20 +1874,31 @@
 
   // ── Tree bulk selection + bulk delete ────────────────────────────────
 
-  function _toggleTreeBulk(relPath, checked) {
+  function _toggleTreeBulk(relPath, checked, anchorEl) {
     if (checked) state.treeBulkSelected.add(relPath);
     else state.treeBulkSelected.delete(relPath);
     renderTreeBulkbar();
-    // Re-render the tree so the .bulk-selected class on the row updates.
-    // Cheap relative to the visible row count (already lazy-loaded).
-    renderTree();
+    // Targeted DOM update: just toggle the .bulk-selected class on this
+    // one row. A full renderTree() would destroy the checkbox the user
+    // just clicked and was producing inconsistent states on toggle.
+    if (anchorEl) {
+      const row = anchorEl.closest('.tax-tree-file');
+      if (row) row.classList.toggle('bulk-selected', checked);
+    }
   }
 
   function _clearTreeBulk() {
     if (state.treeBulkSelected.size === 0) return;
     state.treeBulkSelected.clear();
     renderTreeBulkbar();
-    renderTree();
+    // Uncheck every visible checkbox + drop the .bulk-selected class on
+    // every row. Cheap: only visible rows (lazy-loaded, capped at ~50/dir).
+    document.querySelectorAll('.tax-tree-file-check').forEach(cb => {
+      cb.checked = false;
+    });
+    document.querySelectorAll('.tax-tree-file.bulk-selected').forEach(row => {
+      row.classList.remove('bulk-selected');
+    });
   }
 
   function renderTreeBulkbar() {
