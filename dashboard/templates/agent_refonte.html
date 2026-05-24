@@ -1,5 +1,8 @@
 {% extends "base.html" %}
-{% set active = "agent_refonte" %}
+{# Page standalone — accessible directement via /agent/refonte.
+   Le contenu (HTML + JS) est dans partials/agent_refonte_panel.html, partagé
+   avec le sous-onglet "Refonte" de Taxonomie pour rester DRY. #}
+{% set active = "" %}
 {% block title %}Agent Refonte — Diagnostic{% endblock %}
 
 {% block content %}
@@ -11,162 +14,22 @@
     dossiers sous-utilisés, doublons sémantiques, mappings orphelins).
 </p>
 
-{# ════════════════════════════════════════════════════════════════ #}
-{# Toolbar : profil + bouton run                                     #}
-{# ════════════════════════════════════════════════════════════════ #}
-<div class="baseline-toolbar">
+{# Selector de profil propre à la page standalone (le partial le lit via #tax-profile-select)
+   pour cohérence avec le mode "intégré dans Taxonomie". #}
+<div class="baseline-toolbar" style="margin-bottom: 16px;">
     <div class="baseline-toolbar-group">
         <label class="filter-label">Profil :</label>
-        <select id="profile-select" class="filter-select"
+        <select id="tax-profile-select" class="filter-select"
                 onchange="window.location.href='/agent/refonte?profile=' + this.value">
             {% for p in available_profiles %}
             <option value="{{ p }}" {% if p == profile %}selected{% endif %}>{{ p }}</option>
             {% endfor %}
         </select>
-    </div>
-    <div class="baseline-toolbar-group">
-        <label class="filter-label">Budget LLM :</label>
-        <input type="number" id="max-llm-calls" value="5" min="1" max="20"
-               style="width: 60px; padding: 4px 8px;">
-    </div>
-    <div class="baseline-toolbar-group">
-        <button id="start-diagnostic-btn" class="btn btn-primary">
-            🚀 Lancer le diagnostic
-        </button>
+        <span class="muted small" style="margin-left:12px;">
+            Disponible aussi dans <a href="/taxonomy">Taxonomie → onglet Refonte</a>.
+        </span>
     </div>
 </div>
 
-{# ════════════════════════════════════════════════════════════════ #}
-{# Layout 2 colonnes : runs récents (gauche) + rapport courant       #}
-{# ════════════════════════════════════════════════════════════════ #}
-<div style="display: grid; grid-template-columns: 320px 1fr; gap: 16px; margin-top: 16px;">
-
-    <!-- COL 1 : Historique des runs -->
-    <div>
-        <h3 style="margin-top: 0;">Runs récents</h3>
-        <div id="runs-list">
-            {% if runs %}
-                {% for r in runs %}
-                <div class="run-item" data-run-id="{{ r.run_id }}"
-                     style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;
-                            margin-bottom: 8px; cursor: pointer;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <code style="font-size: 11px;">{{ r.run_id[:8] }}…</code>
-                        <span class="status-badge status-{{ r.status }}">{{ r.status }}</span>
-                    </div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-                        {{ r.started_at }}
-                    </div>
-                    {% if r.llm_calls %}
-                    <div style="font-size: 11px; color: var(--text-muted);">
-                        {{ r.llm_calls }} appel(s) LLM
-                    </div>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            {% else %}
-            <p style="color: var(--text-muted); font-size: 13px;">
-                Aucun run pour ce profil. Lance ton premier diagnostic ↑
-            </p>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- COL 2 : Rapport courant -->
-    <div>
-        <h3 style="margin-top: 0;">Rapport</h3>
-        <div id="report-container" style="padding: 16px; border: 1px solid var(--border);
-                                          border-radius: 8px; min-height: 400px;
-                                          background: var(--bg-secondary);">
-            <div id="report-status" style="margin-bottom: 12px; color: var(--text-muted);">
-                Sélectionne un run à gauche ou lance un nouveau diagnostic.
-            </div>
-            <pre id="report-content" style="white-space: pre-wrap; font-family: inherit;
-                                            font-size: 13px; margin: 0;"></pre>
-        </div>
-    </div>
-</div>
-
-<script>
-(function() {
-    const profile = {{ profile|tojson }};
-    const startBtn = document.getElementById('start-diagnostic-btn');
-    const maxLlmCalls = document.getElementById('max-llm-calls');
-    const statusEl = document.getElementById('report-status');
-    const contentEl = document.getElementById('report-content');
-    let pollTimer = null;
-
-    function setStatus(text, cls) {
-        statusEl.textContent = text;
-        statusEl.className = cls || '';
-    }
-
-    async function pollStatus(runId) {
-        try {
-            const r = await fetch('/api/agent/refonte/diagnostic/' + runId
-                                  + '?profile=' + encodeURIComponent(profile));
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const s = await r.json();
-            const calls = s.llm_calls || 0;
-            const max = s.max_llm_calls || 5;
-            setStatus(
-                'Run ' + runId.slice(0, 8) + '… · ' + s.status
-                + ' · ' + calls + '/' + max + ' appel(s) LLM'
-            );
-            if (s.status === 'done') {
-                contentEl.textContent = s.report_md || '(rapport vide)';
-                clearInterval(pollTimer);
-                pollTimer = null;
-                startBtn.disabled = false;
-                // Refresh la liste des runs après un petit délai
-                setTimeout(() => window.location.reload(), 800);
-            } else if (s.status === 'error') {
-                contentEl.textContent = 'ERREUR : ' + (s.error || '(inconnu)');
-                clearInterval(pollTimer);
-                pollTimer = null;
-                startBtn.disabled = false;
-            }
-        } catch (err) {
-            console.error('poll error', err);
-        }
-    }
-
-    async function startDiagnostic() {
-        startBtn.disabled = true;
-        setStatus('Démarrage…');
-        contentEl.textContent = '';
-        try {
-            const r = await fetch('/api/agent/refonte/diagnostic', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    profile: profile,
-                    max_llm_calls: parseInt(maxLlmCalls.value || '5', 10),
-                }),
-            });
-            if (!r.ok) {
-                const e = await r.json();
-                throw new Error(e.error || ('HTTP ' + r.status));
-            }
-            const data = await r.json();
-            setStatus('Run ' + data.run_id.slice(0, 8) + '… démarré');
-            pollTimer = setInterval(() => pollStatus(data.run_id), 2000);
-        } catch (err) {
-            setStatus('Erreur : ' + err.message);
-            startBtn.disabled = false;
-        }
-    }
-
-    startBtn.addEventListener('click', startDiagnostic);
-
-    // Click sur un run dans la liste → affiche son rapport
-    document.querySelectorAll('.run-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const runId = item.dataset.runId;
-            setStatus('Chargement du run ' + runId.slice(0, 8) + '…');
-            pollStatus(runId);
-        });
-    });
-})();
-</script>
+{% include "partials/agent_refonte_panel.html" %}
 {% endblock %}

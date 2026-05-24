@@ -178,6 +178,51 @@ class TestStartDiagnosticErrorPath(_AgentEndpointBase):
             self.assertIn("traceback", status)
 
 
+class TestTaxonomySubtab(_AgentEndpointBase):
+    """L'agent panel doit aussi être inclus dans /taxonomy en 4e sous-onglet."""
+
+    def test_taxonomy_page_includes_refonte_subtab(self):
+        r = self.client.get("/taxonomy?profile=test_p")
+        self.assertEqual(r.status_code, 200)
+        # Bouton sous-onglet présent
+        self.assertIn('data-view="refonte"', r.text)
+        # Panneau partial inclus (containers depuis le partial)
+        self.assertIn('tax-refonte-runs', r.text)
+        self.assertIn('tax-refonte-start', r.text)
+
+
+class TestListRunsEndpoint(_AgentEndpointBase):
+    """Endpoint API utilisé par le partial pour recharger la liste sans page reload."""
+
+    def test_returns_runs_for_profile(self):
+        runs_dir = self.tmp / "profiles" / "test_p" / ".cache" / "refonte"
+        runs_dir.mkdir(parents=True)
+        for i, ts in enumerate(["2026-05-01T00:00:00Z", "2026-05-24T10:00:00Z"]):
+            d = runs_dir / f"r{i}"
+            d.mkdir()
+            (d / "status.json").write_text(json.dumps({
+                "run_id": f"r{i}", "profile": "test_p",
+                "status": "done", "started_at": ts,
+            }))
+        r = self.client.get("/api/agent/refonte/runs?profile=test_p")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["profile"], "test_p")
+        self.assertEqual(len(body["runs"]), 2)
+        # Tri descendant
+        self.assertEqual(body["runs"][0]["started_at"], "2026-05-24T10:00:00Z")
+
+    def test_returns_empty_list_when_no_runs(self):
+        r = self.client.get("/api/agent/refonte/runs?profile=test_p")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["runs"], [])
+
+    def test_rejects_missing_profile_qs(self):
+        r = self.client.get("/api/agent/refonte/runs")
+        # FastAPI renvoie 422 pour les query params required manquants
+        self.assertEqual(r.status_code, 422)
+
+
 class TestListRuns(_AgentEndpointBase):
     def test_list_sorted_by_started_at_desc(self):
         """list_runs trie par started_at descendant (plus récent en premier)."""

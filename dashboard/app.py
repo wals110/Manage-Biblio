@@ -2333,3 +2333,15 @@ async def api_agent_refonte_status(run_id: str, profile: str):
     if status is None:
         return JSONResponse({"error": f"run not found: {run_id}"}, status_code=404)
     return JSONResponse(status)
+
+
+@app.get("/api/agent/refonte/runs")
+async def api_agent_refonte_runs(profile: str, limit: int = 20):
+    """Liste les runs récents pour un profil (utilisé par le sous-onglet Refonte
+    de Taxonomie pour recharger l'historique sans full page reload)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    limit = max(1, min(int(limit), 100))
+    runs = agent_refonte.list_runs(profile, limit=limit)
+    return JSONResponse({"profile": profile, "runs": runs})

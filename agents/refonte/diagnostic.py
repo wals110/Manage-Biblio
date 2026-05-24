@@ -25,6 +25,7 @@ l'infini).
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
@@ -62,24 +63,34 @@ Stratégie : commence par list_folders + count_files_per_folder + read_theme_map
 Quand tu as assez de matière, réponds **sans appeler d'outil** — la phase de rédaction du rapport prendra le relais."""
 
 
-REPORT_PROMPT = """À partir des observations ci-dessus, rédige un rapport de diagnostic en **markdown français** structuré ainsi :
+REPORT_PROMPT_TEMPLATE = """\
+Rédige maintenant le rapport de diagnostic en **markdown français**, en commençant DIRECTEMENT par le titre de niveau 1 ci-dessous. **Aucun préambule, aucune répétition de ces instructions.**
 
-```markdown
-# Diagnostic taxonomy — profil `<name>` — <date>
+Première ligne attendue (exacte) :
+# Diagnostic taxonomy — profil `{profile}` — {date}
+
+Structure obligatoire à suivre ensuite :
 
 ## Stats globales
-- ...
+- 3 à 5 puces concises (nombre de dossiers, fichiers, mappings, etc.)
 
 ## Anomalies détectées (par priorité)
 
-### <Nom de catégorie d'anomalie> (<N> cas)
+### <Catégorie d'anomalie 1> (<N> cas)
+- Liste numérotée, chiffres exacts récupérés via les outils
+
+### <Catégorie d'anomalie 2> (<N> cas)
 - ...
 
 ## Recommandations
-- ...
-```
+- 3 à 5 actions concrètes, format impératif ("Renommer X en Y", "Fusionner A et B", "Splitter le catch-all C", etc.)
+- Chaque recommandation : effort estimé (faible/moyen/élevé)
 
-Reste factuel, cite les chiffres exacts récupérés via les outils. **N'invente pas de données.** Si une zone n'a pas été explorée, dis-le explicitement."""
+Règles strictes :
+- N'invente AUCUN chiffre — utilise uniquement ce que les outils ont retourné
+- Si une zone n'a pas été explorée, écris explicitement "(non analysé)"
+- Pas de placeholders <...> dans la sortie finale
+- Pas de ```markdown``` autour du rapport — le rapport EST déjà markdown"""
 
 
 # ─── Nœuds ──────────────────────────────────────────────────────────────────
@@ -140,9 +151,21 @@ def _make_write_report_node(llm: BaseChatModel):
     """Nœud final : demande au LLM de structurer un rapport markdown."""
 
     def write_report(state: RefonteState) -> dict[str, Any]:
-        prompt = SystemMessage(content=REPORT_PROMPT)
+        # Injecte la date courante + le nom de profil dans le prompt — le LLM
+        # n'a pas la notion de "today" et hallucinerait sinon une date arbitraire.
+        prompt_text = REPORT_PROMPT_TEMPLATE.format(
+            profile=state.get("profile", "?"),
+            date=datetime.now(UTC).date().isoformat(),
+        )
+        prompt = SystemMessage(content=prompt_text)
         response = llm.invoke(list(state["messages"]) + [prompt])
         content = response.content if isinstance(response.content, str) else str(response.content)
+        # Nettoyage minimal : strip whitespace au début, et coupe tout ce qui
+        # précède le titre `# Diagnostic` au cas où le LLM répète des instructions
+        # avant le rapport (cas observé en smoke test 2026-05-25).
+        if "# Diagnostic" in content:
+            content = content[content.index("# Diagnostic"):]
+        content = content.lstrip()
         return {
             "messages": [response],
             "report": content,
