@@ -1,25 +1,26 @@
 """État de l'agent Refonte — partagé entre les phases A/B/C.
 
-À ce stade (A.1 scaffolding), le state est volontairement minimal. Les phases
-suivantes (A.2 outils, A.3 LLM) viendront enrichir avec `tool_results`,
-`anomalies`, `report_markdown`, etc.
+Hérite de `MessagesState` (LangGraph) pour gérer nativement la conversation
+agent ↔ tools (chaque tool call et tool response sont ajoutés à `messages`).
+
+Champs métier ajoutés par-dessus :
+  - profile  : nom du profil cible
+  - phase    : "A" | "B" | "C"
+  - run_id   : UUID4 unique pour la run (clé .cache/refonte/<run_id>/)
+  - status   : "pending" | "running" | "done" | "error"
+  - error    : message d'erreur si status=="error"
+  - report   : markdown final produit en Phase A (write_report node)
+  - llm_calls: compteur d'appels LLM pour faire respecter le budget
 """
 
-from typing import TypedDict
+from langgraph.graph import MessagesState
 
 
-class RefonteState(TypedDict, total=False):
+class RefonteState(MessagesState, total=False):
     """État partagé entre les nœuds du graphe de refonte.
 
-    `total=False` car les champs sont remplis progressivement par les nœuds
-    (le graphe commence avec uniquement `profile` et `phase`).
-
-    Attributes:
-        profile: Nom du profil Klodo cible (ex. "default", "test")
-        phase: Phase courante de l'agent — "A" (diagnostic), "B" (proposition), "C" (dialog)
-        run_id: Identifiant unique de la run (UUID), sert de clé pour .cache/refonte/<run_id>/
-        status: État de progression — "pending" | "running" | "done" | "error"
-        error: Message d'erreur si status == "error"
+    `MessagesState` apporte `messages: list[BaseMessage]` avec reducer
+    `add_messages` qui concatène + dédoublonne sur id.
     """
 
     profile: str
@@ -27,3 +28,5 @@ class RefonteState(TypedDict, total=False):
     run_id: str
     status: str
     error: str
+    report: str
+    llm_calls: int

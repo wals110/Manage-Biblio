@@ -15,6 +15,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from langchain_core.tools import StructuredTool
+
 from dashboard import taxonomy as tax
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -191,3 +193,31 @@ def _find_latest_classify_csv(logs_dir: Path, profile: str) -> Path | None:
         return None
     preferred = [p for p in candidates if profile.lower() in p.name.lower()]
     return preferred[0] if preferred else candidates[0]
+
+
+# ─── LangChain bindings ────────────────────────────────────────────────────
+#
+# Les 6 fonctions ci-dessus restent appelables directement (utilisé par les
+# tests et par tout code qui n'a pas besoin de LangChain). Les bindings
+# StructuredTool ci-dessous servent à l'agent LLM via `llm.bind_tools(TOOLS)`
+# et à `ToolNode(TOOLS)` dans le graphe LangGraph.
+
+
+def _build_tools() -> list[StructuredTool]:
+    """Construit la liste de tools LangChain depuis les fonctions ci-dessus.
+
+    Le nom + docstring + signature de chaque fonction est utilisé tel quel
+    par le LLM pour décider quand l'appeler — c'est pourquoi les docstrings
+    sont importantes (cf. les fonctions ci-dessus).
+    """
+    return [
+        StructuredTool.from_function(list_folders),
+        StructuredTool.from_function(count_files_per_folder),
+        StructuredTool.from_function(read_theme_mapping),
+        StructuredTool.from_function(list_themes_per_folder),
+        StructuredTool.from_function(compute_folder_overlap),
+        StructuredTool.from_function(get_classifier_breakdown),
+    ]
+
+
+TOOLS = _build_tools()
