@@ -50,7 +50,7 @@ Affiche en sortie : status, llm_calls, durée, tool_calls/tool_results, rapport 
 | `test` (30 fichiers) | < 50 | ~30s | 3-5 | < $0.01 |
 | `default` (réel) | ~18 250 | ~75s | 5-7 | ~$0.01-0.05 |
 
-Modèle utilisé : **DeepSeek V3.1** (`deepseek-ai/DeepSeek-V3.1` sur SiliconFlow, version stable — on évite les modèles `-Exp` qui peuvent être désactivés sans préavis). Surchargeable :
+Modèle utilisé : **DeepSeek V3.2** (`deepseek-ai/DeepSeek-V3.2` sur SiliconFlow, version stable optimisée pour le tool-use). On évite `-Exp` (désactivable sans préavis) et `V3.1` (régresse vers le chinois et hallucine sur prompts multi-tour complexes). Surchargeable :
 
 ```bash
 export KLODO_AGENT_MODEL="zai-org/GLM-4.6"   # alternative

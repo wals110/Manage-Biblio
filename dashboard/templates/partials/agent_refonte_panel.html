@@ -473,6 +473,14 @@
                          + 'modèle via la variable d\'env <code>KLODO_AGENT_MODEL</code> '
                          + '(ex. <code>zai-org/GLM-4.6</code>, <code>Qwen/Qwen3-235B-A22B-Instruct-2507</code>) '
                          + 'et relance le dashboard.</p>';
+                } else if (/halluciné|hallucin/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle est parti en hallucination (souvent un '
+                         + 'rapport en langue inattendue, ex. chinois, au lieu '
+                         + 'du diagnostic demandé). Bascule sur un autre modèle '
+                         + 'via <code>KLODO_AGENT_MODEL</code> '
+                         + '(ex. <code>deepseek-ai/DeepSeek-V4-Pro</code>, '
+                         + '<code>zai-org/GLM-4.7</code>) et relance.</p>';
                 } else if (/aucun outil/i.test(err)) {
                     hint = '<p class="muted small" style="margin-top:8px;">'
                          + '💡 Le modèle LLM n\'a pas exploité les outils. '

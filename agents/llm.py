@@ -16,10 +16,18 @@ import os
 
 from langchain_openai import ChatOpenAI
 
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.1"  # version stable
-# Note: on évite "-Exp" (DeepSeek-V3.2-Exp testé initialement) — SiliconFlow
-# l'a désactivé sans préavis (PermissionDeniedError 403 'Model disabled')
-# le 2026-05-25. Les versions stables (V3, V3.1) sont fiables.
+DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2"  # version stable optimisée tool-use
+# Choix de modèle (mis à jour 2026-05-25 après tests réels) :
+#   - V3.2 (stable, recommandé) — fine-tuné tool-use, suit bien les prompts FR
+#   - V3.2-Exp : DÉSACTIVÉ ce soir sans préavis (le piège des -Exp)
+#   - V3.1 : régresse vers le chinois et hallucine sur prompts multi-tour
+#     complexes (testé → produit un problème d'algo chinois au lieu du
+#     rapport demandé)
+#   - V4-Pro : très récent, peut servir en backup (tool-use OK)
+#   - GLM-4.7 / GLM-5 : alternatives non-DeepSeek si SiliconFlow coupe
+#     toute la famille DeepSeek (peu probable mais possible)
+# Test rapide en cas de doute : `curl https://api.siliconflow.com/v1/models`
+# pour voir la liste live, puis vérifier que le modèle suit un prompt FR.
 DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
 DEFAULT_TIMEOUT_S = 180  # 3 min par appel LLM — write_report peut prendre 60-120s, marge pour SiliconFlow lent
 

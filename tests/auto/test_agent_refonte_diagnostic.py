@@ -167,6 +167,28 @@ class TestDiagnosticGraph(_GraphTestBase):
         self.assertEqual(result["status"], "error")
         self.assertIn("trop court", result["error"].lower())
 
+    def test_safeguard_hallucinated_report_returns_error(self):
+        """Si write_report ne commence pas par '# Diagnostic' → error.
+
+        Cas réel observé 2026-05-25 : DeepSeek-V3.1 produisait un problème
+        d'algorithme en chinois au lieu du rapport demandé. Le contenu était
+        long (>200 chars) donc passait la garde 'trop court', mais n'avait
+        rien à voir avec la tâche → garde 'titre manquant' nécessaire.
+        """
+        fake = _FakeLLM([
+            _ai_tool_call("list_folders", {"profile": "test_p"}),
+            AIMessage(content="OK"),
+            # Rapport halluciné en chinois (>200 chars), pas de '# Diagnostic'
+            AIMessage(content="# 1. 题目\n\n# 2. 题解\n\n首先我们把所有单词的"
+                              "首尾两个字符分别视为点，长度为单词长度。"
+                              "然后问题就转化为了：给你一个无向图。"
+                              "我们可以用并查集维护连通性。"),
+        ])
+        graph = build_diagnostic_graph(llm=fake, max_llm_calls=5)
+        result = graph.invoke({"profile": "test_p"})
+        self.assertEqual(result["status"], "error")
+        self.assertIn("halluciné", result["error"].lower())
+
     def test_budget_enforced_stop_message_injected(self):
         """Au-delà de max_llm_calls, le stop_msg force la conclusion."""
         # On simule 3 calls explore qui réclament un tool, avec budget=2

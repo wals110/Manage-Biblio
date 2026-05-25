@@ -220,7 +220,27 @@ def _make_write_report_node(llm: BaseChatModel):
         if "# Diagnostic" in content:
             content = content[content.index("# Diagnostic"):]
         content = content.lstrip()
-        # Garde-fou 2 : rapport trop court → probable problème (LLM coupé ou perdu)
+        # Garde-fou 2 : le rapport DOIT démarrer par "# Diagnostic" (titre
+        # imposé par REPORT_PROMPT_TEMPLATE). Si absent, le LLM est parti
+        # en hallucination (cas observé 2026-05-25 avec DeepSeek-V3.1 qui
+        # produisait un problème d'algo en chinois au lieu du rapport
+        # attendu — V3.1 régresse vers son corpus d'entraînement sur
+        # prompts complexes).
+        if not content.startswith("# Diagnostic"):
+            return {
+                "messages": [response],
+                "status": "error",
+                "error": (
+                    "Le modèle LLM a halluciné — son rapport ne contient pas "
+                    "le titre `# Diagnostic` attendu (probable régression vers "
+                    "le corpus d'entraînement, ex: chinois). Essaie un autre "
+                    "modèle via KLODO_AGENT_MODEL (ex. deepseek-ai/DeepSeek-V4-Pro, "
+                    "zai-org/GLM-4.7) et relance."
+                ),
+                "report": content,  # Conservé pour debug
+                "llm_calls": state.get("llm_calls", 0) + 1,
+            }
+        # Garde-fou 3 : rapport trop court → probable problème (LLM coupé ou perdu)
         if len(content) < 200:
             return {
                 "messages": [response],
