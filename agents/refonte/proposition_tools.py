@@ -46,6 +46,17 @@ class _Renaming(BaseModel):
     rationale: str = Field(description="Pourquoi renommer (1-2 phrases)")
 
 
+class _Deletion(BaseModel):
+    path: str = Field(description="Chemin relatif du dossier à supprimer (sans le fusionner)")
+    rationale: str = Field(
+        description=(
+            "Pourquoi supprimer ce dossier (vide depuis longtemps, doublon "
+            "tranchant, obsolète, etc.). Préférer une `fusion` si les fichiers "
+            "doivent migrer ailleurs."
+        ),
+    )
+
+
 class _MappingAdded(BaseModel):
     theme: str = Field(description="Thème LLM observé (ex: 'rust programming')")
     folder: str = Field(description="Dossier cible (existant ou créé dans les créations)")
@@ -58,6 +69,10 @@ class _ProposeChangesInput(BaseModel):
     creations: list[_Creation] = Field(default_factory=list, description="Nouveaux dossiers à créer")
     fusions: list[_Fusion] = Field(default_factory=list, description="Dossiers à fusionner")
     renamings: list[_Renaming] = Field(default_factory=list, description="Dossiers à renommer")
+    deletions: list[_Deletion] = Field(
+        default_factory=list,
+        description="Dossiers à supprimer purement (sans fusion)",
+    )
     mappings_added: list[_MappingAdded] = Field(
         default_factory=list,
         description="Nouveaux mappings thème → dossier à ajouter dans theme_mapping.yaml",
@@ -79,12 +94,13 @@ def _apply_changes_to_tree(
     creations: list[dict],
     fusions: list[dict],
     renamings: list[dict],
+    deletions: list[dict] | None = None,
 ) -> list[str]:
     """Construit la liste des dossiers du tree proposé.
 
-    Ordre d'application : creations → renamings → fusions (les fusions
-    suppriment, on les fait en dernier pour ne pas supprimer un dossier qu'un
-    renaming aurait pu utiliser comme source).
+    Ordre d'application : creations → renamings → fusions → deletions
+    (deletions en dernier pour pouvoir cibler un path qui aurait été créé
+    ou renommé juste avant ; cas d'usage rare mais cohérent).
     """
     folders = set(current_folders)
     # Créations
@@ -99,6 +115,9 @@ def _apply_changes_to_tree(
         for src in f["sources"]:
             folders.discard(src)
         folders.add(f["target"])
+    # Suppressions sèches (sans réaffectation des fichiers)
+    for d in (deletions or []):
+        folders.discard(d["path"])
     return sorted(folders)
 
 
@@ -107,9 +126,11 @@ def _apply_changes_to_mapping(
     mappings_added: list[dict],
     renamings: list[dict],
     fusions: list[dict],
+    deletions: list[dict] | None = None,
 ) -> dict[str, str]:
     """Construit le mapping proposé : ajoute les nouveaux mappings + ajuste les
-    cibles existantes pour les renommages et les fusions.
+    cibles existantes pour les renommages et les fusions + drop les mappings
+    qui pointent sur un dossier supprimé.
     """
     mapping = dict(current_mapping)  # copy
     # Renommages : tous les thèmes qui pointaient sur old_path pointent maintenant sur new_path
@@ -119,11 +140,15 @@ def _apply_changes_to_mapping(
     for f in fusions:
         for src in f["sources"]:
             fusion_map[src] = f["target"]
+    # Suppressions : les thèmes pointant dessus deviennent orphelins (drop)
+    deleted_paths = {d["path"] for d in (deletions or [])}
     for theme, folder in list(mapping.items()):
         if folder in rename_map:
             mapping[theme] = rename_map[folder]
         elif folder in fusion_map:
             mapping[theme] = fusion_map[folder]
+        elif folder in deleted_paths:
+            del mapping[theme]
     # Nouveaux mappings (s'ajoutent en dernier, écrasent un éventuel mapping existant)
     for m in mappings_added:
         mapping[m["theme"]] = m["folder"]
@@ -141,11 +166,13 @@ def _render_rationale_markdown(
     n_creations = len(changes.creations)
     n_fusions = len(changes.fusions)
     n_renamings = len(changes.renamings)
+    n_deletions = len(changes.deletions)
     n_mappings = len(changes.mappings_added)
     lines.append("## Résumé des changements")
     lines.append(f"- **Créations** : {n_creations}")
     lines.append(f"- **Fusions** : {n_fusions}")
     lines.append(f"- **Renommages** : {n_renamings}")
+    lines.append(f"- **Suppressions** : {n_deletions}")
     lines.append(f"- **Mappings ajoutés** : {n_mappings}")
     lines.append("")
     if changes.creations:
@@ -165,6 +192,11 @@ def _render_rationale_markdown(
         for r in changes.renamings:
             lines.append(f"- `{r.old_path}` → `{r.new_path}` — {r.rationale}")
         lines.append("")
+    if changes.deletions:
+        lines.append(f"## SUPPRESSIONS ({n_deletions})")
+        for d in changes.deletions:
+            lines.append(f"- `{d.path}` — {d.rationale}")
+        lines.append("")
     if changes.mappings_added:
         lines.append(f"## MAPPINGS AJOUTÉS ({n_mappings})")
         for m in changes.mappings_added:
@@ -182,6 +214,7 @@ def propose_changes(
     creations: list[dict] | None = None,
     fusions: list[dict] | None = None,
     renamings: list[dict] | None = None,
+    deletions: list[dict] | None = None,
     mappings_added: list[dict] | None = None,
 ) -> dict[str, Any]:
     """Écrit les 3 artefacts de proposition sur disque (read tree+mapping
@@ -217,6 +250,7 @@ def propose_changes(
         creations=creations or [],
         fusions=fusions or [],
         renamings=renamings or [],
+        deletions=deletions or [],
         mappings_added=mappings_added or [],
     )
     out_dir = _proposal_dir(profile, run_id)
@@ -230,12 +264,14 @@ def propose_changes(
         [c.model_dump() for c in changes.creations],
         [f.model_dump() for f in changes.fusions],
         [r.model_dump() for r in changes.renamings],
+        deletions=[d.model_dump() for d in changes.deletions],
     )
     new_mapping = _apply_changes_to_mapping(
         current_mapping,
         [m.model_dump() for m in changes.mappings_added],
         [r.model_dump() for r in changes.renamings],
         [f.model_dump() for f in changes.fusions],
+        deletions=[d.model_dump() for d in changes.deletions],
     )
 
     # Écritures
@@ -269,6 +305,7 @@ def propose_changes(
         "n_creations": len(changes.creations),
         "n_fusions": len(changes.fusions),
         "n_renamings": len(changes.renamings),
+        "n_deletions": len(changes.deletions),
         "n_mappings_added": len(changes.mappings_added),
         "n_folders_after": len(new_folders),
         "n_mappings_after": len(new_mapping),
@@ -299,6 +336,7 @@ def make_proposition_tools(profile: str, run_id: str) -> list[StructuredTool]:
         creations: list[dict] | None = None,
         fusions: list[dict] | None = None,
         renamings: list[dict] | None = None,
+        deletions: list[dict] | None = None,
         mappings_added: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Écrit les artefacts de proposition (tree-proposed.yaml +
@@ -309,6 +347,9 @@ def make_proposition_tools(profile: str, run_id: str) -> list[StructuredTool]:
             creations: Liste de {path, rationale} — dossiers à créer.
             fusions: Liste de {sources, target, rationale} — dossiers à fusionner.
             renamings: Liste de {old_path, new_path, rationale} — dossiers à renommer.
+            deletions: Liste de {path, rationale} — dossiers à supprimer SANS fusion.
+                       Utiliser pour les dossiers vides obsolètes ou les doublons
+                       tranchants. Préférer `fusions` si les fichiers doivent migrer.
             mappings_added: Liste de {theme, folder, rationale} — nouveaux mappings.
         """
         return propose_changes(
@@ -317,6 +358,7 @@ def make_proposition_tools(profile: str, run_id: str) -> list[StructuredTool]:
             creations=creations,
             fusions=fusions,
             renamings=renamings,
+            deletions=deletions,
             mappings_added=mappings_added,
         )
 

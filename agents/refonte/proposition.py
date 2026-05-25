@@ -52,38 +52,64 @@ SYSTEM_PROMPT_B = """Tu es l'agent IA Klodo en **Phase B (Proposition)**.
 
 Tu reçois en entrée :
   - le rapport markdown du diagnostic Phase A
-  - **une LISTE PRÉ-EXTRAITE des mappings orphelins** (JSON) directement utilisable
+  - **3 listes JSON pré-extraites** (mappings orphelins, dossiers sous-utilisés,
+    catch-all qui débordent) directement utilisables
 
-Ta tâche : appeler **propose_changes** UNE FOIS avec une proposition COMPLÈTE.
+Ta tâche : appeler **propose_changes** UNE FOIS avec une proposition COMPLÈTE
+qui adresse les 4 types d'anomalies du diagnostic, pas seulement les mappings.
 
 ═══════ Outils disponibles ═══════
 
-**Lecture (cross-check si besoin, mais la liste pré-extraite suffit dans 90% des cas)** :
-  - list_folders(profile), count_files_per_folder(profile)
-  - read_theme_mapping(profile), list_themes_per_folder(profile)
-  - compute_folder_overlap(profile, a, b)
-  - list_vision_themes(profile, top_n=50)
-  - find_orphan_themes(profile, top_n=30)
+**Lecture (cross-check si besoin)** :
+  - list_folders, count_files_per_folder, read_theme_mapping,
+    list_themes_per_folder, compute_folder_overlap, get_classifier_breakdown,
+    list_vision_themes(top_n=50), find_orphan_themes(top_n=30)
 
 **Mutable (UNE seule fois par run, à la fin)** :
-  - propose_changes(creations, fusions, renamings, mappings_added)
+  - propose_changes(creations, fusions, renamings, deletions, mappings_added)
 
-═══════ Contraintes IMPÉRATIVES sur propose_changes ═══════
+═══════ Contraintes par type d'anomalie ═══════
 
-1. **mappings_added : exhaustif, pas symbolique.** Pour CHAQUE entrée de la
-   liste pré-extraite, tu DOIS produire un mapping. Si la liste contient 30
-   entrées, ton appel doit avoir AU MINIMUM 25 mappings_added (tolérance : tu
-   peux retirer 5 entrées que tu juges hors scope, mais tu DOIS justifier).
-   Une proposition avec 0 mapping_added est un ÉCHEC.
+**1. mappings_added — DRIVEN par la liste pré-extraite « orphan mappings »**
 
-2. **creations** : si une `target_folder` d'un orphelin n'existe pas encore
-   dans tree.yaml, crée-la (ajoute-la dans `creations`).
+Pour CHAQUE entrée de cette liste, tu DOIS produire un mapping. Si la liste
+contient 30 entrées, ton appel doit avoir AU MINIMUM 25 mappings_added.
+Une proposition avec 0 mapping_added est un ÉCHEC.
 
-3. **fusions / renamings** : optionnels, basés sur les anomalies de doublons
-   sémantiques du diagnostic. Pas obligatoires si le diagnostic n'en a pas vu.
+**2. creations — DRIVEN par les target_folder des mappings**
 
-4. **rationale** par entrée : 1 phrase courte, factuelle. Cite le count
-   d'occurrences pour les mappings_added quand pertinent.
+Si une `target_folder` (de la liste orphans) n'existe pas dans tree.yaml,
+ajoute-la dans `creations`. Aussi : si un catch-all est trop gros, créer
+des sous-dossiers où ses fichiers iront naturellement.
+
+**3. deletions — DRIVEN par les dossiers sous-utilisés sans rescousse**
+
+Pour CHAQUE dossier de la liste « sous-utilisés », évalue :
+  - Si un thème orphelin pointe naturellement vers lui → ajoute un mapping
+    (cas le plus fréquent : le dossier est vide *parce que* le mapping
+    manque) → PAS de deletion
+  - Si le dossier est vide ET aucun thème orphelin n'évoque sémantiquement
+    son nom → propose une `deletion` (folder mort)
+  - Si plusieurs dossiers sous-utilisés sont proches sémantiquement →
+    propose une `fusion`
+
+**4. fusions — DRIVEN par les doublons sémantiques + les catch-all**
+
+  - Doublons sémantiques (Jaccard élevé) → fusion (ou renaming si l'un
+    des deux a un meilleur nom)
+  - Catch-all trop gros : crée les sous-catégories via `creations` +
+    ajoute des mappings_added vers les sous-catégories. Pas de fusion ici.
+
+**5. renamings — opportuniste**
+
+Si un dossier a un nom peu informatif ou redondant (ex. `/Generale`
+contenant 2 000 fichiers très ciblés), propose un renaming.
+
+═══════ rationale par entrée ═══════
+
+1 phrase courte, factuelle. Cite les counts d'occurrences pour les
+mappings_added quand pertinent. Pour les deletions, justifie pourquoi
+**aucun** orphelin ne s'y raccroche.
 
 ═══════ Exemple d'appel correct ═══════
 
@@ -93,14 +119,18 @@ Ta tâche : appeler **propose_changes** UNE FOIS avec une proposition COMPLÈTE.
     {"path": "01-SCIENCES/CHIMIE/04-Science-des-Materiaux",
      "rationale": "78 fichiers Materials Science orphelins"}
   ],
+  "deletions": [
+    {"path": "08-LOISIRS/DESSIN",
+     "rationale": "0 fichier et aucun thème orphelin lié au dessin observé"}
+  ],
+  "fusions": [
+    {"sources": ["07-LANGUES/AUTRES"], "target": "07-LANGUES",
+     "rationale": "AUTRES vide, on consolide à la racine LANGUES"}
+  ],
   "mappings_added": [
     {"theme": "Functional Analysis", "folder": "01-SCIENCES/MATHEMATIQUES/02-Analyse",
-     "rationale": "176 fichiers — analyse fonctionnelle classique"},
-    {"theme": "Complex Analysis", "folder": "01-SCIENCES/MATHEMATIQUES/02-Analyse",
-     "rationale": "114 fichiers — analyse complexe"},
-    {"theme": "Group Theory", "folder": "01-SCIENCES/MATHEMATIQUES/01-Algebre",
-     "rationale": "112 fichiers — algèbre"}
-    /* ... 15-30 entrées au total ... */
+     "rationale": "176 fichiers — analyse fonctionnelle"},
+    /* ... 25-30 entrées au total ... */
   ]
 }
 ```
@@ -108,10 +138,12 @@ Ta tâche : appeler **propose_changes** UNE FOIS avec une proposition COMPLÈTE.
 ═══════ Anti-patterns à éviter ═══════
 
 - ❌ Ne livrer que 2-3 mappings alors que la liste pré-extraite en a 30
-- ❌ Appeler des outils de lecture en boucle pour "redécouvrir" ce qui est
-  déjà dans la liste pré-extraite
-- ❌ Inventer des `theme` ou `folder` qui ne sont pas dans la liste ou
-  dans tree.yaml
+- ❌ Ignorer les dossiers sous-utilisés et les catch-all (toi seul peux
+  décider "delete vs. map vs. fuse")
+- ❌ Appeler des outils en boucle pour "redécouvrir" ce qui est déjà
+  dans les listes pré-extraites
+- ❌ Inventer des `theme` ou `folder` qui ne sont ni dans les listes
+  pré-extraites ni dans tree.yaml
 
 Quand tu as appelé propose_changes avec succès, **termine sans nouvel outil**."""
 
@@ -132,6 +164,87 @@ _TARGET_LABEL_RE = re.compile(
     r"^\s*(?:dossier\s+cible\s*(?:évident)?|cible|target)\s*[:：]\s*",
     re.IGNORECASE,
 )
+
+
+# Matche les listes type :
+#   - **02-INFORMATIQUE/03-Langages-Programmation/Python** (0 fichier) ↔ ...
+#   - **/Path/Folder** (1 234 fichiers) – description
+# La capture extrait : folder_path + count + reste (description).
+_FOLDER_COUNT_RE = re.compile(
+    r"^\s*(?:[-*]|\d+\.)?\s*\*\*([^*]+?)\*\*\s*\(([\d\s]+?)\s*fichiers?\)\s*"
+    r"(?:[↔–\-])\s*(.+?)\s*$",
+    re.MULTILINE,
+)
+
+
+def _parse_int_with_spaces(s: str) -> int | None:
+    """Parse '4 489' → 4489 (le LLM utilise parfois des espaces comme thousands)."""
+    try:
+        return int(s.replace(" ", "").replace(" ", ""))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _extract_section(report_md: str, header_regex: str) -> str:
+    """Extrait le contenu d'une section h3 du rapport markdown.
+
+    Retourne le texte entre le header matché et le prochain h2/h3, ou ''
+    si le header n'est pas trouvé.
+    """
+    h_re = re.compile(r"^###\s+" + header_regex, re.MULTILINE | re.IGNORECASE)
+    m = h_re.search(report_md)
+    if not m:
+        return ""
+    start = m.end()
+    # Cherche le prochain h2/h3
+    next_h = re.search(r"^##+\s+", report_md[start:], re.MULTILINE)
+    end = start + next_h.start() if next_h else len(report_md)
+    return report_md[start:end]
+
+
+def parse_underutilized_folders_from_report(report_md: str) -> list[dict[str, Any]]:
+    """Extrait les dossiers sous-utilisés (avec ou sans thèmes orphelins).
+
+    Cherche la section `### Dossiers sous-utilisés...` et parse les lignes
+    `**folder_path** (N fichier(s)) ↔/– description`.
+
+    Returns:
+        Liste de {"folder": str, "count": int, "note": str}.
+    """
+    if not report_md:
+        return []
+    section = _extract_section(report_md, r"dossiers?\s+sous[-\s]?utilis")
+    if not section:
+        return []
+    results: list[dict[str, Any]] = []
+    for m in _FOLDER_COUNT_RE.finditer(section):
+        folder = m.group(1).strip().strip("`")
+        count = _parse_int_with_spaces(m.group(2))
+        note = m.group(3).strip()
+        if folder and count is not None:
+            results.append({"folder": folder, "count": count, "note": note})
+    return results
+
+
+def parse_catchall_folders_from_report(report_md: str) -> list[dict[str, Any]]:
+    """Extrait les dossiers catch-all qui débordent.
+
+    Cherche la section `### Catch-all qui débordent` et parse les lignes
+    `**folder_path** (N fichiers) – description`.
+    """
+    if not report_md:
+        return []
+    section = _extract_section(report_md, r"catch[-\s]?all\s+qui\s+d[ée]bordent")
+    if not section:
+        return []
+    results: list[dict[str, Any]] = []
+    for m in _FOLDER_COUNT_RE.finditer(section):
+        folder = m.group(1).strip().strip("`")
+        count = _parse_int_with_spaces(m.group(2))
+        note = m.group(3).strip()
+        if folder and count is not None:
+            results.append({"folder": folder, "count": count, "note": note})
+    return results
 
 
 def parse_orphan_mappings_from_report(report_md: str) -> list[dict[str, Any]]:
@@ -217,11 +330,15 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
                 f"avec status=done sur ce run avant de lancer Phase B."
             ),
         }
-    # Pré-extraction des mappings orphelins du rapport — on les sert au LLM
-    # en JSON pré-mâché plutôt que de lui faire ré-extraire du markdown.
+    # Pré-extraction des 3 catégories d'anomalies depuis le rapport — on
+    # sert au LLM des listes JSON pré-mâchées plutôt que de lui faire
+    # ré-extraire du markdown (ça avait produit des propositions vides en
+    # premier essai 2026-05-25).
     orphans = parse_orphan_mappings_from_report(diagnostic_md)
-    orphans_json = json.dumps(orphans, ensure_ascii=False, indent=2)
-    expected_min = max(0, len(orphans) - 5)  # tolérance : -5 du total
+    underutilized = parse_underutilized_folders_from_report(diagnostic_md)
+    catchall = parse_catchall_folders_from_report(diagnostic_md)
+
+    expected_min = max(0, len(orphans) - 5)  # tolérance sur les mappings
 
     human_content_parts = [
         f"Voici le diagnostic Phase A du profil `{profile}` :",
@@ -231,29 +348,57 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
         "---",
         "",
     ]
+
     if orphans:
         human_content_parts += [
-            f"**Mappings orphelins pré-extraits** (n={len(orphans)}) — utilise CETTE liste",
-            "comme base de `mappings_added`, **pas le markdown ci-dessus** :",
-            "",
+            f"**Liste 1/3 — Mappings orphelins** (n={len(orphans)}) :",
             "```json",
-            orphans_json,
+            json.dumps(orphans, ensure_ascii=False, indent=2),
             "```",
             "",
-            "**Contrainte stricte** : ton appel à `propose_changes` doit contenir",
-            f"AU MINIMUM **{expected_min} mappings_added** issus de cette liste (ou {len(orphans)}",
-            "si tu juges qu'aucun n'est hors scope). Pour chaque target_folder qui",
-            "n'existe pas encore dans `tree.yaml`, ajoute une entrée dans `creations`.",
+            f"→ `mappings_added` doit contenir AU MINIMUM **{expected_min}** "
+            f"entrées issues de cette liste (idéalement {len(orphans)}).",
+            "",
         ]
-    else:
+
+    if underutilized:
         human_content_parts += [
-            "(Aucun mapping orphelin pré-extrait du rapport — soit le diagnostic",
-            "n'en mentionne pas, soit le format ne match pas le parser. Examine",
-            "le markdown ci-dessus et/ou utilise `find_orphan_themes(profile, top_n=30)`.)",
+            f"**Liste 2/3 — Dossiers sous-utilisés** (n={len(underutilized)}) :",
+            "```json",
+            json.dumps(underutilized, ensure_ascii=False, indent=2),
+            "```",
+            "",
+            "→ Pour chaque entrée, décide : `mappings_added` (si un thème orphelin "
+            "s'y rattache), `deletions` (si vide ET aucun orphelin lié), "
+            "ou `fusions` (si plusieurs sont sémantiquement proches).",
+            "",
         ]
+
+    if catchall:
+        human_content_parts += [
+            f"**Liste 3/3 — Catch-all qui débordent** (n={len(catchall)}) :",
+            "```json",
+            json.dumps(catchall, ensure_ascii=False, indent=2),
+            "```",
+            "",
+            "→ Pour chaque catch-all, crée les sous-catégories via `creations` + "
+            "ajoute des `mappings_added` qui redirigent les thèmes vers ces "
+            "sous-catégories. La fusion ne convient PAS ici (on veut désengorger, "
+            "pas consolider davantage).",
+            "",
+        ]
+
+    if not (orphans or underutilized or catchall):
+        human_content_parts += [
+            "(Aucune anomalie pré-extraite — soit le diagnostic n'en mentionne pas, "
+            "soit le format ne match pas les parsers. Examine le markdown ci-dessus.)",
+            "",
+        ]
+
     human_content_parts += [
-        "",
-        "Appelle `propose_changes` **une fois**, avec une proposition complète.",
+        "Appelle `propose_changes` **une fois**, avec une proposition complète",
+        "qui couvre `mappings_added`, `creations`, `deletions`, `fusions`, et "
+        "`renamings` (selon ce que les listes ci-dessus suggèrent).",
     ]
 
     return {
