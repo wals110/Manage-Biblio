@@ -278,3 +278,153 @@ def _run_diagnostic(profile: str, run_id: str, max_llm_calls: int) -> None:
             "traceback": traceback.format_exc(),
         })
         _write_status(profile, run_id, status_payload)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Phase B — Proposition
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Même pattern que Phase A : start_proposition() lance un thread daemon qui
+# invoque build_proposition_graph().stream(...) et écrit status.json à chaque
+# transition. Les artefacts produits (tree-proposed.yaml + theme_mapping-
+# proposed.yaml + refonte-rationale.md) sont écrits par le tool propose_changes
+# dans `.cache/refonte/<run_id>/proposed/`.
+
+
+def start_proposition(
+    profile: str,
+    diagnostic_run_id: str,
+    max_llm_calls: int = 8,
+) -> dict[str, Any]:
+    """Démarre un run de Phase B basé sur un diagnostic Phase A existant.
+
+    Args:
+        profile: Nom du profil.
+        diagnostic_run_id: UUID d'un run Phase A `done` à utiliser comme contexte.
+        max_llm_calls: Budget LLM (default 8 — la proposition est plus complexe).
+
+    Returns:
+        {"run_id": str, "status": "pending", "profile": str, "phase": "B",
+         "diagnostic_run_id": str}
+
+    Raises:
+        ValueError: profile vide ou diagnostic_run_id vide.
+        FileNotFoundError: profile inconnu, ou diagnostic absent / pas en `done`.
+    """
+    if not profile:
+        raise ValueError("profile is required")
+    if not diagnostic_run_id:
+        raise ValueError("diagnostic_run_id is required")
+    profile_path = data.get_project_root() / "profiles" / profile
+    if not profile_path.is_dir():
+        raise FileNotFoundError(f"profile not found: {profile}")
+    # Vérifie que le diagnostic existe et est en `done`
+    diag_status = _read_status(profile, diagnostic_run_id)
+    if not diag_status:
+        raise FileNotFoundError(
+            f"diagnostic run not found: {diagnostic_run_id} (profile={profile})"
+        )
+    if diag_status.get("status") != "done":
+        raise ValueError(
+            f"diagnostic run {diagnostic_run_id} is in status "
+            f"'{diag_status.get('status')}' (must be 'done' to base Phase B on it)"
+        )
+
+    run_id = str(uuid.uuid4())
+    now = datetime.now(UTC).isoformat()
+    initial = {
+        "run_id": run_id,
+        "profile": profile,
+        "phase": "B",
+        "diagnostic_run_id": diagnostic_run_id,
+        "status": "pending",
+        "started_at": now,
+        "completed_at": None,
+        "llm_calls": 0,
+        "max_llm_calls": max_llm_calls,
+        "error": None,
+    }
+    _write_status(profile, run_id, initial)
+
+    thread = threading.Thread(
+        target=_run_proposition,
+        args=(profile, run_id, diagnostic_run_id, max_llm_calls),
+        daemon=True,
+        name=f"refonte-B-{run_id[:8]}",
+    )
+    thread.start()
+
+    return {
+        "run_id": run_id,
+        "status": "pending",
+        "profile": profile,
+        "phase": "B",
+        "diagnostic_run_id": diagnostic_run_id,
+    }
+
+
+def _run_proposition(
+    profile: str,
+    run_id: str,
+    diagnostic_run_id: str,
+    max_llm_calls: int,
+) -> None:
+    """Lance le graphe Phase B dans le thread. Mute toutes erreurs vers status.json."""
+    try:
+        tax.reset_cache(profile)
+    except Exception:  # pragma: no cover — defensive
+        pass
+
+    started_at = datetime.now(UTC).isoformat()
+    status_payload = _read_status(profile, run_id) or {}
+    status_payload.update({"status": "running", "started_at": started_at})
+    _write_status(profile, run_id, status_payload)
+
+    # Import différé (langchain-openai chargé seulement à l'invocation)
+    from agents.refonte.proposition import build_proposition_graph
+
+    try:
+        graph = build_proposition_graph(
+            profile=profile,
+            run_id=run_id,
+            max_llm_calls=max_llm_calls,
+        )
+        result: dict[str, Any] = {}
+        for state_snapshot in graph.stream(
+            {
+                "profile": profile,
+                "run_id": run_id,
+                "diagnostic_run_id": diagnostic_run_id,
+            },
+            stream_mode="values",
+        ):
+            result = state_snapshot
+            if isinstance(state_snapshot, dict):
+                status_payload["llm_calls"] = state_snapshot.get("llm_calls", 0)
+                if state_snapshot.get("proposal_dir"):
+                    status_payload["current_node"] = "finalize"
+                elif state_snapshot.get("llm_calls", 0) > 0:
+                    status_payload["current_node"] = "analyze"
+                else:
+                    status_payload["current_node"] = "init"
+                _write_status(profile, run_id, status_payload)
+
+        completed_at = datetime.now(UTC).isoformat()
+        status_payload.update({
+            "status": result.get("status", "done"),
+            "completed_at": completed_at,
+            "llm_calls": result.get("llm_calls", 0),
+            "error": result.get("error"),
+            "current_node": None,
+            "proposal_dir": result.get("proposal_dir"),
+            "proposal_summary": result.get("proposal_summary"),
+        })
+        _write_status(profile, run_id, status_payload)
+    except Exception as exc:
+        status_payload.update({
+            "status": "error",
+            "completed_at": datetime.now(UTC).isoformat(),
+            "error": f"{type(exc).__name__}: {exc}",
+            "traceback": traceback.format_exc(),
+        })
+        _write_status(profile, run_id, status_payload)
