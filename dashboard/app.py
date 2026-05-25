@@ -2347,6 +2347,23 @@ async def api_agent_refonte_runs(profile: str, limit: int = 20):
     return JSONResponse({"profile": profile, "runs": runs})
 
 
+@app.delete("/api/agent/refonte/runs/{run_id}")
+async def api_agent_refonte_delete_run(run_id: str, profile: str):
+    """Supprime un run (et tous ses artefacts) du cache local."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    try:
+        result = agent_refonte.delete_run(profile, run_id)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except agent_refonte.RunBusyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
 # ──────────── Phase B : Proposition ────────────
 
 

@@ -13,6 +13,8 @@ synchrones pour les endpoints FastAPI.
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import threading
 import traceback
 import uuid
@@ -22,6 +24,8 @@ from typing import Any
 
 from dashboard import data
 from dashboard import taxonomy as tax
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 def _runs_dir(profile: str) -> Path:
@@ -298,6 +302,50 @@ def list_runs(profile: str, limit: int = 20) -> list[dict[str, Any]]:
             continue
     runs.sort(key=lambda r: r.get("started_at") or "", reverse=True)
     return runs[:limit]
+
+
+class RunBusyError(Exception):
+    """Tentative de suppression d'un run encore en cours (running/pending)."""
+
+
+def delete_run(profile: str, run_id: str) -> dict[str, Any]:
+    """Supprime un run et tous ses artefacts (status.json, report.md, proposed/, …).
+
+    Refuse de toucher à un run actif (status running/pending) pour ne pas
+    arracher le tapis sous un thread daemon qui écrit encore. Si le user
+    veut quand même purger un "running" coincé, il attend le reap zombie
+    (~5 min) ou redémarre le dashboard.
+
+    Args:
+        profile: Nom du profil.
+        run_id: UUID4 du run à supprimer.
+
+    Returns:
+        {"profile": ..., "run_id": ...}
+
+    Raises:
+        ValueError: profile / run_id vide ou run_id mal formé.
+        FileNotFoundError: run inexistant pour ce profil.
+        RunBusyError: run encore actif (running/pending).
+    """
+    if not profile:
+        raise ValueError("profile is required")
+    if not run_id or not _UUID_RE.match(run_id):
+        raise ValueError("run_id must be a UUID4")
+    runs_dir = _runs_dir(profile)
+    # Reap d'abord pour qu'un zombie devienne supprimable sans attendre.
+    _reap_zombie_runs(runs_dir)
+    target = runs_dir / run_id
+    if not target.is_dir():
+        raise FileNotFoundError(f"run not found: {run_id}")
+    status = _read_status(profile, run_id) or {}
+    if status.get("status") in ("running", "pending"):
+        raise RunBusyError(
+            f"run {run_id} is still {status.get('status')}, "
+            "wait for it to finish or be reaped (5 min)"
+        )
+    shutil.rmtree(target)
+    return {"profile": profile, "run_id": run_id}
 
 
 # Seuil au-delà duquel un run "running" est considéré orphelin (zombie).

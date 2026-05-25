@@ -290,6 +290,24 @@
     color: var(--text-muted);
 }
 .tax-refonte-run-sep { opacity: 0.5; }
+.tax-refonte-run-delete {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 4px;
+    border-radius: 3px;
+    opacity: 0.5;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.tax-refonte-run-item:hover .tax-refonte-run-delete { opacity: 1; }
+.tax-refonte-run-delete:hover {
+    color: #ff8b8b;
+    background: rgba(255, 92, 92, 0.12);
+}
 
 .tax-refonte-report-header {
     display: flex;
@@ -752,16 +770,53 @@
                 + 'padding:1px 6px;border-radius:3px;color:#a78bfa;">B</span>'
                 : '<span class="tax-refonte-run-meta" style="background:rgba(79,110,242,0.18);'
                 + 'padding:1px 6px;border-radius:3px;color:#93b1ff;">A</span>';
+            const isBusy = r.status === 'running' || r.status === 'pending';
+            const deleteBtn = isBusy
+                ? ''
+                : '<button type="button" class="tax-refonte-run-delete" '
+                + 'title="Supprimer ce run" aria-label="Supprimer ce run">×</button>';
             item.innerHTML =
                 '<div class="tax-refonte-run-head">'
               + '  <code class="tax-refonte-run-id">' + r.run_id.slice(0, 8) + '</code>'
               + '  ' + phaseLabel
               + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
+              + '  ' + deleteBtn
               + '</div>'
               + '<div class="tax-refonte-run-foot">'
               + '  <span class="tax-refonte-run-meta">' + startedTxt + '</span>'
               + (llmInfo ? '<span class="tax-refonte-run-sep">·</span>' + llmInfo : '')
               + '</div>';
+            const delEl = item.querySelector('.tax-refonte-run-delete');
+            if (delEl) {
+                delEl.addEventListener('click', async (ev) => {
+                    ev.stopPropagation();
+                    if (!confirm('Supprimer le run ' + r.run_id.slice(0, 8) + ' ?')) return;
+                    try {
+                        const resp = await fetch(
+                            '/api/agent/refonte/runs/' + encodeURIComponent(r.run_id)
+                          + '?profile=' + encodeURIComponent(currentProfile()),
+                            { method: 'DELETE' }
+                        );
+                        if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({}));
+                            alert('Erreur : ' + (err.error || resp.status));
+                            return;
+                        }
+                        // Si on supprime le run actif → clear l'UI
+                        if (currentRunId === r.run_id) {
+                            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                            currentRunId = null;
+                            currentRunPhase = null;
+                            renderReport('');
+                            startBtn.disabled = false;
+                            updateProposeButton();
+                        }
+                        loadRuns();
+                    } catch (e) {
+                        alert('Erreur réseau : ' + e.message);
+                    }
+                });
+            }
             item.addEventListener('click', () => {
                 const switchingRun = currentRunId !== r.run_id;
                 runsEl.querySelectorAll('.tax-refonte-run-item.active')

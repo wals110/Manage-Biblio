@@ -254,6 +254,82 @@ class TestListRuns(_AgentEndpointBase):
         self.assertEqual(runs[2]["started_at"], "2026-01-01T00:00:00Z")
 
 
+class TestDeleteRun(_AgentEndpointBase):
+    """delete_run + endpoint DELETE /api/agent/refonte/runs/<id>."""
+
+    _DONE_UUID = "11111111-2222-3333-4444-555555555555"
+    _RUNNING_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    def _seed_run(self, run_id: str, status: str = "done") -> Path:
+        runs_dir = self.tmp / "profiles" / "test_p" / ".cache" / "refonte"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        d = runs_dir / run_id
+        d.mkdir()
+        (d / "status.json").write_text(json.dumps({
+            "run_id": run_id, "profile": "test_p",
+            "status": status, "started_at": "2026-05-25T00:00:00Z",
+        }))
+        (d / "report.md").write_text("# Diagnostic\n…")
+        return d
+
+    def test_delete_done_run_removes_dir(self):
+        d = self._seed_run(self._DONE_UUID, status="done")
+        self.assertTrue(d.exists())
+        agent_refonte.delete_run("test_p", self._DONE_UUID)
+        self.assertFalse(d.exists())
+
+    def test_delete_refuses_running(self):
+        # Pour éviter le reap, on touche le mtime à maintenant.
+        d = self._seed_run(self._RUNNING_UUID, status="running")
+        (d / "status.json").touch()
+        with self.assertRaises(agent_refonte.RunBusyError):
+            agent_refonte.delete_run("test_p", self._RUNNING_UUID)
+        self.assertTrue(d.exists())  # toujours là
+
+    def test_delete_refuses_bad_uuid(self):
+        with self.assertRaises(ValueError):
+            agent_refonte.delete_run("test_p", "../etc/passwd")
+
+    def test_delete_unknown_run_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            agent_refonte.delete_run("test_p", self._DONE_UUID)
+
+    def test_endpoint_delete_happy_path(self):
+        self._seed_run(self._DONE_UUID, status="done")
+        r = self.client.delete(
+            f"/api/agent/refonte/runs/{self._DONE_UUID}?profile=test_p"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["run_id"], self._DONE_UUID)
+
+    def test_endpoint_delete_404_when_missing(self):
+        r = self.client.delete(
+            f"/api/agent/refonte/runs/{self._DONE_UUID}?profile=test_p"
+        )
+        self.assertEqual(r.status_code, 404)
+
+    def test_endpoint_delete_409_when_busy(self):
+        d = self._seed_run(self._RUNNING_UUID, status="running")
+        (d / "status.json").touch()
+        r = self.client.delete(
+            f"/api/agent/refonte/runs/{self._RUNNING_UUID}?profile=test_p"
+        )
+        self.assertEqual(r.status_code, 409)
+
+    def test_endpoint_delete_400_when_uuid_bad(self):
+        r = self.client.delete(
+            "/api/agent/refonte/runs/not-an-uuid?profile=test_p"
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_endpoint_delete_422_when_profile_missing(self):
+        # FastAPI: query param required → 422
+        r = self.client.delete(
+            f"/api/agent/refonte/runs/{self._DONE_UUID}"
+        )
+        self.assertEqual(r.status_code, 422)
+
+
 class TestPropositionEndpoints(_AgentEndpointBase):
     """Endpoints API Phase B : POST proposition + GET tree-diff + GET simulation."""
 
