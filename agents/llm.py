@@ -18,6 +18,7 @@ from langchain_openai import ChatOpenAI
 
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2-Exp"
 DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
+DEFAULT_TIMEOUT_S = 180  # 3 min par appel LLM — write_report peut prendre 60-120s, marge pour SiliconFlow lent
 
 
 def get_agent_llm(
@@ -26,6 +27,7 @@ def get_agent_llm(
     temperature: float = 0.1,
     base_url: str | None = None,
     api_key: str | None = None,
+    timeout: float | None = None,
 ) -> ChatOpenAI:
     """Construit un ChatOpenAI configuré pour SiliconFlow.
 
@@ -58,4 +60,6 @@ def get_agent_llm(
         base_url=resolved_base,
         api_key=resolved_key,
         temperature=temperature,
+        timeout=timeout if timeout is not None else DEFAULT_TIMEOUT_S,
+        max_retries=1,
     )

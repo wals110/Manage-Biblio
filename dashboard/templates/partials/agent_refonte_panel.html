@@ -394,15 +394,18 @@
               + (llmInfo ? '<span class="tax-refonte-run-sep">·</span>' + llmInfo : '')
               + '</div>';
             item.addEventListener('click', () => {
+                const switchingRun = currentRunId !== r.run_id;
                 runsEl.querySelectorAll('.tax-refonte-run-item.active')
                       .forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
-                // Si on poll un autre run, on arrête (le user veut voir
-                // celui-ci maintenant). Si le run cliqué est lui-même en
-                // cours, on (re)démarre le polling dessus.
-                if (pollTimer && currentRunId !== r.run_id) {
-                    clearInterval(pollTimer);
-                    pollTimer = null;
+                // Si on change de run : clear le report area pour éviter
+                // d'afficher le contenu du run précédent ("Commence maintenant."
+                // fantôme observé en prod 2026-05-25). Sera re-rempli si le
+                // nouveau run a un report disponible (done) ou par un message
+                // "(en cours)" si running.
+                if (switchingRun) {
+                    renderReport('');
+                    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 }
                 currentRunId = r.run_id;
                 pollStatus(r.run_id);
@@ -461,6 +464,16 @@
                 updateActionButtons(false);
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
+            } else {
+                // status="running" ou "pending" — pas de rapport disponible
+                // encore. Afficher un placeholder explicite plutôt que de
+                // laisser un éventuel contenu fantôme d'un run précédent.
+                // (Évite l'illusion "Commence maintenant." sur un autre run.)
+                if (!currentReportMd) {
+                    reportEl.innerHTML = '<p class="muted" style="font-style:italic;">'
+                                       + 'Diagnostic en cours — le rapport apparaîtra '
+                                       + 'ici quand le run se termine.</p>';
+                }
             }
         } catch (err) {
             console.error('poll error', err);
