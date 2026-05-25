@@ -133,8 +133,13 @@ def get_status(profile: str, run_id: str) -> dict[str, Any] | None:
 
 
 def list_runs(profile: str, limit: int = 20) -> list[dict[str, Any]]:
-    """Liste les runs récents pour un profil, triés par started_at desc."""
+    """Liste les runs récents pour un profil, triés par started_at desc.
+
+    Effet de bord : avant de retourner, marque automatiquement les runs
+    "zombies" comme `error` (cf. _reap_zombie_runs).
+    """
     base = _runs_dir(profile)
+    _reap_zombie_runs(base)
     runs: list[dict[str, Any]] = []
     for run_dir in base.iterdir():
         if not run_dir.is_dir():
@@ -149,6 +154,62 @@ def list_runs(profile: str, limit: int = 20) -> list[dict[str, Any]]:
             continue
     runs.sort(key=lambda r: r.get("started_at") or "", reverse=True)
     return runs[:limit]
+
+
+# Seuil au-delà duquel un run "running" est considéré orphelin (zombie).
+# Tient compte d'un write_report qui peut durer jusqu'à ~3 min + marge.
+_ZOMBIE_THRESHOLD_S = 5 * 60
+
+
+def _reap_zombie_runs(runs_dir: Path) -> None:
+    """Marque comme `error` les runs en status `running`/`pending` qui n'ont
+    pas eu d'update depuis _ZOMBIE_THRESHOLD_S secondes.
+
+    Use case : si le process dashboard est restart pendant qu'un thread
+    daemon de run était actif, le thread meurt mais status.json reste à
+    `running` pour toujours. Cette fonction, appelée à chaque list_runs
+    (effet de bord), récupère ces zombies au lieu de les laisser pourrir.
+
+    Heuristique simple : mtime du status.json — si pas d'update depuis 5min
+    alors que c'est censé être en cours, c'est mort. Les runs très lents
+    (write_report = 60-120s) sont à l'abri (notre stream() écrit après
+    chaque node, donc le mtime se rafraîchit régulièrement).
+    """
+    now = datetime.now(UTC)
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        sp = run_dir / "status.json"
+        if not sp.exists():
+            continue
+        try:
+            data_ = json.loads(sp.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data_.get("status") not in ("running", "pending"):
+            continue
+        # Calcul de l'âge depuis dernière update
+        try:
+            mtime = datetime.fromtimestamp(sp.stat().st_mtime, tz=UTC)
+        except OSError:
+            continue
+        age_s = (now - mtime).total_seconds()
+        if age_s < _ZOMBIE_THRESHOLD_S:
+            continue
+        # Zombie détecté → mark error
+        data_.update({
+            "status": "error",
+            "completed_at": now.isoformat(),
+            "error": (
+                f"Run orphelin détecté : aucun progrès depuis {int(age_s)}s. "
+                "Probablement tué par un redémarrage du dashboard. Relance "
+                "le diagnostic."
+            ),
+        })
+        try:
+            sp.write_text(json.dumps(data_, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            continue
 
 
 # ─── Exécution thread ───────────────────────────────────────────────────
