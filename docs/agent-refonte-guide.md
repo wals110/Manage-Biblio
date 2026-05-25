@@ -143,3 +143,25 @@ Pour les détails complets : [spec](refonte-agent-spec.md) · [diagramme des pha
 - **Phase C** (Dialog) — conversationnelle, peut appliquer les changements validés sur les YAML de production avec backup + journal
 
 Cf. [refonte-agent-spec.md](refonte-agent-spec.md) pour le détail.
+
+## Backlog
+
+Items techniques discutés mais reportés.
+
+### A.7 — Provider LLM alternatif `claude -p` (CLI Claude Code)
+
+**Idée** : ajouter une option `KLODO_AGENT_PROVIDER=claude-code-cli` qui ferait passer l'agent par `claude -p --output-format stream-json` (subprocess) au lieu de SiliconFlow. Permettrait d'utiliser le quota d'un abonnement Claude Code (coût marginal $0) à la place du pay-as-you-go SiliconFlow (~$0.02/run).
+
+**Pourquoi reporté** :
+
+- L'agent marche déjà à ~$0.02/run sur DeepSeek V3.2 — gain marginal vs ~1-2 j-h d'effort dev
+- Risque de fragilité (parsing stream-json) et de quota (run 18k fichiers pourrait épuiser le quota Claude Code de la journée)
+- Phase B/C bénéficierait davantage de Claude (raisonnement plus complexe, dialog multi-tour) — investir dans le wrapper à ce moment-là est plus rentable
+
+**À revisiter** : au démarrage de Phase B. Implémentation envisagée :
+
+- Custom ChatModel subclasse de `BaseChatModel`
+- `subprocess.run(['claude', '-p', '--output-format', 'stream-json', ...])` à chaque appel
+- `bind_tools()` qui injecte les définitions d'outils dans le system prompt
+- Parsing du stream-json pour extraire content + tool_use blocks
+- Alternative pay-as-you-go simple : `langchain-anthropic` direct (~$0.15/run avec Sonnet 4.6)

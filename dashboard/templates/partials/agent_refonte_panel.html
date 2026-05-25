@@ -10,19 +10,20 @@
    ════════════════════════════════════════════════════════════════════════ #}
 <div class="tax-refonte-panel">
     <div class="tax-refonte-toolbar">
-        <div class="tax-refonte-toolbar-group">
-            <label class="filter-label">Budget LLM :</label>
-            <input type="number" id="tax-refonte-budget" value="5" min="1" max="20"
-                   style="width: 60px; padding: 4px 8px;">
-        </div>
-        <div class="tax-refonte-toolbar-group">
-            <button id="tax-refonte-start" class="btn btn-primary">
-                🚀 Lancer le diagnostic
+        <div class="tax-refonte-toolbar-left">
+            <button id="tax-refonte-start" class="tax-refonte-start-btn">
+                <span class="tax-refonte-start-icon">🚀</span>
+                <span>Lancer le diagnostic</span>
             </button>
+            <div class="tax-refonte-budget-field">
+                <label for="tax-refonte-budget" class="filter-label">Budget LLM</label>
+                <input type="number" id="tax-refonte-budget" value="5" min="1" max="20">
+            </div>
         </div>
-        <div class="tax-refonte-toolbar-group" style="margin-left:auto;">
-            <span class="muted small">
-                Phase A — lecture seule. Aucune mutation YAML.
+        <div class="tax-refonte-toolbar-right">
+            <span class="tax-refonte-readonly-badge"
+                  title="L'agent n'écrit jamais sur les YAML — il produit uniquement un rapport markdown.">
+                🔒 Lecture seule · Phase A
             </span>
         </div>
     </div>
@@ -37,7 +38,15 @@
         </div>
         <!-- COL 2 : rapport courant -->
         <div>
-            <h3 style="margin-top: 0;">Rapport</h3>
+            <div class="tax-refonte-report-header">
+                <h3 style="margin: 0;">Rapport</h3>
+                <div class="tax-refonte-report-actions">
+                    <button id="tax-refonte-copy" class="btn-secondary" type="button"
+                            title="Copier le rapport markdown" disabled>📋 Copier</button>
+                    <button id="tax-refonte-download" class="btn-secondary" type="button"
+                            title="Télécharger en .md" disabled>⬇ Télécharger</button>
+                </div>
+            </div>
             <div id="tax-refonte-report-container"
                  style="padding: 16px; border: 1px solid var(--border);
                         border-radius: 8px; min-height: 400px;
@@ -45,13 +54,189 @@
                 <div id="tax-refonte-status" class="muted" style="margin-bottom: 12px;">
                     Sélectionne un run à gauche ou lance un nouveau diagnostic.
                 </div>
-                <pre id="tax-refonte-report" style="white-space: pre-wrap;
-                                                    font-family: inherit;
-                                                    font-size: 13px; margin: 0;"></pre>
+                <div id="tax-refonte-report" class="tax-refonte-md"></div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- marked.js — render markdown → HTML (escapes HTML by default depuis v4) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js"></script>
+
+<style>
+/* ─── Toolbar : bouton run + budget + badge readonly ──────────────────── */
+.tax-refonte-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+.tax-refonte-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.tax-refonte-start-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: linear-gradient(180deg, #6d8eff 0%, #4f6ef2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.05s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tax-refonte-start-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(79, 110, 242, 0.35);
+}
+.tax-refonte-start-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+.tax-refonte-start-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+.tax-refonte-start-icon { font-size: 16px; }
+.tax-refonte-budget-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tax-refonte-budget-field input {
+    width: 56px;
+    padding: 5px 8px;
+    background: var(--bg-tertiary, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary, inherit);
+    font-size: 13px;
+}
+.tax-refonte-readonly-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.10);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+    cursor: help;
+    white-space: nowrap;
+}
+
+/* ─── Liste des runs récents ──────────────────────────────────────────── */
+.tax-refonte-runs-empty {
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-style: italic;
+    margin: 6px 0 0;
+}
+.tax-refonte-run-item {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    background: var(--bg-secondary);
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.tax-refonte-run-item:hover {
+    background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+    border-color: var(--border-light, #3a3a3a);
+}
+.tax-refonte-run-item.active {
+    border-color: #4f6ef2;
+    background: rgba(79, 110, 242, 0.08);
+}
+.tax-refonte-run-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+.tax-refonte-run-id {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tax-refonte-run-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.tax-refonte-run-sep { opacity: 0.5; }
+
+.tax-refonte-report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.tax-refonte-report-actions {
+    display: flex;
+    gap: 8px;
+}
+.tax-refonte-md { font-size: 13px; line-height: 1.5; }
+.tax-refonte-md h1 { font-size: 1.4em; margin: 0 0 12px; padding-bottom: 6px;
+                     border-bottom: 1px solid var(--border); }
+.tax-refonte-md h2 { font-size: 1.15em; margin: 18px 0 8px; }
+.tax-refonte-md h3 {
+    font-size: 1.05em;
+    margin: 14px 0 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.tax-refonte-md h3::before {
+    content: '▾ ';
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+.tax-refonte-md h3.collapsed::before { content: '▸ '; }
+.tax-refonte-md h3[data-priority="critical"] {
+    background: rgba(239, 68, 68, 0.15);
+    border-left: 3px solid #ef4444;
+}
+.tax-refonte-md h3[data-priority="high"] {
+    background: rgba(249, 115, 22, 0.15);
+    border-left: 3px solid #f97316;
+}
+.tax-refonte-md h3[data-priority="medium"] {
+    background: rgba(234, 179, 8, 0.15);
+    border-left: 3px solid #eab308;
+}
+.tax-refonte-md h3[data-priority="low"] {
+    background: rgba(59, 130, 246, 0.10);
+    border-left: 3px solid #3b82f6;
+}
+.tax-refonte-md h3[data-priority="info"] {
+    background: rgba(107, 114, 128, 0.10);
+    border-left: 3px solid #6b7280;
+}
+.tax-refonte-md ul, .tax-refonte-md ol { padding-left: 20px; margin: 4px 0 8px; }
+.tax-refonte-md li { margin: 3px 0; }
+.tax-refonte-md code { background: var(--bg-tertiary, #1a1a1a); padding: 1px 5px;
+                       border-radius: 3px; font-size: 0.9em; }
+.tax-refonte-md strong { color: var(--text-primary, inherit); }
+</style>
 
 <script>
 (function() {
@@ -61,8 +246,81 @@
     const runsEl = document.getElementById('tax-refonte-runs');
     const statusEl = document.getElementById('tax-refonte-status');
     const reportEl = document.getElementById('tax-refonte-report');
+    const copyBtn = document.getElementById('tax-refonte-copy');
+    const downloadBtn = document.getElementById('tax-refonte-download');
     let pollTimer = null;
     let lastProfile = null;
+    let currentReportMd = '';     // Pour Copy + Download
+    let currentRunId = null;
+
+    // ─── Markdown rendering + post-processing UI ─────────────────────────
+    function priorityFor(h3text) {
+        const t = h3text.toLowerCase();
+        if (/manqu|mapping/.test(t)) return 'critical';
+        if (/catch|d[ée]bord/.test(t)) return 'high';
+        if (/sous[- ]utilis|peu utilis/.test(t)) return 'medium';
+        if (/doublon|jaccard|s[ée]mantique/.test(t)) return 'low';
+        return 'info';
+    }
+
+    function renderReport(md) {
+        currentReportMd = md || '';
+        if (!md) { reportEl.innerHTML = ''; updateActionButtons(false); return; }
+        // marked.parse v13 : escapes HTML par défaut, headerIds auto-générés
+        const html = window.marked ? window.marked.parse(md) : md;
+        reportEl.innerHTML = html;
+        // Post-process : priorité + collapse
+        const h3s = Array.from(reportEl.querySelectorAll('h3'));
+        for (const h3 of h3s) {
+            h3.dataset.priority = priorityFor(h3.textContent);
+            // Regroupe tous les éléments suivants jusqu'au prochain h3/h2 dans
+            // un wrapper qu'on peut hide/show via la classe "collapsed".
+            const section = document.createElement('div');
+            section.className = 'tax-refonte-section';
+            let next = h3.nextElementSibling;
+            while (next && !['H3', 'H2'].includes(next.tagName)) {
+                const tmp = next.nextElementSibling;
+                section.appendChild(next);
+                next = tmp;
+            }
+            h3.parentNode.insertBefore(section, next);
+            h3.addEventListener('click', () => {
+                const hidden = section.style.display === 'none';
+                section.style.display = hidden ? '' : 'none';
+                h3.classList.toggle('collapsed', !hidden);
+            });
+        }
+        updateActionButtons(true);
+    }
+
+    function updateActionButtons(enabled) {
+        copyBtn.disabled = !enabled;
+        downloadBtn.disabled = !enabled;
+    }
+
+    copyBtn.addEventListener('click', async () => {
+        if (!currentReportMd) return;
+        try {
+            await navigator.clipboard.writeText(currentReportMd);
+            const orig = copyBtn.textContent;
+            copyBtn.textContent = '✓ Copié';
+            setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+        } catch (e) {
+            alert('Copie impossible : ' + e.message);
+        }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+        if (!currentReportMd) return;
+        const blob = new Blob([currentReportMd], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'diagnostic-' + (currentRunId || 'run') + '.md';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    });
 
     function currentProfile() {
         // 1) prioritaire : selector du header Taxonomie (quand intégré)
@@ -94,7 +352,7 @@
 
     function renderRuns(runs) {
         if (!runs.length) {
-            runsEl.innerHTML = '<p class="muted small">Aucun run pour ce profil. '
+            runsEl.innerHTML = '<p class="tax-refonte-runs-empty">Aucun run pour ce profil. '
                              + 'Lance ton premier diagnostic ↑</p>';
             return;
         }
@@ -102,22 +360,46 @@
         for (const r of runs) {
             const item = document.createElement('div');
             item.className = 'tax-refonte-run-item';
+            if (currentRunId === r.run_id) item.classList.add('active');
             item.dataset.runId = r.run_id;
-            item.style.cssText = 'padding:8px;border:1px solid var(--border);'
-                               + 'border-radius:6px;margin-bottom:8px;cursor:pointer;';
+            // Format date plus lisible : "il y a Xm" si récent, sinon date courte
+            const startedTxt = formatStarted(r.started_at);
             const llmInfo = r.llm_calls
-                ? '<div class="muted small">' + r.llm_calls + ' appel(s) LLM</div>'
+                ? '<span class="tax-refonte-run-meta">' + r.llm_calls + ' LLM</span>'
                 : '';
             item.innerHTML =
-                '<div style="display:flex;justify-content:space-between;align-items:center;">'
-              + '  <code style="font-size:11px;">' + r.run_id.slice(0, 8) + '…</code>'
+                '<div class="tax-refonte-run-head">'
+              + '  <code class="tax-refonte-run-id">' + r.run_id.slice(0, 8) + '</code>'
               + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
               + '</div>'
-              + '<div class="muted small" style="margin-top:4px;">' + (r.started_at || '') + '</div>'
-              + llmInfo;
-            item.addEventListener('click', () => pollStatus(r.run_id));
+              + '<div class="tax-refonte-run-foot">'
+              + '  <span class="tax-refonte-run-meta">' + startedTxt + '</span>'
+              + (llmInfo ? '<span class="tax-refonte-run-sep">·</span>' + llmInfo : '')
+              + '</div>';
+            item.addEventListener('click', () => {
+                runsEl.querySelectorAll('.tax-refonte-run-item.active')
+                      .forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                pollStatus(r.run_id);
+            });
             runsEl.appendChild(item);
         }
+    }
+
+    function formatStarted(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            const diffMs = Date.now() - d.getTime();
+            const diffMin = Math.floor(diffMs / 60000);
+            if (diffMin < 1) return 'à l\'instant';
+            if (diffMin < 60) return 'il y a ' + diffMin + ' min';
+            const diffH = Math.floor(diffMin / 60);
+            if (diffH < 24) return 'il y a ' + diffH + ' h';
+            return d.toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+            });
+        } catch (e) { return iso; }
     }
 
     async function pollStatus(runId) {
@@ -136,12 +418,17 @@
             setStatus('Run ' + runId.slice(0, 8) + '… · ' + s.status
                       + ' · ' + calls + '/' + max + ' appel(s) LLM' + node + elapsed);
             if (s.status === 'done') {
-                reportEl.textContent = s.report_md || '(rapport vide)';
+                currentRunId = runId;
+                renderReport(s.report_md || '');
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
                 loadRuns();
             } else if (s.status === 'error') {
-                reportEl.textContent = 'ERREUR : ' + (s.error || '(inconnu)');
+                reportEl.innerHTML = '<p style="color:#ef4444;">'
+                                   + '<strong>ERREUR :</strong> '
+                                   + (s.error || '(inconnu)') + '</p>';
+                currentReportMd = '';
+                updateActionButtons(false);
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
             }
@@ -154,7 +441,7 @@
         const profile = currentProfile();
         startBtn.disabled = true;
         setStatus('Démarrage…');
-        reportEl.textContent = '';
+        renderReport('');
         try {
             const r = await fetch('/api/agent/refonte/diagnostic', {
                 method: 'POST',
@@ -181,7 +468,7 @@
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         startBtn.disabled = false;
         setStatus('Sélectionne un run à gauche ou lance un nouveau diagnostic.');
-        reportEl.textContent = '';
+        renderReport('');
         loadRuns();
     }
 
