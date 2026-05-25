@@ -1,10 +1,12 @@
 """Factory LLM partagée entre tous les agents Klodo.
 
-Par défaut, pointe sur SiliconFlow avec DeepSeek-V3.1 (version stable, bon
-ratio raisonnement/prix, ~$0.27/$1.10 par M tokens, function calling natif).
+Par défaut, pointe sur SiliconFlow avec GLM-4.7 (stable, tool-use propre,
+suit bien les prompts FR — testé 2026-05-25 face à des `APIConnectionError`
+récurrents sur DeepSeek-V3.2 côté SiliconFlow).
 
 Le modèle est surchargeable via la variable d'env `KLODO_AGENT_MODEL`
-(par ex. pour tester GLM-4.6 ou Qwen3 free tier).
+(par ex. pour repasser sur DeepSeek-V3.2 quand l'instabilité côté
+SiliconFlow sera résorbée).
 
 L'endpoint est compatible OpenAI — `langchain_openai.ChatOpenAI` est
 le client adéquat (pas besoin de wrapper custom).
@@ -16,16 +18,18 @@ import os
 
 from langchain_openai import ChatOpenAI
 
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2"  # version stable optimisée tool-use
-# Choix de modèle (mis à jour 2026-05-25 après tests réels) :
-#   - V3.2 (stable, recommandé) — fine-tuné tool-use, suit bien les prompts FR
-#   - V3.2-Exp : DÉSACTIVÉ ce soir sans préavis (le piège des -Exp)
-#   - V3.1 : régresse vers le chinois et hallucine sur prompts multi-tour
-#     complexes (testé → produit un problème d'algo chinois au lieu du
-#     rapport demandé)
-#   - V4-Pro : très récent, peut servir en backup (tool-use OK)
-#   - GLM-4.7 / GLM-5 : alternatives non-DeepSeek si SiliconFlow coupe
-#     toute la famille DeepSeek (peu probable mais possible)
+DEFAULT_MODEL = "zai-org/GLM-4.7"  # stable + tool-use FR (2026-05-25)
+# Choix de modèle (mis à jour 2026-05-25 après plusieurs erreurs DeepSeek) :
+#   - GLM-4.7 (défaut courant) — stable, tool-use FR propre, ~9s/réponse libre,
+#     ~2s en tool-call. Pas d'APIConnectionError observée.
+#   - GLM-5 / GLM-5.1 : alternatives plus récentes, OK en tool-use, à utiliser
+#     si GLM-4.7 régresse.
+#   - DeepSeek-V3.2 : tool-use excellent quand ça marche mais
+#     `APIConnectionError` récurrent côté SiliconFlow en mai 2026 (cf. run
+#     47377f35 — 7 LLM calls puis erreur).
+#   - DeepSeek-V3.2-Exp : désactivé sans préavis sur SiliconFlow (piège -Exp).
+#   - DeepSeek-V3.1 : régresse vers le chinois sur prompts multi-tour
+#     complexes (a produit un problème d'algo chinois au lieu du rapport).
 # Test rapide en cas de doute : `curl https://api.siliconflow.com/v1/models`
 # pour voir la liste live, puis vérifier que le modèle suit un prompt FR.
 DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
@@ -43,7 +47,7 @@ def get_agent_llm(
     """Construit un ChatOpenAI configuré pour SiliconFlow.
 
     Args:
-        model: ID du modèle (ex. "deepseek-ai/DeepSeek-V3.1"). Si None,
+        model: ID du modèle (ex. "zai-org/GLM-4.7"). Si None,
                lit `KLODO_AGENT_MODEL` puis fallback sur DEFAULT_MODEL.
         temperature: Default 0.1 — bas pour raisonnement structuré + consistance
                      entre runs (à 0.2 on observait une variance importante de
