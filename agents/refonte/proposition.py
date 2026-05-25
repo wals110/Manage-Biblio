@@ -29,6 +29,7 @@ Topologie :
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -44,61 +45,133 @@ from agents.refonte.state import RefonteState
 from agents.refonte.tools import TOOLS as READ_TOOLS
 from dashboard import data
 
-DEFAULT_MAX_LLM_CALLS = 8
+DEFAULT_MAX_LLM_CALLS = 6  # 6 suffit largement avec la pré-extraction d'orphelins
+                            # qui supprime la phase d'exploration verbeuse
 
 SYSTEM_PROMPT_B = """Tu es l'agent IA Klodo en **Phase B (Proposition)**.
 
-Ton objectif : à partir du **diagnostic Phase A** fourni en contexte, **proposer
-une refonte concrète** de la taxonomie. Tu écris des fichiers YAML "proposed"
-en side (jamais sur les YAMLs de production) qui seront ensuite simulés et,
-éventuellement, appliqués par Phase C après validation utilisateur.
+Tu reçois en entrée :
+  - le rapport markdown du diagnostic Phase A
+  - **une LISTE PRÉ-EXTRAITE des mappings orphelins** (JSON) directement utilisable
 
-Tu disposes de 9 outils :
+Ta tâche : appeler **propose_changes** UNE FOIS avec une proposition COMPLÈTE.
 
-**Outils de lecture (validation / cross-check du diagnostic)** :
-  - list_folders(profile)
-  - count_files_per_folder(profile)
-  - read_theme_mapping(profile)
-  - list_themes_per_folder(profile)
-  - compute_folder_overlap(profile, folder_a, folder_b)
-  - get_classifier_breakdown(profile)
+═══════ Outils disponibles ═══════
+
+**Lecture (cross-check si besoin, mais la liste pré-extraite suffit dans 90% des cas)** :
+  - list_folders(profile), count_files_per_folder(profile)
+  - read_theme_mapping(profile), list_themes_per_folder(profile)
+  - compute_folder_overlap(profile, a, b)
   - list_vision_themes(profile, top_n=50)
   - find_orphan_themes(profile, top_n=30)
 
-**Outil mutable (écrit les YAMLs proposed — UNE seule fois par run)** :
+**Mutable (UNE seule fois par run, à la fin)** :
   - propose_changes(creations, fusions, renamings, mappings_added)
 
-Stratégie efficace (5-7 tool calls) :
-  1. Lis le diagnostic ci-dessous. Il liste les anomalies (mappings manquants,
-     dossiers sous-utilisés, catch-all qui débordent, doublons sémantiques).
-  2. Si besoin, vérifie 1-2 cas via les outils read-only (ex. confirmer un
-     thème orphelin via find_orphan_themes).
-  3. Construis ta proposition complète, puis appelle propose_changes(...)
-     **une seule fois** avec tous les changements groupés.
+═══════ Contraintes IMPÉRATIVES sur propose_changes ═══════
 
-Conventions importantes pour propose_changes :
-  - `creations` : nouveaux dossiers (path relatif depuis le target).
-  - `fusions` : `sources` = liste de paths existants, `target` = path destination
-    (peut être un path créé par `creations` ou un dossier existant).
-  - `renamings` : changement de nom d'un dossier existant.
-  - `mappings_added` : pour chaque thème orphelin du diagnostic, mappe-le vers
-    son dossier cible évident. PRIORITÉ : c'est ça qui débloque le plus de
-    fichiers mal classés. Ajoute 15-30 mappings si le diagnostic en propose
-    autant.
+1. **mappings_added : exhaustif, pas symbolique.** Pour CHAQUE entrée de la
+   liste pré-extraite, tu DOIS produire un mapping. Si la liste contient 30
+   entrées, ton appel doit avoir AU MINIMUM 25 mappings_added (tolérance : tu
+   peux retirer 5 entrées que tu juges hors scope, mais tu DOIS justifier).
+   Une proposition avec 0 mapping_added est un ÉCHEC.
 
-Chaque entrée doit avoir un champ `rationale` court (1-2 phrases) qui justifie
-le choix — c'est ce qui apparaîtra dans `refonte-rationale.md`.
+2. **creations** : si une `target_folder` d'un orphelin n'existe pas encore
+   dans tree.yaml, crée-la (ajoute-la dans `creations`).
 
-**Règles absolues** :
-  - N'invente PAS de thèmes ou de chemins : utilise uniquement ceux du
-    diagnostic ou retournés par les outils de lecture.
-  - Les chemins cibles des `mappings_added` doivent exister dans `tree.yaml`
-    courant OU être créés via `creations`.
-  - Sois EXHAUSTIF sur les mappings_added (15-30+ si le diagnostic les liste) —
-    c'est l'action à plus haut ROI.
+3. **fusions / renamings** : optionnels, basés sur les anomalies de doublons
+   sémantiques du diagnostic. Pas obligatoires si le diagnostic n'en a pas vu.
 
-Quand tu as appelé propose_changes une fois avec succès, **réponds sans appeler
-d'autre outil** — Phase B est terminée."""
+4. **rationale** par entrée : 1 phrase courte, factuelle. Cite le count
+   d'occurrences pour les mappings_added quand pertinent.
+
+═══════ Exemple d'appel correct ═══════
+
+```json
+{
+  "creations": [
+    {"path": "01-SCIENCES/CHIMIE/04-Science-des-Materiaux",
+     "rationale": "78 fichiers Materials Science orphelins"}
+  ],
+  "mappings_added": [
+    {"theme": "Functional Analysis", "folder": "01-SCIENCES/MATHEMATIQUES/02-Analyse",
+     "rationale": "176 fichiers — analyse fonctionnelle classique"},
+    {"theme": "Complex Analysis", "folder": "01-SCIENCES/MATHEMATIQUES/02-Analyse",
+     "rationale": "114 fichiers — analyse complexe"},
+    {"theme": "Group Theory", "folder": "01-SCIENCES/MATHEMATIQUES/01-Algebre",
+     "rationale": "112 fichiers — algèbre"}
+    /* ... 15-30 entrées au total ... */
+  ]
+}
+```
+
+═══════ Anti-patterns à éviter ═══════
+
+- ❌ Ne livrer que 2-3 mappings alors que la liste pré-extraite en a 30
+- ❌ Appeler des outils de lecture en boucle pour "redécouvrir" ce qui est
+  déjà dans la liste pré-extraite
+- ❌ Inventer des `theme` ou `folder` qui ne sont pas dans la liste ou
+  dans tree.yaml
+
+Quand tu as appelé propose_changes avec succès, **termine sans nouvel outil**."""
+
+
+# ─── Parser des mappings orphelins depuis le rapport Phase A ───────────────
+
+
+# Matche : "[- ]**Theme** (NN fichiers) → <reste de ligne>"
+# Le `reste de ligne` est nettoyé en post-traitement (strip label éventuel +
+# backticks) pour tolérer plusieurs variantes du LLM ("dossier cible évident :",
+# "cible :", aucun label, etc.).
+_MAPPING_LINE_RE = re.compile(
+    r"^\s*[-*]?\s*\*\*([^*]+?)\*\*\s*\((\d+)\s*fichiers?\)\s*[→]\s*(.+?)\s*$",
+    re.MULTILINE,
+)
+# Strip un préfixe optionnel "dossier cible évident :" / "cible :" / "target :"
+_TARGET_LABEL_RE = re.compile(
+    r"^\s*(?:dossier\s+cible\s*(?:évident)?|cible|target)\s*[:：]\s*",
+    re.IGNORECASE,
+)
+
+
+def parse_orphan_mappings_from_report(report_md: str) -> list[dict[str, Any]]:
+    """Extrait la liste structurée des mappings orphelins du rapport Phase A.
+
+    Cherche les lignes du format produit par REPORT_PROMPT_TEMPLATE de Phase A :
+      - **Theme name** (NN fichiers) → dossier cible évident : `path/to/folder`
+
+    Le parser est tolérant : il accepte "dossier cible :" / "cible :" / aucun
+    label, et nettoie les backticks/guillemets résiduels autour du path.
+
+    Args:
+        report_md: Le contenu markdown du rapport (report.md).
+
+    Returns:
+        Liste de dicts `{"theme": str, "count": int, "target_folder": str}`,
+        ordonnés comme dans le rapport (typiquement par count desc).
+        Liste vide si aucun pattern matché (rapport mal formé / langue
+        inattendue / hallucination).
+    """
+    if not report_md:
+        return []
+    results: list[dict[str, Any]] = []
+    for m in _MAPPING_LINE_RE.finditer(report_md):
+        theme = m.group(1).strip()
+        try:
+            count = int(m.group(2))
+        except ValueError:
+            continue
+        raw_target = m.group(3)
+        # Strip label éventuel ("dossier cible évident :" etc.)
+        target = _TARGET_LABEL_RE.sub("", raw_target).strip()
+        # Strip backticks/guillemets externes (ex. `01-SCIENCES/...` → 01-SCIENCES/...)
+        target = target.strip("` '\"")
+        # Strip ponctuation finale qui pourrait avoir collé (virgule, point)
+        target = target.rstrip(".,;")
+        if not target or not theme:
+            continue
+        results.append({"theme": theme, "count": count, "target_folder": target})
+    return results
 
 
 # ─── Nœuds ──────────────────────────────────────────────────────────────────
@@ -144,6 +217,45 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
                 f"avec status=done sur ce run avant de lancer Phase B."
             ),
         }
+    # Pré-extraction des mappings orphelins du rapport — on les sert au LLM
+    # en JSON pré-mâché plutôt que de lui faire ré-extraire du markdown.
+    orphans = parse_orphan_mappings_from_report(diagnostic_md)
+    orphans_json = json.dumps(orphans, ensure_ascii=False, indent=2)
+    expected_min = max(0, len(orphans) - 5)  # tolérance : -5 du total
+
+    human_content_parts = [
+        f"Voici le diagnostic Phase A du profil `{profile}` :",
+        "",
+        "---",
+        diagnostic_md,
+        "---",
+        "",
+    ]
+    if orphans:
+        human_content_parts += [
+            f"**Mappings orphelins pré-extraits** (n={len(orphans)}) — utilise CETTE liste",
+            "comme base de `mappings_added`, **pas le markdown ci-dessus** :",
+            "",
+            "```json",
+            orphans_json,
+            "```",
+            "",
+            "**Contrainte stricte** : ton appel à `propose_changes` doit contenir",
+            f"AU MINIMUM **{expected_min} mappings_added** issus de cette liste (ou {len(orphans)}",
+            "si tu juges qu'aucun n'est hors scope). Pour chaque target_folder qui",
+            "n'existe pas encore dans `tree.yaml`, ajoute une entrée dans `creations`.",
+        ]
+    else:
+        human_content_parts += [
+            "(Aucun mapping orphelin pré-extrait du rapport — soit le diagnostic",
+            "n'en mentionne pas, soit le format ne match pas le parser. Examine",
+            "le markdown ci-dessus et/ou utilise `find_orphan_themes(profile, top_n=30)`.)",
+        ]
+    human_content_parts += [
+        "",
+        "Appelle `propose_changes` **une fois**, avec une proposition complète.",
+    ]
+
     return {
         "phase": "B",
         "run_id": state.get("run_id") or str(uuid.uuid4()),
@@ -151,14 +263,7 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
         "llm_calls": 0,
         "messages": [
             SystemMessage(content=SYSTEM_PROMPT_B),
-            HumanMessage(
-                content=(
-                    f"Voici le diagnostic Phase A du profil `{profile}` à utiliser "
-                    f"comme base de ta proposition :\n\n---\n{diagnostic_md}\n---\n\n"
-                    f"Propose maintenant une refonte via propose_changes. "
-                    f"Sois exhaustif sur les mappings_added."
-                ),
-            ),
+            HumanMessage(content="\n".join(human_content_parts)),
         ],
     }
 
