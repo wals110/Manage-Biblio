@@ -35,3 +35,6 @@ class RefonteState(MessagesState, total=False):
     diagnostic_run_id: str
     proposal_dir: str
     proposal_summary: dict
+    # Résultat de la simulation reclassify (déclenchée automatiquement après
+    # propose_changes) : agrégats + chemin du CSV produit
+    simulation_summary: dict
