@@ -173,7 +173,28 @@ def _run_diagnostic(profile: str, run_id: str, max_llm_calls: int) -> None:
 
     try:
         graph = build_diagnostic_graph(max_llm_calls=max_llm_calls)
-        result = graph.invoke({"profile": profile, "run_id": run_id})
+        # `stream(stream_mode="values")` yields the full state after each node
+        # transition. On écrit le status.json après chaque update pour que le
+        # polling UI voie progresser llm_calls + current_node en quasi-temps réel
+        # (le rapport entier prend 60-90s, sinon "0/5" reste affiché tout du long).
+        result: dict[str, Any] = {}
+        for state_snapshot in graph.stream(
+            {"profile": profile, "run_id": run_id},
+            stream_mode="values",
+        ):
+            result = state_snapshot
+            if isinstance(state_snapshot, dict):
+                # Met à jour les champs visibles côté UI
+                status_payload["llm_calls"] = state_snapshot.get("llm_calls", 0)
+                # Heuristique pour `current_node` : on ne l'a pas directement
+                # mais on peut déduire selon ce qu'il y a dans le state
+                if state_snapshot.get("report"):
+                    status_payload["current_node"] = "write_report"
+                elif state_snapshot.get("llm_calls", 0) > 0:
+                    status_payload["current_node"] = "explore"
+                else:
+                    status_payload["current_node"] = "init"
+                _write_status(profile, run_id, status_payload)
 
         completed_at = datetime.now(UTC).isoformat()
         report = result.get("report") or ""
@@ -185,6 +206,7 @@ def _run_diagnostic(profile: str, run_id: str, max_llm_calls: int) -> None:
             "completed_at": completed_at,
             "llm_calls": result.get("llm_calls", 0),
             "error": result.get("error"),
+            "current_node": None,
         })
         _write_status(profile, run_id, status_payload)
     except Exception as exc:

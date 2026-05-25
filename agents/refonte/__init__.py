@@ -15,9 +15,11 @@ from agents.refonte.state import RefonteState
 from agents.refonte.tools import (
     compute_folder_overlap,
     count_files_per_folder,
+    find_orphan_themes,
     get_classifier_breakdown,
     list_folders,
     list_themes_per_folder,
+    list_vision_themes,
     read_theme_mapping,
 )
 
@@ -26,8 +28,10 @@ __all__ = [
     "build_diagnostic_graph",
     "compute_folder_overlap",
     "count_files_per_folder",
+    "find_orphan_themes",
     "get_classifier_breakdown",
     "list_folders",
     "list_themes_per_folder",
+    "list_vision_themes",
     "read_theme_mapping",
 ]

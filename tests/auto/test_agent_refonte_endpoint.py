@@ -31,7 +31,11 @@ from dashboard import agent_refonte, data  # noqa: E402
 
 
 class _FakeCompiledGraph:
-    """Faux graphe compilé qui retourne un state final scripté."""
+    """Faux graphe compilé qui retourne un state final scripté.
+
+    Supporte `.stream(stream_mode="values")` (utilisé par agent_refonte.py
+    pour les updates progressifs) et `.invoke()` (rétrocompat).
+    """
 
     def __init__(self, response: dict):
         self.response = response
@@ -39,9 +43,17 @@ class _FakeCompiledGraph:
 
     def invoke(self, state):
         self.invoked_with = dict(state)
-        # Simule un peu de latence pour que le thread soit observable
         time.sleep(0.05)
         return {**state, **self.response}
+
+    def stream(self, state, stream_mode="values"):
+        """Yield states comme le ferait LangGraph en mode values."""
+        self.invoked_with = dict(state)
+        # 1er chunk : state initial avec llm_calls=0
+        yield {**state, "llm_calls": 0}
+        time.sleep(0.05)
+        # Dernier chunk : state final scripté
+        yield {**state, **self.response}
 
 
 def _make_profile_root(tmp: Path, profile: str) -> None:

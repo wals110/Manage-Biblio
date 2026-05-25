@@ -129,8 +129,12 @@
             const s = await r.json();
             const calls = s.llm_calls || 0;
             const max = s.max_llm_calls || 5;
+            const node = s.current_node ? ' · ⏳ ' + s.current_node : '';
+            const elapsed = s.started_at
+                ? ' · ' + Math.round((Date.now() - new Date(s.started_at)) / 1000) + 's écoulé'
+                : '';
             setStatus('Run ' + runId.slice(0, 8) + '… · ' + s.status
-                      + ' · ' + calls + '/' + max + ' appel(s) LLM');
+                      + ' · ' + calls + '/' + max + ' appel(s) LLM' + node + elapsed);
             if (s.status === 'done') {
                 reportEl.textContent = s.report_md || '(rapport vide)';
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
