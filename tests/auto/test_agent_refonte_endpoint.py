@@ -254,5 +254,110 @@ class TestListRuns(_AgentEndpointBase):
         self.assertEqual(runs[2]["started_at"], "2026-01-01T00:00:00Z")
 
 
+class TestPropositionEndpoints(_AgentEndpointBase):
+    """Endpoints API Phase B : POST proposition + GET tree-diff + GET simulation."""
+
+    def _seed_phase_b_run(self, run_id: str, with_simulation: bool = True) -> None:
+        """Crée un faux run Phase B done avec proposed/ + simulation/ artefacts."""
+        rundir = self.tmp / "profiles" / "test_p" / ".cache" / "refonte" / run_id
+        proposed = rundir / "proposed"
+        proposed.mkdir(parents=True)
+        # status.json
+        (rundir / "status.json").write_text(json.dumps({
+            "run_id": run_id, "profile": "test_p",
+            "phase": "B", "status": "done",
+            "started_at": "2026-05-25T00:00:00Z",
+            "completed_at": "2026-05-25T00:01:00Z",
+            "llm_calls": 5, "diagnostic_run_id": "diag-xxx",
+        }))
+        # proposed/ artefacts
+        (proposed / "tree-proposed.yaml").write_text(
+            "folders:\n- A\n- A/Rust\n- B/New\n",
+        )
+        (proposed / "theme_mapping-proposed.yaml").write_text("rust: A/Rust\n")
+        (proposed / "refonte-rationale.md").write_text(
+            "# Refonte taxonomy — profil `test_p` — proposition\n\n## CRÉATIONS (1)\n- `A/Rust`\n",
+        )
+        (proposed / "changes.json").write_text(json.dumps({
+            "creations": [{"path": "A/Rust", "rationale": "rust orphelin"}],
+            "fusions": [],
+            "renamings": [],
+            "mappings_added": [{"theme": "rust", "folder": "A/Rust", "rationale": "x"}],
+        }))
+        # Aussi un tree.yaml côté profil pour le diff
+        (self.tmp / "profiles" / "test_p" / "tree.yaml").write_text(
+            "folders:\n- A\n- A/Python\n",
+        )
+        if with_simulation:
+            simdir = rundir / "simulation"
+            simdir.mkdir()
+            (simdir / "simulation-summary.json").write_text(json.dumps({
+                "n_files": 100, "n_moving": 30, "n_stable": 65, "n_no_prediction": 5,
+                "top_destinations": [{"folder": "A/Rust", "n_incoming": 12}],
+                "top_origins": [{"folder": "B", "n_outgoing": 12}],
+                "n_by_source": {"LLM (theme)": 80},
+            }))
+            (simdir / "reclassify-projection.csv").write_text(
+                "rel_path,current_folder,proposed_folder,changed,source,top_theme,confidence,score\n"
+                "a.pdf,B,A/Rust,True,LLM (theme),rust programming,0.9,1.0\n"
+                "b.pdf,A,A,False,LLM (theme),x,0.5,1.0\n"
+                "c.pdf,B,A/Rust,True,LLM (theme),rust programming,0.92,1.0\n",
+            )
+
+    def test_tree_diff_endpoint_returns_added_and_renames(self):
+        self._seed_phase_b_run("rb-1")
+        r = self.client.get("/api/agent/refonte/proposition/rb-1/tree-diff?profile=test_p")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        # A/Rust et B/New sont créés (pas dans current tree)
+        self.assertIn("A/Rust", d["added"])
+        self.assertIn("B/New", d["added"])
+        # A/Python est supprimé (présent dans current, pas dans proposed)
+        self.assertIn("A/Python", d["removed"])
+        # Compte cohérent
+        self.assertEqual(d["n_folders_before"], 2)
+        self.assertEqual(d["n_folders_after"], 3)
+
+    def test_tree_diff_missing_profile_qs(self):
+        r = self.client.get("/api/agent/refonte/proposition/rb-X/tree-diff")
+        # FastAPI 422 si query string profile manque
+        self.assertEqual(r.status_code, 422)
+
+    def test_simulation_endpoint_returns_summary_and_sample(self):
+        self._seed_phase_b_run("rb-2")
+        r = self.client.get("/api/agent/refonte/proposition/rb-2/simulation?profile=test_p")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertEqual(d["summary"]["n_files"], 100)
+        self.assertEqual(d["summary"]["n_moving"], 30)
+        # 2 lignes "changed=True" dans le CSV
+        self.assertEqual(d["n_moves_total"], 2)
+        self.assertEqual(len(d["sample_moves"]), 2)
+        # La première move doit être a.pdf
+        self.assertEqual(d["sample_moves"][0]["rel_path"], "a.pdf")
+
+    def test_simulation_endpoint_404_for_phase_a_run(self):
+        """Un run Phase A (sans simulation/) → 404."""
+        rundir = self.tmp / "profiles" / "test_p" / ".cache" / "refonte" / "ra-1"
+        rundir.mkdir(parents=True)
+        (rundir / "status.json").write_text(json.dumps({
+            "run_id": "ra-1", "profile": "test_p", "phase": "A", "status": "done",
+        }))
+        r = self.client.get("/api/agent/refonte/proposition/ra-1/simulation?profile=test_p")
+        self.assertEqual(r.status_code, 404)
+
+    def test_get_status_injects_rationale_md_for_phase_b(self):
+        """GET /api/agent/refonte/diagnostic/<run_id> sur un run Phase B done
+        doit injecter rationale_md (pas report_md)."""
+        self._seed_phase_b_run("rb-3", with_simulation=False)
+        r = self.client.get("/api/agent/refonte/diagnostic/rb-3?profile=test_p")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["phase"], "B")
+        self.assertIn("rationale_md", body)
+        self.assertIn("Refonte taxonomy", body["rationale_md"])
+        self.assertNotIn("report_md", body)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2350,6 +2350,32 @@ async def api_agent_refonte_runs(profile: str, limit: int = 20):
 # ──────────── Phase B : Proposition ────────────
 
 
+@app.get("/api/agent/refonte/proposition/{run_id}/tree-diff")
+async def api_agent_refonte_tree_diff(run_id: str, profile: str):
+    """Diff visuel du tree.yaml courant vs tree-proposed.yaml du run B."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    diff = agent_refonte.get_proposition_tree_diff(profile, run_id)
+    return JSONResponse(diff)
+
+
+@app.get("/api/agent/refonte/proposition/{run_id}/simulation")
+async def api_agent_refonte_simulation(run_id: str, profile: str, sample_limit: int = 50):
+    """Lit le simulation-summary.json + N premières lignes de la projection CSV."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    sample_limit = max(1, min(int(sample_limit), 500))
+    result = agent_refonte.get_proposition_simulation(profile, run_id, sample_limit=sample_limit)
+    if result is None:
+        return JSONResponse(
+            {"error": f"simulation not found for run {run_id} (probably Phase A run, or simulation failed)"},
+            status_code=404,
+        )
+    return JSONResponse(result)
+
+
 @app.post("/api/agent/refonte/proposition")
 async def api_agent_refonte_proposition_start(request: Request):
     """Démarre un run Phase B basé sur un diagnostic Phase A existant.

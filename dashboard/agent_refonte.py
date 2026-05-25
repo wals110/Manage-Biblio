@@ -113,23 +113,167 @@ def start_diagnostic(profile: str, max_llm_calls: int = 5) -> dict[str, Any]:
 
 
 def get_status(profile: str, run_id: str) -> dict[str, Any] | None:
-    """Lit le status d'un run + injecte le contenu du report si disponible.
+    """Lit le status d'un run + injecte le contenu pertinent si disponible.
+
+    Pour les runs **Phase A** (diagnostic) `done` : injecte `report_md`.
+    Pour les runs **Phase B** (proposition) `done` : injecte `rationale_md`
+    (le markdown de `refonte-rationale.md`). Les artefacts plus volumineux
+    (tree-diff, simulation CSV) sont exposés par des endpoints dédiés pour
+    éviter de gonfler le payload de polling.
 
     Returns:
-        Dict avec les clés de status.json + clé `report_md` si status=="done".
-        None si le run est introuvable.
+        Dict avec les clés de status.json + clés `report_md` ou `rationale_md`
+        selon le contexte. None si le run est introuvable.
     """
     status = _read_status(profile, run_id)
     if status is None:
         return None
     if status.get("status") == "done":
-        rpath = _report_path(profile, run_id)
-        if rpath.exists():
-            try:
-                status["report_md"] = rpath.read_text(encoding="utf-8")
-            except OSError:
-                status["report_md"] = ""
+        phase = status.get("phase", "A")
+        if phase == "B":
+            rationale_path = _proposal_rationale_path(profile, run_id)
+            if rationale_path and rationale_path.exists():
+                try:
+                    status["rationale_md"] = rationale_path.read_text(encoding="utf-8")
+                except OSError:
+                    status["rationale_md"] = ""
+        else:
+            rpath = _report_path(profile, run_id)
+            if rpath.exists():
+                try:
+                    status["report_md"] = rpath.read_text(encoding="utf-8")
+                except OSError:
+                    status["report_md"] = ""
     return status
+
+
+def _proposal_rationale_path(profile: str, run_id: str) -> Path | None:
+    """Chemin attendu du refonte-rationale.md pour un run Phase B."""
+    p = _run_dir(profile, run_id) / "proposed" / "refonte-rationale.md"
+    return p
+
+
+def get_proposition_tree_diff(profile: str, run_id: str) -> dict[str, Any]:
+    """Compare tree.yaml courant et tree-proposed.yaml du run B.
+
+    Returns:
+        {
+            "added": list[str],     # dossiers présents en proposed mais pas en current
+            "removed": list[str],   # absents en proposed mais en current
+            "renamed": list[{old, new, rationale}],  # depuis changes.json
+            "fused": list[{sources, target, rationale}],  # depuis changes.json
+            "n_folders_before": int,
+            "n_folders_after": int,
+        }
+    """
+    import yaml as _yaml
+    proposed_dir = _run_dir(profile, run_id) / "proposed"
+    tree_proposed = proposed_dir / "tree-proposed.yaml"
+    changes_json = proposed_dir / "changes.json"
+
+    # Charge tree courant via la fonction taxonomy
+    current_folders = set(tax._load_tree(profile))
+    proposed_folders: set[str] = set()
+    if tree_proposed.exists():
+        try:
+            raw = _yaml.safe_load(tree_proposed.read_text(encoding="utf-8")) or {}
+            proposed_folders = set(raw.get("folders") or [])
+        except _yaml.YAMLError:
+            proposed_folders = set()
+
+    renamed: list[dict[str, Any]] = []
+    fused: list[dict[str, Any]] = []
+    if changes_json.exists():
+        try:
+            ch = json.loads(changes_json.read_text(encoding="utf-8"))
+            renamed = [
+                {"old": r.get("old_path"), "new": r.get("new_path"),
+                 "rationale": r.get("rationale", "")}
+                for r in (ch.get("renamings") or [])
+            ]
+            fused = [
+                {"sources": f.get("sources", []), "target": f.get("target"),
+                 "rationale": f.get("rationale", "")}
+                for f in (ch.get("fusions") or [])
+            ]
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # On retire des "added/removed" les paires couvertes par renames/fusions
+    # (sinon on les double-compte côté UI).
+    rename_old = {r["old"] for r in renamed if r.get("old")}
+    rename_new = {r["new"] for r in renamed if r.get("new")}
+    fusion_sources = {s for f in fused for s in (f.get("sources") or [])}
+    fusion_targets = {f["target"] for f in fused if f.get("target")}
+
+    added = sorted(
+        f for f in (proposed_folders - current_folders)
+        if f not in rename_new and f not in fusion_targets
+    )
+    removed = sorted(
+        f for f in (current_folders - proposed_folders)
+        if f not in rename_old and f not in fusion_sources
+    )
+
+    return {
+        "added": added,
+        "removed": removed,
+        "renamed": renamed,
+        "fused": fused,
+        "n_folders_before": len(current_folders),
+        "n_folders_after": len(proposed_folders),
+    }
+
+
+def get_proposition_simulation(
+    profile: str,
+    run_id: str,
+    sample_limit: int = 50,
+) -> dict[str, Any] | None:
+    """Lit le simulation-summary.json + N lignes de la projection CSV.
+
+    Args:
+        profile: Nom du profil.
+        run_id: UUID du run Phase B.
+        sample_limit: Nombre max de lignes du CSV à inclure (par défaut 50).
+                      Le CSV complet peut faire 18k+ lignes — gardé côté serveur.
+
+    Returns:
+        {
+            "summary": dict (contenu de simulation-summary.json),
+            "sample_moves": list[dict] (jusqu'à `sample_limit` lignes où changed=True),
+            "n_moves_total": int,
+        }
+        None si la simulation n'a pas tourné (run Phase A par ex.).
+    """
+    import csv as _csv
+    sim_dir = _run_dir(profile, run_id) / "simulation"
+    summary_path = sim_dir / "simulation-summary.json"
+    csv_path = sim_dir / "reclassify-projection.csv"
+    if not summary_path.exists():
+        return None
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    moves: list[dict[str, Any]] = []
+    n_moves_total = 0
+    if csv_path.exists():
+        try:
+            with csv_path.open(encoding="utf-8", newline="") as f:
+                reader = _csv.DictReader(f)
+                for row in reader:
+                    if row.get("changed", "").lower() == "true":
+                        n_moves_total += 1
+                        if len(moves) < sample_limit:
+                            moves.append(row)
+        except (OSError, _csv.Error):
+            pass
+    return {
+        "summary": summary,
+        "sample_moves": moves,
+        "n_moves_total": n_moves_total,
+    }
 
 
 def list_runs(profile: str, limit: int = 20) -> list[dict[str, Any]]:
