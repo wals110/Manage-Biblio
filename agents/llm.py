@@ -33,7 +33,9 @@ DEFAULT_MODEL = "zai-org/GLM-4.7"  # stable + tool-use FR (2026-05-25)
 # Test rapide en cas de doute : `curl https://api.siliconflow.com/v1/models`
 # pour voir la liste live, puis vérifier que le modèle suit un prompt FR.
 DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
-DEFAULT_TIMEOUT_S = 180  # 3 min par appel LLM — write_report peut prendre 60-120s, marge pour SiliconFlow lent
+DEFAULT_TIMEOUT_S = 300  # 5 min par appel LLM — Phase B avec payload ~6k tokens
+# peut prendre >180s côté SiliconFlow quand le provider est chargé
+# (cf. run 3f290cee : timeout à 185s sur GLM-4.7 en heures de pointe).
 
 
 def get_agent_llm(

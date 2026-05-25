@@ -366,9 +366,10 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
             target = suggested_targets.get(theme)
             if target:
                 entry["target_folder_suggested"] = target
-            sample = o.get("sample_titles") or []
-            if sample:
-                entry["sample_titles"] = sample[:2]
+            # sample_titles volontairement omis : ne change pas la décision
+            # du LLM (le nom du thème suffit) et gonflait le payload de 65 %
+            # (40 k chars → 14 k chars sur top 200) ce qui poussait le 1er
+            # appel LLM B à timeout côté SiliconFlow (cf. run 3f290cee).
             orphans.append(entry)
     else:
         # Fallback : find_orphan_themes a échoué (pas de vision_cache, IO error)
