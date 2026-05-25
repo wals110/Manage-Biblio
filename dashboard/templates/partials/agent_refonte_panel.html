@@ -377,6 +377,52 @@
     const downloadBtn = document.getElementById('tax-refonte-download');
     let pollTimer = null;
     let lastProfile = null;
+
+    // Duplication assumée du helper documentée dans taxonomy_rename.js — chaque
+    // sous-onglet vit dans son IIFE, on préfère 30 lignes recopiées à un global.
+    function showConfirm({title, body, confirmLabel, cancelLabel, variant}) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('tax-confirm-modal');
+            const okBtn = document.getElementById('tax-confirm-ok');
+            const cancelBtn = document.getElementById('tax-confirm-cancel');
+            if (!modal || !okBtn || !cancelBtn) {
+                resolve(window.confirm((title || '') + '\n\n' + (body || '')));
+                return;
+            }
+            document.getElementById('tax-confirm-title').textContent = title || 'Confirmer ?';
+            document.getElementById('tax-confirm-body').textContent = body || '';
+            okBtn.textContent = confirmLabel || 'Confirmer';
+            cancelBtn.textContent = cancelLabel || 'Annuler';
+            okBtn.className = (variant === 'danger') ? 'btn-danger' : 'btn-primary';
+            modal.style.display = 'flex';
+
+            function cleanup(result) {
+                modal.style.display = 'none';
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                document.removeEventListener('keydown', onKey);
+                resolve(result);
+            }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+                if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
+            }
+            okBtn.onclick = () => cleanup(true);
+            cancelBtn.onclick = () => cleanup(false);
+            document.addEventListener('keydown', onKey);
+            setTimeout(() => okBtn.focus(), 50);
+        });
+    }
+
+    function showToast(msg, type) {
+        const t = document.getElementById('tax-toast');
+        if (!t) { console.log(msg); return; }
+        t.textContent = msg;
+        t.className = 'tax-toast ' + (type || 'info');
+        t.style.display = 'block';
+        clearTimeout(showToast._tid);
+        showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
+    }
     let currentReportMd = '';     // Pour Copy + Download
     let currentRunId = null;
     let currentRunPhase = null;   // 'A' ou 'B'
@@ -790,7 +836,15 @@
             if (delEl) {
                 delEl.addEventListener('click', async (ev) => {
                     ev.stopPropagation();
-                    if (!confirm('Supprimer le run ' + r.run_id.slice(0, 8) + ' ?')) return;
+                    const ok = await showConfirm({
+                        title: 'Supprimer ce run ?',
+                        body: 'Run ' + r.run_id.slice(0, 8) + ' (phase ' + (r.phase || 'A')
+                            + ', ' + r.status + ') et tous ses artefacts seront effacés. Action irréversible.',
+                        confirmLabel: 'Supprimer',
+                        cancelLabel: 'Annuler',
+                        variant: 'danger',
+                    });
+                    if (!ok) return;
                     try {
                         const resp = await fetch(
                             '/api/agent/refonte/runs/' + encodeURIComponent(r.run_id)
@@ -799,7 +853,7 @@
                         );
                         if (!resp.ok) {
                             const err = await resp.json().catch(() => ({}));
-                            alert('Erreur : ' + (err.error || resp.status));
+                            showToast('Erreur : ' + (err.error || resp.status), 'error');
                             return;
                         }
                         // Si on supprime le run actif → clear l'UI
@@ -811,9 +865,10 @@
                             startBtn.disabled = false;
                             updateProposeButton();
                         }
+                        showToast('Run ' + r.run_id.slice(0, 8) + ' supprimé', 'success');
                         loadRuns();
                     } catch (e) {
-                        alert('Erreur réseau : ' + e.message);
+                        showToast('Erreur réseau : ' + e.message, 'error');
                     }
                 });
             }
