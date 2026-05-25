@@ -2345,3 +2345,32 @@ async def api_agent_refonte_runs(profile: str, limit: int = 20):
     limit = max(1, min(int(limit), 100))
     runs = agent_refonte.list_runs(profile, limit=limit)
     return JSONResponse({"profile": profile, "runs": runs})
+
+
+# ──────────── Phase B : Proposition ────────────
+
+
+@app.post("/api/agent/refonte/proposition")
+async def api_agent_refonte_proposition_start(request: Request):
+    """Démarre un run Phase B basé sur un diagnostic Phase A existant.
+
+    Body: {profile, diagnostic_run_id, max_llm_calls?}.
+    """
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    diagnostic_run_id = (body.get("diagnostic_run_id") or "").strip()
+    max_llm_calls = int(body.get("max_llm_calls") or 8)
+    if max_llm_calls < 1 or max_llm_calls > 20:
+        return JSONResponse({"error": "max_llm_calls must be between 1 and 20"}, status_code=400)
+    try:
+        result = agent_refonte.start_proposition(
+            profile=profile,
+            diagnostic_run_id=diagnostic_run_id,
+            max_llm_calls=max_llm_calls,
+        )
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
