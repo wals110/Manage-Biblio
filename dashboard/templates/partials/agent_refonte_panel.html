@@ -15,6 +15,11 @@
                 <span class="tax-refonte-start-icon">🚀</span>
                 <span>Lancer le diagnostic</span>
             </button>
+            <button id="tax-refonte-propose" class="tax-refonte-propose-btn" disabled
+                    title="Sélectionne un diagnostic 'done' à gauche pour activer">
+                <span class="tax-refonte-start-icon">🔧</span>
+                <span>Proposer une refonte</span>
+            </button>
             <div class="tax-refonte-budget-field">
                 <label for="tax-refonte-budget" class="filter-label">Budget LLM</label>
                 <input type="number" id="tax-refonte-budget" value="5" min="1" max="20">
@@ -109,7 +114,110 @@
     opacity: 0.55;
     cursor: wait;
 }
+.tax-refonte-propose-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.05s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tax-refonte-propose-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.35);
+}
+.tax-refonte-propose-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: linear-gradient(180deg, #555 0%, #444 100%);
+}
 .tax-refonte-start-icon { font-size: 16px; }
+/* ─── Phase B : onglets internes Rationale / Diff / Impact ──────────── */
+.tax-refonte-phaseb-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.tax-refonte-phaseb-tab {
+    padding: 6px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+.tax-refonte-phaseb-tab.active {
+    color: var(--text-primary, inherit);
+    border-bottom-color: #8b5cf6;
+}
+.tax-refonte-phaseb-pane { display: none; }
+.tax-refonte-phaseb-pane.active { display: block; }
+/* Diff tree */
+.tax-refonte-diff-section {
+    margin-bottom: 16px;
+}
+.tax-refonte-diff-section h4 { margin: 0 0 6px; font-size: 13px; }
+.tax-refonte-diff-item {
+    padding: 4px 10px;
+    margin: 3px 0;
+    border-left: 3px solid;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    border-radius: 3px;
+}
+.tax-refonte-diff-add    { border-left-color: #22c55e; background: rgba(34,197,94,.08); }
+.tax-refonte-diff-remove { border-left-color: #ef4444; background: rgba(239,68,68,.08); }
+.tax-refonte-diff-rename { border-left-color: #f59e0b; background: rgba(245,158,11,.08); }
+.tax-refonte-diff-fusion { border-left-color: #8b5cf6; background: rgba(139,92,246,.08); }
+/* Simulation impact */
+.tax-refonte-stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 8px 0 14px;
+}
+.tax-refonte-stat-card {
+    padding: 10px 12px;
+    background: var(--bg-tertiary, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-align: center;
+}
+.tax-refonte-stat-card .num {
+    font-size: 1.6em;
+    font-weight: 600;
+    color: var(--text-primary, inherit);
+}
+.tax-refonte-stat-card .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.tax-refonte-impact-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.tax-refonte-impact-table th,
+.tax-refonte-impact-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+.tax-refonte-impact-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+}
 .tax-refonte-budget-field {
     display: flex;
     align-items: center;
@@ -242,6 +350,7 @@
 (function() {
     // ─── Module local API exposée pour intégration Taxonomie ─────────────
     const startBtn = document.getElementById('tax-refonte-start');
+    const proposeBtn = document.getElementById('tax-refonte-propose');
     const budgetInput = document.getElementById('tax-refonte-budget');
     const runsEl = document.getElementById('tax-refonte-runs');
     const statusEl = document.getElementById('tax-refonte-status');
@@ -252,6 +361,11 @@
     let lastProfile = null;
     let currentReportMd = '';     // Pour Copy + Download
     let currentRunId = null;
+    let currentRunPhase = null;   // 'A' ou 'B'
+    // Map run_id → phase + status pour pouvoir activer/désactiver le bouton
+    // "Proposer une refonte" et utiliser le bon ID comme diagnostic_run_id
+    // quand on lance une Phase B.
+    let runsIndex = {};
 
     // ─── Markdown rendering + post-processing UI ─────────────────────────
     function priorityFor(h3text) {
@@ -262,6 +376,251 @@
         if (/doublon|jaccard|s[ée]mantique/.test(t)) return 'low';
         return 'info';
     }
+
+    // ─── Rendu Phase B (multi-onglets Rationale / Diff / Impact) ─────────
+
+    function renderPhaseBReport(runId, status) {
+        const rationaleMd = status.rationale_md || '';
+        const profile = currentProfile();
+        // Vue 3 onglets dans la zone Rapport, lazy-load des contenus Diff +
+        // Impact au clic (les requêtes peuvent être lourdes sur 18k fichiers).
+        reportEl.innerHTML =
+            '<div class="tax-refonte-phaseb-tabs" role="tablist">'
+          + '  <button class="tax-refonte-phaseb-tab active" data-pane="rationale">📋 Rationale</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="diff">🌳 Diff tree</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="impact">📊 Impact reclassify</button>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane active" data-pane="rationale">'
+          + '  <div class="tax-refonte-md" id="tax-refonte-rationale-md"></div>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="diff">'
+          + '  <p class="muted small">Chargement du diff…</p>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="impact">'
+          + '  <p class="muted small">Chargement de la projection…</p>'
+          + '</div>';
+        // Rationale rendu inline
+        const rationaleEl = document.getElementById('tax-refonte-rationale-md');
+        if (window.marked && rationaleMd) {
+            rationaleEl.innerHTML = window.marked.parse(rationaleMd);
+        } else {
+            rationaleEl.textContent = rationaleMd || '(rationale vide)';
+        }
+        currentReportMd = rationaleMd;  // Copy/download retourne le rationale
+        updateActionButtons(!!rationaleMd);
+
+        // Bind tabs : lazy load au clic
+        const tabs = reportEl.querySelectorAll('.tax-refonte-phaseb-tab');
+        const panes = reportEl.querySelectorAll('.tax-refonte-phaseb-pane');
+        let diffLoaded = false, impactLoaded = false;
+        tabs.forEach(t => {
+            t.addEventListener('click', () => {
+                tabs.forEach(x => x.classList.remove('active'));
+                panes.forEach(x => x.classList.remove('active'));
+                t.classList.add('active');
+                const name = t.dataset.pane;
+                const pane = reportEl.querySelector('.tax-refonte-phaseb-pane[data-pane="' + name + '"]');
+                pane.classList.add('active');
+                if (name === 'diff' && !diffLoaded) {
+                    diffLoaded = true;
+                    loadTreeDiff(runId, profile, pane);
+                } else if (name === 'impact' && !impactLoaded) {
+                    impactLoaded = true;
+                    loadSimulation(runId, profile, pane);
+                }
+            });
+        });
+    }
+
+    async function loadTreeDiff(runId, profile, pane) {
+        try {
+            const r = await fetch('/api/agent/refonte/proposition/' + runId
+                                  + '/tree-diff?profile=' + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const d = await r.json();
+            renderTreeDiff(d, pane);
+        } catch (err) {
+            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
+                           + err.message + '</p>';
+        }
+    }
+
+    function renderTreeDiff(d, pane) {
+        const parts = [];
+        parts.push('<p class="muted small">'
+          + d.n_folders_before + ' dossiers → ' + d.n_folders_after + ' après refonte</p>');
+        if (d.added && d.added.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#22c55e;">+ Créés (' + d.added.length + ')</h4>');
+            for (const f of d.added) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-add">'
+                  + '+ ' + escapeHtml(f) + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (d.removed && d.removed.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#ef4444;">− Supprimés (' + d.removed.length + ')</h4>');
+            for (const f of d.removed) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-remove">'
+                  + '− ' + escapeHtml(f) + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (d.renamed && d.renamed.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#f59e0b;">↻ Renommés (' + d.renamed.length + ')</h4>');
+            for (const r of d.renamed) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-rename">'
+                  + escapeHtml(r.old) + ' → ' + escapeHtml(r.new)
+                  + (r.rationale ? '<div class="muted small">' + escapeHtml(r.rationale) + '</div>' : '')
+                  + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (d.fused && d.fused.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#8b5cf6;">⇆ Fusions (' + d.fused.length + ')</h4>');
+            for (const f of d.fused) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-fusion">'
+                  + (f.sources || []).map(escapeHtml).join(' + ') + ' → ' + escapeHtml(f.target)
+                  + (f.rationale ? '<div class="muted small">' + escapeHtml(f.rationale) + '</div>' : '')
+                  + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (parts.length <= 1) {
+            parts.push('<p class="muted">Aucun changement structurel — uniquement des mappings ajoutés.</p>');
+        }
+        pane.innerHTML = parts.join('\n');
+    }
+
+    async function loadSimulation(runId, profile, pane) {
+        try {
+            const r = await fetch('/api/agent/refonte/proposition/' + runId
+                                  + '/simulation?profile=' + encodeURIComponent(profile));
+            if (!r.ok) {
+                if (r.status === 404) {
+                    pane.innerHTML = '<p class="muted">Pas de simulation disponible pour ce run.</p>';
+                    return;
+                }
+                throw new Error('HTTP ' + r.status);
+            }
+            const d = await r.json();
+            renderSimulation(d, pane);
+        } catch (err) {
+            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
+                           + err.message + '</p>';
+        }
+    }
+
+    function renderSimulation(d, pane) {
+        const s = d.summary || {};
+        const cards = [
+            { label: 'Fichiers', num: s.n_files || 0 },
+            { label: 'Déplacés', num: s.n_moving || 0 },
+            { label: 'Stables', num: s.n_stable || 0 },
+            { label: 'Non prédits', num: s.n_no_prediction || 0 },
+        ];
+        const cardsHtml = cards.map(c =>
+            '<div class="tax-refonte-stat-card">'
+          + '  <div class="num">' + c.num + '</div>'
+          + '  <div class="label">' + c.label + '</div>'
+          + '</div>'
+        ).join('');
+
+        let topDest = '';
+        if (s.top_destinations && s.top_destinations.length) {
+            topDest = '<h4 style="margin-top:14px;">Top dossiers cibles (entrants)</h4>'
+                    + '<table class="tax-refonte-impact-table">'
+                    + '<thead><tr><th>Dossier</th><th style="text-align:right;">N entrants</th></tr></thead>'
+                    + '<tbody>'
+                    + s.top_destinations.slice(0, 10).map(d =>
+                        '<tr><td><code style="font-size:11px;">' + escapeHtml(d.folder)
+                      + '</code></td><td style="text-align:right;">' + d.n_incoming + '</td></tr>'
+                    ).join('')
+                    + '</tbody></table>';
+        }
+
+        let movesTbl = '';
+        if (d.sample_moves && d.sample_moves.length) {
+            movesTbl = '<h4 style="margin-top:14px;">Échantillon de déplacements ('
+                     + d.sample_moves.length + ' sur ' + d.n_moves_total + ')</h4>'
+                     + '<table class="tax-refonte-impact-table">'
+                     + '<thead><tr><th>Fichier</th><th>De</th><th>Vers</th></tr></thead>'
+                     + '<tbody>'
+                     + d.sample_moves.slice(0, 30).map(m =>
+                        '<tr><td title="' + escapeHtml(m.rel_path) + '">'
+                      + escapeHtml(m.rel_path.split('/').pop()) + '</td>'
+                      + '<td><code style="font-size:10px;">' + escapeHtml(m.current_folder) + '</code></td>'
+                      + '<td><code style="font-size:10px;">' + escapeHtml(m.proposed_folder) + '</code></td></tr>'
+                     ).join('')
+                     + '</tbody></table>';
+        }
+
+        pane.innerHTML =
+            '<div class="tax-refonte-stat-cards">' + cardsHtml + '</div>'
+          + topDest
+          + movesTbl;
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function updateProposeButton() {
+        // Bouton actif uniquement si on a au moins un run Phase A `done` à
+        // l'index ET un run actif (currentRunId) qui est ce Phase A done.
+        const active = currentRunId ? runsIndex[currentRunId] : null;
+        const isPhaseADone = active && active.status === 'done'
+                             && (active.phase || 'A') === 'A';
+        if (isPhaseADone) {
+            proposeBtn.disabled = false;
+            proposeBtn.title = 'Proposer une refonte basée sur le diagnostic '
+                             + currentRunId.slice(0, 8) + '…';
+        } else {
+            proposeBtn.disabled = true;
+            proposeBtn.title = 'Sélectionne un diagnostic Phase A done à gauche';
+        }
+    }
+
+    async function startProposition() {
+        if (!currentRunId) return;
+        const profile = currentProfile();
+        proposeBtn.disabled = true;
+        setStatus('Démarrage de la proposition…');
+        renderReport('');
+        try {
+            const r = await fetch('/api/agent/refonte/proposition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    profile: profile,
+                    diagnostic_run_id: currentRunId,
+                    max_llm_calls: parseInt(budgetInput.value || '8', 10) + 3,
+                }),
+            });
+            if (!r.ok) {
+                const e = await r.json();
+                throw new Error(e.error || ('HTTP ' + r.status));
+            }
+            const data = await r.json();
+            currentRunId = data.run_id;
+            currentRunPhase = 'B';
+            startBtn.disabled = true;
+            setStatus('Run B ' + data.run_id.slice(0, 8) + '… démarré');
+            pollTimer = setInterval(() => pollStatus(data.run_id), 2000);
+            loadRuns();
+        } catch (err) {
+            setStatus('Erreur : ' + err.message);
+            updateProposeButton();
+        }
+    }
+
+    proposeBtn.addEventListener('click', startProposition);
 
     function renderReport(md) {
         currentReportMd = md || '';
@@ -368,6 +727,10 @@
     }
 
     function renderRuns(runs) {
+        // Indexe les runs pour décider d'activer "Proposer une refonte"
+        runsIndex = {};
+        for (const r of runs) runsIndex[r.run_id] = r;
+        updateProposeButton();
         if (!runs.length) {
             runsEl.innerHTML = '<p class="tax-refonte-runs-empty">Aucun run pour ce profil. '
                              + 'Lance ton premier diagnostic ↑</p>';
@@ -384,9 +747,15 @@
             const llmInfo = r.llm_calls
                 ? '<span class="tax-refonte-run-meta">' + r.llm_calls + ' LLM</span>'
                 : '';
+            const phaseLabel = r.phase === 'B'
+                ? '<span class="tax-refonte-run-meta" style="background:rgba(139,92,246,0.18);'
+                + 'padding:1px 6px;border-radius:3px;color:#a78bfa;">B</span>'
+                : '<span class="tax-refonte-run-meta" style="background:rgba(79,110,242,0.18);'
+                + 'padding:1px 6px;border-radius:3px;color:#93b1ff;">A</span>';
             item.innerHTML =
                 '<div class="tax-refonte-run-head">'
               + '  <code class="tax-refonte-run-id">' + r.run_id.slice(0, 8) + '</code>'
+              + '  ' + phaseLabel
               + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
               + '</div>'
               + '<div class="tax-refonte-run-foot">'
@@ -408,6 +777,8 @@
                     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 }
                 currentRunId = r.run_id;
+                currentRunPhase = r.phase || 'A';
+                updateProposeButton();
                 pollStatus(r.run_id);
                 const stillRunning = r.status === 'running' || r.status === 'pending';
                 if (stillRunning && !pollTimer) {
@@ -452,7 +823,12 @@
                       + ' · ' + calls + '/' + max + ' appel(s) LLM' + node + elapsed);
             if (s.status === 'done') {
                 currentRunId = runId;
-                renderReport(s.report_md || '');
+                currentRunPhase = s.phase || 'A';
+                if (currentRunPhase === 'B') {
+                    renderPhaseBReport(runId, s);
+                } else {
+                    renderReport(s.report_md || '');
+                }
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
                 loadRuns();
