@@ -204,7 +204,13 @@ def _route_after_analyze(state: RefonteState) -> Literal["tools", "finalize"]:
 
 
 def _finalize_node(state: RefonteState) -> dict[str, Any]:
-    """Termine le run — vérifie qu'un proposal a bien été écrit."""
+    """Termine le run — vérifie qu'un proposal a bien été écrit + simule.
+
+    Après vérification du proposal, déclenche automatiquement
+    `simulate_reclassify(...)` pour produire le CSV de projection. Comme
+    c'est du Python pur (no LLM), c'est rapide et c'est plus simple pour
+    l'utilisateur de tout voir d'un coup.
+    """
     messages = list(state.get("messages") or [])
     # Cherche le dernier ToolMessage venant d'un appel propose_changes
     proposal_result = None
@@ -226,6 +232,22 @@ def _finalize_node(state: RefonteState) -> dict[str, Any]:
     # Récupère le proposal_dir depuis le tool result
     tree_path = proposal_result.get("tree_proposed_path", "")
     proposal_dir = str(Path(tree_path).parent) if tree_path else ""
+
+    # Simulation reclassify avec le mapping proposé (no LLM, ~5-15s sur 18k files)
+    simulation_summary: dict[str, Any] = {}
+    if proposal_dir:
+        try:
+            from agents.refonte.simulator import simulate_reclassify
+            profile = state.get("profile", "")
+            simulation_summary = simulate_reclassify(profile, proposal_dir)
+        except Exception as exc:  # pragma: no cover — best-effort
+            # La simulation n'est pas critique pour considérer la proposition
+            # produite ; on log dans le summary plutôt que d'échouer le run.
+            simulation_summary = {
+                "error": f"{type(exc).__name__}: {exc}",
+                "n_files": 0,
+            }
+
     return {
         "status": "done",
         "proposal_dir": proposal_dir,
@@ -237,6 +259,7 @@ def _finalize_node(state: RefonteState) -> dict[str, Any]:
             "n_folders_after": proposal_result.get("n_folders_after", 0),
             "n_mappings_after": proposal_result.get("n_mappings_after", 0),
         },
+        "simulation_summary": simulation_summary,
     }
 
 
