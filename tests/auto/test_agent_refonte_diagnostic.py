@@ -108,27 +108,26 @@ class _GraphTestBase(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
+_LONG_REPORT = (
+    "# Diagnostic taxonomy — profil test_p\n\n"
+    "## Stats globales\n"
+    "- 2 dossiers, 1 mapping, 0 fichier classé\n"
+    "- Tests fixtures minimales\n\n"
+    "## Anomalies détectées\n\n"
+    "### Mappings manquants critiques (0 cas)\n"
+    "- (non applicable sur fixtures de test)\n\n"
+    "## Recommandations\n"
+    "- Aucune action requise sur ce profil de test."
+)
+
+
 class TestDiagnosticGraph(_GraphTestBase):
-    def test_no_tool_call_routes_to_write_report(self):
-        """LLM répond direct sans tool → on saute à write_report."""
-        fake = _FakeLLM([
-            AIMessage(content="J'estime que la taxonomie est OK."),  # explore
-            AIMessage(content="# Diagnostic\nRien à signaler."),     # write_report
-        ])
-        graph = build_diagnostic_graph(llm=fake, max_llm_calls=5)
-        result = graph.invoke({"profile": "test_p"})
-
-        self.assertEqual(result["status"], "done")
-        self.assertEqual(result["phase"], "A")
-        self.assertIn("Diagnostic", result["report"])
-        self.assertEqual(len(fake.invocations), 2)  # explore + write_report
-
     def test_react_loop_calls_tool_then_reports(self):
         """LLM appelle 1 tool puis termine → ReAct: explore → tools → explore → report."""
         fake = _FakeLLM([
             _ai_tool_call("list_folders", {"profile": "test_p"}),    # 1er explore : tool call
             AIMessage(content="Vu, taxonomie correcte."),            # 2e explore : no tool call
-            AIMessage(content="# Diagnostic\nProfil = test_p."),     # write_report
+            AIMessage(content=_LONG_REPORT),                          # write_report (long ok)
         ])
         graph = build_diagnostic_graph(llm=fake, max_llm_calls=5)
         result = graph.invoke({"profile": "test_p"})
@@ -140,6 +139,34 @@ class TestDiagnosticGraph(_GraphTestBase):
         # Le contenu doit ressembler à la liste des folders
         self.assertIn("A", tool_messages[0].content)
 
+    def test_safeguard_no_tool_calls_returns_error(self):
+        """Si le LLM ne fait AUCUN tool call, write_report → status=error (pas done garbage).
+
+        Bug observé en prod 2026-05-25 : un LLM qui se contente de répondre
+        "Commence maintenant." sans tool_call atterrissait sur write_report
+        avec un rapport vide marqué done — induisait en erreur l'utilisateur.
+        """
+        fake = _FakeLLM([
+            AIMessage(content="J'estime que la taxonomie est OK."),  # explore (no tool call)
+            # write_report n'est même pas appelé car la garde court-circuite
+        ])
+        graph = build_diagnostic_graph(llm=fake, max_llm_calls=5)
+        result = graph.invoke({"profile": "test_p"})
+        self.assertEqual(result["status"], "error")
+        self.assertIn("aucun outil", result["error"].lower())
+
+    def test_safeguard_short_report_returns_error(self):
+        """Si write_report retourne un texte trop court (<200 chars) → error."""
+        fake = _FakeLLM([
+            _ai_tool_call("list_folders", {"profile": "test_p"}),    # explore avec tool
+            AIMessage(content="OK"),                                  # explore conclusion
+            AIMessage(content="# Diagnostic\nRien."),                 # write_report TROP COURT
+        ])
+        graph = build_diagnostic_graph(llm=fake, max_llm_calls=5)
+        result = graph.invoke({"profile": "test_p"})
+        self.assertEqual(result["status"], "error")
+        self.assertIn("trop court", result["error"].lower())
+
     def test_budget_enforced_stop_message_injected(self):
         """Au-delà de max_llm_calls, le stop_msg force la conclusion."""
         # On simule 3 calls explore qui réclament un tool, avec budget=2
@@ -149,7 +176,7 @@ class TestDiagnosticGraph(_GraphTestBase):
             # 3e explore : on est au-delà du budget, stop_msg injecté ;
             # le LLM doit répondre sans tool_call
             AIMessage(content="OK je conclus."),
-            AIMessage(content="# Diagnostic\nrapport partiel."),
+            AIMessage(content=_LONG_REPORT),
         ])
         graph = build_diagnostic_graph(llm=fake, max_llm_calls=2)
         result = graph.invoke({"profile": "test_p"})

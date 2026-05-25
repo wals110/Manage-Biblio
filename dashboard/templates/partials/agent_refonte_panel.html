@@ -343,7 +343,24 @@
                                   + encodeURIComponent(profile));
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const data = await r.json();
-            renderRuns(data.runs || []);
+            const runs = data.runs || [];
+            renderRuns(runs);
+            // Auto-reprise du polling si un run est en cours (running/pending) et
+            // qu'on n'a pas déjà un pollTimer actif. Couvre les cas :
+            //   - reload de la page pendant qu'un run tournait
+            //   - changement d'onglet sidebar puis retour sur Taxonomie
+            //   - première ouverture du sous-onglet Refonte
+            if (!pollTimer) {
+                const active = runs.find(r => r.status === 'running' || r.status === 'pending');
+                if (active) {
+                    currentRunId = active.run_id;
+                    startBtn.disabled = true;
+                    setStatus('Reprise du suivi du run ' + active.run_id.slice(0, 8) + '…');
+                    // Premier poll immédiat puis interval 2s
+                    pollStatus(active.run_id);
+                    pollTimer = setInterval(() => pollStatus(active.run_id), 2000);
+                }
+            }
         } catch (err) {
             runsEl.innerHTML = '<p class="muted small">'
                              + 'Erreur de chargement : ' + err.message + '</p>';
@@ -380,7 +397,20 @@
                 runsEl.querySelectorAll('.tax-refonte-run-item.active')
                       .forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
+                // Si on poll un autre run, on arrête (le user veut voir
+                // celui-ci maintenant). Si le run cliqué est lui-même en
+                // cours, on (re)démarre le polling dessus.
+                if (pollTimer && currentRunId !== r.run_id) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+                currentRunId = r.run_id;
                 pollStatus(r.run_id);
+                const stillRunning = r.status === 'running' || r.status === 'pending';
+                if (stillRunning && !pollTimer) {
+                    pollTimer = setInterval(() => pollStatus(r.run_id), 2000);
+                    startBtn.disabled = true;
+                }
             });
             runsEl.appendChild(item);
         }
@@ -487,17 +517,35 @@
         });
     }
 
+    // ─── Page Visibility API : forcer un poll au retour foreground ───────
+    // Les navigateurs throttlent setInterval quand l'onglet est en arrière-
+    // plan (jusqu'à ~1 min entre tirs au lieu de 2s). Au retour, on déclenche
+    // immédiatement un poll pour rattraper le retard d'affichage.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            if (pollTimer && currentRunId) {
+                pollStatus(currentRunId);
+            } else {
+                // Pas de polling en cours mais peut-être qu'un run a été
+                // démarré ailleurs (autre onglet du navigateur, CLI smoke
+                // script, etc.) — recharger la liste détecte ça via le hook
+                // d'auto-reprise dans loadRuns().
+                loadRuns();
+            }
+        }
+    });
+
     // Expose pour activation paresseuse depuis activateSubtab() de taxonomy_rename.js
     window.taxRefontePanel = {
         activate: () => loadRuns(),
         refresh: () => loadRuns(),
     };
 
-    // Chargement initial : si on est sur la page standalone (taxonomy.html ne nous
-    // affiche que sur clic), on charge tout de suite. Sinon attendre l'activation.
-    const inTaxonomyPage = !!document.querySelector('.tax-view-refonte');
-    if (!inTaxonomyPage) {
-        loadRuns();
-    }
+    // Chargement initial : on appelle toujours loadRuns() pour détecter
+    // d'éventuels runs en cours (auto-reprise du polling). Pour la page
+    // standalone /agent/refonte c'est de toute façon attendu, pour le
+    // sous-onglet Taxonomie ça permet de reprendre un run lancé avant
+    // un reload de page.
+    loadRuns();
 })();
 </script>

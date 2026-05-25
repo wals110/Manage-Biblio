@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -142,11 +142,18 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
         "llm_calls": 0,
         "messages": [
             SystemMessage(content=SYSTEM_PROMPT),
-            # Message utilisateur factice qui pose la question
-            AIMessage(
+            # Demande utilisateur : c'est important que ce soit un HumanMessage
+            # (pas un AIMessage). Si on met un AIMessage ici, le LLM croit qu'il
+            # a déjà parlé et termine immédiatement sans appeler d'outil — on
+            # se retrouve avec un rapport vide marqué `done` (bug observé en
+            # production 2026-05-25).
+            HumanMessage(
                 content=(
-                    f"Analyse le profil `{profile}`. "
-                    "Identifie les anomalies de la taxonomie courante."
+                    f"Analyse le profil `{profile}` de Klodo. "
+                    "Démarre par list_folders, count_files_per_folder et "
+                    "find_orphan_themes(top_n=30) pour avoir la vue d'ensemble, "
+                    "puis identifie les anomalies. Termine par un rapport markdown "
+                    "complet et exhaustif."
                 ),
             ),
         ],
@@ -182,6 +189,22 @@ def _make_write_report_node(llm: BaseChatModel):
     """Nœud final : demande au LLM de structurer un rapport markdown."""
 
     def write_report(state: RefonteState) -> dict[str, Any]:
+        messages = list(state.get("messages") or [])
+        # Garde-fou : si l'agent n'a appelé AUCUN outil pendant la phase
+        # explore, on a aucun signal pour produire un rapport sérieux. Sortir
+        # en status=error plutôt que d'écrire un rapport garbage marqué done.
+        tool_results_count = sum(1 for m in messages if isinstance(m, ToolMessage))
+        if tool_results_count == 0:
+            return {
+                "status": "error",
+                "error": (
+                    "L'agent n'a appelé aucun outil pendant la phase d'exploration. "
+                    "Cela indique généralement un problème de prompt ou de modèle LLM. "
+                    "Relance le diagnostic ou essaie un autre modèle via KLODO_AGENT_MODEL."
+                ),
+                "llm_calls": state.get("llm_calls", 0),
+            }
+
         # Injecte la date courante + le nom de profil dans le prompt — le LLM
         # n'a pas la notion de "today" et hallucinerait sinon une date arbitraire.
         prompt_text = REPORT_PROMPT_TEMPLATE.format(
@@ -189,7 +212,7 @@ def _make_write_report_node(llm: BaseChatModel):
             date=datetime.now(UTC).date().isoformat(),
         )
         prompt = SystemMessage(content=prompt_text)
-        response = llm.invoke(list(state["messages"]) + [prompt])
+        response = llm.invoke(messages + [prompt])
         content = response.content if isinstance(response.content, str) else str(response.content)
         # Nettoyage minimal : strip whitespace au début, et coupe tout ce qui
         # précède le titre `# Diagnostic` au cas où le LLM répète des instructions
@@ -197,6 +220,19 @@ def _make_write_report_node(llm: BaseChatModel):
         if "# Diagnostic" in content:
             content = content[content.index("# Diagnostic"):]
         content = content.lstrip()
+        # Garde-fou 2 : rapport trop court → probable problème (LLM coupé ou perdu)
+        if len(content) < 200:
+            return {
+                "messages": [response],
+                "status": "error",
+                "error": (
+                    f"Rapport produit trop court ({len(content)} chars). "
+                    "Le LLM n'a probablement pas exploité les résultats des outils. "
+                    "Relance le diagnostic."
+                ),
+                "report": content,
+                "llm_calls": state.get("llm_calls", 0) + 1,
+            }
         return {
             "messages": [response],
             "report": content,
