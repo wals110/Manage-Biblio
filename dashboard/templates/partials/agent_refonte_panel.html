@@ -524,8 +524,12 @@
                 throw new Error(e.error || ('HTTP ' + r.status));
             }
             const data = await r.json();
+            currentRunId = data.run_id;  // Pour que loadRuns() le marque actif
             setStatus('Run ' + data.run_id.slice(0, 8) + '… démarré');
             pollTimer = setInterval(() => pollStatus(data.run_id), 2000);
+            // Refresh immédiat de la liste pour faire apparaître le nouveau
+            // run en tête (sans attendre qu'il termine).
+            loadRuns();
         } catch (err) {
             setStatus('Erreur : ' + err.message);
             startBtn.disabled = false;
