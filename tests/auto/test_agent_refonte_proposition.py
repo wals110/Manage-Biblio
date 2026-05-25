@@ -25,7 +25,9 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from agents.refonte.proposition import (  # noqa: E402
     build_proposition_graph,
+    parse_catchall_folders_from_report,
     parse_orphan_mappings_from_report,
+    parse_underutilized_folders_from_report,
 )
 from agents.refonte.proposition_tools import propose_changes  # noqa: E402
 from dashboard import data  # noqa: E402
@@ -394,6 +396,102 @@ class TestParseOrphanMappings(unittest.TestCase):
         # Ordre préservé
         self.assertEqual(result[0]["theme"], "Functional Analysis")
         self.assertEqual(result[-1]["theme"], "Software Testing")
+
+
+class TestParseUnderutilizedFolders(unittest.TestCase):
+    """Parser pour la section 'Dossiers sous-utilisés' du rapport Phase A."""
+
+    def test_parses_underutilized_section(self):
+        md = """
+### Mappings manquants critiques (1 cas)
+- **Theme1** (10 fichiers) → dossier cible évident : `A/B`
+
+### Dossiers sous-utilisés avec thèmes orphelins correspondants (3 cas)
+**02-INFORMATIQUE/03-Langages-Programmation/Python** (0 fichier) ↔ thème orphelin "python programming" (320 occurrences)
+**01-SCIENCES/MATHEMATIQUES** (0 fichier) ↔ tous les sous-dossiers sont peuplés (normal)
+**08-LOISIRS/DESSIN** (0 fichier) – aucun thème orphelin associé
+
+### Catch-all qui débordent (1 cas)
+**/Autres** (4000 fichiers) – fourre-tout
+"""
+        result = parse_underutilized_folders_from_report(md)
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0]["folder"], "02-INFORMATIQUE/03-Langages-Programmation/Python")
+        self.assertEqual(result[0]["count"], 0)
+        self.assertEqual(result[2]["folder"], "08-LOISIRS/DESSIN")
+        # Le note du 1er doit mentionner le thème orphelin
+        self.assertIn("python", result[0]["note"].lower())
+
+    def test_handles_thousands_with_spaces(self):
+        md = "### Dossiers sous-utilisés (1 cas)\n**A/B** (1 234 fichiers) – grosse note"
+        result = parse_underutilized_folders_from_report(md)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["count"], 1234)
+
+    def test_returns_empty_when_section_absent(self):
+        md = "### Une autre section\n**A** (0 fichier) – note"
+        self.assertEqual(parse_underutilized_folders_from_report(md), [])
+
+
+class TestParseCatchallFolders(unittest.TestCase):
+    """Parser pour 'Catch-all qui débordent'."""
+
+    def test_parses_catchall_section(self):
+        md = """
+### Catch-all qui débordent (2 cas)
+1. **02-INFORMATIQUE/03-Langages-Programmation/Autres** (4 489 fichiers) – contient tous les langages non spécifiques
+2. **01-SCIENCES/MATHEMATIQUES/08-Mathematiques-Generales** (2 659 fichiers) – fourre-tout mathématique
+"""
+        result = parse_catchall_folders_from_report(md)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["folder"], "02-INFORMATIQUE/03-Langages-Programmation/Autres")
+        self.assertEqual(result[0]["count"], 4489)
+        self.assertEqual(result[1]["count"], 2659)
+
+    def test_returns_empty_for_non_analysed(self):
+        md = "### Catch-all qui débordent (non analysé)\n- Pas d'analyse effectuée"
+        self.assertEqual(parse_catchall_folders_from_report(md), [])
+
+
+class TestProposeChangesWithDeletions(_ProposBase):
+    """Sémantique des deletions ajoutée en B.3-ter."""
+
+    def test_deletion_removes_folder_from_tree(self):
+        result = propose_changes(
+            profile="p", run_id="del-1",
+            deletions=[{"path": "B", "rationale": "vide, plus utile"}],
+        )
+        self.assertEqual(result["n_deletions"], 1)
+        rundir = self.tmp / "profiles" / "p" / ".cache" / "refonte" / "del-1" / "proposed"
+        folders = yaml.safe_load((rundir / "tree-proposed.yaml").read_text())["folders"]
+        # B était dans le profil de base (cf. setUp _make_profile)
+        self.assertNotIn("B", folders)
+        # A et A/Python toujours là
+        self.assertIn("A", folders)
+        self.assertIn("A/Python", folders)
+
+    def test_deletion_drops_mappings_pointing_to_deleted_folder(self):
+        """Si on supprime B, le mapping 'data: B' doit disparaître."""
+        propose_changes(
+            profile="p", run_id="del-2",
+            deletions=[{"path": "B", "rationale": "vide"}],
+        )
+        rundir = self.tmp / "profiles" / "p" / ".cache" / "refonte" / "del-2" / "proposed"
+        mapping = yaml.safe_load((rundir / "theme_mapping-proposed.yaml").read_text())
+        # "data" pointait sur B → drop
+        self.assertNotIn("data", mapping)
+        # "python programming" pointait sur A/Python → toujours là
+        self.assertEqual(mapping["python programming"], "A/Python")
+
+    def test_rationale_md_includes_deletions_section(self):
+        propose_changes(
+            profile="p", run_id="del-3",
+            deletions=[{"path": "Z", "rationale": "à supprimer"}],
+        )
+        rationale = (self.tmp / "profiles" / "p" / ".cache" / "refonte" / "del-3"
+                     / "proposed" / "refonte-rationale.md").read_text()
+        self.assertIn("SUPPRESSIONS (1)", rationale)
+        self.assertIn("Z", rationale)
 
 
 if __name__ == "__main__":
