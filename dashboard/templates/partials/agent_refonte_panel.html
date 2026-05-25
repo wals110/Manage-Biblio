@@ -874,15 +874,17 @@
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
             } else {
-                // status="running" ou "pending" — pas de rapport disponible
-                // encore. Afficher un placeholder explicite plutôt que de
-                // laisser un éventuel contenu fantôme d'un run précédent.
-                // (Évite l'illusion "Commence maintenant." sur un autre run.)
-                if (!currentReportMd) {
-                    reportEl.innerHTML = '<p class="muted" style="font-style:italic;">'
-                                       + 'Diagnostic en cours — le rapport apparaîtra '
-                                       + 'ici quand le run se termine.</p>';
-                }
+                // status="running" ou "pending" — afficher le placeholder
+                // INCONDITIONNELLEMENT. La condition `if (!currentReportMd)`
+                // précédente laissait passer le contenu d'un autre run (par
+                // ex. le rapport A reste affiché alors qu'on poll un run B
+                // running, observé 2026-05-25).
+                const phaseLabel = (s.phase === 'B') ? 'Proposition' : 'Diagnostic';
+                reportEl.innerHTML = '<p class="muted" style="font-style:italic;">'
+                                   + phaseLabel + ' en cours — le rapport apparaîtra '
+                                   + 'ici quand le run se termine.</p>';
+                currentReportMd = '';
+                updateActionButtons(false);
             }
         } catch (err) {
             console.error('poll error', err);

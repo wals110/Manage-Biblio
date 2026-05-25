@@ -23,7 +23,10 @@ from langchain_core.messages import AIMessage, ToolMessage
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
-from agents.refonte.proposition import build_proposition_graph  # noqa: E402
+from agents.refonte.proposition import (  # noqa: E402
+    build_proposition_graph,
+    parse_orphan_mappings_from_report,
+)
 from agents.refonte.proposition_tools import propose_changes  # noqa: E402
 from dashboard import data  # noqa: E402
 from dashboard import taxonomy as tax
@@ -309,6 +312,88 @@ class TestStartProposition(_ProposBase):
             status = agent_refonte.get_status("p", result["run_id"])
             self.assertEqual(status["status"], "done")
             self.assertEqual(status["proposal_summary"]["n_creations"], 1)
+
+
+class TestParseOrphanMappings(unittest.TestCase):
+    """Parser d'orphan mappings depuis le rapport Phase A — alimente
+    le HumanMessage de Phase B avec un JSON pré-extrait."""
+
+    def test_parses_standard_format(self):
+        md = """
+# Diagnostic taxonomy — profil `default` — 2026-05-25
+
+## Anomalies détectées (par priorité)
+
+### Mappings manquants critiques (30 cas)
+- **Functional Analysis** (176 fichiers) → dossier cible évident : `01-SCIENCES/MATHEMATIQUES/02-Analyse`
+- **Complex Analysis** (114 fichiers) → dossier cible évident : `01-SCIENCES/MATHEMATIQUES/02-Analyse`
+- **Pattern Recognition** (114 fichiers) → dossier cible évident : `02-INFORMATIQUE/05-IA-ML/Machine-Learning`
+"""
+        result = parse_orphan_mappings_from_report(md)
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0]["theme"], "Functional Analysis")
+        self.assertEqual(result[0]["count"], 176)
+        self.assertEqual(result[0]["target_folder"], "01-SCIENCES/MATHEMATIQUES/02-Analyse")
+        self.assertEqual(result[2]["theme"], "Pattern Recognition")
+        self.assertEqual(result[2]["target_folder"], "02-INFORMATIQUE/05-IA-ML/Machine-Learning")
+
+    def test_handles_variants_in_separators(self):
+        """Le parser tolère 'dossier cible :' au lieu de 'dossier cible évident :'."""
+        md = (
+            "- **Theme1** (50 fichiers) → dossier cible : `A/B`\n"
+            "- **Theme2** (10 fichiers) → dossier cible évident : `C/D`\n"
+            # Lignes sans count ne matchent pas
+            "- **Theme3** truc sans count\n"
+        )
+        result = parse_orphan_mappings_from_report(md)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["theme"], "Theme1")
+        self.assertEqual(result[1]["theme"], "Theme2")
+
+    def test_strips_backticks_from_target(self):
+        md = "- **X** (5 fichiers) → dossier cible évident : `A/B/C`"
+        result = parse_orphan_mappings_from_report(md)
+        self.assertEqual(result[0]["target_folder"], "A/B/C")
+
+    def test_works_without_backticks(self):
+        md = "- **X** (5 fichiers) → dossier cible évident : A/B/C"
+        result = parse_orphan_mappings_from_report(md)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["target_folder"], "A/B/C")
+
+    def test_returns_empty_on_no_match(self):
+        self.assertEqual(parse_orphan_mappings_from_report(""), [])
+        self.assertEqual(parse_orphan_mappings_from_report("rapport vide sans liste"), [])
+
+    def test_picks_only_well_formed_lines(self):
+        """Lignes mal formées (manque arrow, manque count, etc.) sont ignorées."""
+        md = (
+            "Cette ligne **Theme** n'a pas d'arrow.\n"
+            "- **Good** (100 fichiers) → cible : `Path/A`\n"
+            "Un texte sans bullet ni format **Bad** → essayer.\n"
+        )
+        result = parse_orphan_mappings_from_report(md)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["theme"], "Good")
+
+    def test_parses_30_realistic_orphans(self):
+        """Sanity check sur un rapport simulé proche du vrai format de prod."""
+        lines = ["### Mappings manquants critiques (30 cas)"]
+        for i, (theme, count) in enumerate([
+            ("Functional Analysis", 176), ("Complex Analysis", 114),
+            ("Pattern Recognition", 114), ("Group Theory", 112),
+            ("Real Analysis", 93), ("Materials Science", 78),
+            ("Optimization", 76), ("Penetration Testing", 73),
+            ("Combinatorics", 69), ("Software Testing", 69),
+        ]):
+            lines.append(
+                f"- **{theme}** ({count} fichiers) → dossier cible évident : `01-SCIENCES/FOO`"
+            )
+        result = parse_orphan_mappings_from_report("\n".join(lines))
+        self.assertEqual(len(result), 10)
+        # Ordre préservé
+        self.assertEqual(result[0]["theme"], "Functional Analysis")
+        self.assertEqual(result[-1]["theme"], "Software Testing")
 
 
 if __name__ == "__main__":
