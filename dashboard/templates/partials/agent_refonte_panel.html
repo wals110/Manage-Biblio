@@ -457,9 +457,27 @@
                 startBtn.disabled = false;
                 loadRuns();
             } else if (s.status === 'error') {
+                const err = s.error || '(inconnu)';
+                let hint = '';
+                if (/APIConnectionError|Connection error|timeout/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Possible souci côté <strong>SiliconFlow</strong>. '
+                         + 'Réessaie dans quelques minutes, ou bascule sur un autre '
+                         + 'modèle via la variable d\'env <code>KLODO_AGENT_MODEL</code> '
+                         + '(ex. <code>zai-org/GLM-4.6</code>, <code>Qwen/Qwen3-235B</code>) '
+                         + 'et relance le dashboard.</p>';
+                } else if (/aucun outil/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle LLM n\'a pas exploité les outils. '
+                         + 'Relance le diagnostic — sinon essaie un autre modèle.</p>';
+                } else if (/trop court/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle a coupé prématurément. Relance le '
+                         + 'diagnostic ou augmente le budget LLM.</p>';
+                }
                 reportEl.innerHTML = '<p style="color:#ef4444;">'
-                                   + '<strong>ERREUR :</strong> '
-                                   + (s.error || '(inconnu)') + '</p>';
+                                   + '<strong>ERREUR :</strong> ' + err + '</p>'
+                                   + hint;
                 currentReportMd = '';
                 updateActionButtons(false);
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
