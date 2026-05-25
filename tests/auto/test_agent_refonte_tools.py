@@ -289,5 +289,102 @@ class TestGetClassifierBreakdown(unittest.TestCase):
         self.assertEqual(r["by_source"]["LLM (theme→N3-refined)"], 1)
 
 
+class TestListVisionThemes(_ProfileTestBase):
+    """list_vision_themes : agrège les thèmes observés depuis vision_cache.json."""
+
+    def _make_cache(self, entries: list[dict]) -> None:
+        """Helper : écrit un vision_cache.json minimal sous le profil 'p'."""
+        import json
+        cache_dir = self.profiles_root / "p" / ".cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache: dict = {}
+        for i, e in enumerate(entries):
+            cache[f"k{i:031d}"] = {
+                "result": e,
+                "model": "test",
+                "prompt_version": "v1",
+                "cached_at": "2026-05-25T00:00:00",
+            }
+        (cache_dir / "vision_cache.json").write_text(json.dumps(cache))
+
+    def test_returns_themes_sorted_desc(self):
+        _make_profile(self.profiles_root / "p", target=self.target,
+                      tree_folders=["A"], mapping={"python": "A"})
+        # 3 fichiers Python, 1 java, 5 rust
+        entries = (
+            [{"title": "Pro Python", "theme": "python", "confidence": 0.9}] * 3
+            + [{"title": "Java Pro", "theme": "java", "confidence": 0.9}]
+            + [{"title": "Rust", "theme": "rust", "confidence": 0.9}] * 5
+        )
+        self._make_cache(entries)
+        result = tools.list_vision_themes("p", top_n=10)
+        # Tri desc par count : rust (5) > python (3) > java (1)
+        self.assertGreaterEqual(len(result), 3)
+        self.assertEqual(result[0]["theme"], "rust")
+        self.assertEqual(result[0]["count"], 5)
+        # python est mappé, java + rust ne le sont pas
+        python_entry = next(t for t in result if t["theme"] == "python")
+        self.assertEqual(python_entry["mapped_to"], "A")
+        self.assertFalse(python_entry["is_orphan"])
+        rust_entry = next(t for t in result if t["theme"] == "rust")
+        self.assertIsNone(rust_entry["mapped_to"])
+        self.assertTrue(rust_entry["is_orphan"])
+
+    def test_returns_empty_when_cache_missing(self):
+        _make_profile(self.profiles_root / "p", target=self.target,
+                      tree_folders=["A"], mapping={})
+        self.assertEqual(tools.list_vision_themes("p"), [])
+
+    def test_top_n_clamps_to_500(self):
+        _make_profile(self.profiles_root / "p", target=self.target,
+                      tree_folders=["A"], mapping={})
+        self._make_cache([{"title": "x", "theme": f"theme{i}", "confidence": 0.9}
+                          for i in range(3)])
+        # Demande 9999 → doit clamp à 500 (et 3 thèmes seulement existent)
+        result = tools.list_vision_themes("p", top_n=9999)
+        self.assertEqual(len(result), 3)
+
+
+class TestFindOrphanThemes(_ProfileTestBase):
+    """find_orphan_themes : sous-ensemble orphans-only de list_vision_themes."""
+
+    def _make_cache(self, entries: list[dict]) -> None:
+        import json
+        cache_dir = self.profiles_root / "p" / ".cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache: dict = {}
+        for i, e in enumerate(entries):
+            cache[f"k{i:031d}"] = {
+                "result": e, "model": "test",
+                "prompt_version": "v1", "cached_at": "2026-05-25T00:00:00",
+            }
+        (cache_dir / "vision_cache.json").write_text(json.dumps(cache))
+
+    def test_returns_only_unmapped_themes(self):
+        _make_profile(self.profiles_root / "p", target=self.target,
+                      tree_folders=["A"], mapping={"python": "A"})
+        entries = (
+            [{"title": "Py", "theme": "python", "confidence": 0.9}] * 2     # mapped
+            + [{"title": "Rs", "theme": "rust", "confidence": 0.9}] * 3      # orphan
+            + [{"title": "Go", "theme": "golang", "confidence": 0.9}] * 1   # orphan
+        )
+        self._make_cache(entries)
+        result = tools.find_orphan_themes("p")
+        themes = [t["theme"] for t in result]
+        self.assertIn("rust", themes)
+        self.assertIn("golang", themes)
+        self.assertNotIn("python", themes)  # mappé → exclu
+
+    def test_returns_empty_when_all_mapped(self):
+        _make_profile(self.profiles_root / "p", target=self.target,
+                      tree_folders=["A", "B"],
+                      mapping={"python": "A", "rust": "B"})
+        self._make_cache([
+            {"title": "x", "theme": "python", "confidence": 0.9},
+            {"title": "y", "theme": "rust", "confidence": 0.9},
+        ])
+        self.assertEqual(tools.find_orphan_themes("p"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

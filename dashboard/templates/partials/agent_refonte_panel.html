@@ -1,0 +1,601 @@
+{# ════════════════════════════════════════════════════════════════════════
+   Partial : panneau Agent Refonte
+   Inclus dans :
+     - taxonomy.html (4e sous-onglet)
+     - agent_refonte.html (page standalone, URL directe)
+
+   Self-contained : son propre HTML + JS (window.taxRefontePanel API).
+   Lit le profil depuis #tax-profile-select (header Taxonomie) en priorité,
+   sinon depuis la query string `?profile=` (page standalone).
+   ════════════════════════════════════════════════════════════════════════ #}
+<div class="tax-refonte-panel">
+    <div class="tax-refonte-toolbar">
+        <div class="tax-refonte-toolbar-left">
+            <button id="tax-refonte-start" class="tax-refonte-start-btn">
+                <span class="tax-refonte-start-icon">🚀</span>
+                <span>Lancer le diagnostic</span>
+            </button>
+            <div class="tax-refonte-budget-field">
+                <label for="tax-refonte-budget" class="filter-label">Budget LLM</label>
+                <input type="number" id="tax-refonte-budget" value="5" min="1" max="20">
+            </div>
+        </div>
+        <div class="tax-refonte-toolbar-right">
+            <span class="tax-refonte-readonly-badge"
+                  title="L'agent n'écrit jamais sur les YAML — il produit uniquement un rapport markdown.">
+                🔒 Lecture seule · Phase A
+            </span>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 320px 1fr; gap: 16px; margin-top: 16px;">
+        <!-- COL 1 : runs récents -->
+        <div>
+            <h3 style="margin-top: 0;">Runs récents</h3>
+            <div id="tax-refonte-runs">
+                <p class="muted small">Chargement…</p>
+            </div>
+        </div>
+        <!-- COL 2 : rapport courant -->
+        <div>
+            <div class="tax-refonte-report-header">
+                <h3 style="margin: 0;">Rapport</h3>
+                <div class="tax-refonte-report-actions">
+                    <button id="tax-refonte-copy" class="btn-secondary" type="button"
+                            title="Copier le rapport markdown" disabled>📋 Copier</button>
+                    <button id="tax-refonte-download" class="btn-secondary" type="button"
+                            title="Télécharger en .md" disabled>⬇ Télécharger</button>
+                </div>
+            </div>
+            <div id="tax-refonte-report-container"
+                 style="padding: 16px; border: 1px solid var(--border);
+                        border-radius: 8px; min-height: 400px;
+                        background: var(--bg-secondary);">
+                <div id="tax-refonte-status" class="muted" style="margin-bottom: 12px;">
+                    Sélectionne un run à gauche ou lance un nouveau diagnostic.
+                </div>
+                <div id="tax-refonte-report" class="tax-refonte-md"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- marked.js — render markdown → HTML (escapes HTML by default depuis v4) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js"></script>
+
+<style>
+/* ─── Toolbar : bouton run + budget + badge readonly ──────────────────── */
+.tax-refonte-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+.tax-refonte-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.tax-refonte-start-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: linear-gradient(180deg, #6d8eff 0%, #4f6ef2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.05s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tax-refonte-start-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(79, 110, 242, 0.35);
+}
+.tax-refonte-start-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+.tax-refonte-start-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+.tax-refonte-start-icon { font-size: 16px; }
+.tax-refonte-budget-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tax-refonte-budget-field input {
+    width: 56px;
+    padding: 5px 8px;
+    background: var(--bg-tertiary, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary, inherit);
+    font-size: 13px;
+}
+.tax-refonte-readonly-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.10);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+    cursor: help;
+    white-space: nowrap;
+}
+
+/* ─── Liste des runs récents ──────────────────────────────────────────── */
+.tax-refonte-runs-empty {
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-style: italic;
+    margin: 6px 0 0;
+}
+.tax-refonte-run-item {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    background: var(--bg-secondary);
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.tax-refonte-run-item:hover {
+    background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+    border-color: var(--border-light, #3a3a3a);
+}
+.tax-refonte-run-item.active {
+    border-color: #4f6ef2;
+    background: rgba(79, 110, 242, 0.08);
+}
+.tax-refonte-run-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+.tax-refonte-run-id {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tax-refonte-run-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.tax-refonte-run-sep { opacity: 0.5; }
+
+.tax-refonte-report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.tax-refonte-report-actions {
+    display: flex;
+    gap: 8px;
+}
+.tax-refonte-md { font-size: 13px; line-height: 1.5; }
+.tax-refonte-md h1 { font-size: 1.4em; margin: 0 0 12px; padding-bottom: 6px;
+                     border-bottom: 1px solid var(--border); }
+.tax-refonte-md h2 { font-size: 1.15em; margin: 18px 0 8px; }
+.tax-refonte-md h3 {
+    font-size: 1.05em;
+    margin: 14px 0 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.tax-refonte-md h3::before {
+    content: '▾ ';
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+.tax-refonte-md h3.collapsed::before { content: '▸ '; }
+.tax-refonte-md h3[data-priority="critical"] {
+    background: rgba(239, 68, 68, 0.15);
+    border-left: 3px solid #ef4444;
+}
+.tax-refonte-md h3[data-priority="high"] {
+    background: rgba(249, 115, 22, 0.15);
+    border-left: 3px solid #f97316;
+}
+.tax-refonte-md h3[data-priority="medium"] {
+    background: rgba(234, 179, 8, 0.15);
+    border-left: 3px solid #eab308;
+}
+.tax-refonte-md h3[data-priority="low"] {
+    background: rgba(59, 130, 246, 0.10);
+    border-left: 3px solid #3b82f6;
+}
+.tax-refonte-md h3[data-priority="info"] {
+    background: rgba(107, 114, 128, 0.10);
+    border-left: 3px solid #6b7280;
+}
+.tax-refonte-md ul, .tax-refonte-md ol { padding-left: 20px; margin: 4px 0 8px; }
+.tax-refonte-md li { margin: 3px 0; }
+.tax-refonte-md code { background: var(--bg-tertiary, #1a1a1a); padding: 1px 5px;
+                       border-radius: 3px; font-size: 0.9em; }
+.tax-refonte-md strong { color: var(--text-primary, inherit); }
+</style>
+
+<script>
+(function() {
+    // ─── Module local API exposée pour intégration Taxonomie ─────────────
+    const startBtn = document.getElementById('tax-refonte-start');
+    const budgetInput = document.getElementById('tax-refonte-budget');
+    const runsEl = document.getElementById('tax-refonte-runs');
+    const statusEl = document.getElementById('tax-refonte-status');
+    const reportEl = document.getElementById('tax-refonte-report');
+    const copyBtn = document.getElementById('tax-refonte-copy');
+    const downloadBtn = document.getElementById('tax-refonte-download');
+    let pollTimer = null;
+    let lastProfile = null;
+    let currentReportMd = '';     // Pour Copy + Download
+    let currentRunId = null;
+
+    // ─── Markdown rendering + post-processing UI ─────────────────────────
+    function priorityFor(h3text) {
+        const t = h3text.toLowerCase();
+        if (/manqu|mapping/.test(t)) return 'critical';
+        if (/catch|d[ée]bord/.test(t)) return 'high';
+        if (/sous[- ]utilis|peu utilis/.test(t)) return 'medium';
+        if (/doublon|jaccard|s[ée]mantique/.test(t)) return 'low';
+        return 'info';
+    }
+
+    function renderReport(md) {
+        currentReportMd = md || '';
+        if (!md) { reportEl.innerHTML = ''; updateActionButtons(false); return; }
+        // marked.parse v13 : escapes HTML par défaut, headerIds auto-générés
+        const html = window.marked ? window.marked.parse(md) : md;
+        reportEl.innerHTML = html;
+        // Post-process : priorité + collapse
+        const h3s = Array.from(reportEl.querySelectorAll('h3'));
+        for (const h3 of h3s) {
+            h3.dataset.priority = priorityFor(h3.textContent);
+            // Regroupe tous les éléments suivants jusqu'au prochain h3/h2 dans
+            // un wrapper qu'on peut hide/show via la classe "collapsed".
+            const section = document.createElement('div');
+            section.className = 'tax-refonte-section';
+            let next = h3.nextElementSibling;
+            while (next && !['H3', 'H2'].includes(next.tagName)) {
+                const tmp = next.nextElementSibling;
+                section.appendChild(next);
+                next = tmp;
+            }
+            h3.parentNode.insertBefore(section, next);
+            h3.addEventListener('click', () => {
+                const hidden = section.style.display === 'none';
+                section.style.display = hidden ? '' : 'none';
+                h3.classList.toggle('collapsed', !hidden);
+            });
+        }
+        updateActionButtons(true);
+    }
+
+    function updateActionButtons(enabled) {
+        copyBtn.disabled = !enabled;
+        downloadBtn.disabled = !enabled;
+    }
+
+    copyBtn.addEventListener('click', async () => {
+        if (!currentReportMd) return;
+        try {
+            await navigator.clipboard.writeText(currentReportMd);
+            const orig = copyBtn.textContent;
+            copyBtn.textContent = '✓ Copié';
+            setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+        } catch (e) {
+            alert('Copie impossible : ' + e.message);
+        }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+        if (!currentReportMd) return;
+        const blob = new Blob([currentReportMd], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'diagnostic-' + (currentRunId || 'run') + '.md';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    });
+
+    function currentProfile() {
+        // 1) prioritaire : selector du header Taxonomie (quand intégré)
+        const taxSel = document.getElementById('tax-profile-select');
+        if (taxSel && taxSel.value) return taxSel.value;
+        // 2) fallback : data attribute posé par la page standalone
+        const root = document.querySelector('.tax-refonte-panel');
+        if (root && root.dataset.profile) return root.dataset.profile;
+        // 3) dernier recours : query string
+        const qs = new URLSearchParams(window.location.search);
+        return qs.get('profile') || 'default';
+    }
+
+    function setStatus(text) { statusEl.textContent = text; }
+
+    async function loadRuns() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/runs?profile='
+                                  + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            const runs = data.runs || [];
+            renderRuns(runs);
+            // Auto-reprise du polling si un run est en cours (running/pending) et
+            // qu'on n'a pas déjà un pollTimer actif. Couvre les cas :
+            //   - reload de la page pendant qu'un run tournait
+            //   - changement d'onglet sidebar puis retour sur Taxonomie
+            //   - première ouverture du sous-onglet Refonte
+            if (!pollTimer) {
+                const active = runs.find(r => r.status === 'running' || r.status === 'pending');
+                if (active) {
+                    currentRunId = active.run_id;
+                    startBtn.disabled = true;
+                    setStatus('Reprise du suivi du run ' + active.run_id.slice(0, 8) + '…');
+                    // Premier poll immédiat puis interval 2s
+                    pollStatus(active.run_id);
+                    pollTimer = setInterval(() => pollStatus(active.run_id), 2000);
+                }
+            }
+        } catch (err) {
+            runsEl.innerHTML = '<p class="muted small">'
+                             + 'Erreur de chargement : ' + err.message + '</p>';
+        }
+    }
+
+    function renderRuns(runs) {
+        if (!runs.length) {
+            runsEl.innerHTML = '<p class="tax-refonte-runs-empty">Aucun run pour ce profil. '
+                             + 'Lance ton premier diagnostic ↑</p>';
+            return;
+        }
+        runsEl.innerHTML = '';
+        for (const r of runs) {
+            const item = document.createElement('div');
+            item.className = 'tax-refonte-run-item';
+            if (currentRunId === r.run_id) item.classList.add('active');
+            item.dataset.runId = r.run_id;
+            // Format date plus lisible : "il y a Xm" si récent, sinon date courte
+            const startedTxt = formatStarted(r.started_at);
+            const llmInfo = r.llm_calls
+                ? '<span class="tax-refonte-run-meta">' + r.llm_calls + ' LLM</span>'
+                : '';
+            item.innerHTML =
+                '<div class="tax-refonte-run-head">'
+              + '  <code class="tax-refonte-run-id">' + r.run_id.slice(0, 8) + '</code>'
+              + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
+              + '</div>'
+              + '<div class="tax-refonte-run-foot">'
+              + '  <span class="tax-refonte-run-meta">' + startedTxt + '</span>'
+              + (llmInfo ? '<span class="tax-refonte-run-sep">·</span>' + llmInfo : '')
+              + '</div>';
+            item.addEventListener('click', () => {
+                const switchingRun = currentRunId !== r.run_id;
+                runsEl.querySelectorAll('.tax-refonte-run-item.active')
+                      .forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                // Si on change de run : clear le report area pour éviter
+                // d'afficher le contenu du run précédent ("Commence maintenant."
+                // fantôme observé en prod 2026-05-25). Sera re-rempli si le
+                // nouveau run a un report disponible (done) ou par un message
+                // "(en cours)" si running.
+                if (switchingRun) {
+                    renderReport('');
+                    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                }
+                currentRunId = r.run_id;
+                pollStatus(r.run_id);
+                const stillRunning = r.status === 'running' || r.status === 'pending';
+                if (stillRunning && !pollTimer) {
+                    pollTimer = setInterval(() => pollStatus(r.run_id), 2000);
+                    startBtn.disabled = true;
+                }
+            });
+            runsEl.appendChild(item);
+        }
+    }
+
+    function formatStarted(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            const diffMs = Date.now() - d.getTime();
+            const diffMin = Math.floor(diffMs / 60000);
+            if (diffMin < 1) return 'à l\'instant';
+            if (diffMin < 60) return 'il y a ' + diffMin + ' min';
+            const diffH = Math.floor(diffMin / 60);
+            if (diffH < 24) return 'il y a ' + diffH + ' h';
+            return d.toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+            });
+        } catch (e) { return iso; }
+    }
+
+    async function pollStatus(runId) {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/diagnostic/' + runId
+                                  + '?profile=' + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const s = await r.json();
+            const calls = s.llm_calls || 0;
+            const max = s.max_llm_calls || 5;
+            const node = s.current_node ? ' · ⏳ ' + s.current_node : '';
+            const elapsed = s.started_at
+                ? ' · ' + Math.round((Date.now() - new Date(s.started_at)) / 1000) + 's écoulé'
+                : '';
+            setStatus('Run ' + runId.slice(0, 8) + '… · ' + s.status
+                      + ' · ' + calls + '/' + max + ' appel(s) LLM' + node + elapsed);
+            if (s.status === 'done') {
+                currentRunId = runId;
+                renderReport(s.report_md || '');
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                startBtn.disabled = false;
+                loadRuns();
+            } else if (s.status === 'error') {
+                const err = s.error || '(inconnu)';
+                let hint = '';
+                if (/Model disabled|PermissionDeniedError.*403/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle LLM est désactivé côté <strong>SiliconFlow</strong> '
+                         + '(typiquement les modèles "-Exp" expérimentaux). '
+                         + 'Bascule vers un modèle stable via la variable d\'env '
+                         + '<code>KLODO_AGENT_MODEL</code> (ex. <code>deepseek-ai/DeepSeek-V3.1</code>, '
+                         + '<code>zai-org/GLM-4.6</code>) et relance le dashboard.</p>';
+                } else if (/APIConnectionError|Connection error|timeout/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Possible souci côté <strong>SiliconFlow</strong>. '
+                         + 'Réessaie dans quelques minutes, ou bascule sur un autre '
+                         + 'modèle via la variable d\'env <code>KLODO_AGENT_MODEL</code> '
+                         + '(ex. <code>zai-org/GLM-4.6</code>, <code>Qwen/Qwen3-235B-A22B-Instruct-2507</code>) '
+                         + 'et relance le dashboard.</p>';
+                } else if (/halluciné|hallucin/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle est parti en hallucination (souvent un '
+                         + 'rapport en langue inattendue, ex. chinois, au lieu '
+                         + 'du diagnostic demandé). Bascule sur un autre modèle '
+                         + 'via <code>KLODO_AGENT_MODEL</code> '
+                         + '(ex. <code>deepseek-ai/DeepSeek-V4-Pro</code>, '
+                         + '<code>zai-org/GLM-4.7</code>) et relance.</p>';
+                } else if (/aucun outil/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle LLM n\'a pas exploité les outils. '
+                         + 'Relance le diagnostic — sinon essaie un autre modèle.</p>';
+                } else if (/trop court/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle a coupé prématurément. Relance le '
+                         + 'diagnostic ou augmente le budget LLM.</p>';
+                }
+                reportEl.innerHTML = '<p style="color:#ef4444;">'
+                                   + '<strong>ERREUR :</strong> ' + err + '</p>'
+                                   + hint;
+                currentReportMd = '';
+                updateActionButtons(false);
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                startBtn.disabled = false;
+            } else {
+                // status="running" ou "pending" — pas de rapport disponible
+                // encore. Afficher un placeholder explicite plutôt que de
+                // laisser un éventuel contenu fantôme d'un run précédent.
+                // (Évite l'illusion "Commence maintenant." sur un autre run.)
+                if (!currentReportMd) {
+                    reportEl.innerHTML = '<p class="muted" style="font-style:italic;">'
+                                       + 'Diagnostic en cours — le rapport apparaîtra '
+                                       + 'ici quand le run se termine.</p>';
+                }
+            }
+        } catch (err) {
+            console.error('poll error', err);
+        }
+    }
+
+    async function startDiagnostic() {
+        const profile = currentProfile();
+        startBtn.disabled = true;
+        setStatus('Démarrage…');
+        renderReport('');
+        try {
+            const r = await fetch('/api/agent/refonte/diagnostic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    profile: profile,
+                    max_llm_calls: parseInt(budgetInput.value || '5', 10),
+                }),
+            });
+            if (!r.ok) {
+                const e = await r.json();
+                throw new Error(e.error || ('HTTP ' + r.status));
+            }
+            const data = await r.json();
+            currentRunId = data.run_id;  // Pour que loadRuns() le marque actif
+            setStatus('Run ' + data.run_id.slice(0, 8) + '… démarré');
+            pollTimer = setInterval(() => pollStatus(data.run_id), 2000);
+            // Refresh immédiat de la liste pour faire apparaître le nouveau
+            // run en tête (sans attendre qu'il termine).
+            loadRuns();
+        } catch (err) {
+            setStatus('Erreur : ' + err.message);
+            startBtn.disabled = false;
+        }
+    }
+
+    function resetOnProfileChange() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        startBtn.disabled = false;
+        setStatus('Sélectionne un run à gauche ou lance un nouveau diagnostic.');
+        renderReport('');
+        loadRuns();
+    }
+
+    // Init listeners
+    startBtn.addEventListener('click', startDiagnostic);
+
+    // Si on est intégré dans Taxonomie : écouter les changements de profil
+    const taxSel = document.getElementById('tax-profile-select');
+    if (taxSel) {
+        lastProfile = taxSel.value;
+        taxSel.addEventListener('change', () => {
+            if (taxSel.value !== lastProfile) {
+                lastProfile = taxSel.value;
+                resetOnProfileChange();
+            }
+        });
+    }
+
+    // ─── Page Visibility API : forcer un poll au retour foreground ───────
+    // Les navigateurs throttlent setInterval quand l'onglet est en arrière-
+    // plan (jusqu'à ~1 min entre tirs au lieu de 2s). Au retour, on déclenche
+    // immédiatement un poll pour rattraper le retard d'affichage.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            if (pollTimer && currentRunId) {
+                pollStatus(currentRunId);
+            } else {
+                // Pas de polling en cours mais peut-être qu'un run a été
+                // démarré ailleurs (autre onglet du navigateur, CLI smoke
+                // script, etc.) — recharger la liste détecte ça via le hook
+                // d'auto-reprise dans loadRuns().
+                loadRuns();
+            }
+        }
+    });
+
+    // Expose pour activation paresseuse depuis activateSubtab() de taxonomy_rename.js
+    window.taxRefontePanel = {
+        activate: () => loadRuns(),
+        refresh: () => loadRuns(),
+    };
+
+    // Chargement initial : on appelle toujours loadRuns() pour détecter
+    // d'éventuels runs en cours (auto-reprise du polling). Pour la page
+    // standalone /agent/refonte c'est de toute façon attendu, pour le
+    // sous-onglet Taxonomie ça permet de reprendre un run lancé avant
+    // un reload de page.
+    loadRuns();
+})();
+</script>

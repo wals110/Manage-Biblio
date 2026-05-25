@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{# Page standalone — accessible directement via /agent/refonte.
+   Le contenu (HTML + JS) est dans partials/agent_refonte_panel.html, partagé
+   avec le sous-onglet "Refonte" de Taxonomie pour rester DRY. #}
+{% set active = "" %}
+{% block title %}Agent Refonte — Diagnostic{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🤖 Agent Refonte — Diagnostic</h1>
+<p class="page-subtitle">
+    Lance un diagnostic LLM read-only sur la taxonomie d'un profil.
+    L'agent appelle les 6 outils de lecture (tree, mapping, count, overlap, breakdown)
+    et produit un rapport markdown listant les anomalies (catch-all qui débordent,
+    dossiers sous-utilisés, doublons sémantiques, mappings orphelins).
+</p>
+
+{# Selector de profil propre à la page standalone (le partial le lit via #tax-profile-select)
+   pour cohérence avec le mode "intégré dans Taxonomie". #}
+<div class="baseline-toolbar" style="margin-bottom: 16px;">
+    <div class="baseline-toolbar-group">
+        <label class="filter-label">Profil :</label>
+        <select id="tax-profile-select" class="filter-select"
+                onchange="window.location.href='/agent/refonte?profile=' + this.value">
+            {% for p in available_profiles %}
+            <option value="{{ p }}" {% if p == profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+        </select>
+        <span class="muted small" style="margin-left:12px;">
+            Disponible aussi dans <a href="/taxonomy">Taxonomie → onglet Refonte</a>.
+        </span>
+    </div>
+</div>
+
+{% include "partials/agent_refonte_panel.html" %}
+{% endblock %}

@@ -15,6 +15,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from langchain_core.tools import StructuredTool
+
 from dashboard import taxonomy as tax
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -68,10 +70,6 @@ def read_theme_mapping(profile: str) -> dict[str, str]:
 def list_themes_per_folder(profile: str) -> dict[str, list[str]]:
     """Renvoie l'inverse de theme_mapping : dossier → liste de thèmes qui pointent dessus.
 
-    Version A.2 : ne regarde que les thèmes **mappés**. Une version enrichie
-    (themes LLM observés sur les fichiers physiquement présents dans le folder)
-    pourra être ajoutée si Phase B en a besoin.
-
     Args:
         profile: Nom du profil.
 
@@ -80,6 +78,55 @@ def list_themes_per_folder(profile: str) -> dict[str, list[str]]:
     """
     mapping = tax._load_mapping(profile)
     return tax._mapping_reverse(mapping)
+
+
+def list_vision_themes(profile: str, top_n: int = 50) -> list[dict]:
+    """Top N thèmes observés par le LLM Vision sur le profil (vision_cache.json).
+
+    Permet à l'agent de croiser le **signal observation** (ce que le LLM Vision a
+    réellement détecté dans les fichiers) avec le **signal structure** (tree +
+    mapping). Un dossier `/Python` vide n'est pas "à supprimer" si on observe
+    412 fichiers avec le thème `python programming` ailleurs.
+
+    Args:
+        profile: Nom du profil.
+        top_n: Nombre max de thèmes retournés (triés par count desc).
+
+    Returns:
+        Liste de dicts :
+            [{
+                "theme": str,             # ex. "machine learning"
+                "count": int,             # nombre de fichiers observés
+                "mapped_to": str | None,  # dossier cible si mappé, None sinon
+                "is_orphan": bool,        # True si pas de mapping
+                "sample_titles": [str],   # 0-3 titres-exemples
+            }, ...]
+    """
+    mapping = tax._load_mapping(profile)
+    themes, _stats = tax._aggregate_themes_llm(profile, mapping)
+    top_n = max(1, min(int(top_n), 500))
+    return themes[:top_n]
+
+
+def find_orphan_themes(profile: str, top_n: int = 30) -> list[dict]:
+    """Thèmes observés en vision_cache mais qui n'ont **aucun mapping**.
+
+    Candidats prioritaires au remappage : ces fichiers sont actuellement classés
+    via le KeywordClassifier ou le LLM Mapper (cascade N2/N3), donc bénéficient
+    de moins de précision que s'ils étaient mappés explicitement.
+
+    Args:
+        profile: Nom du profil.
+        top_n: Nombre max d'orphelins retournés (triés par count desc).
+
+    Returns:
+        Même format que `list_vision_themes`, mais filtré sur `is_orphan == True`.
+    """
+    mapping = tax._load_mapping(profile)
+    themes, _stats = tax._aggregate_themes_llm(profile, mapping)
+    orphans = [t for t in themes if t.get("is_orphan")]
+    top_n = max(1, min(int(top_n), 200))
+    return orphans[:top_n]
 
 
 def compute_folder_overlap(profile: str, folder_a: str, folder_b: str) -> dict:
@@ -191,3 +238,33 @@ def _find_latest_classify_csv(logs_dir: Path, profile: str) -> Path | None:
         return None
     preferred = [p for p in candidates if profile.lower() in p.name.lower()]
     return preferred[0] if preferred else candidates[0]
+
+
+# ─── LangChain bindings ────────────────────────────────────────────────────
+#
+# Les 6 fonctions ci-dessus restent appelables directement (utilisé par les
+# tests et par tout code qui n'a pas besoin de LangChain). Les bindings
+# StructuredTool ci-dessous servent à l'agent LLM via `llm.bind_tools(TOOLS)`
+# et à `ToolNode(TOOLS)` dans le graphe LangGraph.
+
+
+def _build_tools() -> list[StructuredTool]:
+    """Construit la liste de tools LangChain depuis les fonctions ci-dessus.
+
+    Le nom + docstring + signature de chaque fonction est utilisé tel quel
+    par le LLM pour décider quand l'appeler — c'est pourquoi les docstrings
+    sont importantes (cf. les fonctions ci-dessus).
+    """
+    return [
+        StructuredTool.from_function(list_folders),
+        StructuredTool.from_function(count_files_per_folder),
+        StructuredTool.from_function(read_theme_mapping),
+        StructuredTool.from_function(list_themes_per_folder),
+        StructuredTool.from_function(compute_folder_overlap),
+        StructuredTool.from_function(get_classifier_breakdown),
+        StructuredTool.from_function(list_vision_themes),
+        StructuredTool.from_function(find_orphan_themes),
+    ]
+
+
+TOOLS = _build_tools()

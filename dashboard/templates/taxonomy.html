@@ -15,6 +15,8 @@
                     title="Catégories + mots-clés (categories.yaml)">Catégories</button>
             <button class="tax-subtab" data-view="rename"
                     title="Audit + renommage des fichiers basé sur le titre LLM">Rename</button>
+            <button class="tax-subtab" data-view="refonte"
+                    title="Agent IA — diagnostic de la taxonomie (lecture seule)">&#129302; Refonte</button>
         </div>
         <div class="tax-toolbar">
             <label class="filter-label">Profil</label>
@@ -385,6 +387,12 @@
     </div>
 </div>
 <!-- ────────────────────── End view: Rename ───────────────────────────────── -->
+
+<!-- ─────────────────────── View: Refonte (agent IA) ─────────────────────── -->
+<div class="tax-view tax-view-refonte" data-view="refonte" style="display:none;">
+    {% include "partials/agent_refonte_panel.html" %}
+</div>
+<!-- ────────────────────── End view: Refonte ──────────────────────────────── -->
 
 <!-- 📜 Rename history modal (PR4A) -->
 <div id="tax-rename-history-modal" class="tax-modal-backdrop"

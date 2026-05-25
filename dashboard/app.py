@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import baseline, data, taxonomy
+from dashboard import agent_refonte, baseline, data, taxonomy
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -2276,3 +2276,72 @@ async def taxonomy_file_move_api(request: Request):
         return JSONResponse(result)
     except taxonomy.TaxonomyFileError as exc:
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Agent Refonte — Phase A : Diagnostic
+# ════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/agent/refonte")
+async def agent_refonte_page(request: Request, profile: str = "default"):
+    """Page dédiée à l'agent Refonte (Phase A — Diagnostic)."""
+    available = [
+        p["name"] if isinstance(p, dict) else p
+        for p in data.get_available_profiles(include_all=True)
+    ]
+    if profile not in available:
+        profile = available[0] if available else "default"
+    runs = agent_refonte.list_runs(profile, limit=20)
+    return templates.TemplateResponse(
+        request,
+        "agent_refonte.html",
+        {
+            "active": "agent_refonte",
+            "profile": profile,
+            "available_profiles": available,
+            "runs": runs,
+        },
+    )
+
+
+@app.post("/api/agent/refonte/diagnostic")
+async def api_agent_refonte_start(request: Request):
+    """Démarre un diagnostic en arrière-plan. Retourne run_id pour polling."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    max_llm_calls = int(body.get("max_llm_calls") or 5)
+    if max_llm_calls < 1 or max_llm_calls > 20:
+        return JSONResponse({"error": "max_llm_calls must be between 1 and 20"}, status_code=400)
+    try:
+        result = agent_refonte.start_diagnostic(profile, max_llm_calls=max_llm_calls)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.get("/api/agent/refonte/diagnostic/{run_id}")
+async def api_agent_refonte_status(run_id: str, profile: str):
+    """Lit le status d'un run (polling depuis le frontend)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    status = agent_refonte.get_status(profile, run_id)
+    if status is None:
+        return JSONResponse({"error": f"run not found: {run_id}"}, status_code=404)
+    return JSONResponse(status)
+
+
+@app.get("/api/agent/refonte/runs")
+async def api_agent_refonte_runs(profile: str, limit: int = 20):
+    """Liste les runs récents pour un profil (utilisé par le sous-onglet Refonte
+    de Taxonomie pour recharger l'historique sans full page reload)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    limit = max(1, min(int(limit), 100))
+    runs = agent_refonte.list_runs(profile, limit=limit)
+    return JSONResponse({"profile": profile, "runs": runs})

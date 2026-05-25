@@ -339,6 +339,9 @@
     if (view === 'rename' && !state.loaded) {
       loadAndRender();
     }
+    if (view === 'refonte' && window.taxRefontePanel) {
+      window.taxRefontePanel.activate();
+    }
   }
 
   // ── Filters bar ──────────────────────────────────────────────────────
