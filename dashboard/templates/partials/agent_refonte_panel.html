@@ -459,12 +459,19 @@
             } else if (s.status === 'error') {
                 const err = s.error || '(inconnu)';
                 let hint = '';
-                if (/APIConnectionError|Connection error|timeout/i.test(err)) {
+                if (/Model disabled|PermissionDeniedError.*403/i.test(err)) {
+                    hint = '<p class="muted small" style="margin-top:8px;">'
+                         + '💡 Le modèle LLM est désactivé côté <strong>SiliconFlow</strong> '
+                         + '(typiquement les modèles "-Exp" expérimentaux). '
+                         + 'Bascule vers un modèle stable via la variable d\'env '
+                         + '<code>KLODO_AGENT_MODEL</code> (ex. <code>deepseek-ai/DeepSeek-V3.1</code>, '
+                         + '<code>zai-org/GLM-4.6</code>) et relance le dashboard.</p>';
+                } else if (/APIConnectionError|Connection error|timeout/i.test(err)) {
                     hint = '<p class="muted small" style="margin-top:8px;">'
                          + '💡 Possible souci côté <strong>SiliconFlow</strong>. '
                          + 'Réessaie dans quelques minutes, ou bascule sur un autre '
                          + 'modèle via la variable d\'env <code>KLODO_AGENT_MODEL</code> '
-                         + '(ex. <code>zai-org/GLM-4.6</code>, <code>Qwen/Qwen3-235B</code>) '
+                         + '(ex. <code>zai-org/GLM-4.6</code>, <code>Qwen/Qwen3-235B-A22B-Instruct-2507</code>) '
                          + 'et relance le dashboard.</p>';
                 } else if (/aucun outil/i.test(err)) {
                     hint = '<p class="muted small" style="margin-top:8px;">'

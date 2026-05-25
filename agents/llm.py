@@ -1,7 +1,7 @@
 """Factory LLM partagée entre tous les agents Klodo.
 
-Par défaut, pointe sur SiliconFlow avec DeepSeek-V3.2-Exp (bon ratio
-raisonnement/prix, ~$0.27/$1.10 par M tokens, function calling natif).
+Par défaut, pointe sur SiliconFlow avec DeepSeek-V3.1 (version stable, bon
+ratio raisonnement/prix, ~$0.27/$1.10 par M tokens, function calling natif).
 
 Le modèle est surchargeable via la variable d'env `KLODO_AGENT_MODEL`
 (par ex. pour tester GLM-4.6 ou Qwen3 free tier).
@@ -16,7 +16,10 @@ import os
 
 from langchain_openai import ChatOpenAI
 
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2-Exp"
+DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.1"  # version stable
+# Note: on évite "-Exp" (DeepSeek-V3.2-Exp testé initialement) — SiliconFlow
+# l'a désactivé sans préavis (PermissionDeniedError 403 'Model disabled')
+# le 2026-05-25. Les versions stables (V3, V3.1) sont fiables.
 DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
 DEFAULT_TIMEOUT_S = 180  # 3 min par appel LLM — write_report peut prendre 60-120s, marge pour SiliconFlow lent
 
@@ -32,7 +35,7 @@ def get_agent_llm(
     """Construit un ChatOpenAI configuré pour SiliconFlow.
 
     Args:
-        model: ID du modèle (ex. "deepseek-ai/DeepSeek-V3.2-Exp"). Si None,
+        model: ID du modèle (ex. "deepseek-ai/DeepSeek-V3.1"). Si None,
                lit `KLODO_AGENT_MODEL` puis fallback sur DEFAULT_MODEL.
         temperature: Default 0.1 — bas pour raisonnement structuré + consistance
                      entre runs (à 0.2 on observait une variance importante de
