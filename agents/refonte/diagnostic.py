@@ -52,8 +52,12 @@ Ton objectif : identifier les **anomalies** dans la structure du profil et produ
   - get_classifier_breakdown(profile) : répartition par source sur le dernier classify_*.csv
 
 **Signal observation (vision_cache.json — ce que le LLM Vision a réellement vu dans les fichiers) :**
-  - list_vision_themes(profile, top_n) : top N thèmes observés avec count + mapping actuel + sample_titles
-  - find_orphan_themes(profile, top_n) : thèmes observés N fois mais SANS mapping (candidats au remappage)
+  - list_vision_themes(profile, top_n=50) : top N thèmes observés avec count + mapping actuel + sample_titles
+  - find_orphan_themes(profile, top_n=30) : thèmes observés N fois mais SANS mapping (candidats au remappage)
+
+**⚠ Arguments imposés pour la cohérence inter-runs** :
+- Pour `find_orphan_themes`, **appelle toujours avec `top_n=30`** (jamais 10 ou 5) — tu as besoin de la vue exhaustive, pas d'un échantillon. Tronquer à 10 produit un rapport sous-développé.
+- Pour `list_vision_themes` si tu en as besoin, `top_n=50` minimum.
 
 **⚠ Règle de raisonnement essentielle — croiser structure et observation :**
 
@@ -91,17 +95,29 @@ Structure obligatoire à suivre ensuite :
 
 ## Anomalies détectées (par priorité)
 
-### <Catégorie d'anomalie 1> (<N> cas)
-- Liste numérotée, chiffres exacts récupérés via les outils
+### Mappings manquants critiques (<N> cas)
+- **Liste exhaustive** : pour chaque thème orphelin retourné par find_orphan_themes avec count ≥ 40, écrire une ligne. Vise 20-30 items minimum si le profil en a autant.
+- Format par ligne : `**<Thème>** (<count> fichiers) → dossier cible évident : <chemin>`
+- Pas de "10+" ou "etc." — la liste doit être complète à partir des données récupérées.
 
-### <Catégorie d'anomalie 2> (<N> cas)
-- ...
+### Dossiers sous-utilisés avec thèmes orphelins correspondants (<N> cas)
+- Pour chaque dossier avec count_files = 0 ou < 5, vérifier s'il y a un thème orphelin dont le nom évoque sémantiquement ce dossier (ex. folder `/Python` ↔ orphan `python programming`). Liste tous les cas, pas seulement 3.
+
+### Catch-all qui débordent (<N> cas)
+- Dossiers /Autres ou /Generales avec count >> moyenne. Pour chaque, mentionner les thèmes orphelins qui devraient sortir vers d'autres dossiers.
+
+### Doublons sémantiques (<N> cas ou "non analysé")
+- Si compute_folder_overlap a été appelé : reporter les résultats. Sinon : "(non analysé)".
+
+### Couverture faible (<N>% ou "non analysé")
+- Si get_classifier_breakdown a été appelé : taux de FAILED. Sinon : "(non analysé)".
 
 ## Recommandations
-- 3 à 5 actions concrètes, format impératif ("Renommer X en Y", "Fusionner A et B", "Splitter le catch-all C", etc.)
-- Chaque recommandation : effort estimé (faible/moyen/élevé)
+- 5 à 8 actions concrètes (pas seulement 3), format impératif ("Mapper X vers Y", "Scinder le catch-all Z", etc.)
+- Chaque recommandation : effort estimé (faible/moyen/élevé) entre parenthèses
 
 Règles strictes :
+- **Liste exhaustive, pas un résumé** : si find_orphan_themes a retourné 30 items, le rapport doit en citer la majorité (pas s'arrêter à 10). La verbosité fait la valeur du diagnostic.
 - N'invente AUCUN chiffre — utilise uniquement ce que les outils ont retourné
 - Si une zone n'a pas été explorée, écris explicitement "(non analysé)"
 - Pas de placeholders <...> dans la sortie finale

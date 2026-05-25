@@ -23,7 +23,7 @@ DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
 def get_agent_llm(
     model: str | None = None,
     *,
-    temperature: float = 0.2,
+    temperature: float = 0.1,
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> ChatOpenAI:
@@ -32,8 +32,9 @@ def get_agent_llm(
     Args:
         model: ID du modèle (ex. "deepseek-ai/DeepSeek-V3.2-Exp"). Si None,
                lit `KLODO_AGENT_MODEL` puis fallback sur DEFAULT_MODEL.
-        temperature: Default 0.2 — assez bas pour raisonnement structuré +
-                     un peu de variabilité pour les itérations utilisateur.
+        temperature: Default 0.1 — bas pour raisonnement structuré + consistance
+                     entre runs (à 0.2 on observait une variance importante de
+                     verbosité entre 2 runs successifs sur le même profil).
         base_url: Override pour tester un autre endpoint compatible OpenAI.
                   Default = SiliconFlow.
         api_key: Override pour tests. Default = `$SILICONFLOW_API_KEY`.
