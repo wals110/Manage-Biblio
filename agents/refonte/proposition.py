@@ -43,6 +43,7 @@ from agents.llm import get_agent_llm
 from agents.refonte.proposition_tools import make_proposition_tools
 from agents.refonte.state import RefonteState
 from agents.refonte.tools import TOOLS as READ_TOOLS
+from agents.refonte.tools import find_orphan_themes
 from dashboard import data
 
 DEFAULT_MAX_LLM_CALLS = 6  # 6 suffit largement avec la pré-extraction d'orphelins
@@ -73,14 +74,20 @@ qui adresse les 4 types d'anomalies du diagnostic, pas seulement les mappings.
 **1. mappings_added — DRIVEN par la liste pré-extraite « orphan mappings »**
 
 Pour CHAQUE entrée de cette liste, tu DOIS produire un mapping. Si la liste
-contient 30 entrées, ton appel doit avoir AU MINIMUM 25 mappings_added.
-Une proposition avec 0 mapping_added est un ÉCHEC.
+contient N entrées, ton appel doit avoir au moins **N-10** mappings_added.
+Une proposition avec 0 mapping_added est un ÉCHEC. La liste peut contenir
+30, 100, 200 entrées — adapte-toi au volume, ne tronque pas.
 
-**2. creations — DRIVEN par les target_folder des mappings**
+Pour chaque entrée la liste peut contenir un champ `target_folder_suggested`
+(héritage du diagnostic markdown) — utilise-le quand il est présent. Si
+absent (orphelins au-delà du top 30 du diagnostic), tu choisis toi-même la
+destination en t'appuyant sur tree.yaml et le sens du thème.
 
-Si une `target_folder` (de la liste orphans) n'existe pas dans tree.yaml,
-ajoute-la dans `creations`. Aussi : si un catch-all est trop gros, créer
-des sous-dossiers où ses fichiers iront naturellement.
+**2. creations — DRIVEN par les destinations des mappings**
+
+Si la destination d'un mapping (suggérée ou choisie par toi) n'existe pas
+dans tree.yaml, ajoute-la dans `creations`. Aussi : si un catch-all est
+trop gros, créer des sous-dossiers où ses fichiers iront naturellement.
 
 **3. deletions — DRIVEN par les dossiers sous-utilisés sans rescousse**
 
@@ -130,14 +137,14 @@ mappings_added quand pertinent. Pour les deletions, justifie pourquoi
   "mappings_added": [
     {"theme": "Functional Analysis", "folder": "01-SCIENCES/MATHEMATIQUES/02-Analyse",
      "rationale": "176 fichiers — analyse fonctionnelle"},
-    /* ... 25-30 entrées au total ... */
+    /* ... une entrée par item de la liste orphan mappings ... */
   ]
 }
 ```
 
 ═══════ Anti-patterns à éviter ═══════
 
-- ❌ Ne livrer que 2-3 mappings alors que la liste pré-extraite en a 30
+- ❌ Ne livrer que 2-3 mappings alors que la liste pré-extraite en a 50+
 - ❌ Ignorer les dossiers sous-utilisés et les catch-all (toi seul peux
   décider "delete vs. map vs. fuse")
 - ❌ Appeler des outils en boucle pour "redécouvrir" ce qui est déjà
@@ -330,15 +337,54 @@ def _init_node(state: RefonteState) -> dict[str, Any]:
                 f"avec status=done sur ce run avant de lancer Phase B."
             ),
         }
-    # Pré-extraction des 3 catégories d'anomalies depuis le rapport — on
-    # sert au LLM des listes JSON pré-mâchées plutôt que de lui faire
-    # ré-extraire du markdown (ça avait produit des propositions vides en
-    # premier essai 2026-05-25).
-    orphans = parse_orphan_mappings_from_report(diagnostic_md)
+    # Pré-extraction des 3 catégories d'anomalies — on sert au LLM des
+    # listes JSON pré-mâchées plutôt que de lui faire ré-extraire du markdown
+    # (ça avait produit des propositions vides en premier essai 2026-05-25).
+    #
+    # Orphan mappings : appel direct à find_orphan_themes (cap 200) pour
+    # avoir une vue exhaustive — le markdown du diagnostic en cite seulement
+    # ~30 par soucis de lisibilité humaine, ce qui plafonnait Phase B à 58 %
+    # de couverture sur le profil default. On enrichit chaque orphelin avec
+    # la suggestion de target_folder du diagnostic quand elle existe (top 30) ;
+    # pour les suivants le LLM B propose lui-même la destination.
+    try:
+        all_orphans = find_orphan_themes(profile, top_n=200)
+    except Exception:  # noqa: BLE001 — on dégrade gracieusement
+        all_orphans = []
+    markdown_orphans = parse_orphan_mappings_from_report(diagnostic_md)
+    suggested_targets = {m["theme"]: m["target_folder"] for m in markdown_orphans}
+    orphans: list[dict[str, Any]] = []
+    if all_orphans:
+        for o in all_orphans:
+            theme = o.get("theme", "")
+            if not theme:
+                continue
+            entry: dict[str, Any] = {
+                "theme": theme,
+                "count": o.get("count", 0),
+            }
+            target = suggested_targets.get(theme)
+            if target:
+                entry["target_folder_suggested"] = target
+            sample = o.get("sample_titles") or []
+            if sample:
+                entry["sample_titles"] = sample[:2]
+            orphans.append(entry)
+    else:
+        # Fallback : find_orphan_themes a échoué (pas de vision_cache, IO error)
+        # → on retombe sur l'extraction markdown du diagnostic. Pas exhaustif
+        # mais évite de partir avec une proposition vide.
+        for m in markdown_orphans:
+            orphans.append({
+                "theme": m["theme"],
+                "count": m["count"],
+                "target_folder_suggested": m["target_folder"],
+            })
+
     underutilized = parse_underutilized_folders_from_report(diagnostic_md)
     catchall = parse_catchall_folders_from_report(diagnostic_md)
 
-    expected_min = max(0, len(orphans) - 5)  # tolérance sur les mappings
+    expected_min = max(0, len(orphans) - 10)  # tolérance ±10 sur les mappings
 
     human_content_parts = [
         f"Voici le diagnostic Phase A du profil `{profile}` :",

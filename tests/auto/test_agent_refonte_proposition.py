@@ -47,7 +47,8 @@ def _make_profile(profiles_root: Path, name: str, *, target: Path,
 
 
 def _seed_diagnostic_run(profiles_root: Path, profile: str, run_id: str,
-                         status: str = "done") -> None:
+                         status: str = "done",
+                         report_md: str | None = None) -> None:
     """Crée un faux run de Phase A done (avec report.md minimal)."""
     rundir = profiles_root / profile / ".cache" / "refonte" / run_id
     rundir.mkdir(parents=True, exist_ok=True)
@@ -57,13 +58,13 @@ def _seed_diagnostic_run(profiles_root: Path, profile: str, run_id: str,
         "completed_at": "2026-05-25T00:01:00+00:00",
         "llm_calls": 7,
     }))
-    (rundir / "report.md").write_text(
+    (rundir / "report.md").write_text(report_md or (
         "# Diagnostic taxonomy — profil `" + profile + "` — 2026-05-25\n\n"
         "## Stats globales\n- 3 dossiers\n\n"
         "## Anomalies détectées (par priorité)\n\n"
         "### Mappings manquants critiques (1 cas)\n"
         "- **Rust** (50 fichiers) → dossier cible évident : `A/Rust`\n"
-    )
+    ))
 
 
 class _FakeLLM:
@@ -492,6 +493,83 @@ class TestProposeChangesWithDeletions(_ProposBase):
                      / "proposed" / "refonte-rationale.md").read_text()
         self.assertIn("SUPPRESSIONS (1)", rationale)
         self.assertIn("Z", rationale)
+
+
+class TestInitNodeOrphanInjection(_ProposBase):
+    """_init_node : appel direct find_orphan_themes + fusion suggestions markdown."""
+
+    def _init_state(self, profile: str = "p", diag_id: str = "diag-init") -> dict:
+        from agents.refonte.proposition import _init_node
+        _seed_diagnostic_run(
+            self.profiles_root, profile, diag_id,
+            report_md=(
+                "# Diagnostic\n\n"
+                "### Mappings orphelins prioritaires\n"
+                "- **Functional Analysis** (176 fichiers) → dossier cible : "
+                "`A/MATH/Analyse`\n"
+                "- **Group Theory** (112 fichiers) → cible : `A/MATH/Algebre`\n"
+            ),
+        )
+        return _init_node({
+            "profile": profile, "run_id": "b-init",
+            "diagnostic_run_id": diag_id,
+        })
+
+    def test_uses_find_orphan_themes_when_available(self):
+        """Si find_orphan_themes renvoie 200 entrées, on les injecte toutes
+        avec les suggestions du markdown pour le top 30 et None pour le reste."""
+        fake_orphans = [
+            {"theme": "Functional Analysis", "count": 176, "is_orphan": True,
+             "sample_titles": ["Rudin", "Brezis"]},
+            {"theme": "Group Theory", "count": 112, "is_orphan": True,
+             "sample_titles": []},
+            {"theme": "Long Tail Theme", "count": 12, "is_orphan": True,
+             "sample_titles": []},
+        ]
+        with mock.patch(
+            "agents.refonte.proposition.find_orphan_themes",
+            return_value=fake_orphans,
+        ):
+            state = self._init_state()
+        human_msg = state["messages"][1].content
+        # Les 3 thèmes doivent apparaître
+        self.assertIn("Functional Analysis", human_msg)
+        self.assertIn("Group Theory", human_msg)
+        self.assertIn("Long Tail Theme", human_msg)
+        # Le markdown suggère un target pour Functional Analysis / Group Theory
+        self.assertIn("A/MATH/Analyse", human_msg)
+        self.assertIn("A/MATH/Algebre", human_msg)
+        # Long Tail Theme n'a PAS de suggestion → le champ doit être absent
+        # pour cette entrée (le LLM choisira)
+        self.assertIn("target_folder_suggested", human_msg)
+        # n=3 affiché
+        self.assertIn("(n=3)", human_msg)
+
+    def test_falls_back_to_markdown_when_find_orphan_fails(self):
+        """Si find_orphan_themes échoue (pas de vision_cache), on retombe
+        sur le parsing markdown au lieu de partir avec une liste vide."""
+        with mock.patch(
+            "agents.refonte.proposition.find_orphan_themes",
+            side_effect=FileNotFoundError("vision_cache absent"),
+        ):
+            state = self._init_state()
+        human_msg = state["messages"][1].content
+        # Le fallback markdown a injecté les 2 entrées du diagnostic
+        self.assertIn("Functional Analysis", human_msg)
+        self.assertIn("Group Theory", human_msg)
+        self.assertIn("A/MATH/Analyse", human_msg)
+
+    def test_falls_back_when_find_orphan_returns_empty(self):
+        """find_orphan_themes peut renvoyer [] (pas d'orphelin OU pas de cache).
+        Dans ce cas on prend le markdown comme source."""
+        with mock.patch(
+            "agents.refonte.proposition.find_orphan_themes",
+            return_value=[],
+        ):
+            state = self._init_state()
+        human_msg = state["messages"][1].content
+        self.assertIn("Functional Analysis", human_msg)
+        self.assertIn("Group Theory", human_msg)
 
 
 if __name__ == "__main__":
