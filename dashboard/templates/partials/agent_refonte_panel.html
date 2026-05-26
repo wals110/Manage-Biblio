@@ -323,6 +323,43 @@
 .tax-refonte-md h1 { font-size: 1.4em; margin: 0 0 12px; padding-bottom: 6px;
                      border-bottom: 1px solid var(--border); }
 .tax-refonte-md h2 { font-size: 1.15em; margin: 18px 0 8px; }
+/* H2 stylés (rapport B — sections par type de changement) */
+.tax-refonte-md h2[data-kind] {
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.tax-refonte-md h2[data-kind]::before {
+    content: '▾ ';
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+.tax-refonte-md h2[data-kind].collapsed::before { content: '▸ '; }
+.tax-refonte-md h2[data-kind="creations"] {
+    background: rgba(34, 197, 94, 0.15);
+    border-left: 3px solid #22c55e;
+}
+.tax-refonte-md h2[data-kind="renommages"] {
+    background: rgba(249, 115, 22, 0.15);
+    border-left: 3px solid #f97316;
+}
+.tax-refonte-md h2[data-kind="suppressions"] {
+    background: rgba(239, 68, 68, 0.15);
+    border-left: 3px solid #ef4444;
+}
+.tax-refonte-md h2[data-kind="fusions"] {
+    background: rgba(168, 85, 247, 0.15);
+    border-left: 3px solid #a855f7;
+}
+.tax-refonte-md h2[data-kind="mappings"] {
+    background: rgba(59, 130, 246, 0.15);
+    border-left: 3px solid #3b82f6;
+}
+.tax-refonte-md h2[data-kind="summary"] {
+    background: rgba(107, 114, 128, 0.10);
+    border-left: 3px solid #6b7280;
+}
 .tax-refonte-md h3 {
     font-size: 1.05em;
     margin: 14px 0 6px;
@@ -441,6 +478,46 @@
         return 'info';
     }
 
+    // Type d'une section H2 du rationale Phase B (créations / renommages /
+    // suppressions / fusions / mappings / summary) — drive la colorisation
+    // et le collapse par défaut côté mappings (200 lignes sinon).
+    function kindForH2(h2text) {
+        const t = h2text.toLowerCase();
+        if (/cr[ée]ation/.test(t)) return 'creations';
+        if (/renomm/.test(t)) return 'renommages';
+        if (/suppression/.test(t)) return 'suppressions';
+        if (/fusion/.test(t)) return 'fusions';
+        if (/mapping/.test(t)) return 'mappings';
+        if (/r[ée]sum[ée]/.test(t)) return 'summary';
+        return null;  // h2 non typé → pas de polish
+    }
+
+    // Wrap les éléments suivants un header jusqu'au prochain header de
+    // niveau ≤ stopAtLevels dans un .tax-refonte-section collapsible.
+    // collapsed=true → section masquée et header en classe "collapsed".
+    function wrapSectionAfter(header, stopAtLevels, collapsed) {
+        const stop = new Set(stopAtLevels.map(l => 'H' + l));
+        const section = document.createElement('div');
+        section.className = 'tax-refonte-section';
+        let next = header.nextElementSibling;
+        while (next && !stop.has(next.tagName)) {
+            const tmp = next.nextElementSibling;
+            section.appendChild(next);
+            next = tmp;
+        }
+        header.parentNode.insertBefore(section, next);
+        if (collapsed) {
+            section.style.display = 'none';
+            header.classList.add('collapsed');
+        }
+        header.addEventListener('click', () => {
+            const hidden = section.style.display === 'none';
+            section.style.display = hidden ? '' : 'none';
+            header.classList.toggle('collapsed', !hidden);
+        });
+        return section;
+    }
+
     // ─── Rendu Phase B (multi-onglets Rationale / Diff / Impact) ─────────
 
     function renderPhaseBReport(runId, status) {
@@ -467,6 +544,7 @@
         const rationaleEl = document.getElementById('tax-refonte-rationale-md');
         if (window.marked && rationaleMd) {
             rationaleEl.innerHTML = window.marked.parse(rationaleMd);
+            enhancePhaseBRationale(rationaleEl);
         } else {
             rationaleEl.textContent = rationaleMd || '(rationale vide)';
         }
@@ -692,28 +770,26 @@
         // marked.parse v13 : escapes HTML par défaut, headerIds auto-générés
         const html = window.marked ? window.marked.parse(md) : md;
         reportEl.innerHTML = html;
-        // Post-process : priorité + collapse
-        const h3s = Array.from(reportEl.querySelectorAll('h3'));
-        for (const h3 of h3s) {
+        // Post-process : priorité + collapse sur les h3 du diagnostic A
+        for (const h3 of Array.from(reportEl.querySelectorAll('h3'))) {
             h3.dataset.priority = priorityFor(h3.textContent);
-            // Regroupe tous les éléments suivants jusqu'au prochain h3/h2 dans
-            // un wrapper qu'on peut hide/show via la classe "collapsed".
-            const section = document.createElement('div');
-            section.className = 'tax-refonte-section';
-            let next = h3.nextElementSibling;
-            while (next && !['H3', 'H2'].includes(next.tagName)) {
-                const tmp = next.nextElementSibling;
-                section.appendChild(next);
-                next = tmp;
-            }
-            h3.parentNode.insertBefore(section, next);
-            h3.addEventListener('click', () => {
-                const hidden = section.style.display === 'none';
-                section.style.display = hidden ? '' : 'none';
-                h3.classList.toggle('collapsed', !hidden);
-            });
+            wrapSectionAfter(h3, [2, 3], false);
         }
         updateActionButtons(true);
+    }
+
+    // Polish visuel du rationale Phase B : colorisation des h2 par type
+    // (créations vert / renommages orange / suppressions rouge / fusions
+    // violet / mappings bleu / résumé neutre) + collapse, avec la section
+    // "Mappings ajoutés" repliée par défaut (200 lignes sinon illisible).
+    function enhancePhaseBRationale(rootEl) {
+        for (const h2 of Array.from(rootEl.querySelectorAll('h2'))) {
+            const kind = kindForH2(h2.textContent);
+            if (!kind) continue;
+            h2.dataset.kind = kind;
+            const collapseByDefault = (kind === 'mappings');
+            wrapSectionAfter(h2, [1, 2], collapseByDefault);
+        }
     }
 
     function updateActionButtons(enabled) {
