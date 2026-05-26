@@ -78,5 +78,14 @@ def get_agent_llm(
         api_key=resolved_key,
         temperature=temperature,
         timeout=timeout if timeout is not None else DEFAULT_TIMEOUT_S,
+        # streaming=True : on consomme les chunks au fur et à mesure plutôt que
+        # d'attendre la réponse complète. CRITIQUE pour Phase B : SiliconFlow
+        # ferme la connexion serveur-side à ~90s si aucun chunk n'a été émis
+        # ("RemoteProtocolError: Server disconnected"). Avec streaming, le
+        # 1er chunk arrive en < 10s et la connexion reste ouverte jusqu'à la
+        # fin de la génération (testé : 356s/10k chunks/41k chars sans coupure).
+        # ChatOpenAI gère le streaming en interne et reconstruit l'AIMessage
+        # avec tool_calls — transparent pour .invoke().
+        streaming=True,
         max_retries=1,
     )
