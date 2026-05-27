@@ -83,11 +83,43 @@ Pour chaque entrée la liste peut contenir un champ `target_folder_suggested`
 absent (orphelins au-delà du top 30 du diagnostic), tu choisis toi-même la
 destination en t'appuyant sur tree.yaml et le sens du thème.
 
-**2. creations — DRIVEN par les destinations des mappings**
+**2. creations — DRIVEN par les thèmes orphelins à fort volume (stratégie
+agressive : l'humain filtrera ensuite via l'UI)**
 
-Si la destination d'un mapping (suggérée ou choisie par toi) n'existe pas
-dans tree.yaml, ajoute-la dans `creations`. Aussi : si un catch-all est
-trop gros, créer des sous-dossiers où ses fichiers iront naturellement.
+Règle quantitative : **pour CHAQUE thème orphelin avec `count ≥ 30`,
+propose un folder dédié dans `creations` SAUF si un folder existant correspond
+PRÉCISÉMENT au thème (homonymie ou quasi-homonymie)**, pas juste sémantiquement
+voisin. Le `target_folder_suggested` du diagnostic est un point de départ mais
+PAS une obligation — il pointait souvent vers un parent générique faute de
+mieux.
+
+Exemples du jeu de critères :
+
+  ❌ MAPPING TROP LÂCHE (créer un folder à la place) :
+    - `Penetration Testing` (73) → `Securite-Crypto` : trop générique, créer
+      `Securite-Crypto/Penetration-Testing`
+    - `Materials Science` (78) → `Chimie-Physique` : sujet distinct, créer
+      `Sciences-des-Materiaux` au bon niveau
+    - `Database Administration` (56) → `Bases-de-Donnees` : créer
+      `Bases-de-Donnees/Administration`
+
+  ✅ MAPPING LÉGITIME (le folder existe et désigne EXACTEMENT le thème) :
+    - `Functional Analysis` (176) → `MATHEMATIQUES/02-Analyse` : Analyse
+      fonctionnelle EST l'analyse, mappe.
+    - `Web Services` (10) → `Reseaux-Telecom/Web` : count faible + sujet
+      bien recouvert.
+
+La destination d'un mapping peut aussi être un folder nouveau de `creations` :
+si tu crées `Securite-Crypto/Penetration-Testing`, le mapping
+`Penetration Testing → Securite-Crypto/Penetration-Testing` est cohérent.
+
+Aussi : si un catch-all est trop gros, créer des sous-dossiers où ses fichiers
+iront naturellement.
+
+**Volume attendu** : sur une biblio de 18k fichiers avec 200 thèmes orphelins,
+on attend **30-60 creations** (pas 4). Si tu en proposes < 20, tu n'as pas
+appliqué la règle « count ≥ 30 → folder dédié ». L'humain filtrera les
+suggestions qu'il juge superflues — sois généreux, pas timide.
 
 **3. deletions — DRIVEN par les dossiers sous-utilisés sans rescousse**
 
@@ -124,7 +156,12 @@ mappings_added quand pertinent. Pour les deletions, justifie pourquoi
 {
   "creations": [
     {"path": "01-SCIENCES/CHIMIE/04-Science-des-Materiaux",
-     "rationale": "78 fichiers Materials Science orphelins"}
+     "rationale": "78 fichiers Materials Science orphelins, sujet distinct de Chimie-Physique"},
+    {"path": "02-INFORMATIQUE/10-Securite-Crypto/Penetration-Testing",
+     "rationale": "73 fichiers Penetration Testing — sous-dossier dédié plutôt que diluer dans Securite-Crypto"},
+    {"path": "02-INFORMATIQUE/07-Bases-de-Donnees/Administration",
+     "rationale": "56 fichiers Database Administration"},
+    /* ... une création par thème ≥ 30 sans homonyme exact ... */
   ],
   "deletions": [
     {"path": "08-LOISIRS/DESSIN",
@@ -136,7 +173,9 @@ mappings_added quand pertinent. Pour les deletions, justifie pourquoi
   ],
   "mappings_added": [
     {"theme": "Functional Analysis", "folder": "01-SCIENCES/MATHEMATIQUES/02-Analyse",
-     "rationale": "176 fichiers — analyse fonctionnelle"},
+     "rationale": "176 fichiers — homonymie exacte avec le folder Analyse"},
+    {"theme": "Penetration Testing", "folder": "02-INFORMATIQUE/10-Securite-Crypto/Penetration-Testing",
+     "rationale": "73 fichiers — pointe sur le nouveau folder créé ci-dessus"},
     /* ... une entrée par item de la liste orphan mappings ... */
   ]
 }
@@ -145,6 +184,12 @@ mappings_added quand pertinent. Pour les deletions, justifie pourquoi
 ═══════ Anti-patterns à éviter ═══════
 
 - ❌ Ne livrer que 2-3 mappings alors que la liste pré-extraite en a 50+
+- ❌ Ne proposer que 4 créations alors que 30+ thèmes orphelins ont count ≥ 30
+  — c'est l'erreur la plus fréquente. Sois généreux sur `creations`, l'humain
+  filtrera ensuite. Préférer trop que pas assez.
+- ❌ Mapper un gros thème (count ≥ 30) vers un folder existant **générique**
+  juste parce qu'il existe (`Penetration Testing → Securite-Crypto`).
+  La règle : folder dédié sauf homonymie exacte.
 - ❌ Ignorer les dossiers sous-utilisés et les catch-all (toi seul peux
   décider "delete vs. map vs. fuse")
 - ❌ Appeler des outils en boucle pour "redécouvrir" ce qui est déjà
