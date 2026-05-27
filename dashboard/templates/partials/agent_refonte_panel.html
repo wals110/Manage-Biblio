@@ -254,59 +254,158 @@
     margin: 6px 0 0;
 }
 .tax-refonte-run-item {
-    padding: 8px 10px;
+    position: relative;
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    grid-template-rows: auto auto;
+    grid-column-gap: 10px;
+    grid-row-gap: 2px;
+    align-items: center;
+    padding: 10px 12px 10px 14px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     margin-bottom: 8px;
     cursor: pointer;
     background: var(--bg-secondary);
-    transition: background 0.12s ease, border-color 0.12s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    overflow: hidden;
+}
+.tax-refonte-run-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: transparent;
+    transition: background 0.15s ease;
 }
 .tax-refonte-run-item:hover {
     background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
     border-color: var(--border-light, #3a3a3a);
 }
 .tax-refonte-run-item.active {
-    border-color: #4f6ef2;
-    background: rgba(79, 110, 242, 0.08);
+    border-color: rgba(79, 110, 242, 0.5);
+    background: rgba(79, 110, 242, 0.07);
+    box-shadow: 0 0 0 1px rgba(79, 110, 242, 0.15);
 }
-.tax-refonte-run-head {
+.tax-refonte-run-item.active::before {
+    background: linear-gradient(180deg, #4f6ef2, #8b5cf6);
+}
+
+/* Avatar phase circulaire (col 1, span 2 rows) */
+.tax-refonte-run-phase {
+    grid-row: 1 / span 2;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #fff;
+    flex-shrink: 0;
 }
-.tax-refonte-run-id {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.tax-refonte-run-phase[data-phase="A"] {
+    background: linear-gradient(135deg, #4f6ef2, #6d8aff);
+    box-shadow: 0 1px 4px rgba(79, 110, 242, 0.35);
 }
-.tax-refonte-run-foot {
-    display: flex;
+.tax-refonte-run-phase[data-phase="B"] {
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.35);
+}
+
+/* Status (col 2, row 1) : dot coloré + label */
+.tax-refonte-run-status {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-top: 4px;
-    font-size: 11.5px;
-    color: var(--text-muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary, #e6e6e6);
+    text-transform: capitalize;
 }
-.tax-refonte-run-sep { opacity: 0.5; }
+.tax-refonte-run-status::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+.tax-refonte-run-status[data-status="done"]::before {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+.tax-refonte-run-status[data-status="running"]::before,
+.tax-refonte-run-status[data-status="pending"]::before {
+    background: #4f6ef2;
+    animation: taxRefonteRunPulse 1.4s ease-in-out infinite;
+}
+.tax-refonte-run-status[data-status="error"]::before {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+@keyframes taxRefonteRunPulse {
+    0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(79, 110, 242, 0.6); }
+    50%      { transform: scale(1.15); opacity: 0.85; box-shadow: 0 0 0 5px rgba(79, 110, 242, 0); }
+}
+
+/* Bouton × (col 3, row 1) */
 .tax-refonte-run-delete {
-    margin-left: auto;
+    grid-column: 3;
+    grid-row: 1;
     background: transparent;
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 18px;
     line-height: 1;
-    padding: 0 4px;
-    border-radius: 3px;
-    opacity: 0.5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
     transition: opacity 0.15s, color 0.15s, background 0.15s;
 }
-.tax-refonte-run-item:hover .tax-refonte-run-delete { opacity: 1; }
+.tax-refonte-run-item:hover .tax-refonte-run-delete,
+.tax-refonte-run-item.active .tax-refonte-run-delete { opacity: 0.7; }
 .tax-refonte-run-delete:hover {
+    opacity: 1 !important;
     color: #ff8b8b;
     background: rgba(255, 92, 92, 0.12);
+}
+
+/* Footer (col 2, row 2) : time + LLM count */
+.tax-refonte-run-meta-row {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.tax-refonte-run-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.tax-refonte-run-meta svg {
+    width: 11px;
+    height: 11px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+/* UUID discret (col 3, row 2, justifié droite) */
+.tax-refonte-run-id {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    opacity: 0.55;
+    letter-spacing: 0.3px;
 }
 
 .tax-refonte-report-header {
@@ -884,30 +983,29 @@
             item.dataset.runId = r.run_id;
             // Format date plus lisible : "il y a Xm" si récent, sinon date courte
             const startedTxt = formatStarted(r.started_at);
-            const llmInfo = r.llm_calls
-                ? '<span class="tax-refonte-run-meta">' + r.llm_calls + ' LLM</span>'
-                : '';
-            const phaseLabel = r.phase === 'B'
-                ? '<span class="tax-refonte-run-meta" style="background:rgba(139,92,246,0.18);'
-                + 'padding:1px 6px;border-radius:3px;color:#a78bfa;">B</span>'
-                : '<span class="tax-refonte-run-meta" style="background:rgba(79,110,242,0.18);'
-                + 'padding:1px 6px;border-radius:3px;color:#93b1ff;">A</span>';
             const isBusy = r.status === 'running' || r.status === 'pending';
             const deleteBtn = isBusy
                 ? ''
                 : '<button type="button" class="tax-refonte-run-delete" '
                 + 'title="Supprimer ce run" aria-label="Supprimer ce run">×</button>';
+            const phaseLetter = r.phase === 'B' ? 'B' : 'A';
+            const clockSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">'
+                + '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 2"/></svg>';
+            const llmSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">'
+                + '<path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>';
+            const llmMetaHtml = r.llm_calls
+                ? '<span class="tax-refonte-run-meta" title="Appels LLM">' + llmSvg
+                  + '<span>' + r.llm_calls + '</span></span>'
+                : '';
             item.innerHTML =
-                '<div class="tax-refonte-run-head">'
-              + '  <code class="tax-refonte-run-id">' + r.run_id.slice(0, 8) + '</code>'
-              + '  ' + phaseLabel
-              + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
-              + '  ' + deleteBtn
+                '<div class="tax-refonte-run-phase" data-phase="' + phaseLetter + '">' + phaseLetter + '</div>'
+              + '<span class="tax-refonte-run-status" data-status="' + r.status + '">' + r.status + '</span>'
+              + deleteBtn
+              + '<div class="tax-refonte-run-meta-row">'
+              + '  <span class="tax-refonte-run-meta" title="Démarré">' + clockSvg + '<span>' + startedTxt + '</span></span>'
+              + llmMetaHtml
               + '</div>'
-              + '<div class="tax-refonte-run-foot">'
-              + '  <span class="tax-refonte-run-meta">' + startedTxt + '</span>'
-              + (llmInfo ? '<span class="tax-refonte-run-sep">·</span>' + llmInfo : '')
-              + '</div>';
+              + '<code class="tax-refonte-run-id" title="' + r.run_id + '">' + r.run_id.slice(0, 8) + '</code>';
             const delEl = item.querySelector('.tax-refonte-run-delete');
             if (delEl) {
                 delEl.addEventListener('click', async (ev) => {
