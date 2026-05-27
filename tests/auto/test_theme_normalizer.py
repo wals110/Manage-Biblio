@@ -18,6 +18,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, PROJECT_ROOT)
 
 from lib.theme_normalizer import (  # noqa: E402
+    cluster_canonical_forms,
+    cluster_themes,
     group_by_canonical,
     normalize_theme,
     normalize_themes_batch,
@@ -247,6 +249,140 @@ class TestBatchAndGroup(unittest.TestCase):
         # Un input qui se normalise à "" doit être skip
         groups = group_by_canonical(["   ", "Real Theme"])
         self.assertEqual(list(groups.keys()), ["real theme"])
+
+
+class TestClusterCanonicalForms(unittest.TestCase):
+    """Phase 2 : clustering fuzzy sur les formes canoniques."""
+
+    def _find_cluster_for(self, clusters, target):
+        for c in clusters:
+            if target in c:
+                return c
+        return None
+
+    def test_singletons_unchanged(self):
+        forms = ["machine learning", "deep learning", "compiler design"]
+        clusters = cluster_canonical_forms(forms)
+        self.assertEqual(len(clusters), 3)
+        for c in clusters:
+            self.assertEqual(len(c), 1)
+
+    def test_clusters_close_forms(self):
+        # Cas réel : "computer system administration" vs "computer systems
+        # administration" — capture les variantes que la singularisation
+        # ne peut pas unifier (Phase 1 voit "system" et "systems" comme
+        # mots distincts au tokenize avant que la dépluralisation entre
+        # en jeu — c'est en réalité géré par Phase 1, mais on garde le
+        # test pour les vrais cas type "Optimization vs Optimisation").
+        forms = [
+            "search engine optimization",
+            "search engine optimisation",  # variante orthographique
+            "machine learning",
+        ]
+        clusters = cluster_canonical_forms(forms, threshold=90)
+        # Les deux SEO doivent être dans le même cluster
+        cluster = self._find_cluster_for(clusters, "search engine optimization")
+        self.assertIn("search engine optimisation", cluster)
+        # Machine learning reste isolé
+        ml_cluster = self._find_cluster_for(clusters, "machine learning")
+        self.assertEqual(ml_cluster, ["machine learning"])
+
+    def test_does_not_merge_subdomains(self):
+        # Sous-domaines distincts : ne doivent PAS fusionner même en fuzzy
+        forms = [
+            "machine learning",
+            "unsupervised machine learning",
+            "deep learning",
+            "statistical learning",
+            "statistical modeling",
+        ]
+        clusters = cluster_canonical_forms(forms, threshold=90)
+        self.assertEqual(len(clusters), 5, f"Expected 5 isolated clusters, got: {clusters}")
+
+    def test_empty_input(self):
+        self.assertEqual(cluster_canonical_forms([]), [])
+
+    def test_threshold_too_low_merges_subdomains(self):
+        # Document du comportement : à threshold 50, des sous-domaines fusionnent
+        # avec token_sort_ratio (c'est pour ça qu'on garde 90 par défaut).
+        forms = ["machine learning", "deep learning"]
+        clusters = cluster_canonical_forms(forms, threshold=50)
+        # token_sort_ratio('machine learning', 'deep learning') = 55.2 → fusionne
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(set(clusters[0]), {"machine learning", "deep learning"})
+
+    def test_threshold_high_keeps_seo_variants_apart(self):
+        # À threshold 99, seuls les matches quasi-parfaits passent
+        forms = ["search engine optimization", "search engine optimisation"]
+        clusters = cluster_canonical_forms(forms, threshold=99)
+        self.assertEqual(len(clusters), 2)
+
+
+class TestClusterThemes(unittest.TestCase):
+    """Pipeline complet raw_themes → clusters fuzzy (Phase 1 + Phase 2)."""
+
+    def test_basic_pipeline(self):
+        # Mélange : 2 variantes orthographiques + 1 isolé
+        themes = ["Machine Learning", "Machine learning", "Deep Learning"]
+        clusters = cluster_themes(themes)
+        # 2 clusters : machine learning (2 membres), deep learning (1)
+        self.assertEqual(len(clusters), 2)
+        # Le plus gros en premier (tri par taille)
+        self.assertEqual(len(clusters[0]["raw_members"]), 2)
+        self.assertEqual(set(clusters[0]["raw_members"]), {"Machine Learning", "Machine learning"})
+        self.assertEqual(clusters[1]["raw_members"], ["Deep Learning"])
+
+    def test_phase1_handles_pure_case_variants(self):
+        # Avec normalize_theme, "Machine Learning" et "Machine learning"
+        # ont la même forme canonique → un seul cluster, sans recours à
+        # rapidfuzz.
+        themes = ["Machine Learning", "Machine learning"]
+        clusters = cluster_themes(themes)
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0]["canonical_forms"], ["machine learning"])
+
+    def test_phase2_adds_fuzzy_matches(self):
+        # Variantes que Phase 1 ne capture pas mais Phase 2 oui :
+        # "optimization" vs "optimisation" (orthographe US/UK)
+        themes = [
+            "Search Engine Optimization",
+            "Search Engine Optimisation",
+            "Search engine optimisation",
+        ]
+        clusters = cluster_themes(themes)
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(set(clusters[0]["raw_members"]), {
+            "Search Engine Optimization",
+            "Search Engine Optimisation",
+            "Search engine optimisation",
+        })
+
+    def test_subdomains_stay_separate(self):
+        themes = [
+            "Machine Learning",
+            "Unsupervised Machine Learning",
+            "Deep Learning",
+        ]
+        clusters = cluster_themes(themes)
+        self.assertEqual(len(clusters), 3)
+
+    def test_empty_themes_skipped(self):
+        themes = ["Machine Learning", "", None, "Deep Learning"]
+        clusters = cluster_themes(themes)  # type: ignore[arg-type]
+        self.assertEqual(len(clusters), 2)
+        flat = [m for c in clusters for m in c["raw_members"]]
+        self.assertEqual(set(flat), {"Machine Learning", "Deep Learning"})
+
+    def test_sorted_by_size_desc(self):
+        # Cluster A : 3 membres ; B : 2 ; C : 1
+        themes = [
+            "Statistics", "statistics", "STATISTICS",  # A: 3
+            "Web Development", "web development",       # B: 2
+            "Quantum Computing",                        # C: 1
+        ]
+        clusters = cluster_themes(themes)
+        sizes = [len(c["raw_members"]) for c in clusters]
+        self.assertEqual(sizes, [3, 2, 1])
 
 
 if __name__ == "__main__":

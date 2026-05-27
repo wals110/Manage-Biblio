@@ -177,3 +177,146 @@ def group_by_canonical(themes: Iterable[str]) -> dict[str, list[str]]:
             continue
         groups.setdefault(canon, []).append(raw)
     return groups
+
+
+# ─── Phase 2 — Clustering fuzzy ────────────────────────────────────────────
+
+# Seuil de similarité par défaut (token_sort_ratio sur formes canoniques).
+# Calibré sur des cas réels du profil default (15 376 thèmes uniques) :
+#   - 93-98 : vrais doublons (search engine optimization vs optimisation,
+#     web application development vs web and application development)
+#   - 71-80 : sous-domaines (unsupervised machine learning vs machine
+#     learning, statistical learning vs statistical modeling)
+#
+# Échantillonnage qualitatif à threshold 90 : 1 280 clusters multi-variantes
+# (14.7% reduction) mais nombreux faux positifs observés sur les thèmes
+# longs partageant un mot dominant (ex. "Java EE Development" + "JavaFX
+# Development" + "Java ME Development" → fusion incorrecte ; "Windows 10
+# OS" + "Windows XP OS" → fusion incorrecte). token_sort_ratio sur-pondère
+# les mots communs longs.
+#
+# À threshold 92, ces cas évidents disparaissent (1 160 clusters, 11.3% red.)
+# au prix d'un léger sous-ajustement compensé par Phase 3 (LLM judge).
+# Choix : 92 par défaut, le LLM judge tranchera les cas frontières.
+_DEFAULT_CLUSTER_THRESHOLD = 92
+
+
+def cluster_canonical_forms(
+    forms: list[str],
+    *,
+    threshold: int = _DEFAULT_CLUSTER_THRESHOLD,
+    top_k: int = 15,
+) -> list[list[str]]:
+    """Regroupe les formes canoniques par similarité fuzzy via union-find.
+
+    Algorithme : pour chaque forme, `rapidfuzz.process.extract` retourne ses
+    top-k voisins ayant `token_sort_ratio ≥ threshold`. Les paires obtenues
+    déclenchent un union-find. Complexité ~O(n × k) avec k constant.
+
+    Args:
+        forms: Liste de formes canoniques (lowercase, déjà normalisées via
+               `normalize_theme`). Si on lui passe des thèmes bruts, les
+               différences de casse polluent le scoring.
+        threshold: Score minimum pour considérer deux formes équivalentes
+                   (0-100, défaut 90).
+        top_k: Nombre max de voisins examinés par forme (défaut 15). Augmenter
+               si on s'attend à des clusters > 15 variantes.
+
+    Returns:
+        Liste de clusters, chaque cluster = liste des formes qui s'y
+        rattachent. Les formes seules apparaissent comme un cluster de
+        taille 1. L'ordre des clusters et leur composition interne ne sont
+        pas garantis stables.
+    """
+    from rapidfuzz import fuzz, process
+
+    n = len(forms)
+    if n == 0:
+        return []
+
+    # Union-find (path compression, sans union-by-rank — pas nécessaire pour n petit)
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Pour chaque forme, trouver les voisins ≥ threshold et fusionner
+    for i in range(n):
+        matches = process.extract(
+            forms[i], forms,
+            scorer=fuzz.token_sort_ratio,
+            limit=top_k,
+            score_cutoff=threshold,
+        )
+        for _matched_form, _score, j in matches:
+            if j != i:
+                union(i, j)
+
+    # Reconstruction des clusters
+    by_root: dict[int, list[str]] = {}
+    for i in range(n):
+        by_root.setdefault(find(i), []).append(forms[i])
+    return list(by_root.values())
+
+
+def cluster_themes(
+    raw_themes: Iterable[str],
+    *,
+    threshold: int = _DEFAULT_CLUSTER_THRESHOLD,
+    top_k: int = 15,
+) -> list[dict]:
+    """Pipeline complet : raw_themes → clusters fuzzy.
+
+    Combine Phase 1 (normalisation déterministe via `group_by_canonical`)
+    et Phase 2 (clustering fuzzy sur les formes canoniques). Le bénéfice
+    de Phase 2 par rapport à Phase 1 est de récupérer les variantes qui
+    survivent à la normalisation (typos, mots de tail différents, ordre
+    de tokens).
+
+    Args:
+        raw_themes: Itérable de thèmes bruts (tels que retournés par le LLM).
+        threshold: Score fuzzy minimum (défaut 90, cf. _DEFAULT_CLUSTER_THRESHOLD).
+        top_k: Nombre max de voisins par forme (défaut 15).
+
+    Returns:
+        Liste de clusters, chacun de la forme :
+        ```
+        {
+            "canonical_forms": ["machine learning", "machine learnings"],
+            "raw_members": ["Machine Learning", "Machine learning",
+                            "machine learnings"],
+        }
+        ```
+        Trié par taille décroissante (gros clusters en premier).
+    """
+    # Étage 1 : group_by_canonical (déterministe)
+    by_canon = group_by_canonical(raw_themes)
+    canonical_forms = list(by_canon.keys())
+
+    # Étage 2 : clustering fuzzy sur les formes canoniques
+    fuzzy_clusters = cluster_canonical_forms(
+        canonical_forms, threshold=threshold, top_k=top_k,
+    )
+
+    # Reconstruction : pour chaque cluster fuzzy, agréger les raw_members
+    # de toutes les formes canoniques qui le composent.
+    result: list[dict] = []
+    for cluster_forms in fuzzy_clusters:
+        raw_members: list[str] = []
+        for canon in cluster_forms:
+            raw_members.extend(by_canon[canon])
+        result.append({
+            "canonical_forms": list(cluster_forms),
+            "raw_members": raw_members,
+        })
+    # Tri par nombre total de variantes brutes (impact business)
+    result.sort(key=lambda c: -len(c["raw_members"]))
+    return result
