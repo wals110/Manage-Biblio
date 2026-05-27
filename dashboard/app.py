@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import agent_refonte, baseline, data, taxonomy
+from dashboard import agent_refonte, baseline, data, dedupli, taxonomy
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -2362,6 +2362,69 @@ async def api_agent_refonte_delete_run(run_id: str, profile: str):
         return JSONResponse({"error": str(exc)}, status_code=404)
     except agent_refonte.RunBusyError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Taxonomie — Onglet Dédupli des thèmes
+# ════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/api/taxonomy/dedupli/build")
+async def api_dedupli_build(request: Request):
+    """Lance un build de canonisation en arrière-plan (~10-15 min sur 15k thèmes)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    threshold = int(body.get("threshold") or 92)
+    if threshold < 50 or threshold > 100:
+        return JSONResponse(
+            {"error": "threshold must be between 50 and 100"}, status_code=400,
+        )
+    try:
+        result = dedupli.start_dedupli(profile, threshold=threshold)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.get("/api/taxonomy/dedupli/status")
+async def api_dedupli_status(profile: str):
+    """Lit l'état du build (polling depuis le frontend)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    return JSONResponse(dedupli.get_status(profile))
+
+
+@app.get("/api/taxonomy/dedupli/clusters")
+async def api_dedupli_clusters(profile: str, multi_only: bool = True):
+    """Liste les clusters depuis theme-canon.json (triés par count cumulé)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    clusters = dedupli.list_clusters(profile, multi_only=multi_only)
+    return JSONResponse({"profile": profile, "clusters": clusters})
+
+
+@app.put("/api/taxonomy/dedupli/cluster")
+async def api_dedupli_update_cluster(request: Request):
+    """Édition manuelle d'un cluster — réécrit theme-canon.json en place."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile is required"}, status_code=400)
+    try:
+        updated = dedupli.update_cluster(profile, body)
+        return JSONResponse({"profile": profile, "cluster": updated})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
 
 
 # ──────────── Phase B : Proposition ────────────

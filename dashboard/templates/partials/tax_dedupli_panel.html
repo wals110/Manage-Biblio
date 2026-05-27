@@ -1,0 +1,501 @@
+{# Partial : onglet Dédupli des thèmes LLM (Phase 5 du chantier dédupli).
+   - Bouton "🚀 Lancer la dédupli" → POST /api/taxonomy/dedupli/build
+   - Polling status pendant le run
+   - Liste des clusters proposés (gauche) + détail éditable (droite)
+   - Édition : renommer canonical, déplacer membres entre members/splits #}
+
+<div class="tax-dedupli-panel">
+    <div class="tax-dedupli-header">
+        <button id="tax-dedupli-start" class="btn-primary tax-dedupli-launch">
+            🚀 Lancer la dédupli
+        </button>
+        <label class="filter-label" for="tax-dedupli-threshold">Threshold</label>
+        <input type="number" id="tax-dedupli-threshold" class="filter-select"
+               value="92" min="50" max="100" style="width:64px;">
+        <div id="tax-dedupli-status" class="tax-dedupli-status">État : non lancé</div>
+    </div>
+
+    <div class="tax-dedupli-progress" id="tax-dedupli-progress" style="display:none;">
+        <div class="tax-dedupli-progress-label">
+            <span id="tax-dedupli-phase">…</span>
+            <span id="tax-dedupli-progress-text"></span>
+        </div>
+        <div class="tax-dedupli-progress-bar">
+            <div class="tax-dedupli-progress-fill" id="tax-dedupli-progress-fill"></div>
+        </div>
+    </div>
+
+    <div class="tax-dedupli-body">
+        <div class="tax-dedupli-clusters" id="tax-dedupli-clusters">
+            <p class="muted small">Aucun build encore. Lance la dédupli ↑.</p>
+        </div>
+        <div class="tax-dedupli-detail" id="tax-dedupli-detail">
+            <p class="muted small">Sélectionne un cluster à gauche pour l'éditer.</p>
+        </div>
+    </div>
+</div>
+
+<style>
+.tax-dedupli-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    height: calc(100vh - 180px);
+    min-height: 480px;
+}
+.tax-dedupli-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.tax-dedupli-launch {
+    padding: 8px 16px;
+    font-weight: 600;
+}
+.tax-dedupli-status {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-left: 8px;
+    flex: 1;
+}
+.tax-dedupli-progress {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+}
+.tax-dedupli-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.tax-dedupli-progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.tax-dedupli-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4f6ef2, #8b5cf6);
+    transition: width 0.3s ease;
+    width: 0%;
+}
+.tax-dedupli-body {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(380px, 1.4fr);
+    gap: 14px;
+    flex: 1;
+    min-height: 0;
+}
+.tax-dedupli-clusters {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-y: auto;
+    padding: 8px;
+    background: var(--bg-secondary);
+}
+.tax-dedupli-detail {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-y: auto;
+    padding: 16px;
+    background: var(--bg-secondary);
+}
+.tax-dedupli-cluster-item {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    transition: background 0.12s, border-color 0.12s;
+}
+.tax-dedupli-cluster-item:hover {
+    background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+    border-color: var(--border-light, #3a3a3a);
+}
+.tax-dedupli-cluster-item.active {
+    border-color: rgba(79, 110, 242, 0.5);
+    background: rgba(79, 110, 242, 0.07);
+}
+.tax-dedupli-cluster-canon {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary, #e6e6e6);
+    margin-bottom: 4px;
+}
+.tax-dedupli-cluster-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    align-items: center;
+}
+.tax-dedupli-badge {
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+}
+.tax-dedupli-badge-members {
+    background: rgba(34, 197, 94, 0.18);
+    color: #4ade80;
+}
+.tax-dedupli-badge-splits {
+    background: rgba(249, 115, 22, 0.18);
+    color: #fb923c;
+}
+.tax-dedupli-detail h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+}
+.tax-dedupli-detail-canon {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+.tax-dedupli-detail-canon input {
+    padding: 6px 10px;
+    background: var(--bg-tertiary, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary, #e6e6e6);
+    font-size: 13px;
+}
+.tax-dedupli-detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+.tax-dedupli-detail-list-title {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.tax-dedupli-variant {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    font-size: 12.5px;
+}
+.tax-dedupli-variant input[type="checkbox"] {
+    flex-shrink: 0;
+}
+.tax-dedupli-variant-name {
+    flex: 1;
+    word-break: break-word;
+}
+.tax-dedupli-variant-reason {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.tax-dedupli-detail-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+</style>
+
+<script>
+(function() {
+    const startBtn = document.getElementById('tax-dedupli-start');
+    const thresholdInput = document.getElementById('tax-dedupli-threshold');
+    const statusEl = document.getElementById('tax-dedupli-status');
+    const progressEl = document.getElementById('tax-dedupli-progress');
+    const progressPhase = document.getElementById('tax-dedupli-phase');
+    const progressText = document.getElementById('tax-dedupli-progress-text');
+    const progressFill = document.getElementById('tax-dedupli-progress-fill');
+    const clustersEl = document.getElementById('tax-dedupli-clusters');
+    const detailEl = document.getElementById('tax-dedupli-detail');
+
+    let pollTimer = null;
+    let currentCluster = null;  // {raw_members, canonical, members, splits}
+
+    function currentProfile() {
+        const sel = document.getElementById('tax-profile-select');
+        return sel ? sel.value : 'default';
+    }
+
+    function setStatus(text) {
+        statusEl.textContent = text;
+    }
+
+    function showProgress(phase, done, total) {
+        progressEl.style.display = '';
+        progressPhase.textContent = phase || '…';
+        if (total > 0) {
+            const pct = Math.round((done / total) * 100);
+            progressText.textContent = `${done} / ${total} (${pct}%)`;
+            progressFill.style.width = pct + '%';
+        } else {
+            progressText.textContent = '';
+            progressFill.style.width = '0%';
+        }
+    }
+
+    function hideProgress() {
+        progressEl.style.display = 'none';
+    }
+
+    async function startBuild() {
+        const profile = currentProfile();
+        const threshold = parseInt(thresholdInput.value, 10) || 92;
+        startBtn.disabled = true;
+        setStatus('Démarrage…');
+        try {
+            const r = await fetch('/api/taxonomy/dedupli/build', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({profile, threshold}),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                setStatus('Erreur : ' + (err.error || r.status));
+                startBtn.disabled = false;
+                return;
+            }
+            setStatus('En cours…');
+            // Polling toutes les 2s
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(pollStatus, 2000);
+            pollStatus();
+        } catch (e) {
+            setStatus('Erreur réseau : ' + e.message);
+            startBtn.disabled = false;
+        }
+    }
+
+    async function pollStatus() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch(
+                '/api/taxonomy/dedupli/status?profile=' + encodeURIComponent(profile)
+            );
+            if (!r.ok) return;
+            const s = await r.json();
+            renderStatus(s);
+            if (s.status === 'done' || s.status === 'error') {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                startBtn.disabled = false;
+                if (s.status === 'done') {
+                    loadClusters();
+                }
+            }
+        } catch (e) {
+            // tolère les hiccups réseau
+        }
+    }
+
+    function renderStatus(s) {
+        if (s.status === 'idle') {
+            setStatus('État : non lancé');
+            hideProgress();
+            return;
+        }
+        if (s.status === 'running' || s.status === 'pending') {
+            const p = s.progress || {};
+            showProgress(s.phase || 'running', p.done || 0, p.total || 0);
+            setStatus(`En cours — phase: ${s.phase || '…'}`);
+            return;
+        }
+        if (s.status === 'done') {
+            hideProgress();
+            const cs = s.canon_summary || {};
+            const reduction = cs.raw_count && cs.canonical_count
+                ? Math.round((1 - cs.canonical_count / cs.raw_count) * 100)
+                : 0;
+            setStatus(
+                `✓ Terminé — ${cs.raw_count || 0} → ${cs.canonical_count || 0} `
+              + `(${reduction}% réduction · ${cs.n_clusters || 0} clusters)`
+            );
+            return;
+        }
+        if (s.status === 'error') {
+            hideProgress();
+            setStatus('❌ Erreur : ' + (s.error || 'unknown'));
+            return;
+        }
+    }
+
+    async function loadClusters() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch(
+                '/api/taxonomy/dedupli/clusters?profile=' + encodeURIComponent(profile)
+            );
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            renderClusters(data.clusters || []);
+        } catch (e) {
+            clustersEl.innerHTML = '<p class="muted small">Erreur : ' + e.message + '</p>';
+        }
+    }
+
+    function renderClusters(clusters) {
+        if (!clusters.length) {
+            clustersEl.innerHTML = '<p class="muted small">Aucun cluster multi-variante.</p>';
+            return;
+        }
+        clustersEl.innerHTML = '';
+        for (const c of clusters) {
+            const item = document.createElement('div');
+            item.className = 'tax-dedupli-cluster-item';
+            const nMembers = (c.members || []).length;
+            const nSplits = (c.splits || []).length;
+            item.innerHTML =
+                '<div class="tax-dedupli-cluster-canon">' + escapeHtml(c.canonical || '?') + '</div>'
+              + '<div class="tax-dedupli-cluster-meta">'
+              + '  <span class="tax-dedupli-badge tax-dedupli-badge-members">' + nMembers + ' members</span>'
+              + (nSplits > 0
+                    ? '  <span class="tax-dedupli-badge tax-dedupli-badge-splits">' + nSplits + ' splits</span>'
+                    : '')
+              + '  <span>' + (c.count_cumulative || 0) + ' fichiers</span>'
+              + '</div>';
+            item.addEventListener('click', () => {
+                clustersEl.querySelectorAll('.tax-dedupli-cluster-item.active')
+                         .forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                renderDetail(c);
+            });
+            clustersEl.appendChild(item);
+        }
+    }
+
+    function renderDetail(cluster) {
+        currentCluster = JSON.parse(JSON.stringify(cluster));  // deep clone
+        const raw = currentCluster.raw_members || [];
+        const memberSet = new Set(currentCluster.members || []);
+        const splitMap = new Map(
+            (currentCluster.splits || []).map(s => [s.theme, s.reason || ''])
+        );
+
+        const html = [
+            '<h3>Détail du cluster</h3>',
+            '<div class="tax-dedupli-detail-canon">',
+            '  <span class="tax-dedupli-detail-list-title">Canonical</span>',
+            '  <input type="text" id="tax-dedupli-edit-canon" value="'
+                + escapeHtml(currentCluster.canonical || '') + '">',
+            '</div>',
+            '<div class="tax-dedupli-detail-list">',
+            '  <div class="tax-dedupli-detail-list-title">Variantes (' + raw.length + ')</div>',
+            '  <p class="muted small" style="margin:0 0 6px;">'
+            + 'Coche pour fusionner vers le canonical (members). Décoche = split (sous-domaine).'
+            + '</p>',
+        ];
+        for (const variant of raw) {
+            const isMember = memberSet.has(variant);
+            const reason = splitMap.get(variant) || '';
+            html.push(
+                '<label class="tax-dedupli-variant">'
+              + '  <input type="checkbox" data-variant="' + escapeHtml(variant) + '"'
+              + (isMember ? ' checked' : '') + '>'
+              + '  <span class="tax-dedupli-variant-name">' + escapeHtml(variant) + '</span>'
+              + (reason ? '<span class="tax-dedupli-variant-reason">' + escapeHtml(reason) + '</span>' : '')
+              + '</label>'
+            );
+        }
+        html.push('</div>');
+        html.push(
+            '<div class="tax-dedupli-detail-actions">',
+            '  <button id="tax-dedupli-save" class="btn-primary">💾 Sauvegarder</button>',
+            '  <button id="tax-dedupli-cancel" class="btn-secondary">Annuler</button>',
+            '</div>',
+        );
+        detailEl.innerHTML = html.join('\n');
+        document.getElementById('tax-dedupli-save').addEventListener('click', saveCluster);
+        document.getElementById('tax-dedupli-cancel').addEventListener('click', () => {
+            renderDetail(cluster);
+        });
+    }
+
+    async function saveCluster() {
+        if (!currentCluster) return;
+        const newCanon = document.getElementById('tax-dedupli-edit-canon').value.trim();
+        if (!newCanon) {
+            alert('Le canonical ne peut pas être vide.');
+            return;
+        }
+        const raw = currentCluster.raw_members || [];
+        const checkboxes = detailEl.querySelectorAll('input[type="checkbox"][data-variant]');
+        const newMembers = [];
+        const newSplits = [];
+        const splitMap = new Map(
+            (currentCluster.splits || []).map(s => [s.theme, s.reason || ''])
+        );
+        for (const cb of checkboxes) {
+            const v = cb.dataset.variant;
+            if (cb.checked) {
+                newMembers.push(v);
+            } else {
+                newSplits.push({theme: v, reason: splitMap.get(v) || 'séparé manuellement'});
+            }
+        }
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/taxonomy/dedupli/cluster', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    profile,
+                    raw_members: raw,
+                    canonical: newCanon,
+                    members: newMembers,
+                    splits: newSplits,
+                }),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Erreur : ' + (err.error || r.status));
+                return;
+            }
+            // Refresh la liste pour refléter la mise à jour
+            loadClusters();
+            // Garde le focus sur ce cluster
+            const updated = await r.json();
+            renderDetail(updated.cluster);
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+        }
+    }
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    startBtn.addEventListener('click', startBuild);
+
+    // Activation : exposé pour activateSubtab() dans taxonomy_rename.js
+    window.taxDedupliPanel = {
+        activate: () => {
+            pollStatus();
+            loadClusters();
+        },
+        refresh: () => {
+            pollStatus();
+            loadClusters();
+        },
+    };
+
+    // Au load initial, peuple si du canon existe déjà
+    pollStatus();
+    loadClusters();
+})();
+</script>

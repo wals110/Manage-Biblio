@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from langchain_core.language_models import BaseChatModel
@@ -185,6 +186,7 @@ def judge_clusters(
     *,
     auto_merge_threshold: int = 97,
     use_cache: bool = True,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[JudgeResult]:
     """Pipeline complet : skip auto + cache + LLM judge.
 
@@ -200,6 +202,8 @@ def judge_clusters(
         llm: ChatOpenAI prêt (typiquement get_agent_llm()).
         auto_merge_threshold: Seuil pour skip LLM (défaut 97).
         use_cache: Désactivable pour les tests.
+        on_progress: Callback `(done, total)` invoqué après chaque cluster
+                     (utile pour status.json en runtime UI/dashboard).
 
     Returns:
         Liste de JudgeResult, un par cluster d'entrée (ordre préservé).
@@ -207,18 +211,17 @@ def judge_clusters(
     cache = _load_judge_cache(profile) if use_cache else {}
     results: list[JudgeResult] = []
     cache_dirty = False
+    total = len(clusters)
 
-    for variants in clusters:
+    for i, variants in enumerate(clusters):
         # Singleton : décision triviale
         if len(variants) < 2:
             results.append(JudgeResult(
                 canonical=variants[0] if variants else "",
                 members=list(variants),
             ))
-            continue
-
         # Skip auto sur cluster très homogène
-        if should_auto_merge(variants, threshold=auto_merge_threshold):
+        elif should_auto_merge(variants, threshold=auto_merge_threshold):
             # Heuristique de canonical : la variante la plus longue (souvent
             # la plus complète orthographiquement, ex. "Machine Learning" vs
             # "machine learning")
@@ -226,20 +229,21 @@ def judge_clusters(
                 canonical=max(variants, key=len),
                 members=list(variants),
             ))
-            continue
+        else:
+            # Cache lookup
+            key = _stable_cluster_key(variants)
+            if use_cache and key in cache:
+                results.append(JudgeResult(**cache[key]))
+            else:
+                # Appel LLM
+                result = judge_cluster(variants, llm)
+                if use_cache:
+                    cache[key] = result.model_dump()
+                    cache_dirty = True
+                results.append(result)
 
-        # Cache lookup
-        key = _stable_cluster_key(variants)
-        if use_cache and key in cache:
-            results.append(JudgeResult(**cache[key]))
-            continue
-
-        # Appel LLM
-        result = judge_cluster(variants, llm)
-        if use_cache:
-            cache[key] = result.model_dump()
-            cache_dirty = True
-        results.append(result)
+        if on_progress is not None:
+            on_progress(i + 1, total)
 
     if cache_dirty and use_cache:
         _save_judge_cache(profile, cache)

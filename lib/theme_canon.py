@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import ast
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -44,8 +45,12 @@ from langchain_core.language_models import BaseChatModel
 from lib.theme_judge import JudgeResult, judge_clusters
 from lib.theme_normalizer import cluster_themes
 
-CANON_VERSION = 1
+CANON_VERSION = 2
 DEFAULT_CLUSTER_THRESHOLD = 92
+
+# Type alias : callback de progression invoqué après chaque cluster traité.
+# Signature : (clusters_done, clusters_total, phase) → None
+ProgressCallback = Callable[[int, int, str], None]
 
 
 def _canon_path(profile: str) -> Path:
@@ -182,6 +187,7 @@ def build_canon_table(
     *,
     threshold: int = DEFAULT_CLUSTER_THRESHOLD,
     use_judge_cache: bool = True,
+    on_progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Pipeline end-to-end : extraction → clustering → LLM judge → persistance.
 
@@ -191,11 +197,17 @@ def build_canon_table(
         threshold: Seuil de similarité Phase 2 (défaut 92).
         use_judge_cache: Réutilise les décisions LLM persistées dans
                          theme-judge.json (défaut True).
+        on_progress: Callback `(done, total, phase)` invoqué pendant le run.
+                     Phases : 'extracting' → 'clustering' → 'judging' → 'done'.
+                     Utile pour persister status.json côté dashboard.
 
     Returns:
-        La table de canonisation complète (incluant métadonnées). Écrite
-        sur disque dans `profiles/<p>/.cache/theme-canon.json`.
+        La table de canonisation complète (incluant métadonnées et clusters
+        enrichis pour l'UI). Écrite sur disque dans
+        `profiles/<p>/.cache/theme-canon.json`.
     """
+    if on_progress:
+        on_progress(0, 0, "extracting")
     themes = extract_themes_from_vision_cache(profile)
     if not themes:
         # Profil sans vision_cache → table vide mais quand même persistée
@@ -205,16 +217,53 @@ def build_canon_table(
             "raw_count": 0,
             "canonical_count": 0,
             "mapping": {},
+            "clusters": [],
         }
         save_canon_table(profile, table)
+        if on_progress:
+            on_progress(0, 0, "done")
         return table
 
+    if on_progress:
+        on_progress(0, len(themes), "clustering")
     clusters = cluster_themes(themes.keys(), threshold=threshold)
     cluster_lists = [c["raw_members"] for c in clusters]
+    total_clusters = len(cluster_lists)
+    if on_progress:
+        on_progress(0, total_clusters, "judging")
+
+    # Adaptation du callback : judge_clusters fait (done, total), nous
+    # rajoutons la phase fixe "judging".
+    def _judge_progress(done: int, total: int) -> None:
+        if on_progress:
+            on_progress(done, total, "judging")
+
     judgments = judge_clusters(
-        cluster_lists, profile, llm, use_cache=use_judge_cache,
+        cluster_lists, profile, llm,
+        use_cache=use_judge_cache,
+        on_progress=_judge_progress,
     )
     mapping = assemble_canon_mapping(clusters, judgments)
+
+    # Pour l'UI : chaque cluster avec le canonical décidé + members + splits
+    # + count cumulé (somme des occurrences des raw_themes du cluster).
+    clusters_serialized = []
+    for cluster, judgment in zip(clusters, judgments, strict=True):
+        raw_members = cluster.get("raw_members", [])
+        count_cumulative = sum(themes.get(m, 0) for m in raw_members)
+        clusters_serialized.append({
+            "canonical": judgment.canonical,
+            "members": judgment.members,
+            "splits": [
+                {"theme": s.theme, "reason": s.reason}
+                for s in judgment.splits
+            ],
+            "raw_members": raw_members,
+            "count_cumulative": count_cumulative,
+        })
+
+    if on_progress:
+        on_progress(total_clusters, total_clusters, "done")
 
     table = {
         "version": CANON_VERSION,
@@ -222,6 +271,7 @@ def build_canon_table(
         "raw_count": len(mapping),
         "canonical_count": len(set(mapping.values())),
         "threshold": threshold,
+        "clusters": clusters_serialized,
         "mapping": mapping,
     }
     save_canon_table(profile, table)
