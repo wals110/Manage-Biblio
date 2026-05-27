@@ -124,8 +124,11 @@ def should_auto_merge(variants: list[str], threshold: int = 97) -> bool:
 def judge_cluster(variants: list[str], llm: BaseChatModel) -> JudgeResult:
     """Appelle le LLM pour trancher members vs splits sur un cluster.
 
-    Utilise `with_structured_output(JudgeResult)` — le LLM est forcé de
-    retourner du JSON conforme au schéma Pydantic, pas de parsing manuel.
+    Utilise `with_structured_output(JudgeResult, method="function_calling")`.
+    On force `function_calling` car le mode JSON par défaut n'est pas
+    supporté par GLM-4.7 sur SiliconFlow (BadRequest 20024 "Json mode is
+    not supported for this model"). Le function calling l'est, comme on
+    l'utilise déjà côté Phase B.
 
     Args:
         variants: Liste des variantes brutes (telles que retournées par
@@ -136,7 +139,7 @@ def judge_cluster(variants: list[str], llm: BaseChatModel) -> JudgeResult:
     Returns:
         JudgeResult avec canonical, members, splits.
     """
-    structured_llm = llm.with_structured_output(JudgeResult)
+    structured_llm = llm.with_structured_output(JudgeResult, method="function_calling")
     user_prompt = (
         f"Voici {len(variants)} variantes candidates à fusion :\n\n"
         f"{json.dumps(variants, ensure_ascii=False, indent=2)}\n\n"

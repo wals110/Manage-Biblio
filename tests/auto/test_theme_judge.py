@@ -100,8 +100,11 @@ class TestJudgeCluster(unittest.TestCase):
         self.assertEqual(result.canonical, "Machine Learning")
         self.assertEqual(len(result.members), 2)
         self.assertEqual(result.splits, [])
-        # Vérifie que le bon schema a été passé
-        mock_llm.with_structured_output.assert_called_once_with(JudgeResult)
+        # Vérifie que le bon schema + la méthode function_calling sont passés
+        # (GLM-4.7 ne supporte pas le mode JSON par défaut sur SiliconFlow).
+        mock_llm.with_structured_output.assert_called_once_with(
+            JudgeResult, method="function_calling",
+        )
         # Vérifie qu'on a bien passé deux messages (system + human)
         args = mock_structured.invoke.call_args[0][0]
         self.assertEqual(len(args), 2)
