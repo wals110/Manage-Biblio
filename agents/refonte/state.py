@@ -30,3 +30,11 @@ class RefonteState(MessagesState, total=False):
     error: str
     report: str
     llm_calls: int
+    # Phase B uniquement : run_id du diagnostic Phase A qu'on utilise comme
+    # contexte d'entrée + chemin du dossier proposed/ écrit en sortie
+    diagnostic_run_id: str
+    proposal_dir: str
+    proposal_summary: dict
+    # Résultat de la simulation reclassify (déclenchée automatiquement après
+    # propose_changes) : agrégats + chemin du CSV produit
+    simulation_summary: dict

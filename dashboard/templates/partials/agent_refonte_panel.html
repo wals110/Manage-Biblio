@@ -15,6 +15,11 @@
                 <span class="tax-refonte-start-icon">🚀</span>
                 <span>Lancer le diagnostic</span>
             </button>
+            <button id="tax-refonte-propose" class="tax-refonte-propose-btn" disabled
+                    title="Sélectionne un diagnostic 'done' à gauche pour activer">
+                <span class="tax-refonte-start-icon">🔧</span>
+                <span>Proposer une refonte</span>
+            </button>
             <div class="tax-refonte-budget-field">
                 <label for="tax-refonte-budget" class="filter-label">Budget LLM</label>
                 <input type="number" id="tax-refonte-budget" value="5" min="1" max="20">
@@ -109,7 +114,110 @@
     opacity: 0.55;
     cursor: wait;
 }
+.tax-refonte-propose-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.05s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tax-refonte-propose-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.35);
+}
+.tax-refonte-propose-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: linear-gradient(180deg, #555 0%, #444 100%);
+}
 .tax-refonte-start-icon { font-size: 16px; }
+/* ─── Phase B : onglets internes Rationale / Diff / Impact ──────────── */
+.tax-refonte-phaseb-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.tax-refonte-phaseb-tab {
+    padding: 6px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+.tax-refonte-phaseb-tab.active {
+    color: var(--text-primary, inherit);
+    border-bottom-color: #8b5cf6;
+}
+.tax-refonte-phaseb-pane { display: none; }
+.tax-refonte-phaseb-pane.active { display: block; }
+/* Diff tree */
+.tax-refonte-diff-section {
+    margin-bottom: 16px;
+}
+.tax-refonte-diff-section h4 { margin: 0 0 6px; font-size: 13px; }
+.tax-refonte-diff-item {
+    padding: 4px 10px;
+    margin: 3px 0;
+    border-left: 3px solid;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    border-radius: 3px;
+}
+.tax-refonte-diff-add    { border-left-color: #22c55e; background: rgba(34,197,94,.08); }
+.tax-refonte-diff-remove { border-left-color: #ef4444; background: rgba(239,68,68,.08); }
+.tax-refonte-diff-rename { border-left-color: #f59e0b; background: rgba(245,158,11,.08); }
+.tax-refonte-diff-fusion { border-left-color: #8b5cf6; background: rgba(139,92,246,.08); }
+/* Simulation impact */
+.tax-refonte-stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 8px 0 14px;
+}
+.tax-refonte-stat-card {
+    padding: 10px 12px;
+    background: var(--bg-tertiary, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-align: center;
+}
+.tax-refonte-stat-card .num {
+    font-size: 1.6em;
+    font-weight: 600;
+    color: var(--text-primary, inherit);
+}
+.tax-refonte-stat-card .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.tax-refonte-impact-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.tax-refonte-impact-table th,
+.tax-refonte-impact-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+.tax-refonte-impact-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+}
 .tax-refonte-budget-field {
     display: flex;
     align-items: center;
@@ -146,42 +254,159 @@
     margin: 6px 0 0;
 }
 .tax-refonte-run-item {
-    padding: 8px 10px;
+    position: relative;
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    grid-template-rows: auto auto;
+    grid-column-gap: 10px;
+    grid-row-gap: 2px;
+    align-items: center;
+    padding: 10px 12px 10px 14px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     margin-bottom: 8px;
     cursor: pointer;
     background: var(--bg-secondary);
-    transition: background 0.12s ease, border-color 0.12s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    overflow: hidden;
+}
+.tax-refonte-run-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: transparent;
+    transition: background 0.15s ease;
 }
 .tax-refonte-run-item:hover {
     background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
     border-color: var(--border-light, #3a3a3a);
 }
 .tax-refonte-run-item.active {
-    border-color: #4f6ef2;
-    background: rgba(79, 110, 242, 0.08);
+    border-color: rgba(79, 110, 242, 0.5);
+    background: rgba(79, 110, 242, 0.07);
+    box-shadow: 0 0 0 1px rgba(79, 110, 242, 0.15);
 }
-.tax-refonte-run-head {
+.tax-refonte-run-item.active::before {
+    background: linear-gradient(180deg, #4f6ef2, #8b5cf6);
+}
+
+/* Avatar phase circulaire (col 1, span 2 rows) */
+.tax-refonte-run-phase {
+    grid-row: 1 / span 2;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #fff;
+    flex-shrink: 0;
 }
-.tax-refonte-run-id {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.tax-refonte-run-phase[data-phase="A"] {
+    background: linear-gradient(135deg, #4f6ef2, #6d8aff);
+    box-shadow: 0 1px 4px rgba(79, 110, 242, 0.35);
 }
-.tax-refonte-run-foot {
-    display: flex;
+.tax-refonte-run-phase[data-phase="B"] {
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.35);
+}
+
+/* Status (col 2, row 1) : dot coloré + label */
+.tax-refonte-run-status {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-top: 4px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary, #e6e6e6);
+    text-transform: capitalize;
+}
+.tax-refonte-run-status::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+.tax-refonte-run-status[data-status="done"]::before {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+.tax-refonte-run-status[data-status="running"]::before,
+.tax-refonte-run-status[data-status="pending"]::before {
+    background: #4f6ef2;
+    animation: taxRefonteRunPulse 1.4s ease-in-out infinite;
+}
+.tax-refonte-run-status[data-status="error"]::before {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+@keyframes taxRefonteRunPulse {
+    0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(79, 110, 242, 0.6); }
+    50%      { transform: scale(1.15); opacity: 0.85; box-shadow: 0 0 0 5px rgba(79, 110, 242, 0); }
+}
+
+/* Bouton × (col 3, row 1) */
+.tax-refonte-run-delete {
+    grid-column: 3;
+    grid-row: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.tax-refonte-run-item:hover .tax-refonte-run-delete,
+.tax-refonte-run-item.active .tax-refonte-run-delete { opacity: 0.7; }
+.tax-refonte-run-delete:hover {
+    opacity: 1 !important;
+    color: #ff8b8b;
+    background: rgba(255, 92, 92, 0.12);
+}
+
+/* Footer (col 2, row 2) : time + LLM count */
+.tax-refonte-run-meta-row {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 11.5px;
     color: var(--text-muted);
 }
-.tax-refonte-run-sep { opacity: 0.5; }
+.tax-refonte-run-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.tax-refonte-run-meta svg {
+    width: 11px;
+    height: 11px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+/* UUID discret (col 3, row 2, justifié droite) */
+.tax-refonte-run-id {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    opacity: 0.55;
+    letter-spacing: 0.3px;
+}
 
 .tax-refonte-report-header {
     display: flex;
@@ -197,6 +422,43 @@
 .tax-refonte-md h1 { font-size: 1.4em; margin: 0 0 12px; padding-bottom: 6px;
                      border-bottom: 1px solid var(--border); }
 .tax-refonte-md h2 { font-size: 1.15em; margin: 18px 0 8px; }
+/* H2 stylés (rapport B — sections par type de changement) */
+.tax-refonte-md h2[data-kind] {
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.tax-refonte-md h2[data-kind]::before {
+    content: '▾ ';
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+.tax-refonte-md h2[data-kind].collapsed::before { content: '▸ '; }
+.tax-refonte-md h2[data-kind="creations"] {
+    background: rgba(34, 197, 94, 0.15);
+    border-left: 3px solid #22c55e;
+}
+.tax-refonte-md h2[data-kind="renommages"] {
+    background: rgba(249, 115, 22, 0.15);
+    border-left: 3px solid #f97316;
+}
+.tax-refonte-md h2[data-kind="suppressions"] {
+    background: rgba(239, 68, 68, 0.15);
+    border-left: 3px solid #ef4444;
+}
+.tax-refonte-md h2[data-kind="fusions"] {
+    background: rgba(168, 85, 247, 0.15);
+    border-left: 3px solid #a855f7;
+}
+.tax-refonte-md h2[data-kind="mappings"] {
+    background: rgba(59, 130, 246, 0.15);
+    border-left: 3px solid #3b82f6;
+}
+.tax-refonte-md h2[data-kind="summary"] {
+    background: rgba(107, 114, 128, 0.10);
+    border-left: 3px solid #6b7280;
+}
 .tax-refonte-md h3 {
     font-size: 1.05em;
     margin: 14px 0 6px;
@@ -242,6 +504,7 @@
 (function() {
     // ─── Module local API exposée pour intégration Taxonomie ─────────────
     const startBtn = document.getElementById('tax-refonte-start');
+    const proposeBtn = document.getElementById('tax-refonte-propose');
     const budgetInput = document.getElementById('tax-refonte-budget');
     const runsEl = document.getElementById('tax-refonte-runs');
     const statusEl = document.getElementById('tax-refonte-status');
@@ -250,8 +513,59 @@
     const downloadBtn = document.getElementById('tax-refonte-download');
     let pollTimer = null;
     let lastProfile = null;
+
+    // Duplication assumée du helper documentée dans taxonomy_rename.js — chaque
+    // sous-onglet vit dans son IIFE, on préfère 30 lignes recopiées à un global.
+    function showConfirm({title, body, confirmLabel, cancelLabel, variant}) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('tax-confirm-modal');
+            const okBtn = document.getElementById('tax-confirm-ok');
+            const cancelBtn = document.getElementById('tax-confirm-cancel');
+            if (!modal || !okBtn || !cancelBtn) {
+                resolve(window.confirm((title || '') + '\n\n' + (body || '')));
+                return;
+            }
+            document.getElementById('tax-confirm-title').textContent = title || 'Confirmer ?';
+            document.getElementById('tax-confirm-body').textContent = body || '';
+            okBtn.textContent = confirmLabel || 'Confirmer';
+            cancelBtn.textContent = cancelLabel || 'Annuler';
+            okBtn.className = (variant === 'danger') ? 'btn-danger' : 'btn-primary';
+            modal.style.display = 'flex';
+
+            function cleanup(result) {
+                modal.style.display = 'none';
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                document.removeEventListener('keydown', onKey);
+                resolve(result);
+            }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+                if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
+            }
+            okBtn.onclick = () => cleanup(true);
+            cancelBtn.onclick = () => cleanup(false);
+            document.addEventListener('keydown', onKey);
+            setTimeout(() => okBtn.focus(), 50);
+        });
+    }
+
+    function showToast(msg, type) {
+        const t = document.getElementById('tax-toast');
+        if (!t) { console.log(msg); return; }
+        t.textContent = msg;
+        t.className = 'tax-toast ' + (type || 'info');
+        t.style.display = 'block';
+        clearTimeout(showToast._tid);
+        showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
+    }
     let currentReportMd = '';     // Pour Copy + Download
     let currentRunId = null;
+    let currentRunPhase = null;   // 'A' ou 'B'
+    // Map run_id → phase + status pour pouvoir activer/désactiver le bouton
+    // "Proposer une refonte" et utiliser le bon ID comme diagnostic_run_id
+    // quand on lance une Phase B.
+    let runsIndex = {};
 
     // ─── Markdown rendering + post-processing UI ─────────────────────────
     function priorityFor(h3text) {
@@ -263,34 +577,318 @@
         return 'info';
     }
 
+    // Type d'une section H2 du rationale Phase B (créations / renommages /
+    // suppressions / fusions / mappings / summary) — drive la colorisation
+    // et le collapse par défaut côté mappings (200 lignes sinon).
+    function kindForH2(h2text) {
+        const t = h2text.toLowerCase();
+        if (/cr[ée]ation/.test(t)) return 'creations';
+        if (/renomm/.test(t)) return 'renommages';
+        if (/suppression/.test(t)) return 'suppressions';
+        if (/fusion/.test(t)) return 'fusions';
+        if (/mapping/.test(t)) return 'mappings';
+        if (/r[ée]sum[ée]/.test(t)) return 'summary';
+        return null;  // h2 non typé → pas de polish
+    }
+
+    // Wrap les éléments suivants un header jusqu'au prochain header de
+    // niveau ≤ stopAtLevels dans un .tax-refonte-section collapsible.
+    // collapsed=true → section masquée et header en classe "collapsed".
+    function wrapSectionAfter(header, stopAtLevels, collapsed) {
+        const stop = new Set(stopAtLevels.map(l => 'H' + l));
+        const section = document.createElement('div');
+        section.className = 'tax-refonte-section';
+        let next = header.nextElementSibling;
+        while (next && !stop.has(next.tagName)) {
+            const tmp = next.nextElementSibling;
+            section.appendChild(next);
+            next = tmp;
+        }
+        header.parentNode.insertBefore(section, next);
+        if (collapsed) {
+            section.style.display = 'none';
+            header.classList.add('collapsed');
+        }
+        header.addEventListener('click', () => {
+            const hidden = section.style.display === 'none';
+            section.style.display = hidden ? '' : 'none';
+            header.classList.toggle('collapsed', !hidden);
+        });
+        return section;
+    }
+
+    // ─── Rendu Phase B (multi-onglets Rationale / Diff / Impact) ─────────
+
+    function renderPhaseBReport(runId, status) {
+        const rationaleMd = status.rationale_md || '';
+        const profile = currentProfile();
+        // Vue 3 onglets dans la zone Rapport, lazy-load des contenus Diff +
+        // Impact au clic (les requêtes peuvent être lourdes sur 18k fichiers).
+        reportEl.innerHTML =
+            '<div class="tax-refonte-phaseb-tabs" role="tablist">'
+          + '  <button class="tax-refonte-phaseb-tab active" data-pane="rationale">📋 Rationale</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="diff">🌳 Diff tree</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="impact">📊 Impact reclassify</button>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane active" data-pane="rationale">'
+          + '  <div class="tax-refonte-md" id="tax-refonte-rationale-md"></div>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="diff">'
+          + '  <p class="muted small">Chargement du diff…</p>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="impact">'
+          + '  <p class="muted small">Chargement de la projection…</p>'
+          + '</div>';
+        // Rationale rendu inline
+        const rationaleEl = document.getElementById('tax-refonte-rationale-md');
+        if (window.marked && rationaleMd) {
+            rationaleEl.innerHTML = window.marked.parse(rationaleMd);
+            enhancePhaseBRationale(rationaleEl);
+        } else {
+            rationaleEl.textContent = rationaleMd || '(rationale vide)';
+        }
+        currentReportMd = rationaleMd;  // Copy/download retourne le rationale
+        updateActionButtons(!!rationaleMd);
+
+        // Bind tabs : lazy load au clic
+        const tabs = reportEl.querySelectorAll('.tax-refonte-phaseb-tab');
+        const panes = reportEl.querySelectorAll('.tax-refonte-phaseb-pane');
+        let diffLoaded = false, impactLoaded = false;
+        tabs.forEach(t => {
+            t.addEventListener('click', () => {
+                tabs.forEach(x => x.classList.remove('active'));
+                panes.forEach(x => x.classList.remove('active'));
+                t.classList.add('active');
+                const name = t.dataset.pane;
+                const pane = reportEl.querySelector('.tax-refonte-phaseb-pane[data-pane="' + name + '"]');
+                pane.classList.add('active');
+                if (name === 'diff' && !diffLoaded) {
+                    diffLoaded = true;
+                    loadTreeDiff(runId, profile, pane);
+                } else if (name === 'impact' && !impactLoaded) {
+                    impactLoaded = true;
+                    loadSimulation(runId, profile, pane);
+                }
+            });
+        });
+    }
+
+    async function loadTreeDiff(runId, profile, pane) {
+        try {
+            const r = await fetch('/api/agent/refonte/proposition/' + runId
+                                  + '/tree-diff?profile=' + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const d = await r.json();
+            renderTreeDiff(d, pane);
+        } catch (err) {
+            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
+                           + err.message + '</p>';
+        }
+    }
+
+    function renderTreeDiff(d, pane) {
+        const parts = [];
+        parts.push('<p class="muted small">'
+          + d.n_folders_before + ' dossiers → ' + d.n_folders_after + ' après refonte</p>');
+        if (d.added && d.added.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#22c55e;">+ Créés (' + d.added.length + ')</h4>');
+            for (const f of d.added) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-add">'
+                  + '+ ' + escapeHtml(f) + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (d.removed && d.removed.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#ef4444;">− Supprimés (' + d.removed.length + ')</h4>');
+            for (const f of d.removed) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-remove">'
+                  + '− ' + escapeHtml(f) + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (d.renamed && d.renamed.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#f59e0b;">↻ Renommés (' + d.renamed.length + ')</h4>');
+            for (const r of d.renamed) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-rename">'
+                  + escapeHtml(r.old) + ' → ' + escapeHtml(r.new)
+                  + (r.rationale ? '<div class="muted small">' + escapeHtml(r.rationale) + '</div>' : '')
+                  + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (d.fused && d.fused.length) {
+            parts.push('<div class="tax-refonte-diff-section">');
+            parts.push('<h4 style="color:#8b5cf6;">⇆ Fusions (' + d.fused.length + ')</h4>');
+            for (const f of d.fused) {
+                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-fusion">'
+                  + (f.sources || []).map(escapeHtml).join(' + ') + ' → ' + escapeHtml(f.target)
+                  + (f.rationale ? '<div class="muted small">' + escapeHtml(f.rationale) + '</div>' : '')
+                  + '</div>');
+            }
+            parts.push('</div>');
+        }
+        if (parts.length <= 1) {
+            parts.push('<p class="muted">Aucun changement structurel — uniquement des mappings ajoutés.</p>');
+        }
+        pane.innerHTML = parts.join('\n');
+    }
+
+    async function loadSimulation(runId, profile, pane) {
+        try {
+            const r = await fetch('/api/agent/refonte/proposition/' + runId
+                                  + '/simulation?profile=' + encodeURIComponent(profile));
+            if (!r.ok) {
+                if (r.status === 404) {
+                    pane.innerHTML = '<p class="muted">Pas de simulation disponible pour ce run.</p>';
+                    return;
+                }
+                throw new Error('HTTP ' + r.status);
+            }
+            const d = await r.json();
+            renderSimulation(d, pane);
+        } catch (err) {
+            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
+                           + err.message + '</p>';
+        }
+    }
+
+    function renderSimulation(d, pane) {
+        const s = d.summary || {};
+        const cards = [
+            { label: 'Fichiers', num: s.n_files || 0 },
+            { label: 'Déplacés', num: s.n_moving || 0 },
+            { label: 'Stables', num: s.n_stable || 0 },
+            { label: 'Non prédits', num: s.n_no_prediction || 0 },
+        ];
+        const cardsHtml = cards.map(c =>
+            '<div class="tax-refonte-stat-card">'
+          + '  <div class="num">' + c.num + '</div>'
+          + '  <div class="label">' + c.label + '</div>'
+          + '</div>'
+        ).join('');
+
+        let topDest = '';
+        if (s.top_destinations && s.top_destinations.length) {
+            topDest = '<h4 style="margin-top:14px;">Top dossiers cibles (entrants)</h4>'
+                    + '<table class="tax-refonte-impact-table">'
+                    + '<thead><tr><th>Dossier</th><th style="text-align:right;">N entrants</th></tr></thead>'
+                    + '<tbody>'
+                    + s.top_destinations.slice(0, 10).map(d =>
+                        '<tr><td><code style="font-size:11px;">' + escapeHtml(d.folder)
+                      + '</code></td><td style="text-align:right;">' + d.n_incoming + '</td></tr>'
+                    ).join('')
+                    + '</tbody></table>';
+        }
+
+        let movesTbl = '';
+        if (d.sample_moves && d.sample_moves.length) {
+            movesTbl = '<h4 style="margin-top:14px;">Échantillon de déplacements ('
+                     + d.sample_moves.length + ' sur ' + d.n_moves_total + ')</h4>'
+                     + '<table class="tax-refonte-impact-table">'
+                     + '<thead><tr><th>Fichier</th><th>De</th><th>Vers</th></tr></thead>'
+                     + '<tbody>'
+                     + d.sample_moves.slice(0, 30).map(m =>
+                        '<tr><td title="' + escapeHtml(m.rel_path) + '">'
+                      + escapeHtml(m.rel_path.split('/').pop()) + '</td>'
+                      + '<td><code style="font-size:10px;">' + escapeHtml(m.current_folder) + '</code></td>'
+                      + '<td><code style="font-size:10px;">' + escapeHtml(m.proposed_folder) + '</code></td></tr>'
+                     ).join('')
+                     + '</tbody></table>';
+        }
+
+        pane.innerHTML =
+            '<div class="tax-refonte-stat-cards">' + cardsHtml + '</div>'
+          + topDest
+          + movesTbl;
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function updateProposeButton() {
+        // Bouton actif uniquement si on a au moins un run Phase A `done` à
+        // l'index ET un run actif (currentRunId) qui est ce Phase A done.
+        const active = currentRunId ? runsIndex[currentRunId] : null;
+        const isPhaseADone = active && active.status === 'done'
+                             && (active.phase || 'A') === 'A';
+        if (isPhaseADone) {
+            proposeBtn.disabled = false;
+            proposeBtn.title = 'Proposer une refonte basée sur le diagnostic '
+                             + currentRunId.slice(0, 8) + '…';
+        } else {
+            proposeBtn.disabled = true;
+            proposeBtn.title = 'Sélectionne un diagnostic Phase A done à gauche';
+        }
+    }
+
+    async function startProposition() {
+        if (!currentRunId) return;
+        const profile = currentProfile();
+        proposeBtn.disabled = true;
+        setStatus('Démarrage de la proposition…');
+        renderReport('');
+        try {
+            const r = await fetch('/api/agent/refonte/proposition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    profile: profile,
+                    diagnostic_run_id: currentRunId,
+                    max_llm_calls: parseInt(budgetInput.value || '8', 10) + 3,
+                }),
+            });
+            if (!r.ok) {
+                const e = await r.json();
+                throw new Error(e.error || ('HTTP ' + r.status));
+            }
+            const data = await r.json();
+            currentRunId = data.run_id;
+            currentRunPhase = 'B';
+            startBtn.disabled = true;
+            setStatus('Run B ' + data.run_id.slice(0, 8) + '… démarré');
+            pollTimer = setInterval(() => pollStatus(data.run_id), 2000);
+            loadRuns();
+        } catch (err) {
+            setStatus('Erreur : ' + err.message);
+            updateProposeButton();
+        }
+    }
+
+    proposeBtn.addEventListener('click', startProposition);
+
     function renderReport(md) {
         currentReportMd = md || '';
         if (!md) { reportEl.innerHTML = ''; updateActionButtons(false); return; }
         // marked.parse v13 : escapes HTML par défaut, headerIds auto-générés
         const html = window.marked ? window.marked.parse(md) : md;
         reportEl.innerHTML = html;
-        // Post-process : priorité + collapse
-        const h3s = Array.from(reportEl.querySelectorAll('h3'));
-        for (const h3 of h3s) {
+        // Post-process : priorité + collapse sur les h3 du diagnostic A
+        for (const h3 of Array.from(reportEl.querySelectorAll('h3'))) {
             h3.dataset.priority = priorityFor(h3.textContent);
-            // Regroupe tous les éléments suivants jusqu'au prochain h3/h2 dans
-            // un wrapper qu'on peut hide/show via la classe "collapsed".
-            const section = document.createElement('div');
-            section.className = 'tax-refonte-section';
-            let next = h3.nextElementSibling;
-            while (next && !['H3', 'H2'].includes(next.tagName)) {
-                const tmp = next.nextElementSibling;
-                section.appendChild(next);
-                next = tmp;
-            }
-            h3.parentNode.insertBefore(section, next);
-            h3.addEventListener('click', () => {
-                const hidden = section.style.display === 'none';
-                section.style.display = hidden ? '' : 'none';
-                h3.classList.toggle('collapsed', !hidden);
-            });
+            wrapSectionAfter(h3, [2, 3], false);
         }
         updateActionButtons(true);
+    }
+
+    // Polish visuel du rationale Phase B : colorisation des h2 par type
+    // (créations vert / renommages orange / suppressions rouge / fusions
+    // violet / mappings bleu / résumé neutre) + collapse, avec la section
+    // "Mappings ajoutés" repliée par défaut (200 lignes sinon illisible).
+    function enhancePhaseBRationale(rootEl) {
+        for (const h2 of Array.from(rootEl.querySelectorAll('h2'))) {
+            const kind = kindForH2(h2.textContent);
+            if (!kind) continue;
+            h2.dataset.kind = kind;
+            const collapseByDefault = (kind === 'mappings');
+            wrapSectionAfter(h2, [1, 2], collapseByDefault);
+        }
     }
 
     function updateActionButtons(enabled) {
@@ -368,6 +966,10 @@
     }
 
     function renderRuns(runs) {
+        // Indexe les runs pour décider d'activer "Proposer une refonte"
+        runsIndex = {};
+        for (const r of runs) runsIndex[r.run_id] = r;
+        updateProposeButton();
         if (!runs.length) {
             runsEl.innerHTML = '<p class="tax-refonte-runs-empty">Aucun run pour ce profil. '
                              + 'Lance ton premier diagnostic ↑</p>';
@@ -381,18 +983,69 @@
             item.dataset.runId = r.run_id;
             // Format date plus lisible : "il y a Xm" si récent, sinon date courte
             const startedTxt = formatStarted(r.started_at);
-            const llmInfo = r.llm_calls
-                ? '<span class="tax-refonte-run-meta">' + r.llm_calls + ' LLM</span>'
+            const isBusy = r.status === 'running' || r.status === 'pending';
+            const deleteBtn = isBusy
+                ? ''
+                : '<button type="button" class="tax-refonte-run-delete" '
+                + 'title="Supprimer ce run" aria-label="Supprimer ce run">×</button>';
+            const phaseLetter = r.phase === 'B' ? 'B' : 'A';
+            const clockSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">'
+                + '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 2"/></svg>';
+            const llmSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">'
+                + '<path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>';
+            const llmMetaHtml = r.llm_calls
+                ? '<span class="tax-refonte-run-meta" title="Appels LLM">' + llmSvg
+                  + '<span>' + r.llm_calls + '</span></span>'
                 : '';
             item.innerHTML =
-                '<div class="tax-refonte-run-head">'
-              + '  <code class="tax-refonte-run-id">' + r.run_id.slice(0, 8) + '</code>'
-              + '  <span class="status-badge status-' + r.status + '">' + r.status + '</span>'
+                '<div class="tax-refonte-run-phase" data-phase="' + phaseLetter + '">' + phaseLetter + '</div>'
+              + '<span class="tax-refonte-run-status" data-status="' + r.status + '">' + r.status + '</span>'
+              + deleteBtn
+              + '<div class="tax-refonte-run-meta-row">'
+              + '  <span class="tax-refonte-run-meta" title="Démarré">' + clockSvg + '<span>' + startedTxt + '</span></span>'
+              + llmMetaHtml
               + '</div>'
-              + '<div class="tax-refonte-run-foot">'
-              + '  <span class="tax-refonte-run-meta">' + startedTxt + '</span>'
-              + (llmInfo ? '<span class="tax-refonte-run-sep">·</span>' + llmInfo : '')
-              + '</div>';
+              + '<code class="tax-refonte-run-id" title="' + r.run_id + '">' + r.run_id.slice(0, 8) + '</code>';
+            const delEl = item.querySelector('.tax-refonte-run-delete');
+            if (delEl) {
+                delEl.addEventListener('click', async (ev) => {
+                    ev.stopPropagation();
+                    const ok = await showConfirm({
+                        title: 'Supprimer ce run ?',
+                        body: 'Run ' + r.run_id.slice(0, 8) + ' (phase ' + (r.phase || 'A')
+                            + ', ' + r.status + ') et tous ses artefacts seront effacés. Action irréversible.',
+                        confirmLabel: 'Supprimer',
+                        cancelLabel: 'Annuler',
+                        variant: 'danger',
+                    });
+                    if (!ok) return;
+                    try {
+                        const resp = await fetch(
+                            '/api/agent/refonte/runs/' + encodeURIComponent(r.run_id)
+                          + '?profile=' + encodeURIComponent(currentProfile()),
+                            { method: 'DELETE' }
+                        );
+                        if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({}));
+                            showToast('Erreur : ' + (err.error || resp.status), 'error');
+                            return;
+                        }
+                        // Si on supprime le run actif → clear l'UI
+                        if (currentRunId === r.run_id) {
+                            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                            currentRunId = null;
+                            currentRunPhase = null;
+                            renderReport('');
+                            startBtn.disabled = false;
+                            updateProposeButton();
+                        }
+                        showToast('Run ' + r.run_id.slice(0, 8) + ' supprimé', 'success');
+                        loadRuns();
+                    } catch (e) {
+                        showToast('Erreur réseau : ' + e.message, 'error');
+                    }
+                });
+            }
             item.addEventListener('click', () => {
                 const switchingRun = currentRunId !== r.run_id;
                 runsEl.querySelectorAll('.tax-refonte-run-item.active')
@@ -408,6 +1061,8 @@
                     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 }
                 currentRunId = r.run_id;
+                currentRunPhase = r.phase || 'A';
+                updateProposeButton();
                 pollStatus(r.run_id);
                 const stillRunning = r.status === 'running' || r.status === 'pending';
                 if (stillRunning && !pollTimer) {
@@ -452,7 +1107,12 @@
                       + ' · ' + calls + '/' + max + ' appel(s) LLM' + node + elapsed);
             if (s.status === 'done') {
                 currentRunId = runId;
-                renderReport(s.report_md || '');
+                currentRunPhase = s.phase || 'A';
+                if (currentRunPhase === 'B') {
+                    renderPhaseBReport(runId, s);
+                } else {
+                    renderReport(s.report_md || '');
+                }
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
                 loadRuns();
@@ -498,15 +1158,17 @@
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 startBtn.disabled = false;
             } else {
-                // status="running" ou "pending" — pas de rapport disponible
-                // encore. Afficher un placeholder explicite plutôt que de
-                // laisser un éventuel contenu fantôme d'un run précédent.
-                // (Évite l'illusion "Commence maintenant." sur un autre run.)
-                if (!currentReportMd) {
-                    reportEl.innerHTML = '<p class="muted" style="font-style:italic;">'
-                                       + 'Diagnostic en cours — le rapport apparaîtra '
-                                       + 'ici quand le run se termine.</p>';
-                }
+                // status="running" ou "pending" — afficher le placeholder
+                // INCONDITIONNELLEMENT. La condition `if (!currentReportMd)`
+                // précédente laissait passer le contenu d'un autre run (par
+                // ex. le rapport A reste affiché alors qu'on poll un run B
+                // running, observé 2026-05-25).
+                const phaseLabel = (s.phase === 'B') ? 'Proposition' : 'Diagnostic';
+                reportEl.innerHTML = '<p class="muted" style="font-style:italic;">'
+                                   + phaseLabel + ' en cours — le rapport apparaîtra '
+                                   + 'ici quand le run se termine.</p>';
+                currentReportMd = '';
+                updateActionButtons(false);
             }
         } catch (err) {
             console.error('poll error', err);

@@ -50,10 +50,10 @@ Affiche en sortie : status, llm_calls, durée, tool_calls/tool_results, rapport 
 | `test` (30 fichiers) | < 50 | ~30s | 3-5 | < $0.01 |
 | `default` (réel) | ~18 250 | ~75s | 5-7 | ~$0.01-0.05 |
 
-Modèle utilisé : **DeepSeek V3.2** (`deepseek-ai/DeepSeek-V3.2` sur SiliconFlow, version stable optimisée pour le tool-use). On évite `-Exp` (désactivable sans préavis) et `V3.1` (régresse vers le chinois et hallucine sur prompts multi-tour complexes). Surchargeable :
+Modèle utilisé : **GLM-4.7** (`zai-org/GLM-4.7` sur SiliconFlow). Stable, tool-use propre en français, ~$0.02/run. On évite DeepSeek V3.2 (APIConnectionError récurrents côté SiliconFlow en mai 2026), V3.2-Exp (désactivable sans préavis) et V3.1 (régresse vers le chinois sur prompts multi-tour complexes). Surchargeable :
 
 ```bash
-export KLODO_AGENT_MODEL="zai-org/GLM-4.6"   # alternative
+export KLODO_AGENT_MODEL="deepseek-ai/DeepSeek-V3.2"   # alternative si GLM régresse
 ```
 
 ## Interpréter le rapport
@@ -133,7 +133,8 @@ Pour les détails complets : [spec](refonte-agent-spec.md) · [diagramme des pha
 |---|---|---|
 | `RuntimeError: SILICONFLOW_API_KEY is required` | clé absente de `.env` ou de l'env shell | Ajouter `SILICONFLOW_API_KEY=sk-...` dans `.env` (régénérer sur cloud.siliconflow.com si périmée) |
 | `AuthenticationError 401: Api key is invalid` | Clé périmée, révoquée, ou (rare) endpoint cn vs com | Régénérer la clé. Vérifier que `agents/llm.py` pointe sur `api.siliconflow.com` (pas `.cn`) |
-| Status `error` avec timeout LLM | SiliconFlow lent ou surchargé | Réessayer. Si persistant, essayer `KLODO_AGENT_MODEL=zai-org/GLM-4.6` |
+| Status `error` avec timeout LLM | SiliconFlow lent ou surchargé | Réessayer. Si persistant, essayer `KLODO_AGENT_MODEL=zai-org/GLM-5` ou `deepseek-ai/DeepSeek-V3.2` |
+| Status `error` avec `APIConnectionError` | Modèle instable côté SiliconFlow (cas observé sur DeepSeek-V3.2 en mai 2026) | Le défaut GLM-4.7 est censé éviter ça ; si on a forcé un autre modèle via `KLODO_AGENT_MODEL`, repasser sur GLM-4.7 |
 | Rapport markdown qui répète le prompt | Bug de l'A.5 (corrigé) — le nettoyage `# Diagnostic` strip tout préambule | Si encore présent : ouvrir un issue |
 | Rapport avec une date passée | Bug si `date` n'est plus injectée dans le prompt | Vérifier `_make_write_report_node` dans `agents/refonte/diagnostic.py` |
 
