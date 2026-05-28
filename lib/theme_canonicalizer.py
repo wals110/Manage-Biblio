@@ -54,38 +54,61 @@ class BatchCanonicalization(BaseModel):
     )
 
 
-_SYSTEM_PROMPT = """Tu es un expert en taxonomie qui consolide les thèmes \
-d'une bibliothèque PDF technique.
+_SYSTEM_PROMPT = """Tu es un expert en taxonomie qui consolide UNIQUEMENT les \
+variantes orthographiques et synonymes EXACTS de thèmes d'une bibliothèque PDF.
 
-Pour chaque thème brut qu'on te donne, choisis le `canonical` le plus précis :
-  - SOIT un canonical du **vocabulaire de référence** (préfère TOUJOURS cette
-    option quand un canonical existant correspond au sens du thème brut)
-  - SOIT un nouveau canonical (seulement si AUCUN candidate du vocabulaire ne
-    convient sémantiquement) — set `matched_existing=False`
+═══════ PRINCIPE FONDAMENTAL ═══════
 
-Règles fondamentales :
-  ✓ FUSIONNER (utiliser le canonical du vocabulaire) si :
-    - Variante de casse : "Machine Learning" + "machine learning"
-    - Variante de pluriel : "Neural Networks" + "Neural Network"
-    - Orthographe US/UK : "Optimization" + "Optimisation"
-    - Acronyme = développé : "SEO" + "Search Engine Optimization", "ML" +
-      "Machine Learning", "AI" + "Artificial Intelligence"
-    - Synonyme sémantique : "Stat. Inference" + "Statistical Inference"
-    - Reformulation : "Web Development with Java" + "Java Web Development"
+Pour chaque thème, par DÉFAUT garde-le tel quel (canonical = raw).
+Ne fusionne que dans les cas listés ci-dessous.
 
-  ✗ NE PAS FUSIONNER (proposer un nouveau canonical) si :
-    - Sous-domaine spécialisé : "Machine Learning" vs "Unsupervised Machine
-      Learning" (sous-domaine distinct)
-    - Version produit : "Windows 10" vs "Windows XP" (produits distincts)
-    - Techno différente : "Java EE Development" vs "JavaFX Development"
-    - Contexte distinct : "Network Security" vs "Computer Security"
+L'erreur la plus grave est la SUR-FUSION (mélanger des concepts distincts).
+Une fragmentation est facilement réparable par l'utilisateur, une
+sur-fusion fait perdre de l'information de façon irréversible.
 
-PRINCIPE DE PRUDENCE : si tu hésites, préfère **réutiliser un canonical
-existant** plutôt qu'en créer un nouveau. Le but est de consolider, pas de
-fragmenter.
+═══════ CAS OÙ TU DOIS FUSIONNER (canonical = entrée du vocabulaire) ═══════
 
-Le `canonical` doit être en Title Case propre (pas en MAJUSCULES, pas en
-minuscules)."""
+UNIQUEMENT si le thème brut est strictement équivalent à un canonical du
+vocabulaire selon ces critères :
+
+  1. Variante de casse SEULE : "Machine Learning" / "machine learning" /
+     "MACHINE LEARNING" → "Machine Learning"
+  2. Variante de pluriel/singulier SEULE : "Neural Networks" / "Neural Network"
+  3. Orthographe US/UK SEULE : "Optimization" / "Optimisation"
+  4. Acronyme strict = développé connu : "ML" ↔ "Machine Learning",
+     "AI" ↔ "Artificial Intelligence", "SEO" ↔ "Search Engine Optimization"
+  5. Reformulation pure SANS perte de sens : "Web Development with Java" ↔
+     "Java Web Development" (mêmes mots dans un autre ordre)
+
+═══════ CAS OÙ TU NE DOIS PAS FUSIONNER (canonical = raw, matched_existing=False) ═══════
+
+✗ Sous-domaine ou spécialisation : "Unsupervised Machine Learning" ne fusionne
+  PAS avec "Machine Learning" (sous-domaine ≠ parent).
+✗ Concept lié mais distinct : "Logic" ne fusionne PAS avec "Mathematics".
+  "Cognitive Science" ne fusionne PAS avec "Artificial Intelligence".
+  "Big Data" ne fusionne PAS avec "Data Science" (méthodologie ≠ volume).
+  "Computer Security" ne fusionne PAS avec "Information Security".
+✗ Inclusion conceptuelle : un thème qui est un EXEMPLE ou un CAS PARTICULIER
+  de l'autre ne fusionne PAS. "Penetration Testing" est un CAS de
+  "Information Security" — garde-le séparé.
+✗ Versions, plateformes, technologies différentes : "iOS Application
+  Development" ne fusionne PAS avec "Mobile Application Development".
+  "Quantum Physics" ne fusionne PAS avec "Quantum Mechanics" (concepts proches
+  mais distincts en physique théorique).
+✗ Compositions : "X for Y" ne fusionne pas avec "X" tout seul. "Statistics
+  for Data Science" reste distinct de "Statistics".
+✗ Titres de livres ou cours présents comme thèmes : laisse tels quels.
+
+═══════ TEST DE FUSION ═══════
+
+Avant de fusionner X → Y, demande-toi : "Si je voulais ranger un livre dans
+un dossier Y, les livres taggés X iraient-ils SANS EXCEPTION dans ce dossier
+ET INVERSEMENT ?". Si non, NE FUSIONNE PAS.
+
+═══════ FORMAT ═══════
+
+Le `canonical` doit être en Title Case propre quand il vient du vocabulaire.
+Quand tu gardes le raw (matched_existing=False), restitue-le tel quel."""
 
 
 def build_vocabulary(
