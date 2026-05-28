@@ -2410,6 +2410,22 @@ async def api_dedupli_status(profile: str):
     return JSONResponse(dedupli.get_status(profile))
 
 
+@app.post("/api/taxonomy/dedupli/cancel")
+async def api_dedupli_cancel(request: Request):
+    """Demande l'annulation d'un run dédupli en cours."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    try:
+        return JSONResponse(dedupli.cancel_dedupli(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
 @app.get("/api/taxonomy/dedupli/clusters")
 async def api_dedupli_clusters(profile: str, multi_only: bool = True):
     """Liste les clusters depuis theme-canon.json (triés par count cumulé)."""

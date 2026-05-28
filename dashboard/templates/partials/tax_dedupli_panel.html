@@ -9,6 +9,9 @@
         <button id="tax-dedupli-start" class="btn-primary tax-dedupli-launch">
             🚀 Lancer la dédupli
         </button>
+        <button id="tax-dedupli-cancel" class="btn-danger tax-dedupli-launch" style="display:none;">
+            🛑 Annuler
+        </button>
         <label class="filter-label" for="tax-dedupli-threshold">Threshold</label>
         <input type="number" id="tax-dedupli-threshold" class="filter-select"
                value="92" min="50" max="100" style="width:64px;">
@@ -212,6 +215,7 @@
 <script>
 (function() {
     const startBtn = document.getElementById('tax-dedupli-start');
+    const cancelBtn = document.getElementById('tax-dedupli-cancel');
     const thresholdInput = document.getElementById('tax-dedupli-threshold');
     const statusEl = document.getElementById('tax-dedupli-status');
     const progressEl = document.getElementById('tax-dedupli-progress');
@@ -299,16 +303,43 @@
         }
     }
 
+    function setButtons(running, cancelling) {
+        // En cours et pas encore en cancellation → Annuler dispo
+        if (running && !cancelling) {
+            startBtn.style.display = 'none';
+            cancelBtn.style.display = '';
+            cancelBtn.disabled = false;
+        } else if (running && cancelling) {
+            startBtn.style.display = 'none';
+            cancelBtn.style.display = '';
+            cancelBtn.disabled = true;
+            cancelBtn.textContent = '⌛ Annulation…';
+        } else {
+            // Idle / done / error / cancelled
+            startBtn.style.display = '';
+            cancelBtn.style.display = 'none';
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = '🛑 Annuler';
+        }
+    }
+
     function renderStatus(s) {
         if (s.status === 'idle') {
             setStatus('État : non lancé');
             hideProgress();
+            setButtons(false, false);
             return;
         }
         if (s.status === 'running' || s.status === 'pending') {
             const p = s.progress || {};
             showProgress(s.phase || 'running', p.done || 0, p.total || 0);
-            setStatus(`En cours — phase: ${s.phase || '…'}`);
+            const cancelling = !!s.cancel_requested;
+            setStatus(
+                cancelling
+                    ? 'Annulation en cours… (les appels LLM en vol terminent puis on stoppe)'
+                    : `En cours — phase: ${s.phase || '…'}`
+            );
+            setButtons(true, cancelling);
             return;
         }
         if (s.status === 'done') {
@@ -321,11 +352,20 @@
                 `✓ Terminé — ${cs.raw_count || 0} → ${cs.canonical_count || 0} `
               + `(${reduction}% réduction · ${cs.n_clusters || 0} clusters)`
             );
+            setButtons(false, false);
+            return;
+        }
+        if (s.status === 'cancelled') {
+            hideProgress();
+            const p = s.progress || {};
+            setStatus(`⏹ Annulé — ${p.done || 0} / ${p.total || 0} clusters traités avant arrêt`);
+            setButtons(false, false);
             return;
         }
         if (s.status === 'error') {
             hideProgress();
             setStatus('❌ Erreur : ' + (s.error || 'unknown'));
+            setButtons(false, false);
             return;
         }
     }
@@ -480,7 +520,31 @@
             .replace(/'/g, '&#39;');
     }
 
+    async function cancelBuild() {
+        const profile = currentProfile();
+        cancelBtn.disabled = true;
+        try {
+            const r = await fetch('/api/taxonomy/dedupli/cancel', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({profile}),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Erreur : ' + (err.error || r.status));
+                cancelBtn.disabled = false;
+                return;
+            }
+            // Le polling rafraîchira l'état → "Annulation en cours…"
+            pollStatus();
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+            cancelBtn.disabled = false;
+        }
+    }
+
     startBtn.addEventListener('click', startBuild);
+    cancelBtn.addEventListener('click', cancelBuild);
 
     // Activation : exposé pour activateSubtab() dans taxonomy_rename.js
     window.taxDedupliPanel = {

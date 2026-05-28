@@ -287,6 +287,53 @@ class TestStartDedupli(_DedupliBase):
             time.sleep(0.2)
 
 
+class TestCancelDedupli(_DedupliBase):
+    def _write_status(self, status_val: str, cancel_requested: bool = False):
+        path = self.tmp / "profiles" / "p" / ".cache" / "dedupli" / "status.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        s = {
+            "status": status_val,
+            "phase": "judging",
+            "progress": {"done": 50, "total": 100},
+            "started_at": "2026-05-28T19:00:00+00:00",
+        }
+        if cancel_requested:
+            s["cancel_requested"] = True
+        path.write_text(json.dumps(s), encoding="utf-8")
+
+    def test_cancel_sets_flag(self):
+        self._write_status("running")
+        r = self.client.post(
+            "/api/taxonomy/dedupli/cancel",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 200)
+        status = dedupli._read_status("p")
+        self.assertTrue(status["cancel_requested"])
+
+    def test_cancel_404_if_no_status(self):
+        r = self.client.post(
+            "/api/taxonomy/dedupli/cancel",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 404)
+
+    def test_cancel_409_if_not_running(self):
+        self._write_status("done")
+        r = self.client.post(
+            "/api/taxonomy/dedupli/cancel",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 409)
+
+    def test_cancel_400_if_no_profile(self):
+        r = self.client.post(
+            "/api/taxonomy/dedupli/cancel",
+            json={},
+        )
+        self.assertEqual(r.status_code, 400)
+
+
 class TestZombieReap(_DedupliBase):
     def test_zombie_marked_error(self):
         # Status "running" avec un mtime ancien

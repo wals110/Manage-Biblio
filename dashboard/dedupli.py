@@ -138,6 +138,41 @@ def reset_running_at_boot() -> None:
             pass
 
 
+class _CancelledError(Exception):
+    """Levée par le callback on_progress quand le user a demandé un cancel.
+
+    Capturée par _run_dedupli pour faire transitionner le status vers
+    "cancelled" proprement.
+    """
+
+
+def cancel_dedupli(profile: str) -> dict[str, Any]:
+    """Demande l'annulation d'un run en cours.
+
+    Pose `cancel_requested=True` dans status.json — le thread daemon lit
+    ce flag dans son callback on_progress et raise _CancelledError au
+    prochain check. Les appels LLM déjà en vol terminent (pas de kill
+    brutal), mais aucun nouveau n'est lancé.
+
+    Raises:
+        ValueError: profile vide.
+        FileNotFoundError: aucun run actuel ou status absent.
+        RuntimeError: le run n'est pas en running/pending (déjà done/error/cancelled).
+    """
+    if not profile:
+        raise ValueError("profile is required")
+    status = _read_status(profile)
+    if not status:
+        raise FileNotFoundError(f"no dedupli status for profile {profile!r}")
+    if status.get("status") not in ("running", "pending"):
+        raise RuntimeError(
+            f"cannot cancel: status is {status.get('status')!r}"
+        )
+    status["cancel_requested"] = True
+    _write_status(profile, status)
+    return {"profile": profile, "status": "cancelling"}
+
+
 def get_status(profile: str) -> dict[str, Any]:
     """Lit le status courant (+ reap si nécessaire). Inclut un résumé du
     canon si présent (raw_count, canonical_count, built_at)."""
@@ -342,6 +377,11 @@ def _run_dedupli(profile: str, threshold: int) -> None:
     def on_progress(done: int, total: int, phase: str) -> None:
         # Mise à jour incrémentale du status (consommée par le polling UI)
         status = _read_status(profile) or {}
+        # Check cancellation : si le user a demandé un cancel, on raise
+        # immédiatement. La closure remonte jusqu'à _run_dedupli qui
+        # transitionne le status à "cancelled" et exit.
+        if status.get("cancel_requested"):
+            raise _CancelledError()
         status.update({
             "status": "running",
             "phase": phase,
@@ -366,6 +406,18 @@ def _run_dedupli(profile: str, threshold: int) -> None:
             "canonical_count": table.get("canonical_count"),
             "n_clusters": len(table.get("clusters", [])),
         })
+        # Nettoie le flag (au cas où il aurait été posé tardivement)
+        status.pop("cancel_requested", None)
+        _write_status(profile, status)
+    except _CancelledError:
+        status = _read_status(profile) or {}
+        status.update({
+            "status": "cancelled",
+            "phase": "cancelled",
+            "completed_at": _now_iso(),
+            "error": None,
+        })
+        status.pop("cancel_requested", None)
         _write_status(profile, status)
     except Exception as exc:  # noqa: BLE001 — on persiste l'erreur dans status
         status = _read_status(profile) or {}
@@ -375,4 +427,5 @@ def _run_dedupli(profile: str, threshold: int) -> None:
             "error": f"{type(exc).__name__}: {exc}",
             "traceback": traceback.format_exc()[-2000:],
         })
+        status.pop("cancel_requested", None)
         _write_status(profile, status)
