@@ -12,9 +12,16 @@
         <button id="tax-dedupli-cancel" class="btn-danger tax-dedupli-launch" style="display:none;">
             🛑 Annuler
         </button>
+        <label class="filter-label" for="tax-dedupli-mode">Mode</label>
+        <select id="tax-dedupli-mode" class="filter-select"
+                title="Syntactique = variantes ortho seules. Sémantique = synonymes via vocabulaire LLM.">
+            <option value="syntactic">Syntactique</option>
+            <option value="semantic" selected>Sémantique (C-light)</option>
+        </select>
         <label class="filter-label" for="tax-dedupli-threshold">Threshold</label>
         <input type="number" id="tax-dedupli-threshold" class="filter-select"
-               value="92" min="50" max="100" style="width:64px;">
+               value="92" min="50" max="100" style="width:64px;"
+               title="Seuil fuzzy pour le re-clustering final (90-95 recommandé).">
         <div id="tax-dedupli-status" class="tax-dedupli-status">État : non lancé</div>
     </div>
 
@@ -217,6 +224,7 @@
     const startBtn = document.getElementById('tax-dedupli-start');
     const cancelBtn = document.getElementById('tax-dedupli-cancel');
     const thresholdInput = document.getElementById('tax-dedupli-threshold');
+    const modeSelect = document.getElementById('tax-dedupli-mode');
     const statusEl = document.getElementById('tax-dedupli-status');
     const progressEl = document.getElementById('tax-dedupli-progress');
     const progressPhase = document.getElementById('tax-dedupli-phase');
@@ -257,13 +265,14 @@
     async function startBuild() {
         const profile = currentProfile();
         const threshold = parseInt(thresholdInput.value, 10) || 92;
+        const mode = modeSelect ? modeSelect.value : 'syntactic';
         startBtn.disabled = true;
         setStatus('Démarrage…');
         try {
             const r = await fetch('/api/taxonomy/dedupli/build', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({profile, threshold}),
+                body: JSON.stringify({profile, threshold, mode}),
             });
             if (!r.ok) {
                 const err = await r.json().catch(() => ({}));
@@ -321,6 +330,9 @@
             cancelBtn.disabled = false;
             cancelBtn.textContent = '🛑 Annuler';
         }
+        // Mode + threshold figés pendant un run
+        if (modeSelect) modeSelect.disabled = running;
+        thresholdInput.disabled = running;
     }
 
     function renderStatus(s) {
@@ -348,8 +360,9 @@
             const reduction = cs.raw_count && cs.canonical_count
                 ? Math.round((1 - cs.canonical_count / cs.raw_count) * 100)
                 : 0;
+            const modeLabel = cs.mode === 'semantic' ? 'Sémantique' : 'Syntactique';
             setStatus(
-                `✓ Terminé — ${cs.raw_count || 0} → ${cs.canonical_count || 0} `
+                `✓ Terminé (${modeLabel}) — ${cs.raw_count || 0} → ${cs.canonical_count || 0} `
               + `(${reduction}% réduction · ${cs.n_clusters || 0} clusters)`
             );
             setButtons(false, false);

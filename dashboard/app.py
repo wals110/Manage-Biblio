@@ -2381,17 +2381,26 @@ async def api_agent_refonte_delete_run(run_id: str, profile: str):
 
 @app.post("/api/taxonomy/dedupli/build")
 async def api_dedupli_build(request: Request):
-    """Lance un build de canonisation en arrière-plan (~10-15 min sur 15k thèmes)."""
+    """Lance un build de canonisation en arrière-plan.
+
+    Body:
+      profile: str (required)
+      threshold: int = 92 (50..100)
+      mode: "syntactic" | "semantic" = "syntactic"
+        - syntactic : Phases 1+2+3 (variantes ortho)
+        - semantic  : C-light (vocabulaire LLM, capture synonymes éloignés)
+    """
     from fastapi.responses import JSONResponse
     body = await request.json()
     profile = (body.get("profile") or "").strip()
     threshold = int(body.get("threshold") or 92)
+    mode = (body.get("mode") or "syntactic").strip()
     if threshold < 50 or threshold > 100:
         return JSONResponse(
             {"error": "threshold must be between 50 and 100"}, status_code=400,
         )
     try:
-        result = dedupli.start_dedupli(profile, threshold=threshold)
+        result = dedupli.start_dedupli(profile, threshold=threshold, mode=mode)
         return JSONResponse(result)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)

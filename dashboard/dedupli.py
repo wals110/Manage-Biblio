@@ -188,6 +188,7 @@ def get_status(profile: str) -> dict[str, Any]:
                 "raw_count": canon.get("raw_count", 0),
                 "canonical_count": canon.get("canonical_count", 0),
                 "threshold": canon.get("threshold"),
+                "mode": canon.get("mode"),
                 "n_clusters": len(canon.get("clusters", [])),
             }
         except (OSError, json.JSONDecodeError):
@@ -318,7 +319,12 @@ def _save_canon_atomic(path: Path, canon: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def start_dedupli(profile: str, *, threshold: int = 92) -> dict[str, Any]:
+def start_dedupli(
+    profile: str,
+    *,
+    threshold: int = 92,
+    mode: str = "syntactic",
+) -> dict[str, Any]:
     """Démarre un build de canonisation en background thread.
 
     Refuse si un run est déjà en cours (status running/pending non zombie).
@@ -326,17 +332,21 @@ def start_dedupli(profile: str, *, threshold: int = 92) -> dict[str, Any]:
     Args:
         profile: Profil cible (doit exister).
         threshold: Seuil de clustering fuzzy (défaut 92).
+        mode: "syntactic" (Phases 1-3) ou "semantic" (C-light avec vocabulaire
+              LLM). Cf. lib.theme_canon.build_canon_table pour le détail.
 
     Returns:
         {"profile": ..., "status": "pending", "started_at": ...}
 
     Raises:
-        ValueError: profile vide.
+        ValueError: profile vide ou mode invalide.
         FileNotFoundError: profile inexistant.
         RuntimeError: un run est déjà actif.
     """
     if not profile:
         raise ValueError("profile is required")
+    if mode not in ("syntactic", "semantic"):
+        raise ValueError(f"mode must be 'syntactic' or 'semantic', got {mode!r}")
     profile_path = data.get_project_root() / "profiles" / profile
     if not profile_path.is_dir():
         raise FileNotFoundError(f"profile not found: {profile}")
@@ -356,19 +366,20 @@ def start_dedupli(profile: str, *, threshold: int = 92) -> dict[str, Any]:
         "completed_at": None,
         "error": None,
         "threshold": threshold,
+        "mode": mode,
     }
     _write_status(profile, payload)
 
     thread = threading.Thread(
         target=_run_dedupli,
-        args=(profile, threshold),
+        args=(profile, threshold, mode),
         daemon=True,
     )
     thread.start()
     return {"profile": profile, "status": "pending", "started_at": payload["started_at"]}
 
 
-def _run_dedupli(profile: str, threshold: int) -> None:
+def _run_dedupli(profile: str, threshold: int, mode: str = "syntactic") -> None:
     """Cœur du thread daemon : appelle build_canon_table + persiste status."""
     # Imports lazy — évite de charger langchain au démarrage du dashboard
     from agents.llm import get_agent_llm
@@ -396,6 +407,7 @@ def _run_dedupli(profile: str, threshold: int) -> None:
             profile, llm,
             threshold=threshold,
             on_progress=on_progress,
+            mode=mode,
         )
         status = _read_status(profile) or {}
         status.update({

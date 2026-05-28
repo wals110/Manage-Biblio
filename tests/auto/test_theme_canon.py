@@ -344,5 +344,123 @@ class TestTaxonomyIntegration(_CanonBase):
         self.assertEqual(by_theme["Unsupervised Machine Learning"], 1)
 
 
+class TestBuildCanonTableSemanticMode(_CanonBase):
+    """Mode semantic (C-light) : vocabulaire + canonisation LLM globale."""
+
+    def _write_vision(self, themes_counts: dict[str, int]) -> None:
+        """Crée un vision_cache avec ces occurrences."""
+        entries = []
+        for theme, count in themes_counts.items():
+            for _ in range(count):
+                entries.append(
+                    {"result": {"title": f"Doc-{theme}",
+                                "themes": [{"theme": theme, "confidence": 0.9}]}}
+                )
+        self._write_vision_cache(entries)
+
+    def test_unknown_mode_raises(self):
+        from lib.theme_canon import build_canon_table
+        mock_llm = mock.MagicMock()
+        with self.assertRaises(ValueError):
+            build_canon_table("p", mock_llm, mode="weird")
+
+    def test_semantic_uses_canonicalizer(self):
+        # 3 raws : "ML" (1), "Machine Learning" (5), "AI" (1)
+        # → vocabulary = ["Machine Learning"] (top 1)
+        # → "ML" et "AI" passent au LLM, on script la réponse
+        from lib.theme_canon import build_canon_table
+
+        self._write_vision({
+            "Machine Learning": 5,
+            "ML": 1,
+            "AI": 1,
+        })
+
+        from lib.theme_canonicalizer import (
+            BatchCanonicalization,
+            RawCanonicalPair,
+        )
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.return_value = BatchCanonicalization(mappings=[
+            RawCanonicalPair(raw="AI", canonical="Machine Learning",
+                            matched_existing=True),
+            RawCanonicalPair(raw="ML", canonical="Machine Learning",
+                            matched_existing=True),
+        ])
+
+        table = build_canon_table(
+            "p", mock_llm,
+            mode="semantic",
+            vocabulary_top_n=1,  # Top 1 = ["Machine Learning"]
+            use_judge_cache=False,
+        )
+
+        self.assertEqual(table["mode"], "semantic")
+        self.assertEqual(table["vocabulary_size"], 1)
+        # Tous mappent vers "Machine Learning"
+        mapping = table["mapping"]
+        self.assertEqual(mapping["Machine Learning"], "Machine Learning")
+        self.assertEqual(mapping["ML"], "Machine Learning")
+        self.assertEqual(mapping["AI"], "Machine Learning")
+        self.assertEqual(table["canonical_count"], 1)
+
+        # 1 cluster final avec count cumulé = 5 + 1 + 1 = 7
+        self.assertEqual(len(table["clusters"]), 1)
+        self.assertEqual(table["clusters"][0]["canonical"], "Machine Learning")
+        self.assertEqual(table["clusters"][0]["count_cumulative"], 7)
+
+    def test_semantic_empty_profile(self):
+        from lib.theme_canon import build_canon_table
+        mock_llm = mock.MagicMock()
+        table = build_canon_table(
+            "p", mock_llm, mode="semantic", vocabulary_top_n=10,
+        )
+        self.assertEqual(table["mapping"], {})
+        self.assertEqual(table["clusters"], [])
+        self.assertEqual(table["mode"], "semantic")
+
+    def test_semantic_progress_phases(self):
+        from lib.theme_canon import build_canon_table
+
+        self._write_vision({"A": 3, "B": 1})  # vocab=[A], "B" → LLM
+
+        from lib.theme_canonicalizer import (
+            BatchCanonicalization,
+            RawCanonicalPair,
+        )
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.return_value = BatchCanonicalization(mappings=[
+            RawCanonicalPair(raw="B", canonical="A", matched_existing=True),
+        ])
+
+        phases: list[str] = []
+        build_canon_table(
+            "p", mock_llm, mode="semantic", vocabulary_top_n=1,
+            on_progress=lambda d, t, phase: phases.append(phase),
+            use_judge_cache=False,
+        )
+        self.assertIn("extracting", phases)
+        self.assertIn("canonicalizing", phases)
+        self.assertIn("reclustering", phases)
+        self.assertEqual(phases[-1], "done")
+
+
+class TestSyntacticModeTagged(_CanonBase):
+    """Le mode syntactique (défaut) tague aussi mode dans la sortie."""
+
+    def test_syntactic_mode_in_table(self):
+        from lib.theme_canon import build_canon_table
+        self._write_vision_cache([
+            {"result": {"themes": [{"theme": "Foo"}]}},
+        ])
+        mock_llm = mock.MagicMock()
+        table = build_canon_table("p", mock_llm)  # défaut syntactic
+        self.assertEqual(table["mode"], "syntactic")
+
+
 if __name__ == "__main__":
     unittest.main()

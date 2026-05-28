@@ -188,24 +188,38 @@ def build_canon_table(
     threshold: int = DEFAULT_CLUSTER_THRESHOLD,
     use_judge_cache: bool = True,
     on_progress: ProgressCallback | None = None,
+    mode: str = "syntactic",
+    vocabulary_top_n: int = 500,
 ) -> dict[str, Any]:
     """Pipeline end-to-end : extraction → clustering → LLM judge → persistance.
+
+    Deux modes disponibles :
+      - `"syntactic"` (défaut) : Phases 1+2+3 — normalisation + clustering
+        fuzzy + LLM judge. Capture variantes orthographiques et acronymes.
+        Réduction observée ~11% sur le profil default.
+      - `"semantic"` (C-light) : vocabulaire bootstrapé + canonisation LLM
+        sémantique. Capture aussi les synonymes éloignés (ML ↔ Machine
+        Learning ↔ AI). Réduction attendue ~70-80%.
 
     Args:
         profile: Nom du profil.
         llm: ChatOpenAI configuré (typiquement get_agent_llm()).
-        threshold: Seuil de similarité Phase 2 (défaut 92).
-        use_judge_cache: Réutilise les décisions LLM persistées dans
-                         theme-judge.json (défaut True).
+        threshold: Seuil de similarité Phase 2 / re-clustering final (défaut 92).
+        use_judge_cache: Réutilise les décisions LLM persistées (défaut True).
         on_progress: Callback `(done, total, phase)` invoqué pendant le run.
-                     Phases : 'extracting' → 'clustering' → 'judging' → 'done'.
-                     Utile pour persister status.json côté dashboard.
+                     Phases (syntactic) : extracting → clustering → judging → done
+                     Phases (semantic)  : extracting → canonicalizing → reclustering → done
+        mode: "syntactic" ou "semantic".
+        vocabulary_top_n: Taille du vocabulaire de référence en mode semantic.
 
     Returns:
         La table de canonisation complète (incluant métadonnées et clusters
         enrichis pour l'UI). Écrite sur disque dans
         `profiles/<p>/.cache/theme-canon.json`.
     """
+    if mode not in ("syntactic", "semantic"):
+        raise ValueError(f"mode must be 'syntactic' or 'semantic', got {mode!r}")
+
     if on_progress:
         on_progress(0, 0, "extracting")
     themes = extract_themes_from_vision_cache(profile)
@@ -218,12 +232,23 @@ def build_canon_table(
             "canonical_count": 0,
             "mapping": {},
             "clusters": [],
+            "mode": mode,
         }
         save_canon_table(profile, table)
         if on_progress:
             on_progress(0, 0, "done")
         return table
 
+    if mode == "semantic":
+        return _build_canon_table_semantic(
+            profile, llm, themes,
+            threshold=threshold,
+            use_cache=use_judge_cache,
+            vocabulary_top_n=vocabulary_top_n,
+            on_progress=on_progress,
+        )
+
+    # Mode syntactique (Phases 1+2+3) — comportement historique
     if on_progress:
         on_progress(0, len(themes), "clustering")
     clusters = cluster_themes(themes.keys(), threshold=threshold)
@@ -273,6 +298,114 @@ def build_canon_table(
         "threshold": threshold,
         "clusters": clusters_serialized,
         "mapping": mapping,
+        "mode": "syntactic",
+    }
+    save_canon_table(profile, table)
+    return table
+
+
+def _build_canon_table_semantic(
+    profile: str,
+    llm: BaseChatModel,
+    themes: dict[str, int],
+    *,
+    threshold: int,
+    use_cache: bool,
+    vocabulary_top_n: int,
+    on_progress: ProgressCallback | None,
+) -> dict[str, Any]:
+    """Pipeline du mode "semantic" (C-light).
+
+    Étapes :
+      1. build_vocabulary : top-N par fréquence comme vocabulaire de référence
+      2. canonicalize_themes : LLM produit {raw_theme: canonical} en parallèle
+      3. Re-clustering du résultat via cluster_themes (Phase 1+2) pour
+         gommer les doublons que le LLM aurait créés dans différents batches
+      4. Assemblage final + serialisation des clusters pour l'UI
+    """
+    from lib.theme_canonicalizer import build_vocabulary, canonicalize_themes
+
+    # Étape 1 : vocabulaire
+    vocabulary = build_vocabulary(themes, top_n=vocabulary_top_n)
+
+    if on_progress:
+        on_progress(0, 0, "canonicalizing")
+
+    # Étape 2 : canonisation LLM
+    def _cano_progress(done: int, total: int) -> None:
+        if on_progress:
+            on_progress(done, total, "canonicalizing")
+
+    raw_to_canon = canonicalize_themes(
+        list(themes.keys()),
+        vocabulary,
+        llm,
+        profile,
+        use_cache=use_cache,
+        on_progress=_cano_progress,
+    )
+
+    if on_progress:
+        on_progress(0, 0, "reclustering")
+
+    # Étape 3 : re-clustering des canoniques produits via Phase 1+2 pour
+    # gommer les doublons résiduels (variantes ortho créées par le LLM).
+    # On clusterise l'ensemble des canoniques uniques.
+    unique_canons = sorted(set(raw_to_canon.values()))
+    canon_clusters = cluster_themes(unique_canons, threshold=threshold)
+
+    # Construit canon_to_final : pour chaque canonical produit par le LLM,
+    # le représentant final de son cluster fuzzy (le plus long du cluster).
+    canon_to_final: dict[str, str] = {}
+    for cluster in canon_clusters:
+        members = cluster.get("raw_members", [])
+        if not members:
+            continue
+        final = max(members, key=len)
+        for m in members:
+            canon_to_final[m] = final
+
+    # Mapping final raw → canonical après fusion
+    final_mapping: dict[str, str] = {
+        raw: canon_to_final.get(canon, canon)
+        for raw, canon in raw_to_canon.items()
+    }
+
+    # Étape 4 : groupes par canonical pour l'UI (équivalent des clusters
+    # du mode syntactique, format identique consommé par le panel).
+    grouped: dict[str, list[str]] = {}
+    for raw, final in final_mapping.items():
+        grouped.setdefault(final, []).append(raw)
+
+    clusters_serialized = []
+    for canonical, raw_members in grouped.items():
+        # Pour le mode sémantique, on n'a pas de "splits" — tous les raws
+        # qui ont été mappés vers ce canonical sont considérés members.
+        count_cumulative = sum(themes.get(m, 0) for m in raw_members)
+        clusters_serialized.append({
+            "canonical": canonical,
+            "members": list(raw_members),
+            "splits": [],
+            "raw_members": list(raw_members),
+            "count_cumulative": count_cumulative,
+        })
+    # Tri par count cumulé décroissant
+    clusters_serialized.sort(key=lambda c: -c["count_cumulative"])
+
+    if on_progress:
+        on_progress(len(themes), len(themes), "done")
+
+    table = {
+        "version": CANON_VERSION,
+        "built_at": _now_iso(),
+        "raw_count": len(final_mapping),
+        "canonical_count": len(set(final_mapping.values())),
+        "threshold": threshold,
+        "vocabulary_top_n": vocabulary_top_n,
+        "vocabulary_size": len(vocabulary),
+        "clusters": clusters_serialized,
+        "mapping": final_mapping,
+        "mode": "semantic",
     }
     save_canon_table(profile, table)
     return table
