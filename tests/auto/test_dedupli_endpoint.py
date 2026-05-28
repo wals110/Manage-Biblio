@@ -309,5 +309,61 @@ class TestZombieReap(_DedupliBase):
         self.assertIn("orphelin", status["error"])
 
 
+class TestResetRunningAtBoot(_DedupliBase):
+    """Boot reset : tout run en running/pending est marqué error au démarrage,
+    sans attendre le seuil zombie."""
+
+    def _seed_status(self, profile: str, status_val: str) -> None:
+        _seed_profile(self.tmp, profile)
+        path = self.tmp / "profiles" / profile / ".cache" / "dedupli" / "status.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "status": status_val,
+            "phase": "judging",
+            "progress": {"done": 77, "total": 13635},
+            "started_at": "2026-05-28T19:07:50+00:00",
+        }), encoding="utf-8")
+
+    def test_running_marked_error(self):
+        self._seed_status("p", "running")
+        dedupli.reset_running_at_boot()
+        status = dedupli._read_status("p")
+        self.assertEqual(status["status"], "error")
+        self.assertIn("redémarré", status["error"])
+
+    def test_pending_marked_error(self):
+        self._seed_status("p", "pending")
+        dedupli.reset_running_at_boot()
+        status = dedupli._read_status("p")
+        self.assertEqual(status["status"], "error")
+
+    def test_done_left_intact(self):
+        self._seed_status("p", "done")
+        dedupli.reset_running_at_boot()
+        status = dedupli._read_status("p")
+        self.assertEqual(status["status"], "done")
+
+    def test_error_left_intact(self):
+        self._seed_status("p", "error")
+        dedupli.reset_running_at_boot()
+        status = dedupli._read_status("p")
+        self.assertEqual(status["status"], "error")
+
+    def test_multiple_profiles_reset(self):
+        self._seed_status("p1", "running")
+        self._seed_status("p2", "running")
+        self._seed_status("p3", "done")
+        dedupli.reset_running_at_boot()
+        self.assertEqual(dedupli._read_status("p1")["status"], "error")
+        self.assertEqual(dedupli._read_status("p2")["status"], "error")
+        self.assertEqual(dedupli._read_status("p3")["status"], "done")
+
+    def test_missing_profiles_dir_does_not_raise(self):
+        # Pas de profiles/ → no-op silencieux
+        import shutil as _shutil
+        _shutil.rmtree(self.tmp / "profiles", ignore_errors=True)
+        dedupli.reset_running_at_boot()  # ne doit pas raise
+
+
 if __name__ == "__main__":
     unittest.main()

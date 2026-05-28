@@ -29,8 +29,9 @@ from typing import Any
 from dashboard import data
 
 # Seuil au-delà duquel un run "running" est considéré orphelin (zombie).
-# Le judging d'un gros cluster peut prendre 30s+, donc 5 min de marge.
-_ZOMBIE_THRESHOLD_S = 5 * 60
+# Avec parallélisation 8 workers, on_progress est appelé toutes les 1-2s
+# en moyenne — 2 min sans update est très conservateur (≥ 60 updates ratés).
+_ZOMBIE_THRESHOLD_S = 2 * 60
 
 
 def _dedupli_dir(profile: str) -> Path:
@@ -71,7 +72,7 @@ def _write_status(profile: str, payload: dict[str, Any]) -> None:
 
 
 def _reap_zombie(profile: str) -> None:
-    """Marque comme `error` un run zombie (running sans update >5min).
+    """Marque comme `error` un run zombie (running sans update >threshold).
 
     Cas typique : dashboard redémarré pendant un run. Le thread daemon
     meurt mais status.json reste "running" éternellement.
@@ -97,6 +98,44 @@ def _reap_zombie(profile: str) -> None:
         ),
     })
     _write_status(profile, status)
+
+
+def reset_running_at_boot() -> None:
+    """Marque comme `error` tous les runs `running`/`pending` au démarrage
+    du dashboard.
+
+    Justification : tout thread daemon est mort par construction quand le
+    process redémarre. Inutile d'attendre _ZOMBIE_THRESHOLD_S pour le
+    constater — on connaît la vérité tout de suite. Appelé une fois au
+    boot par dashboard.app.
+
+    Parcours tous les profils sous profiles/<X>/.cache/dedupli/status.json
+    et reset ceux qui sont en running/pending.
+    """
+    profiles_root = data.get_project_root() / "profiles"
+    if not profiles_root.is_dir():
+        return
+    for profile_dir in profiles_root.iterdir():
+        if not profile_dir.is_dir():
+            continue
+        status_path = profile_dir / ".cache" / "dedupli" / "status.json"
+        if not status_path.exists():
+            continue
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if status.get("status") not in ("running", "pending"):
+            continue
+        status.update({
+            "status": "error",
+            "completed_at": _now_iso(),
+            "error": "Dashboard redémarré pendant le run (thread daemon perdu).",
+        })
+        try:
+            _write_status(profile_dir.name, status)
+        except OSError:
+            pass
 
 
 def get_status(profile: str) -> dict[str, Any]:

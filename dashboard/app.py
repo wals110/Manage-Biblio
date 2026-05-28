@@ -24,6 +24,16 @@ if _func_dir not in sys.path:
 
 app = FastAPI(title="Klodo Dashboard")
 
+# Au démarrage : invalide les runs dédupli qui étaient encore en "running"
+# côté status.json (= thread daemon perdu par construction au reboot).
+# Sans ça, le 409 "déjà en cours" bloque les relances et il faut effacer
+# status.json à la main. Cf. dashboard/dedupli.reset_running_at_boot.
+try:
+    dedupli.reset_running_at_boot()
+except Exception:  # noqa: BLE001
+    # Échec non bloquant — au pire le user verra un zombie à reaper (2 min)
+    pass
+
 
 def _is_safe_file_path(file_path: str) -> bool:
     """Validate that a file path is inside allowed directories (prevent path traversal)."""
