@@ -2435,6 +2435,20 @@ async def api_dedupli_cancel(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=409)
 
 
+@app.post("/api/taxonomy/dedupli/restore")
+async def api_dedupli_restore(request: Request):
+    """Supprime theme-canon.json pour revenir aux thèmes bruts."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    try:
+        return JSONResponse(dedupli.restore_initial_themes(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
 @app.get("/api/taxonomy/dedupli/clusters")
 async def api_dedupli_clusters(profile: str, multi_only: bool = True):
     """Liste les clusters depuis theme-canon.json (triés par count cumulé)."""

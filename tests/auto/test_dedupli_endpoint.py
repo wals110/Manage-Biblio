@@ -287,6 +287,55 @@ class TestStartDedupli(_DedupliBase):
             time.sleep(0.2)
 
 
+class TestRestoreInitial(_DedupliBase):
+    def _write_canon(self):
+        p = self.tmp / "profiles" / "p" / ".cache" / "theme-canon.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"version": 2, "mapping": {"A": "B"}}),
+                     encoding="utf-8")
+        return p
+
+    def test_restore_removes_canon_file(self):
+        p = self._write_canon()
+        self.assertTrue(p.exists())
+        r = self.client.post(
+            "/api/taxonomy/dedupli/restore",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["restored"], True)
+        self.assertFalse(p.exists())
+
+    def test_restore_idempotent_when_no_canon(self):
+        r = self.client.post(
+            "/api/taxonomy/dedupli/restore",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["restored"], False)
+
+    def test_restore_400_if_no_profile(self):
+        r = self.client.post(
+            "/api/taxonomy/dedupli/restore",
+            json={},
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_restore_409_if_run_in_progress(self):
+        self._write_canon()
+        status_path = self.tmp / "profiles" / "p" / ".cache" / "dedupli" / "status.json"
+        status_path.parent.mkdir(parents=True, exist_ok=True)
+        status_path.write_text(json.dumps({
+            "status": "running",
+            "started_at": "2026-05-28T00:00:00+00:00",
+        }), encoding="utf-8")
+        r = self.client.post(
+            "/api/taxonomy/dedupli/restore",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 409)
+
+
 class TestCancelDedupli(_DedupliBase):
     def _write_status(self, status_val: str, cancel_requested: bool = False):
         path = self.tmp / "profiles" / "p" / ".cache" / "dedupli" / "status.json"

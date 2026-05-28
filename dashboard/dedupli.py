@@ -146,6 +146,36 @@ class _CancelledError(Exception):
     """
 
 
+def restore_initial_themes(profile: str) -> dict[str, Any]:
+    """Supprime theme-canon.json pour revenir aux thèmes bruts du vision_cache.
+
+    `theme-canon.json` est consommé en runtime par
+    `dashboard.taxonomy._aggregate_themes_llm`. Sa suppression rétablit
+    instantanément le comportement d'origine sans toucher au vision_cache
+    (source de vérité immuable) ni au cache canonicalizer (peut être
+    réutilisé pour un futur build).
+
+    Refuse si un run dédupli est en cours pour éviter une race.
+
+    Raises:
+        ValueError: profile vide.
+        RuntimeError: un run est en cours (running/pending).
+    """
+    if not profile:
+        raise ValueError("profile is required")
+    _reap_zombie(profile)
+    status = _read_status(profile)
+    if status and status.get("status") in ("running", "pending"):
+        raise RuntimeError(
+            "un run est en cours — annule-le d'abord avant de restaurer"
+        )
+    canon_path = _canon_path(profile)
+    existed = canon_path.exists()
+    if existed:
+        canon_path.unlink()
+    return {"profile": profile, "restored": existed}
+
+
 def cancel_dedupli(profile: str) -> dict[str, Any]:
     """Demande l'annulation d'un run en cours.
 

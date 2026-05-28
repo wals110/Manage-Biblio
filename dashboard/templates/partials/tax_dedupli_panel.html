@@ -12,6 +12,11 @@
         <button id="tax-dedupli-cancel" class="btn-danger tax-dedupli-launch" style="display:none;">
             🛑 Annuler
         </button>
+        <button id="tax-dedupli-restore" class="btn-secondary tax-dedupli-launch"
+                title="Supprime theme-canon.json — rétablit les thèmes bruts du vision_cache (réversible : tu peux relancer un build après)."
+                style="display:none;">
+            🔄 Restaurer thèmes initiaux
+        </button>
         <label class="filter-label" for="tax-dedupli-mode">Mode</label>
         <select id="tax-dedupli-mode" class="filter-select"
                 title="Syntactique = variantes ortho seules. Sémantique = synonymes via vocabulaire LLM.">
@@ -223,6 +228,7 @@
 (function() {
     const startBtn = document.getElementById('tax-dedupli-start');
     const cancelBtn = document.getElementById('tax-dedupli-cancel');
+    const restoreBtn = document.getElementById('tax-dedupli-restore');
     const thresholdInput = document.getElementById('tax-dedupli-threshold');
     const modeSelect = document.getElementById('tax-dedupli-mode');
     const statusEl = document.getElementById('tax-dedupli-status');
@@ -312,7 +318,7 @@
         }
     }
 
-    function setButtons(running, cancelling) {
+    function setButtons(running, cancelling, hasCanon) {
         // En cours et pas encore en cancellation → Annuler dispo
         if (running && !cancelling) {
             startBtn.style.display = 'none';
@@ -333,13 +339,20 @@
         // Mode + threshold figés pendant un run
         if (modeSelect) modeSelect.disabled = running;
         thresholdInput.disabled = running;
+        // Restaurer visible uniquement quand un canon existe ET qu'on ne tourne pas
+        if (restoreBtn) {
+            restoreBtn.style.display = (!running && hasCanon) ? '' : 'none';
+        }
     }
 
     function renderStatus(s) {
+        const hasCanon = !!s.canon_summary;
         if (s.status === 'idle') {
-            setStatus('État : non lancé');
+            setStatus(hasCanon
+                ? 'État : canon existant (relancer écrasera)'
+                : 'État : non lancé');
             hideProgress();
-            setButtons(false, false);
+            setButtons(false, false, hasCanon);
             return;
         }
         if (s.status === 'running' || s.status === 'pending') {
@@ -351,7 +364,7 @@
                     ? 'Annulation en cours… (les appels LLM en vol terminent puis on stoppe)'
                     : `En cours — phase: ${s.phase || '…'}`
             );
-            setButtons(true, cancelling);
+            setButtons(true, cancelling, hasCanon);
             return;
         }
         if (s.status === 'done') {
@@ -365,20 +378,20 @@
                 `✓ Terminé (${modeLabel}) — ${cs.raw_count || 0} → ${cs.canonical_count || 0} `
               + `(${reduction}% réduction · ${cs.n_clusters || 0} clusters)`
             );
-            setButtons(false, false);
+            setButtons(false, false, hasCanon);
             return;
         }
         if (s.status === 'cancelled') {
             hideProgress();
             const p = s.progress || {};
             setStatus(`⏹ Annulé — ${p.done || 0} / ${p.total || 0} clusters traités avant arrêt`);
-            setButtons(false, false);
+            setButtons(false, false, hasCanon);
             return;
         }
         if (s.status === 'error') {
             hideProgress();
             setStatus('❌ Erreur : ' + (s.error || 'unknown'));
-            setButtons(false, false);
+            setButtons(false, false, hasCanon);
             return;
         }
     }
@@ -556,8 +569,49 @@
         }
     }
 
+    async function restoreInitial() {
+        const profile = currentProfile();
+        const ok = await showConfirm({
+            title: 'Restaurer les thèmes initiaux ?',
+            body: 'Supprime theme-canon.json — la taxonomie revient aux thèmes bruts du vision_cache. '
+                + 'Le cache des décisions LLM (theme-canonicalizer.json) reste, donc tu pourras '
+                + 'relancer un build plus tard sans repayer les appels LLM déjà faits.',
+            confirmLabel: 'Restaurer',
+            cancelLabel: 'Annuler',
+            variant: 'danger',
+        }).catch(() => window.confirm('Restaurer les thèmes initiaux ?'));
+        if (!ok) return;
+        try {
+            const r = await fetch('/api/taxonomy/dedupli/restore', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({profile}),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Erreur : ' + (err.error || r.status));
+                return;
+            }
+            // Reset l'UI : status redevient idle (pas de canon_summary)
+            pollStatus();
+            // Vide la zone clusters / detail
+            clustersEl.innerHTML = '<p class="muted small">Thèmes initiaux restaurés. '
+                                 + 'Lance un build pour réessayer.</p>';
+            detailEl.innerHTML = '';
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+        }
+    }
+
+    // showConfirm partagé via window (déclaré dans taxonomy.html)
+    function showConfirm(opts) {
+        if (window.showConfirm) return window.showConfirm(opts);
+        return Promise.resolve(window.confirm(`${opts.title || ''}\n\n${opts.body || ''}`));
+    }
+
     startBtn.addEventListener('click', startBuild);
     cancelBtn.addEventListener('click', cancelBuild);
+    if (restoreBtn) restoreBtn.addEventListener('click', restoreInitial);
 
     // Activation : exposé pour activateSubtab() dans taxonomy_rename.js
     window.taxDedupliPanel = {
