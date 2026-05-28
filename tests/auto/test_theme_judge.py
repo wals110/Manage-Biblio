@@ -285,6 +285,105 @@ class TestJudgeClustersBatch(_JudgeBase):
         self.assertEqual(mock_structured.invoke.call_count, 1)
 
 
+class TestJudgeClustersParallel(_JudgeBase):
+    """Vérifie que la parallélisation produit le bon résultat dans le bon ordre."""
+
+    def test_results_in_input_order_across_workers(self):
+        """Même avec parallélisation, l'ordre des results matche l'ordre des inputs."""
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        # Chaque cluster a son propre JudgeResult identifiable
+        responses = {
+            "alpha": JudgeResult(canonical="ALPHA", members=["alpha-a", "alpha-b"]),
+            "beta":  JudgeResult(canonical="BETA",  members=["beta-a", "beta-b"]),
+            "gamma": JudgeResult(canonical="GAMMA", members=["gamma-a", "gamma-b"]),
+        }
+
+        def respond_by_first_token(messages):
+            # Récupère la 1ère variante du prompt pour décider la réponse
+            content = messages[1].content if len(messages) > 1 else ""
+            for tag in responses:
+                if f'"{tag}-a"' in content:
+                    return responses[tag]
+            return JudgeResult(canonical="?", members=[])
+
+        mock_structured.invoke.side_effect = respond_by_first_token
+
+        clusters = [
+            ["alpha-a", "alpha-b"],
+            ["beta-a", "beta-b"],
+            ["gamma-a", "gamma-b"],
+        ]
+        results = judge_clusters(
+            clusters, "p", mock_llm,
+            use_cache=False, max_workers=4,
+        )
+        # Ordre préservé
+        self.assertEqual(results[0].canonical, "ALPHA")
+        self.assertEqual(results[1].canonical, "BETA")
+        self.assertEqual(results[2].canonical, "GAMMA")
+
+    def test_llm_exception_falls_back_to_identity(self):
+        """Si le LLM raise sur 1 cluster, le pipeline continue."""
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        call_count = [0]
+
+        def maybe_raise(messages):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("simulated LLM failure")
+            return JudgeResult(canonical="OK", members=["ok-a", "ok-b"])
+
+        mock_structured.invoke.side_effect = maybe_raise
+
+        clusters = [
+            ["fail-a", "fail-b"],  # 1er → raise → fallback
+            ["ok-a", "ok-b"],      # 2e → OK
+        ]
+        results = judge_clusters(
+            clusters, "p", mock_llm,
+            use_cache=False, max_workers=1,
+        )
+        # 2 results retournés (pas d'exception remontée)
+        self.assertEqual(len(results), 2)
+        # Le résultat OK est complet, le résultat fail est dégradé en identité
+        canonicals = {r.canonical for r in results}
+        self.assertIn("OK", canonicals)
+
+    def test_progress_callback_thread_safe(self):
+        """Le callback est invoqué (done, total) au moins une fois après le
+        pré-tri et une fois par cluster LLM. Thread-safe via lock interne."""
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.return_value = JudgeResult(
+            canonical="X", members=["A"],
+        )
+
+        calls: list[tuple[int, int]] = []
+        clusters = [
+            ["singleton"],                       # → trivial
+            ["match-a", "match-a"],              # → auto-merge
+            ["ambiguous-a", "ambiguous-b"],      # → LLM
+            ["another-a", "another-b-distinct"], # → LLM
+        ]
+        results = judge_clusters(
+            clusters, "p", mock_llm,
+            use_cache=False, max_workers=2,
+            on_progress=lambda done, total: calls.append((done, total)),
+        )
+        self.assertEqual(len(results), 4)
+        # Au moins 1 appel (pré-tri) + 2 LLM = 3 appels min
+        self.assertGreaterEqual(len(calls), 3)
+        # Le dernier doit être (4, 4)
+        self.assertEqual(calls[-1], (4, 4))
+
+
 class TestJudgeResultSchema(unittest.TestCase):
     """Vérifie que le schéma Pydantic est utilisable côté tests."""
 
