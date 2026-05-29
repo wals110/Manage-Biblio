@@ -217,8 +217,10 @@ def build_canon_table(
         enrichis pour l'UI). Écrite sur disque dans
         `profiles/<p>/.cache/theme-canon.json`.
     """
-    if mode not in ("syntactic", "semantic"):
-        raise ValueError(f"mode must be 'syntactic' or 'semantic', got {mode!r}")
+    if mode not in ("syntactic", "semantic", "source"):
+        raise ValueError(
+            f"mode must be 'syntactic', 'semantic' or 'source', got {mode!r}"
+        )
 
     if on_progress:
         on_progress(0, 0, "extracting")
@@ -241,6 +243,15 @@ def build_canon_table(
 
     if mode == "semantic":
         return _build_canon_table_semantic(
+            profile, llm, themes,
+            threshold=threshold,
+            use_cache=use_judge_cache,
+            vocabulary_top_n=vocabulary_top_n,
+            on_progress=on_progress,
+        )
+
+    if mode == "source":
+        return _build_canon_table_source(
             profile, llm, themes,
             threshold=threshold,
             use_cache=use_judge_cache,
@@ -406,6 +417,129 @@ def _build_canon_table_semantic(
         "clusters": clusters_serialized,
         "mapping": final_mapping,
         "mode": "semantic",
+    }
+    save_canon_table(profile, table)
+    return table
+
+
+def _build_canon_table_source(
+    profile: str,
+    llm: BaseChatModel,
+    themes: dict[str, int],
+    *,
+    threshold: int,
+    use_cache: bool,
+    vocabulary_top_n: int,
+    on_progress: ProgressCallback | None,
+) -> dict[str, Any]:
+    """Pipeline du mode "source" (C.2 — canonisation contextuelle).
+
+    Différence avec semantic (C-light) :
+      - C-light : (raw_theme seul) → LLM décide à l'aveugle
+      - C.2     : (raw_theme + 5 titres représentatifs) → LLM voit le contexte
+
+    Étapes :
+      1. extract_themes_with_titles : pour chaque raw_theme, collecte les
+         5 titres représentatifs depuis vision_cache.json
+      2. build_vocabulary : top-N par fréquence (vocabulary de référence)
+      3. resolve_themes_with_context : LLM produit {raw: canonical} avec
+         les titres comme contexte de désambiguïsation, parallélisé
+      4. Re-clustering du résultat via cluster_themes pour gommer les
+         doublons résiduels (canoniques quasi-identiques entre batches)
+      5. Assemblage final
+    """
+    from lib.theme_canonicalizer import build_vocabulary
+    from lib.theme_resolver import (
+        extract_themes_with_titles,
+        resolve_themes_with_context,
+    )
+
+    if on_progress:
+        on_progress(0, 0, "extracting")
+    themes_titles = extract_themes_with_titles(profile)
+
+    vocabulary = build_vocabulary(themes, top_n=vocabulary_top_n)
+
+    if on_progress:
+        on_progress(0, 0, "resolving")
+
+    def _resolver_progress(done: int, total: int) -> None:
+        if on_progress:
+            on_progress(done, total, "resolving")
+
+    raw_to_canon = resolve_themes_with_context(
+        themes_titles,
+        vocabulary,
+        llm,
+        profile,
+        use_cache=use_cache,
+        on_progress=_resolver_progress,
+    )
+
+    if on_progress:
+        on_progress(0, 0, "reclustering")
+
+    # Re-clustering des canoniques pour gommer les doublons résiduels
+    unique_canons = sorted(set(raw_to_canon.values()))
+    canon_clusters = cluster_themes(unique_canons, threshold=threshold)
+
+    canon_to_final: dict[str, str] = {}
+    for cluster in canon_clusters:
+        members = cluster.get("raw_members", [])
+        if not members:
+            continue
+        final = max(members, key=len)
+        for m in members:
+            canon_to_final[m] = final
+
+    final_mapping: dict[str, str] = {
+        raw: canon_to_final.get(canon, canon)
+        for raw, canon in raw_to_canon.items()
+    }
+
+    grouped: dict[str, list[str]] = {}
+    for raw, final in final_mapping.items():
+        grouped.setdefault(final, []).append(raw)
+
+    clusters_serialized = []
+    for canonical, raw_members in grouped.items():
+        count_cumulative = sum(themes.get(m, 0) for m in raw_members)
+        # Pour la vue UI : sample des titres représentatifs du canonical
+        # (concaténation des titres de ses raw_members, limitée à 5)
+        sample_titles: list[str] = []
+        seen_titles: set[str] = set()
+        for member in raw_members:
+            for title in themes_titles.get(member, []):
+                if title in seen_titles or len(sample_titles) >= 5:
+                    continue
+                seen_titles.add(title)
+                sample_titles.append(title)
+            if len(sample_titles) >= 5:
+                break
+        clusters_serialized.append({
+            "canonical": canonical,
+            "members": list(raw_members),
+            "splits": [],
+            "raw_members": list(raw_members),
+            "count_cumulative": count_cumulative,
+            "sample_titles": sample_titles,
+        })
+    clusters_serialized.sort(key=lambda c: -c["count_cumulative"])
+
+    if on_progress:
+        on_progress(len(themes), len(themes), "done")
+
+    table = {
+        "version": CANON_VERSION,
+        "built_at": _now_iso(),
+        "raw_count": len(final_mapping),
+        "canonical_count": len(set(final_mapping.values())),
+        "threshold": threshold,
+        "vocabulary_top_n": vocabulary_top_n,
+        "vocabulary_size": len(vocabulary),
+        "clusters": clusters_serialized,
+        "mapping": final_mapping,
+        "mode": "source",
     }
     save_canon_table(profile, table)
     return table

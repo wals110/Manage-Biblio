@@ -22,8 +22,13 @@ sys.path.insert(0, PROJECT_ROOT)
 from dashboard import data  # noqa: E402
 from lib.theme_resolver import (  # noqa: E402
     TITLES_PER_THEME,
+    BatchResolution,
+    ResolvedTheme,
+    _stable_batch_key,
     count_themes,
     extract_themes_with_titles,
+    resolve_batch,
+    resolve_themes_with_context,
     themes_with_titles_iter,
 )
 
@@ -182,6 +187,233 @@ class TestThemesWithTitlesIter(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(list(themes_with_titles_iter({})), [])
+
+
+class TestStableBatchKey(unittest.TestCase):
+    def test_batch_order_matters(self):
+        # L'ordre du batch est sémantiquement important (mappings[] ordonné)
+        k1 = _stable_batch_key([("A", ["t1"]), ("B", ["t2"])], ["v1"])
+        k2 = _stable_batch_key([("B", ["t2"]), ("A", ["t1"])], ["v1"])
+        self.assertNotEqual(k1, k2)
+
+    def test_vocab_order_irrelevant(self):
+        k1 = _stable_batch_key([("A", ["t1"])], ["v1", "v2"])
+        k2 = _stable_batch_key([("A", ["t1"])], ["v2", "v1"])
+        self.assertEqual(k1, k2)
+
+    def test_titles_order_irrelevant(self):
+        # Les titres dans une entrée sont triés dans la clé — l'ordre de
+        # collecte des titres ne doit pas invalider le cache.
+        k1 = _stable_batch_key([("A", ["t1", "t2"])], ["v"])
+        k2 = _stable_batch_key([("A", ["t2", "t1"])], ["v"])
+        self.assertEqual(k1, k2)
+
+    def test_length_16(self):
+        self.assertEqual(len(_stable_batch_key([("A", [])], ["B"])), 16)
+
+
+class TestResolveBatch(unittest.TestCase):
+    def _mock_llm(self, mappings: list[ResolvedTheme]):
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.return_value = BatchResolution(mappings=mappings)
+        return mock_llm
+
+    def test_happy_path(self):
+        mock_llm = self._mock_llm([
+            ResolvedTheme(raw="ML", canonical="Machine Learning",
+                          matched_existing=True),
+            ResolvedTheme(raw="Logic", canonical="Logic",
+                          matched_existing=False),
+        ])
+        result = resolve_batch(
+            [("ML", ["Intro to ML"]), ("Logic", ["A First Course in Logic"])],
+            ["Machine Learning"],
+            mock_llm,
+        )
+        self.assertEqual(result, {
+            "ML": "Machine Learning",
+            "Logic": "Logic",
+        })
+
+    def test_forces_function_calling(self):
+        # GLM-4.7 ne supporte pas json mode → on doit forcer function_calling
+        mock_llm = self._mock_llm([
+            ResolvedTheme(raw="A", canonical="A", matched_existing=False),
+        ])
+        resolve_batch([("A", ["t1"])], [], mock_llm)
+        _, kwargs = mock_llm.with_structured_output.call_args
+        self.assertEqual(kwargs.get("method"), "function_calling")
+
+    def test_empty_batch(self):
+        mock_llm = mock.MagicMock()
+        self.assertEqual(resolve_batch([], ["v"], mock_llm), {})
+        mock_llm.with_structured_output.assert_not_called()
+
+    def test_safety_net_when_llm_omits_themes(self):
+        # LLM ne renvoie qu'1 mapping sur 2 demandés → l'autre → identité
+        mock_llm = self._mock_llm([
+            ResolvedTheme(raw="A", canonical="X", matched_existing=True),
+        ])
+        result = resolve_batch(
+            [("A", ["t1"]), ("B", ["t2"])], ["X"], mock_llm,
+        )
+        self.assertEqual(result["A"], "X")
+        self.assertEqual(result["B"], "B")
+
+    def test_empty_canonical_falls_back_to_raw(self):
+        mock_llm = self._mock_llm([
+            ResolvedTheme(raw="A", canonical="   ", matched_existing=False),
+        ])
+        result = resolve_batch([("A", ["t"])], [], mock_llm)
+        self.assertEqual(result["A"], "A")
+
+    def test_titles_included_in_prompt(self):
+        """Le user prompt doit inclure les titres en contexte."""
+        captured: list = []
+
+        def capture(messages):
+            captured.append(messages)
+            return BatchResolution(mappings=[
+                ResolvedTheme(raw="A", canonical="A", matched_existing=False),
+            ])
+
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.side_effect = capture
+        resolve_batch(
+            [("ML", ["Pattern Recognition and Machine Learning",
+                     "Introduction to ML"])],
+            ["Machine Learning"],
+            mock_llm,
+        )
+        user_msg = captured[0][1].content
+        self.assertIn("Machine Learning", user_msg)  # vocab
+        self.assertIn("ML", user_msg)
+        self.assertIn("Pattern Recognition", user_msg)
+        self.assertIn("Introduction to ML", user_msg)
+
+
+class TestResolveThemesWithContext(_ResolverBase):
+    def _scripted_llm(self, mapping: dict[str, str]):
+        """LLM qui retourne {canonical} d'après un dict scripté pour raw."""
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        def respond(messages):
+            # Le user prompt liste "Thème i : 'X'" → on extrait les X
+            import re
+            content = messages[1].content
+            raws = re.findall(r"^Thème \d+ : '([^']+)'", content, re.MULTILINE)
+            pairs = [
+                ResolvedTheme(
+                    raw=raw,
+                    canonical=mapping.get(raw, raw),
+                    matched_existing=mapping.get(raw, raw) != raw,
+                )
+                for raw in raws
+            ]
+            return BatchResolution(mappings=pairs)
+
+        mock_structured.invoke.side_effect = respond
+        return mock_llm
+
+    def test_empty_input(self):
+        mock_llm = mock.MagicMock()
+        self.assertEqual(
+            resolve_themes_with_context({}, ["v"], mock_llm, "p",
+                                         use_cache=False),
+            {},
+        )
+        mock_llm.with_structured_output.assert_not_called()
+
+    def test_vocab_themes_skip_llm(self):
+        mock_llm = mock.MagicMock()
+        out = resolve_themes_with_context(
+            {"Machine Learning": ["t1"], "Data Science": ["t2"]},
+            ["Machine Learning", "Data Science"],
+            mock_llm, "p", use_cache=False,
+        )
+        self.assertEqual(out, {
+            "Machine Learning": "Machine Learning",
+            "Data Science": "Data Science",
+        })
+        mock_llm.with_structured_output.assert_not_called()
+
+    def test_basic_resolution(self):
+        llm = self._scripted_llm({
+            "ML": "Machine Learning",
+            "machine learning": "Machine Learning",
+        })
+        out = resolve_themes_with_context(
+            {
+                "Machine Learning": ["t1"],
+                "ML": ["Intro to ML"],
+                "machine learning": ["ML for Dummies"],
+            },
+            ["Machine Learning"],
+            llm, "p", batch_size=10, max_workers=1, use_cache=False,
+        )
+        self.assertEqual(out["Machine Learning"], "Machine Learning")
+        self.assertEqual(out["ML"], "Machine Learning")
+        self.assertEqual(out["machine learning"], "Machine Learning")
+
+    def test_cache_persists(self):
+        llm = self._scripted_llm({"A": "X"})
+        themes_titles = {"A": ["title_A"]}
+        # 1er appel : LLM appelé, cache écrit
+        resolve_themes_with_context(
+            themes_titles, [], llm, "p",
+            batch_size=10, max_workers=1, use_cache=True,
+        )
+        cache_path = (
+            self.tmp / "profiles" / "p" / ".cache" / "theme-resolver.json"
+        )
+        self.assertTrue(cache_path.exists())
+        # 2e appel : LLM jamais ré-appelé (cache hit)
+        llm.with_structured_output.return_value.invoke.reset_mock()
+        resolve_themes_with_context(
+            themes_titles, [], llm, "p",
+            batch_size=10, max_workers=1, use_cache=True,
+        )
+        llm.with_structured_output.return_value.invoke.assert_not_called()
+
+    def test_llm_failure_falls_back_to_identity(self):
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.side_effect = RuntimeError("LLM down")
+
+        out = resolve_themes_with_context(
+            {"A": ["t1"], "B": ["t2"]}, [], mock_llm, "p",
+            batch_size=10, max_workers=1, use_cache=False,
+        )
+        self.assertEqual(out, {"A": "A", "B": "B"})
+
+    def test_progress_callback(self):
+        themes_titles = {f"T{i}": [f"title_{i}"] for i in range(15)}
+        llm = self._scripted_llm({})
+        calls: list[tuple[int, int]] = []
+        resolve_themes_with_context(
+            themes_titles, [], llm, "p",
+            batch_size=5, max_workers=1, use_cache=False,
+            on_progress=lambda d, t: calls.append((d, t)),
+        )
+        # 15 / 5 = 3 batches → 3 callbacks min, dernier = (3, 3)
+        self.assertGreaterEqual(len(calls), 3)
+        self.assertEqual(calls[-1], (3, 3))
+
+    def test_parallel_workers_preserve_completeness(self):
+        themes_titles = {f"T{i}": [f"t_{i}"] for i in range(50)}
+        llm = self._scripted_llm({})
+        out = resolve_themes_with_context(
+            themes_titles, [], llm, "p",
+            batch_size=10, max_workers=4, use_cache=False,
+        )
+        self.assertEqual(set(out.keys()), set(themes_titles.keys()))
 
 
 if __name__ == "__main__":

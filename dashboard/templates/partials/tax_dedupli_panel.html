@@ -19,9 +19,10 @@
         </button>
         <label class="filter-label" for="tax-dedupli-mode">Mode</label>
         <select id="tax-dedupli-mode" class="filter-select"
-                title="Syntactique = variantes ortho seules. Sémantique = synonymes via vocabulaire LLM.">
+                title="Syntactique = variantes ortho seules. Sémantique = synonymes LLM aveugle. Source = LLM avec contexte titres (le plus précis).">
             <option value="syntactic">Syntactique</option>
-            <option value="semantic" selected>Sémantique (C-light)</option>
+            <option value="semantic">Sémantique (C-light)</option>
+            <option value="source" selected>Source (C.2 — avec titres)</option>
         </select>
         <label class="filter-label" for="tax-dedupli-threshold">Threshold</label>
         <input type="number" id="tax-dedupli-threshold" class="filter-select"
@@ -373,7 +374,8 @@
             const reduction = cs.raw_count && cs.canonical_count
                 ? Math.round((1 - cs.canonical_count / cs.raw_count) * 100)
                 : 0;
-            const modeLabel = cs.mode === 'semantic' ? 'Sémantique' : 'Syntactique';
+            const modeLabel = cs.mode === 'source' ? 'Source'
+                            : (cs.mode === 'semantic' ? 'Sémantique' : 'Syntactique');
             setStatus(
                 `✓ Terminé (${modeLabel}) — ${cs.raw_count || 0} → ${cs.canonical_count || 0} `
               + `(${reduction}% réduction · ${cs.n_clusters || 0} clusters)`

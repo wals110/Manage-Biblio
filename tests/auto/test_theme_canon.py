@@ -449,6 +449,98 @@ class TestBuildCanonTableSemanticMode(_CanonBase):
         self.assertEqual(phases[-1], "done")
 
 
+class TestBuildCanonTableSourceMode(_CanonBase):
+    """Mode source (C.2) : contexte titres via LLM."""
+
+    def test_source_uses_resolver_with_titles(self):
+        from lib.theme_canon import build_canon_table
+        from lib.theme_resolver import BatchResolution, ResolvedTheme
+
+        # 3 raws : ML (1 occ + 1 titre), Machine Learning (5 + 1), Logic (1 + 1)
+        self._write_vision_cache([
+            {"result": {"title": "Pattern Recognition and ML",
+                       "themes": [{"theme": "Machine Learning", "confidence": 0.9}]}},
+            {"result": {"title": "ML for Dummies",
+                       "themes": [{"theme": "Machine Learning", "confidence": 0.9}]}},
+            {"result": {"title": "Introduction to ML",
+                       "themes": [{"theme": "ML", "confidence": 0.9}]}},
+            {"result": {"title": "A First Course in Logic",
+                       "themes": [{"theme": "Logic", "confidence": 0.9}]}},
+        ])
+
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        # Vocabulary top_n=1 → "Machine Learning"
+        # to_process = ["ML", "Logic"] (lexico) → LLM voit ML + son titre,
+        # Logic + son titre. ML fusionne, Logic reste identité.
+        mock_structured.invoke.return_value = BatchResolution(mappings=[
+            ResolvedTheme(raw="Logic", canonical="Logic",
+                          matched_existing=False),
+            ResolvedTheme(raw="ML", canonical="Machine Learning",
+                          matched_existing=True),
+        ])
+
+        table = build_canon_table(
+            "p", mock_llm,
+            mode="source",
+            vocabulary_top_n=1,
+            use_judge_cache=False,
+        )
+
+        self.assertEqual(table["mode"], "source")
+        mapping = table["mapping"]
+        self.assertEqual(mapping["Machine Learning"], "Machine Learning")
+        self.assertEqual(mapping["ML"], "Machine Learning")
+        self.assertEqual(mapping["Logic"], "Logic")
+
+        # 2 clusters : Machine Learning (count 2+1=3) + Logic (count 1)
+        clusters = table["clusters"]
+        self.assertEqual(len(clusters), 2)
+        # Vérifie présence des sample_titles dans les clusters
+        ml_cluster = next(c for c in clusters if c["canonical"] == "Machine Learning")
+        self.assertGreater(len(ml_cluster["sample_titles"]), 0)
+
+    def test_source_progress_phases(self):
+        from lib.theme_canon import build_canon_table
+        from lib.theme_resolver import BatchResolution, ResolvedTheme
+
+        self._write_vision_cache([
+            {"result": {"title": "T1", "themes": [{"theme": "A", "confidence": 0.9}]}},
+            {"result": {"title": "T2", "themes": [{"theme": "B", "confidence": 0.9}]}},
+        ])
+
+        mock_llm = mock.MagicMock()
+        mock_structured = mock.MagicMock()
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_structured.invoke.return_value = BatchResolution(mappings=[
+            ResolvedTheme(raw="B", canonical="A", matched_existing=True),
+        ])
+
+        phases: list[str] = []
+        build_canon_table(
+            "p", mock_llm, mode="source", vocabulary_top_n=1,
+            use_judge_cache=False,
+            on_progress=lambda d, t, phase: phases.append(phase),
+        )
+        self.assertIn("extracting", phases)
+        self.assertIn("resolving", phases)
+        self.assertIn("reclustering", phases)
+        self.assertEqual(phases[-1], "done")
+
+    def test_source_empty_profile(self):
+        from lib.theme_canon import build_canon_table
+        mock_llm = mock.MagicMock()
+        table = build_canon_table(
+            "p", mock_llm, mode="source", vocabulary_top_n=10,
+        )
+        self.assertEqual(table["mapping"], {})
+        self.assertEqual(table["clusters"], [])
+        # Le mode demandé est tagué même quand le profil est vide
+        self.assertEqual(table.get("mode"), "source")
+
+
 class TestSyntacticModeTagged(_CanonBase):
     """Le mode syntactique (défaut) tague aussi mode dans la sortie."""
 

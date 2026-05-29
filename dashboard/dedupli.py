@@ -375,8 +375,10 @@ def start_dedupli(
     """
     if not profile:
         raise ValueError("profile is required")
-    if mode not in ("syntactic", "semantic"):
-        raise ValueError(f"mode must be 'syntactic' or 'semantic', got {mode!r}")
+    if mode not in ("syntactic", "semantic", "source"):
+        raise ValueError(
+            f"mode must be 'syntactic', 'semantic' or 'source', got {mode!r}"
+        )
     profile_path = data.get_project_root() / "profiles" / profile
     if not profile_path.is_dir():
         raise FileNotFoundError(f"profile not found: {profile}")
