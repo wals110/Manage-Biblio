@@ -17,6 +17,8 @@
                     title="Audit + renommage des fichiers basé sur le titre LLM">Rename</button>
             <button class="tax-subtab" data-view="refonte"
                     title="Agent IA — diagnostic de la taxonomie (lecture seule)">&#129302; Refonte</button>
+            <button class="tax-subtab" data-view="dedupli"
+                    title="Dédupli des thèmes LLM (consolide variantes orthographiques + synonymes)">&#128279; Dédupli</button>
         </div>
         <div class="tax-toolbar">
             <label class="filter-label">Profil</label>
@@ -393,6 +395,12 @@
     {% include "partials/agent_refonte_panel.html" %}
 </div>
 <!-- ────────────────────── End view: Refonte ──────────────────────────────── -->
+
+<!-- ─────────────────────── View: Dédupli ─────────────────────── -->
+<div class="tax-view tax-view-dedupli" data-view="dedupli" style="display:none;">
+    {% include "partials/tax_dedupli_panel.html" %}
+</div>
+<!-- ────────────────────── End view: Dédupli ──────────────────────────────── -->
 
 <!-- 📜 Rename history modal (PR4A) -->
 <div id="tax-rename-history-modal" class="tax-modal-backdrop"

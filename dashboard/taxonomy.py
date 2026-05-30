@@ -195,6 +195,12 @@ def _aggregate_themes_llm(profile: str, mapping: dict) -> tuple[list[dict], dict
 
     Each theme entry: {theme, count, confidence_avg, mapped_to, is_orphan,
                        sample_titles}.
+
+    Si `profiles/<p>/.cache/theme-canon.json` existe (produit par
+    `lib.theme_canon.build_canon_table`), les raw_themes sont résolus
+    vers leur canonical avant cumul. Cumule donc les counts des
+    variantes orthographiques d'un même concept. Sinon comportement
+    historique (key = lowercase raw).
     """
     cache_path = _vision_cache_path(profile)
     if not cache_path.exists():
@@ -204,7 +210,12 @@ def _aggregate_themes_llm(profile: str, mapping: dict) -> tuple[list[dict], dict
     except (OSError, json.JSONDecodeError):
         return [], {"total_themes_llm": 0, "orphans": 0, "mapped": 0}
 
-    # Aggregate: per-theme (lowercased key) count + conf sum + sample titles
+    # Import lazy — lib.theme_canon dépend de lib.theme_judge qui importe
+    # langchain ; on évite de charger ça au démarrage du dashboard.
+    from lib.theme_canon import canonicalize, load_canon_table
+    canon_table = load_canon_table(profile)
+
+    # Aggregate: per-canonical key count + conf sum + sample titles
     agg: dict[str, dict] = {}
     sample_titles: dict[str, list[str]] = defaultdict(list)
     for entry in cache.values():
@@ -215,8 +226,12 @@ def _aggregate_themes_llm(profile: str, mapping: dict) -> tuple[list[dict], dict
         for t, conf in _iter_themes({"x": entry}):
             if conf < _MIN_CONFIDENCE:
                 continue
-            key = t.lower()
-            slot = agg.setdefault(key, {"theme": t, "count": 0, "conf_sum": 0.0})
+            # Résolution canonisation → cumule les variantes orthographiques
+            canonical = canonicalize(t, canon_table)
+            key = canonical.lower()
+            slot = agg.setdefault(
+                key, {"theme": canonical, "count": 0, "conf_sum": 0.0}
+            )
             slot["count"] += 1
             slot["conf_sum"] += conf
             if title and len(sample_titles[key]) < 3 and title not in sample_titles[key]:

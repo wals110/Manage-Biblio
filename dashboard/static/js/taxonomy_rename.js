@@ -342,6 +342,9 @@
     if (view === 'refonte' && window.taxRefontePanel) {
       window.taxRefontePanel.activate();
     }
+    if (view === 'dedupli' && window.taxDedupliPanel) {
+      window.taxDedupliPanel.activate();
+    }
   }
 
   // ── Filters bar ──────────────────────────────────────────────────────

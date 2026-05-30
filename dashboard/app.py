@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import agent_refonte, baseline, data, taxonomy
+from dashboard import agent_refonte, baseline, data, dedupli, taxonomy
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -23,6 +23,16 @@ if _func_dir not in sys.path:
     sys.path.insert(0, _func_dir)
 
 app = FastAPI(title="Klodo Dashboard")
+
+# Au démarrage : invalide les runs dédupli qui étaient encore en "running"
+# côté status.json (= thread daemon perdu par construction au reboot).
+# Sans ça, le 409 "déjà en cours" bloque les relances et il faut effacer
+# status.json à la main. Cf. dashboard/dedupli.reset_running_at_boot.
+try:
+    dedupli.reset_running_at_boot()
+except Exception:  # noqa: BLE001
+    # Échec non bloquant — au pire le user verra un zombie à reaper (2 min)
+    pass
 
 
 def _is_safe_file_path(file_path: str) -> bool:
@@ -2362,6 +2372,108 @@ async def api_agent_refonte_delete_run(run_id: str, profile: str):
         return JSONResponse({"error": str(exc)}, status_code=404)
     except agent_refonte.RunBusyError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Taxonomie — Onglet Dédupli des thèmes
+# ════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/api/taxonomy/dedupli/build")
+async def api_dedupli_build(request: Request):
+    """Lance un build de canonisation en arrière-plan.
+
+    Body:
+      profile: str (required)
+      threshold: int = 92 (50..100)
+      mode: "syntactic" | "semantic" = "syntactic"
+        - syntactic : Phases 1+2+3 (variantes ortho)
+        - semantic  : C-light (vocabulaire LLM, capture synonymes éloignés)
+    """
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    threshold = int(body.get("threshold") or 92)
+    mode = (body.get("mode") or "syntactic").strip()
+    if threshold < 50 or threshold > 100:
+        return JSONResponse(
+            {"error": "threshold must be between 50 and 100"}, status_code=400,
+        )
+    try:
+        result = dedupli.start_dedupli(profile, threshold=threshold, mode=mode)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.get("/api/taxonomy/dedupli/status")
+async def api_dedupli_status(profile: str):
+    """Lit l'état du build (polling depuis le frontend)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    return JSONResponse(dedupli.get_status(profile))
+
+
+@app.post("/api/taxonomy/dedupli/cancel")
+async def api_dedupli_cancel(request: Request):
+    """Demande l'annulation d'un run dédupli en cours."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    try:
+        return JSONResponse(dedupli.cancel_dedupli(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.post("/api/taxonomy/dedupli/restore")
+async def api_dedupli_restore(request: Request):
+    """Supprime theme-canon.json pour revenir aux thèmes bruts."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    try:
+        return JSONResponse(dedupli.restore_initial_themes(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.get("/api/taxonomy/dedupli/clusters")
+async def api_dedupli_clusters(profile: str, multi_only: bool = True):
+    """Liste les clusters depuis theme-canon.json (triés par count cumulé)."""
+    from fastapi.responses import JSONResponse
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    clusters = dedupli.list_clusters(profile, multi_only=multi_only)
+    return JSONResponse({"profile": profile, "clusters": clusters})
+
+
+@app.put("/api/taxonomy/dedupli/cluster")
+async def api_dedupli_update_cluster(request: Request):
+    """Édition manuelle d'un cluster — réécrit theme-canon.json en place."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile is required"}, status_code=400)
+    try:
+        updated = dedupli.update_cluster(profile, body)
+        return JSONResponse({"profile": profile, "cluster": updated})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
 
 
 # ──────────── Phase B : Proposition ────────────
