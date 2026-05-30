@@ -169,19 +169,48 @@ FUSION OK (vers une entrée du vocabulaire) :
 - Variante casse/pluriel/ortho US-UK seule ("ML" → si vocab a "Machine Learning")
 - Acronyme = développé, CONFIRMÉ par titres ("ML" + titres parlant de Machine
   Learning → fusion. "AI" + titres "Artificial Insemination" → identité.)
-- Reformulation sans perte ("Web Dev with Java" ↔ "Java Web Dev")
+- Reformulation pure sans ajout de qualifier ("Web Dev with Java" peut être
+  fusionné avec "Java Web Dev" car mêmes mots)
 
-NE PAS FUSIONNER (canonical = raw) :
-- Sous-domaines ("Unsupervised Machine Learning" ≠ "Machine Learning")
-- Concepts liés distincts (Logic ≠ Math, Big Data ≠ Data Science, Penetration
-  Testing ≠ Information Security, Quantum Physics ≠ Quantum Mechanics)
-- Versions/plateformes différentes (iOS App Dev ≠ Mobile App Dev)
-- "X for Y" ≠ "X" seul (Statistics for Data Science ≠ Statistics)
+NE PAS FUSIONNER (canonical = raw) — INTERDICTION ABSOLUE pour ces patterns :
 
-Les titres aident à : confirmer un acronyme, désambiguïser un homonyme.
+✗ Toute composition "X with Y", "X with Z" → reste distincte de "X" :
+  "Web Development with .NET" ≠ "Web Development"
+  "Web Development with ASP.NET" ≠ "Web Development"
+  "Mathematics for BCPST" ≠ "Mathematics"
+  "Statistics for Data Science" ≠ "Statistics"
+
+✗ Toute composition "X (Y)" ou "X / Y" → reste distincte de "X" :
+  "Mathematical Analysis (Discrete)" ≠ "Mathematical Analysis"
+  "Artificial Intelligence / Machine Learning" ≠ "Artificial Intelligence"
+
+✗ Tout qualifier ajouté ("Advanced", "Modern", "Applied", "Introduction to",
+  numéro de version) → reste distinct :
+  "Advanced Java Programming" ≠ "Java Programming"
+  "Modern Web Development with JavaScript" ≠ "Web Development"
+  "Java 8 Programming" ≠ "Java Programming"
+  "Python 3 Programming" ≠ "Python Programming"
+
+✗ Sous-domaine ou spécialisation thématique :
+  "Unsupervised Machine Learning" ≠ "Machine Learning"
+  "Cloud Big Data" ≠ "Cloud Computing"
+  "Cloud Application Deployment" ≠ "Cloud Computing"
+
+✗ Concepts liés mais distincts :
+  Logic ≠ Math, Big Data ≠ Data Science, Penetration Testing ≠
+  Information Security, Quantum Physics ≠ Quantum Mechanics
+
+✗ Versions/plateformes différentes :
+  iOS App Dev ≠ Mobile App Dev
+
+Les titres servent à : confirmer un acronyme, désambiguïser un homonyme.
 Si titres ne correspondent pas au sens du canonical → ne fusionne PAS.
 
 PRINCIPE : sur-fusion >> sous-fusion en gravité. En cas de doute → identité.
+Si le raw contient un mot que le canonical ne contient PAS (qualifier ajouté
+type "with", "for", "Advanced", numéro), c'est PROBABLEMENT un sous-domaine
+→ identité par défaut.
+
 Canonical en Title Case quand fusion vers vocab. Sinon raw tel quel."""
 
 

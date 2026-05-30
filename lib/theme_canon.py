@@ -365,14 +365,22 @@ def _build_canon_table_semantic(
     unique_canons = sorted(set(raw_to_canon.values()))
     canon_clusters = cluster_themes(unique_canons, threshold=threshold)
 
-    # Construit canon_to_final : pour chaque canonical produit par le LLM,
-    # le représentant final de son cluster fuzzy (le plus long du cluster).
+    # Pour le choix du final canonical d'un cluster fuzzy : count cumulé MAX
+    # (le plus représentatif). Tie-break sur longueur décroissante (préfère
+    # le plus court à count égal), puis lexico pour déterminisme.
+    canon_to_count: dict[str, int] = {c: 0 for c in unique_canons}
+    for raw, canon in raw_to_canon.items():
+        canon_to_count[canon] = canon_to_count.get(canon, 0) + themes.get(raw, 0)
+
     canon_to_final: dict[str, str] = {}
     for cluster in canon_clusters:
         members = cluster.get("raw_members", [])
         if not members:
             continue
-        final = max(members, key=len)
+        final = max(
+            members,
+            key=lambda m: (canon_to_count.get(m, 0), -len(m), m),
+        )
         for m in members:
             canon_to_final[m] = final
 
@@ -483,12 +491,30 @@ def _build_canon_table_source(
     unique_canons = sorted(set(raw_to_canon.values()))
     canon_clusters = cluster_themes(unique_canons, threshold=threshold)
 
+    # Pour le choix du final canonical d'un cluster fuzzy : on prend la
+    # variante avec le plus grand count cumulé parmi les raw_themes qui
+    # pointaient vers elle. On évite ainsi de choisir "Web Application
+    # Development with C# and .NET" (un canonical hyper-spécifique apparu
+    # 1× dans un batch) comme représentant d'un cluster contenant
+    # "Web Development" qui est apparu 100 fois.
+    canon_to_count: dict[str, int] = {c: 0 for c in unique_canons}
+    for raw, canon in raw_to_canon.items():
+        canon_to_count[canon] = canon_to_count.get(canon, 0) + themes.get(raw, 0)
+
     canon_to_final: dict[str, str] = {}
     for cluster in canon_clusters:
         members = cluster.get("raw_members", [])
         if not members:
             continue
-        final = max(members, key=len)
+        # canonical = membre avec le count cumulé MAX (le plus représentatif).
+        # Tie-break sur la longueur DÉCROISSANTE (préfère le plus court à
+        # count égal, ex. "Mathematics" vs "Advanced Mathematics" choisit
+        # "Mathematics" en cas d'égalité). Tie final sur l'ordre lexico
+        # pour déterminisme.
+        final = max(
+            members,
+            key=lambda m: (canon_to_count.get(m, 0), -len(m), m),
+        )
         for m in members:
             canon_to_final[m] = final
 
