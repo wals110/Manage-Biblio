@@ -526,7 +526,9 @@ class TestBuildCanonTableSourceMode(_CanonBase):
         )
         self.assertIn("extracting", phases)
         self.assertIn("resolving", phases)
-        self.assertIn("reclustering", phases)
+        # Mode 'source' n'a pas de re-clustering fuzzy (skip cluster_themes
+        # par-dessus la sortie LLM) — la phase finale est "finalizing".
+        self.assertIn("finalizing", phases)
         self.assertEqual(phases[-1], "done")
 
     def test_source_empty_profile(self):

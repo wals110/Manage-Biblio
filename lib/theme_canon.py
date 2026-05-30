@@ -484,48 +484,21 @@ def _build_canon_table_source(
         on_progress=_resolver_progress,
     )
 
+    # En mode 'source', PAS de re-clustering fuzzy : le LLM a déjà tranché
+    # chaque thème avec le contexte des titres. Appliquer un cluster_themes
+    # fuzzy par-dessus fusionne des canoniques textuellement proches mais
+    # sémantiquement distincts (observé sur le run du 2026-05-30 :
+    # "C++ Programming" + "C# Programming" + "R Programming" mergés en 1
+    # cluster ; "Web Application Development" absorbe "iOS Application
+    # Development", "Cloud Application Development", etc.).
+    # La sortie LLM est notre source de vérité.
     if on_progress:
-        on_progress(0, 0, "reclustering")
+        on_progress(0, 0, "finalizing")
 
-    # Re-clustering des canoniques pour gommer les doublons résiduels
-    unique_canons = sorted(set(raw_to_canon.values()))
-    canon_clusters = cluster_themes(unique_canons, threshold=threshold)
-
-    # Pour le choix du final canonical d'un cluster fuzzy : on prend la
-    # variante avec le plus grand count cumulé parmi les raw_themes qui
-    # pointaient vers elle. On évite ainsi de choisir "Web Application
-    # Development with C# and .NET" (un canonical hyper-spécifique apparu
-    # 1× dans un batch) comme représentant d'un cluster contenant
-    # "Web Development" qui est apparu 100 fois.
-    canon_to_count: dict[str, int] = {c: 0 for c in unique_canons}
-    for raw, canon in raw_to_canon.items():
-        canon_to_count[canon] = canon_to_count.get(canon, 0) + themes.get(raw, 0)
-
-    canon_to_final: dict[str, str] = {}
-    for cluster in canon_clusters:
-        members = cluster.get("raw_members", [])
-        if not members:
-            continue
-        # canonical = membre avec le count cumulé MAX (le plus représentatif).
-        # Tie-break sur la longueur DÉCROISSANTE (préfère le plus court à
-        # count égal, ex. "Mathematics" vs "Advanced Mathematics" choisit
-        # "Mathematics" en cas d'égalité). Tie final sur l'ordre lexico
-        # pour déterminisme.
-        final = max(
-            members,
-            key=lambda m: (canon_to_count.get(m, 0), -len(m), m),
-        )
-        for m in members:
-            canon_to_final[m] = final
-
-    final_mapping: dict[str, str] = {
-        raw: canon_to_final.get(canon, canon)
-        for raw, canon in raw_to_canon.items()
-    }
-
+    final_mapping: dict[str, str] = dict(raw_to_canon)
     grouped: dict[str, list[str]] = {}
-    for raw, final in final_mapping.items():
-        grouped.setdefault(final, []).append(raw)
+    for raw, canon in final_mapping.items():
+        grouped.setdefault(canon, []).append(raw)
 
     clusters_serialized = []
     for canonical, raw_members in grouped.items():
