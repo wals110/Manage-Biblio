@@ -2489,6 +2489,67 @@ async def api_agent_refonte_tree_diff(run_id: str, profile: str):
     return JSONResponse(diff)
 
 
+# ──────────── Phase C : Dialog (mutations + rollback) ────────────
+
+
+@app.get("/api/agent/refonte/c/batches")
+async def api_agent_refonte_c_batches(profile: str):
+    """Liste les batches de mutations agent (Phase C) pour le profil."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    return JSONResponse({
+        "profile": profile,
+        "batches": _c.list_batches(profile),
+    })
+
+
+@app.get("/api/agent/refonte/c/entries")
+async def api_agent_refonte_c_entries(
+    profile: str, batch_id: str | None = None, limit: int = 100,
+):
+    """Liste les entrées du journal (toutes ou filtrées par batch_id)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    limit = max(1, min(int(limit), 500))
+    return JSONResponse({
+        "profile": profile,
+        "entries": _c.list_entries(profile, batch_id=batch_id, limit=limit),
+    })
+
+
+@app.post("/api/agent/refonte/c/rollback")
+async def api_agent_refonte_c_rollback(request: Request):
+    """Restaure les YAML depuis le backup d'un batch ciblé.
+
+    Body: {profile, batch_id}.
+    """
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    batch_id = (body.get("batch_id") or "").strip()
+    try:
+        result = _c.rollback_batch(profile, batch_id)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except _c.RollbackError as exc:
+        msg = str(exc)
+        # "already been rolled back" → 409, "not found" / "no backup" → 404
+        if "already" in msg:
+            return JSONResponse({"error": msg}, status_code=409)
+        return JSONResponse({"error": msg}, status_code=404)
+
+
 @app.get("/api/agent/refonte/proposition/{run_id}/simulation")
 async def api_agent_refonte_simulation(run_id: str, profile: str, sample_limit: int = 50):
     """Lit le simulation-summary.json + N premières lignes de la projection CSV."""
