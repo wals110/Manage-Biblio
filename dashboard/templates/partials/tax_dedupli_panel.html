@@ -581,7 +581,7 @@
             confirmLabel: 'Restaurer',
             cancelLabel: 'Annuler',
             variant: 'danger',
-        }).catch(() => window.confirm('Restaurer les thèmes initiaux ?'));
+        });
         if (!ok) return;
         try {
             const r = await fetch('/api/taxonomy/dedupli/restore', {
@@ -605,10 +605,42 @@
         }
     }
 
-    // showConfirm partagé via window (déclaré dans taxonomy.html)
-    function showConfirm(opts) {
-        if (window.showConfirm) return window.showConfirm(opts);
-        return Promise.resolve(window.confirm(`${opts.title || ''}\n\n${opts.body || ''}`));
+    // Duplication assumée du helper (cf. agent_refonte_panel.html /
+    // taxonomy_rename.js) — chaque sous-onglet vit dans son IIFE, on préfère
+    // 30 lignes recopiées à un global. Utilise la modale partagée
+    // #tax-confirm-modal déclarée dans taxonomy.html.
+    function showConfirm({title, body, confirmLabel, cancelLabel, variant}) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('tax-confirm-modal');
+            const okBtn = document.getElementById('tax-confirm-ok');
+            const cancelBtn = document.getElementById('tax-confirm-cancel');
+            if (!modal || !okBtn || !cancelBtn) {
+                resolve(window.confirm((title || '') + '\n\n' + (body || '')));
+                return;
+            }
+            document.getElementById('tax-confirm-title').textContent = title || 'Confirmer ?';
+            document.getElementById('tax-confirm-body').textContent = body || '';
+            okBtn.textContent = confirmLabel || 'Confirmer';
+            cancelBtn.textContent = cancelLabel || 'Annuler';
+            okBtn.className = (variant === 'danger') ? 'btn-danger' : 'btn-primary';
+            modal.style.display = 'flex';
+
+            function cleanup(result) {
+                modal.style.display = 'none';
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                document.removeEventListener('keydown', onKey);
+                resolve(result);
+            }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+                if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
+            }
+            okBtn.onclick = () => cleanup(true);
+            cancelBtn.onclick = () => cleanup(false);
+            document.addEventListener('keydown', onKey);
+            setTimeout(() => okBtn.focus(), 50);
+        });
     }
 
     startBtn.addEventListener('click', startBuild);
