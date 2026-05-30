@@ -160,73 +160,29 @@ class BatchResolution(BaseModel):
     )
 
 
-_SYSTEM_PROMPT = """Tu es un expert en taxonomie qui consolide UNIQUEMENT les \
-variantes orthographiques et synonymes EXACTS de thèmes d'une bibliothèque PDF.
+_SYSTEM_PROMPT = """Tu canonises des thèmes de bibliothèque PDF. Pour chaque \
+thème brut, choisis canonical :
 
-═══════ CONTEXTE FOURNI ═══════
+DÉFAUT = raw (matched_existing=False). Ne fusionne QUE pour ces cas :
 
-Pour chaque thème brut, tu reçois jusqu'à 5 titres représentatifs de livres
-de la bibliothèque taggés avec ce thème. Utilise ces titres pour comprendre
-le SENS RÉEL du thème dans son contexte d'usage avant de décider.
+FUSION OK (vers une entrée du vocabulaire) :
+- Variante casse/pluriel/ortho US-UK seule ("ML" → si vocab a "Machine Learning")
+- Acronyme = développé, CONFIRMÉ par titres ("ML" + titres parlant de Machine
+  Learning → fusion. "AI" + titres "Artificial Insemination" → identité.)
+- Reformulation sans perte ("Web Dev with Java" ↔ "Java Web Dev")
 
-═══════ PRINCIPE FONDAMENTAL ═══════
+NE PAS FUSIONNER (canonical = raw) :
+- Sous-domaines ("Unsupervised Machine Learning" ≠ "Machine Learning")
+- Concepts liés distincts (Logic ≠ Math, Big Data ≠ Data Science, Penetration
+  Testing ≠ Information Security, Quantum Physics ≠ Quantum Mechanics)
+- Versions/plateformes différentes (iOS App Dev ≠ Mobile App Dev)
+- "X for Y" ≠ "X" seul (Statistics for Data Science ≠ Statistics)
 
-Par DÉFAUT garde le thème tel quel (canonical = raw, matched_existing=False).
-Ne fusionne que dans les cas listés ci-dessous.
+Les titres aident à : confirmer un acronyme, désambiguïser un homonyme.
+Si titres ne correspondent pas au sens du canonical → ne fusionne PAS.
 
-L'erreur la plus grave est la SUR-FUSION (mélanger des concepts distincts).
-Une fragmentation est facilement réparable par l'utilisateur, une sur-fusion
-fait perdre de l'information de façon irréversible.
-
-═══════ CAS OÙ TU DOIS FUSIONNER (canonical = entrée du vocabulaire) ═══════
-
-UNIQUEMENT si le thème brut ET ses titres montrent qu'il est strictement
-équivalent à un canonical du vocabulaire :
-
-  1. Variante de casse SEULE : "Machine Learning" / "machine learning"
-  2. Variante de pluriel/singulier SEULE : "Neural Networks" / "Neural Network"
-  3. Orthographe US/UK SEULE : "Optimization" / "Optimisation"
-  4. Acronyme strict = développé connu, CONFIRMÉ par les titres : "ML" + titres
-     "Introduction to Machine Learning" → "Machine Learning". MAIS si le thème
-     est "ML" et les titres parlent de "Mailing List", ne fusionne PAS.
-  5. Reformulation pure SANS perte de sens : "Web Development with Java" ↔
-     "Java Web Development" (mêmes mots dans un autre ordre).
-
-═══════ CAS OÙ TU NE DOIS PAS FUSIONNER (canonical = raw) ═══════
-
-✗ Sous-domaine ou spécialisation : "Unsupervised Machine Learning" ≠
-  "Machine Learning". Garde le raw.
-✗ Concept lié mais distinct : "Logic" ≠ "Mathematics". "Cognitive Science"
-  ≠ "Artificial Intelligence". "Big Data" ≠ "Data Science". "Computer
-  Security" ≠ "Information Security". "Penetration Testing" ≠ "Information
-  Security" (cas particulier d'une catégorie n'EST PAS la catégorie).
-✗ Inclusion conceptuelle : "Retro computing" ≠ "History of Science",
-  même si lié.
-✗ Versions, plateformes, technologies différentes : "iOS Application
-  Development" ≠ "Mobile Application Development". "Quantum Physics" ≠
-  "Quantum Mechanics" en physique théorique.
-✗ Compositions "X for Y" ≠ "X" seul : "Statistics for Data Science" reste
-  distinct de "Statistics".
-
-═══════ UTILISATION DES TITRES ═══════
-
-Les titres servent à 3 choses :
-  a) Confirmer un acronyme ambigu : "ML" + "Pattern Recognition and Machine
-     Learning" → confirmé Machine Learning. "AI" + "Artificial Insemination
-     in Cattle" → PAS Artificial Intelligence.
-  b) Désambiguïser un homonyme : "Logic" + titres logique formelle (livres
-     "A First Course in Logic", "Mathematical Logic") → "Logic" reste
-     "Logic" (pas Math, pas Philosophy).
-  c) Détecter un titre individuel mal taggé comme thème : si un thème est
-     exactement le titre d'un livre, garde-le tel quel.
-
-Si les titres NE CORRESPONDENT PAS au sens d'un canonical du vocabulaire,
-ne fusionne PAS.
-
-═══════ FORMAT ═══════
-
-Le `canonical` doit être en Title Case propre quand il vient du vocabulaire.
-Quand tu gardes le raw (matched_existing=False), restitue-le tel quel."""
+PRINCIPE : sur-fusion >> sous-fusion en gravité. En cas de doute → identité.
+Canonical en Title Case quand fusion vers vocab. Sinon raw tel quel."""
 
 
 def _stable_batch_key(
@@ -303,6 +259,29 @@ def _build_user_prompt(
     )
 
 
+def _ensure_non_streaming(llm: BaseChatModel) -> BaseChatModel:
+    """Désactive streaming sur une copie du LLM si besoin (ChatOpenAI seul).
+
+    Justification : en mode `function_calling`, le tool_call complet arrive
+    en bloc → pas de chunks intermédiaires émis pendant la phase de génération.
+    Avec streaming=True (défaut de get_agent_llm pour Phase B), SiliconFlow
+    disconnect serveur-side à ~85-90s si aucun chunk reçu. En streaming=False,
+    le serveur attend de finir et envoie tout d'un coup → pas de timeout.
+
+    Restreint à ChatOpenAI pour ne pas perturber les mocks dans les tests
+    (un MagicMock répond truthy à n'importe quel getattr).
+    """
+    from langchain_openai import ChatOpenAI
+    if not isinstance(llm, ChatOpenAI):
+        return llm
+    if not getattr(llm, "streaming", False):
+        return llm
+    try:
+        return llm.model_copy(update={"streaming": False})
+    except Exception:  # noqa: BLE001
+        return llm
+
+
 def resolve_batch(
     batch: list[tuple[str, list[str]]],
     vocabulary: list[str],
@@ -310,14 +289,15 @@ def resolve_batch(
 ) -> dict[str, str]:
     """Appelle le LLM sur un batch (theme + titres) → {raw: canonical}.
 
-    Utilise `with_structured_output(BatchResolution, method="function_calling")`.
-    GLM-4.7 ne supporte pas json mode → on force function_calling.
+    Utilise `with_structured_output(BatchResolution, method="function_calling")`
+    avec streaming désactivé (cf. _ensure_non_streaming pour le rationale).
 
     Filet de sécurité : si le LLM omet certains thèmes → identité par défaut.
     """
     if not batch:
         return {}
-    structured_llm = llm.with_structured_output(
+    no_stream_llm = _ensure_non_streaming(llm)
+    structured_llm = no_stream_llm.with_structured_output(
         BatchResolution, method="function_calling",
     )
     result = structured_llm.invoke([
