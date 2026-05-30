@@ -336,6 +336,30 @@ class TestRestoreInitial(_DedupliBase):
         self.assertEqual(r.status_code, 409)
 
 
+class TestSnapshotInvalidation(_DedupliBase):
+    """Vérifie que reset_cache du taxonomy snapshot est invoqué après
+    un build ou un restore — sinon les onglets Mappings / Refonte
+    continueraient d'afficher les counts pré-canonisation."""
+
+    def test_restore_invalidates_snapshot(self):
+        from dashboard import taxonomy as _tax
+        # Seed un canon à supprimer
+        p = self.tmp / "profiles" / "p" / ".cache" / "theme-canon.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"version": 2, "mapping": {"A": "B"}}),
+                     encoding="utf-8")
+        with mock.patch.object(_tax, "reset_cache") as mock_reset:
+            dedupli.restore_initial_themes("p")
+            mock_reset.assert_called_once_with("p")
+
+    def test_restore_no_canon_does_not_invalidate(self):
+        """Si pas de canon à supprimer, ne touche pas au cache."""
+        from dashboard import taxonomy as _tax
+        with mock.patch.object(_tax, "reset_cache") as mock_reset:
+            dedupli.restore_initial_themes("p")
+            mock_reset.assert_not_called()
+
+
 class TestCancelDedupli(_DedupliBase):
     def _write_status(self, status_val: str, cancel_requested: bool = False):
         path = self.tmp / "profiles" / "p" / ".cache" / "dedupli" / "status.json"

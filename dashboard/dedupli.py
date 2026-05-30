@@ -156,6 +156,9 @@ def restore_initial_themes(profile: str) -> dict[str, Any]:
     réutilisé pour un futur build).
 
     Refuse si un run dédupli est en cours pour éviter une race.
+    Invalide le snapshot taxonomy après suppression pour que les onglets
+    (Mappings, Refonte, etc.) repartent sur l'agrégation non-canonisée
+    sans clic manuel sur "Recharger le snapshot".
 
     Raises:
         ValueError: profile vide.
@@ -173,7 +176,23 @@ def restore_initial_themes(profile: str) -> dict[str, Any]:
     existed = canon_path.exists()
     if existed:
         canon_path.unlink()
+        _invalidate_taxonomy_snapshot(profile)
     return {"profile": profile, "restored": existed}
+
+
+def _invalidate_taxonomy_snapshot(profile: str) -> None:
+    """Invalide le snapshot taxonomy en RAM (best-effort, ne raise pas).
+
+    Appelé après un build dédupli réussi ou un restore : les onglets
+    Mappings / Catégories / Refonte agrègent les thèmes depuis ce
+    snapshot mémoizé, sinon ils continuent d'afficher les counts
+    d'avant le changement de canon.
+    """
+    try:
+        from dashboard import taxonomy as _tax
+        _tax.reset_cache(profile)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def cancel_dedupli(profile: str) -> dict[str, Any]:
@@ -453,6 +472,10 @@ def _run_dedupli(profile: str, threshold: int, mode: str = "syntactic") -> None:
         # Nettoie le flag (au cas où il aurait été posé tardivement)
         status.pop("cancel_requested", None)
         _write_status(profile, status)
+        # Invalide le snapshot taxonomy pour propager la nouvelle
+        # canonisation aux onglets Mappings / Catégories / Refonte
+        # sans clic manuel "Recharger le snapshot".
+        _invalidate_taxonomy_snapshot(profile)
     except _CancelledError:
         status = _read_status(profile) or {}
         status.update({
