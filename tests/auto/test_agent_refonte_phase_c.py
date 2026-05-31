@@ -243,5 +243,88 @@ class TestEndpointRollback(_PhaseCBase):
         self.assertEqual(r.status_code, 409)
 
 
+class TestToolsEndpoint(_PhaseCBase):
+    def test_lists_available_tools(self):
+        r = self.client.get("/api/agent/refonte/c/tools")
+        self.assertEqual(r.status_code, 200)
+        tools = r.json()["tools"]
+        self.assertIn("add_folder", tools)
+        self.assertIn("add_theme_mapping", tools)
+        self.assertIn("rename_folder", tools)
+        self.assertIn("bulk_move_files", tools)
+        self.assertIn("merge_folders", tools)
+
+
+class TestMutateEndpoint(_PhaseCBase):
+    def test_400_unknown_tool(self):
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "p", "tool": "ghost", "args": {}},
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("unknown tool", r.json()["error"])
+
+    def test_400_empty_profile(self):
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "", "tool": "add_folder", "args": {}},
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_404_unknown_profile(self):
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "ghost", "tool": "add_folder",
+                  "args": {"parent": "", "name": "X"}},
+        )
+        self.assertEqual(r.status_code, 404)
+
+    def test_400_when_args_not_object(self):
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "p", "tool": "add_folder", "args": "not a dict"},
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_400_when_args_keys_invalid(self):
+        self._seed_yamls()
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "p", "tool": "add_folder",
+                  "args": {"wrong_arg": "X"}},
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("invalid args", r.json()["error"])
+
+    @mock.patch("dashboard.taxonomy.create_folder")
+    def test_happy_path_with_provided_batch_id(self, mock_create):
+        from agents.refonte import agent_journal
+        self._seed_yamls()
+        mock_create.return_value = {}
+        bid = agent_journal.generate_batch_id()
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "p", "tool": "add_folder",
+                  "args": {"parent": "", "name": "X"},
+                  "batch_id": bid},
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["batch_id"], bid)
+        self.assertEqual(body["tool"], "add_folder")
+
+    @mock.patch("dashboard.taxonomy.create_folder")
+    def test_409_when_mutation_conflicts(self, mock_create):
+        self._seed_yamls()
+        mock_create.side_effect = ValueError("folder already exists")
+        r = self.client.post(
+            "/api/agent/refonte/c/mutate",
+            json={"profile": "p", "tool": "add_folder",
+                  "args": {"parent": "", "name": "X"}},
+        )
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("already exists", r.json()["error"])
+
+
 if __name__ == "__main__":
     unittest.main()

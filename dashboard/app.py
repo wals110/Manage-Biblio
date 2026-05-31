@@ -2550,6 +2550,49 @@ async def api_agent_refonte_c_rollback(request: Request):
         return JSONResponse({"error": msg}, status_code=404)
 
 
+@app.get("/api/agent/refonte/c/tools")
+async def api_agent_refonte_c_tools():
+    """Liste des outils mutables disponibles."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    return JSONResponse({"tools": _c.list_available_tools()})
+
+
+@app.post("/api/agent/refonte/c/mutate")
+async def api_agent_refonte_c_mutate(request: Request):
+    """Invoque une mutation agent (add_folder, rename, merge, etc.).
+
+    Body: {profile, tool, args, batch_id?}.
+    `batch_id` est optionnel — généré si absent. Passer le même batch_id
+    sur plusieurs appels groupe les mutations sous un seul snapshot
+    (rollback restaure l'état AVANT la 1re mutation du batch).
+    """
+    from fastapi.responses import JSONResponse
+
+    from agents.refonte import mutations as _mut
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    tool = (body.get("tool") or "").strip()
+    args = body.get("args") or {}
+    batch_id = body.get("batch_id")
+    if not isinstance(args, dict):
+        return JSONResponse({"error": "args must be a JSON object"}, status_code=400)
+    try:
+        result = _c.invoke_mutation(profile, tool, args, batch_id=batch_id)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except _mut.MutationError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except TypeError as exc:
+        # Arguments manquants ou en trop pour le tool
+        return JSONResponse({"error": f"invalid args: {exc}"}, status_code=400)
+
+
 @app.get("/api/agent/refonte/proposition/{run_id}/simulation")
 async def api_agent_refonte_simulation(run_id: str, profile: str, sample_limit: int = 50):
     """Lit le simulation-summary.json + N premières lignes de la projection CSV."""

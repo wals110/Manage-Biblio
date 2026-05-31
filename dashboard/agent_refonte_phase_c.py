@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.refonte import agent_backup, agent_journal
+from agents.refonte import agent_backup, agent_journal, mutations
 from dashboard import data
 
 
@@ -112,3 +112,57 @@ def rollback_batch(profile: str, batch_id: str) -> dict[str, Any]:
         "restored_files": result["restored"],
         "warning_newer_batches": newer_count,
     }
+
+
+# ─── Tools mutables (C.1) ───────────────────────────────────────────────────
+
+
+# Dispatcher tool_name → fonction. Permet d'avoir un seul endpoint
+# /api/agent/refonte/c/mutate qui prend `tool` en body et route vers le
+# bon helper, plutôt que N endpoints presque identiques. Plus simple à
+# wirer côté agent conversationnel (C.2) qui appelle un seul endpoint.
+_TOOL_DISPATCH: dict[str, Any] = {
+    "add_folder": mutations.add_folder,
+    "add_theme_mapping": mutations.add_theme_mapping,
+    "rename_folder": mutations.rename_folder,
+    "bulk_move_files": mutations.bulk_move_files,
+    "merge_folders": mutations.merge_folders,
+}
+
+
+def list_available_tools() -> list[str]:
+    """Liste des noms d'outils mutables disponibles."""
+    return sorted(_TOOL_DISPATCH.keys())
+
+
+def invoke_mutation(
+    profile: str,
+    tool: str,
+    args: dict[str, Any],
+    *,
+    batch_id: str | None = None,
+) -> dict[str, Any]:
+    """Dispatche un appel mutation vers le bon helper.
+
+    Args:
+        profile: Profil cible.
+        tool: Nom du tool (cf. list_available_tools).
+        args: Arguments nommés à passer au tool (validés par le tool).
+        batch_id: UUID partagé (généré si None).
+
+    Raises:
+        ValueError: profile vide ou tool inconnu.
+        FileNotFoundError: profil inexistant.
+        mutations.MutationError: validation taxonomy ou backup échoué.
+    """
+    if not profile:
+        raise ValueError("profile is required")
+    if tool not in _TOOL_DISPATCH:
+        raise ValueError(
+            f"unknown tool {tool!r}, available: {list_available_tools()}"
+        )
+    profile_dir = data.get_project_root() / "profiles" / profile
+    if not profile_dir.is_dir():
+        raise FileNotFoundError(f"profile not found: {profile!r}")
+    fn = _TOOL_DISPATCH[tool]
+    return fn(profile, batch_id=batch_id, **args)
