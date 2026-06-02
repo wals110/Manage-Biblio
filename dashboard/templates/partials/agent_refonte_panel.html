@@ -38,7 +38,7 @@
         </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: 320px 1fr; gap: 16px; margin-top: 16px;">
+    <div class="tax-refonte-c-grid">
         <!-- COL 1 : runs récents + conversations -->
         <div>
             <h3 style="margin-top: 0;">Runs récents</h3>
@@ -75,8 +75,10 @@
                     <div id="tax-refonte-report" class="tax-refonte-md"></div>
                 </div>
             </div>
+            <!-- Wrapper centré pour le chat (limite max-width sur ultra-wide) -->
+            <div id="tax-refonte-chat-wrapper" class="tax-refonte-chat-wrapper" style="display: none;">
             <!-- Mode CHAT (Phase C) -->
-            <div id="tax-refonte-chat-view" style="display: none;">
+            <div id="tax-refonte-chat-view">
                 <div class="tax-refonte-report-header">
                     <h3 style="margin: 0;">
                         🗨 Conversation
@@ -101,6 +103,19 @@
                                 type="button" title="Envoyer (Entrée)">Envoyer</button>
                     </div>
                 </div>
+            </div>
+            </div><!-- /chat-wrapper -->
+        </div>
+        <!-- COL 3 : timeline mutations (visible ≥ 1280px) -->
+        <div id="tax-refonte-timeline-col" class="tax-refonte-timeline-col">
+            <h3 style="margin-top: 0; display:flex; align-items:center; gap:6px;">
+                <span>📋 Timeline</span>
+                <button id="tax-refonte-timeline-refresh" class="btn-secondary"
+                        type="button" style="padding:2px 8px;font-size:11px;margin-left:auto;"
+                        title="Recharger">↻</button>
+            </h3>
+            <div id="tax-refonte-timeline">
+                <p class="muted small">Aucune mutation.</p>
             </div>
         </div>
     </div>
@@ -540,7 +555,49 @@
                        border-radius: 3px; font-size: 0.9em; }
 .tax-refonte-md strong { color: var(--text-primary, inherit); }
 
-/* ─── Phase C : Chat + Conversations sidebar ──────────────────────────── */
+/* ─── Phase C : Grid responsive + Chat + Conversations sidebar ───────── */
+
+/* Grid 2-col (défaut) avec wrapper centré pour le chat */
+.tax-refonte-c-grid {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+}
+.tax-refonte-timeline-col { display: none; }
+.tax-refonte-chat-wrapper {
+    max-width: 960px;       /* limite la largeur du chat même sans col 3 */
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* ≥ 1280 px : 3 colonnes — la timeline mutations apparaît à droite */
+@media (min-width: 1280px) {
+    .tax-refonte-c-grid {
+        grid-template-columns: 320px minmax(0, 1fr) 320px;
+    }
+    .tax-refonte-timeline-col { display: block; }
+    .tax-refonte-chat-wrapper { max-width: 920px; }
+}
+
+/* ≥ 1920 px (écrans wide/ultra-wide) : col 3 plus large pour respirer */
+@media (min-width: 1920px) {
+    .tax-refonte-c-grid {
+        grid-template-columns: 340px minmax(0, 1100px) 380px;
+        justify-content: center;  /* centre toute la grille horizontalement */
+    }
+    .tax-refonte-chat-wrapper { max-width: 1100px; }
+}
+
+/* < 900 px (mobile/tablette) : tout empilé sur 1 colonne */
+@media (max-width: 900px) {
+    .tax-refonte-c-grid {
+        grid-template-columns: 1fr;
+    }
+    .tax-refonte-chat-wrapper { max-width: 100%; }
+}
+
+
 
 /* Item conversation (sidebar col 1) */
 .tax-refonte-conv-item {
@@ -622,7 +679,7 @@
     gap: 12px;
 }
 .tax-refonte-chat-msg {
-    max-width: 85%;
+    max-width: min(85%, 680px);  /* lisibilité sur ultra-wide */
     padding: 10px 14px;
     border-radius: 8px;
     font-size: 13.5px;
@@ -683,6 +740,43 @@
     align-self: flex-end;
     padding: 8px 16px;
 }
+
+/* Timeline mutations (col 3) */
+.tax-refonte-timeline-item {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg-secondary);
+    font-size: 12px;
+}
+.tax-refonte-timeline-item.ok      { border-left-color: #22c55e; }
+.tax-refonte-timeline-item.error   { border-left-color: #ef4444; }
+.tax-refonte-timeline-item.rolled  { border-left-color: #6b7280; opacity: 0.65; }
+.tax-refonte-timeline-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 6px; margin-bottom: 4px;
+}
+.tax-refonte-timeline-bid {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.tax-refonte-timeline-ts { font-size: 11px; color: var(--text-muted); }
+.tax-refonte-timeline-tools {
+    font-size: 12px;
+    color: var(--text-primary, #e6e6e6);
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+.tax-refonte-timeline-actions {
+    display: flex; gap: 4px; margin-top: 6px;
+}
+.tax-refonte-timeline-actions button {
+    padding: 3px 8px; font-size: 11px;
+}
+
 </style>
 
 <script>
@@ -1734,7 +1828,121 @@
         }
     });
 
-    // Chargement initial des convs
+    // ─── Timeline mutations (col 3, visible ≥ 1280px) ───────────────────
+    const timelineEl = document.getElementById('tax-refonte-timeline');
+    const timelineRefreshBtn = document.getElementById('tax-refonte-timeline-refresh');
+
+    async function loadTimeline() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/batches?profile='
+                                + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            renderTimeline(data.batches || []);
+        } catch (e) {
+            timelineEl.innerHTML = '<p class="muted small">Erreur : ' + e.message + '</p>';
+        }
+    }
+
+    function renderTimeline(batches) {
+        if (!batches.length) {
+            timelineEl.innerHTML = '<p class="muted small">Aucune mutation.</p>';
+            return;
+        }
+        timelineEl.innerHTML = '';
+        for (const b of batches) {
+            const item = document.createElement('div');
+            const klass = b.rolled_back ? 'rolled'
+                        : (b.n_error > 0 ? 'error' : 'ok');
+            item.className = 'tax-refonte-timeline-item ' + klass;
+            const bid = (b.batch_id || '').slice(0, 8);
+            const ts = b.ts_last ? new Date(b.ts_last).toLocaleString('fr-FR', {
+                day: '2-digit', month: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+            }) : '';
+            const toolsList = (b.tools || []).join(', ') || '?';
+            const status = b.rolled_back ? '⏪ rolled back'
+                         : (b.n_error > 0 ? '❌ ' + b.n_error + ' err' : '✓ ' + b.n_ok);
+            item.innerHTML =
+                '<div class="tax-refonte-timeline-head">'
+              + '  <code class="tax-refonte-timeline-bid">' + bid + '</code>'
+              + '  <span class="tax-refonte-timeline-ts">' + ts + '</span>'
+              + '</div>'
+              + '<div class="tax-refonte-timeline-tools">' + escapeHtml(toolsList) + '</div>'
+              + '<div class="muted small">' + status + '</div>'
+              + (b.rolled_back ? ''
+                 : '<div class="tax-refonte-timeline-actions">'
+                 + '  <button class="btn-secondary" data-action="rollback" '
+                 + '          data-bid="' + b.batch_id + '">⏪ Rollback</button>'
+                 + '</div>');
+            const rb = item.querySelector('[data-action="rollback"]');
+            if (rb) rb.addEventListener('click', () => rollbackBatch(b.batch_id));
+            timelineEl.appendChild(item);
+        }
+    }
+
+    async function rollbackBatch(batchId) {
+        const ok = await showConfirm({
+            title: 'Rollback de la mutation ?',
+            body: 'Va restaurer tree.yaml et theme_mapping.yaml depuis le '
+                + 'snapshot. Les fichiers physiques déplacés ne reviennent PAS. '
+                + 'Le rollback est lui-même journalisé.',
+            confirmLabel: 'Rollback',
+            cancelLabel: 'Annuler',
+            variant: 'danger',
+        });
+        if (!ok) return;
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/rollback', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({profile, batch_id: batchId}),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                showToast('Erreur : ' + (err.error || r.status), 'error');
+                return;
+            }
+            const data = await r.json();
+            const warn = data.warning_newer_batches > 0
+                ? ' (⚠ ' + data.warning_newer_batches + ' batch(es) plus récents)'
+                : '';
+            showToast('✓ Rollback effectué' + warn, 'success');
+            loadTimeline();
+        } catch (e) {
+            showToast('Erreur réseau : ' + e.message, 'error');
+        }
+    }
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    timelineRefreshBtn.addEventListener('click', loadTimeline);
+
+    // Refresh timeline + convs après chaque mutation (apply via chat)
+    const _originalRefreshConvState = refreshConvState;
+    refreshConvState = async function() {
+        const prev = currentConvId
+            ? (await fetch('/api/agent/refonte/c/conv/' + encodeURIComponent(currentConvId)
+                          + '?profile=' + encodeURIComponent(currentProfile()))
+                .then(r => r.ok ? r.json() : null).catch(() => null))
+            : null;
+        await _originalRefreshConvState();
+        // Si le status vient de passer de executing/thinking à done → reload timeline
+        if (prev && prev.status === 'executing') {
+            loadTimeline();
+            loadConvs();
+        }
+    };
+
+    // Chargement initial des convs + timeline
     loadConvs();
+    loadTimeline();
 })();
 </script>
