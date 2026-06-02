@@ -2559,6 +2559,92 @@ async def api_agent_refonte_c_tools():
     return JSONResponse({"tools": _c.list_available_tools()})
 
 
+@app.post("/api/agent/refonte/c/conv")
+async def api_agent_refonte_c_conv_start(request: Request):
+    """Crée une nouvelle conversation pour le profil. Body: {profile}."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    try:
+        return JSONResponse(_c.start_conversation(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.get("/api/agent/refonte/c/conv")
+async def api_agent_refonte_c_conv_list(profile: str, limit: int = 20):
+    """Liste les conversations du profil."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    limit = max(1, min(int(limit), 100))
+    return JSONResponse({
+        "profile": profile,
+        "conversations": _c.list_conversations(profile, limit=limit),
+    })
+
+
+@app.get("/api/agent/refonte/c/conv/{conv_id}")
+async def api_agent_refonte_c_conv_get(conv_id: str, profile: str):
+    """Lit l'état d'une conversation (polling UI)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    state = _c.get_conversation(profile, conv_id)
+    if state is None:
+        return JSONResponse({"error": f"conversation not found: {conv_id}"}, status_code=404)
+    return JSONResponse(state)
+
+
+@app.post("/api/agent/refonte/c/conv/{conv_id}/message")
+async def api_agent_refonte_c_conv_message(conv_id: str, request: Request):
+    """Envoie un message texte libre dans la conversation. Body: {profile, text}."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    text = (body.get("text") or "").strip()
+    try:
+        return JSONResponse(_c.send_user_message(profile, conv_id, text))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.post("/api/agent/refonte/c/conv/{conv_id}/respond")
+async def api_agent_refonte_c_conv_respond(conv_id: str, request: Request):
+    """Répond apply/skip/modify à une proposition.
+
+    Body: {profile, action, modification_text?}.
+    """
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    action = (body.get("action") or "").strip()
+    modification_text = body.get("modification_text")
+    try:
+        return JSONResponse(_c.send_user_response(
+            profile, conv_id, action,
+            modification_text=modification_text,
+        ))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
 @app.post("/api/agent/refonte/c/mutate")
 async def api_agent_refonte_c_mutate(request: Request):
     """Invoque une mutation agent (add_folder, rename, merge, etc.).

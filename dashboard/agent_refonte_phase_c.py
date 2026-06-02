@@ -166,3 +166,90 @@ def invoke_mutation(
         raise FileNotFoundError(f"profile not found: {profile!r}")
     fn = _TOOL_DISPATCH[tool]
     return fn(profile, batch_id=batch_id, **args)
+
+
+# ─── Conversations (C.2) ────────────────────────────────────────────────────
+
+
+def start_conversation(profile: str) -> dict[str, Any]:
+    """Crée et persiste une nouvelle conversation pour le profil.
+
+    Raises:
+        ValueError: profile vide.
+        FileNotFoundError: profil inexistant.
+    """
+    from agents.refonte import dialog
+    if not profile:
+        raise ValueError("profile is required")
+    profile_dir = data.get_project_root() / "profiles" / profile
+    if not profile_dir.is_dir():
+        raise FileNotFoundError(f"profile not found: {profile!r}")
+    state = dialog.make_state(profile)
+    dialog.save_state(state)
+    return state
+
+
+def send_user_message(
+    profile: str,
+    conv_id: str,
+    text: str,
+) -> dict[str, Any]:
+    """Envoie un message texte libre dans une conversation existante.
+
+    Raises:
+        ValueError: profile/conv_id/text vide.
+        FileNotFoundError: conversation introuvable.
+    """
+    from agents.llm import get_agent_llm
+    from agents.refonte import dialog
+    if not profile or not conv_id or not text:
+        raise ValueError("profile, conv_id and text are required")
+    state = dialog.load_state(profile, conv_id)
+    if state is None:
+        raise FileNotFoundError(f"conversation not found: {conv_id!r}")
+    llm = get_agent_llm()
+    return dialog.run_user_message(state, text, llm)
+
+
+def send_user_response(
+    profile: str,
+    conv_id: str,
+    action: str,
+    *,
+    modification_text: str | None = None,
+) -> dict[str, Any]:
+    """Répond apply/skip/modify à une proposition en attente.
+
+    Raises:
+        ValueError: action invalide.
+        FileNotFoundError: conversation introuvable.
+    """
+    from agents.llm import get_agent_llm
+    from agents.refonte import dialog
+    if action not in ("apply", "skip", "modify"):
+        raise ValueError("action must be 'apply', 'skip' or 'modify'")
+    state = dialog.load_state(profile, conv_id)
+    if state is None:
+        raise FileNotFoundError(f"conversation not found: {conv_id!r}")
+    llm = get_agent_llm() if action == "modify" else None
+    return dialog.run_user_response(
+        state, action,  # type: ignore[arg-type]
+        modification_text=modification_text,
+        llm=llm,
+    )
+
+
+def get_conversation(profile: str, conv_id: str) -> dict[str, Any] | None:
+    """Lit l'état d'une conversation (None si introuvable)."""
+    from agents.refonte import dialog
+    return dialog.load_state(profile, conv_id)
+
+
+def list_conversations(
+    profile: str,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Liste les conversations du profil triées par updated_at DESC."""
+    from agents.refonte import dialog
+    return dialog.list_conversations(profile, limit=limit)

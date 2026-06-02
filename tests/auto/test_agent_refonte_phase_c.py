@@ -326,5 +326,101 @@ class TestMutateEndpoint(_PhaseCBase):
         self.assertIn("already exists", r.json()["error"])
 
 
+class TestConvEndpoints(_PhaseCBase):
+    def test_start_conv(self):
+        self._seed_yamls()
+        r = self.client.post(
+            "/api/agent/refonte/c/conv",
+            json={"profile": "p"},
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["profile"], "p")
+        self.assertEqual(body["status"], "idle")
+        self.assertIsNotNone(body["conv_id"])
+
+    def test_start_conv_400_empty_profile(self):
+        r = self.client.post("/api/agent/refonte/c/conv", json={"profile": ""})
+        self.assertEqual(r.status_code, 400)
+
+    def test_start_conv_404_unknown_profile(self):
+        r = self.client.post("/api/agent/refonte/c/conv",
+                              json={"profile": "ghost"})
+        self.assertEqual(r.status_code, 404)
+
+    def test_list_conv_empty(self):
+        r = self.client.get("/api/agent/refonte/c/conv?profile=p")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["conversations"], [])
+
+    def test_get_conv_404_when_missing(self):
+        r = self.client.get("/api/agent/refonte/c/conv/ghost?profile=p")
+        self.assertEqual(r.status_code, 404)
+
+    @mock.patch("agents.llm.get_agent_llm")
+    @mock.patch("agents.refonte.dialog.run_user_message")
+    def test_send_message_routes_to_dialog(self, mock_run, mock_llm_factory):
+        # mock_llm_factory évite l'erreur "SILICONFLOW_API_KEY required"
+        mock_llm_factory.return_value = mock.MagicMock()
+        self._seed_yamls()
+        from agents.refonte import dialog
+        # 1. Crée une conv
+        state = dialog.make_state("p", conv_id="conv-1")
+        dialog.save_state(state)
+        # 2. Configure mock pour retourner un state d'awaiting_confirm
+        returned_state = dict(state)
+        returned_state["status"] = "awaiting_confirm"
+        returned_state["proposed_mutation"] = {"tool": "add_folder"}
+        mock_run.return_value = returned_state
+        # 3. Envoie message
+        r = self.client.post(
+            "/api/agent/refonte/c/conv/conv-1/message",
+            json={"profile": "p", "text": "crée X"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "awaiting_confirm")
+        mock_run.assert_called_once()
+
+    def test_send_message_404_unknown_conv(self):
+        r = self.client.post(
+            "/api/agent/refonte/c/conv/ghost/message",
+            json={"profile": "p", "text": "hi"},
+        )
+        self.assertEqual(r.status_code, 404)
+
+    @mock.patch("agents.refonte.dialog.run_user_response")
+    def test_respond_apply(self, mock_resp):
+        self._seed_yamls()
+        from agents.refonte import dialog
+        state = dialog.make_state("p", conv_id="conv-2")
+        state["status"] = "awaiting_confirm"
+        state["proposed_mutation"] = {"tool": "add_folder", "batch_id": "b"}
+        dialog.save_state(state)
+        # Mock dialog response
+        returned = dict(state)
+        returned["status"] = "done"
+        mock_resp.return_value = returned
+        r = self.client.post(
+            "/api/agent/refonte/c/conv/conv-2/respond",
+            json={"profile": "p", "action": "apply"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "done")
+        # Vérifie l'action passée à run_user_response
+        args = mock_resp.call_args
+        self.assertEqual(args[0][1], "apply")
+
+    def test_respond_400_invalid_action(self):
+        self._seed_yamls()
+        from agents.refonte import dialog
+        state = dialog.make_state("p", conv_id="conv-3")
+        dialog.save_state(state)
+        r = self.client.post(
+            "/api/agent/refonte/c/conv/conv-3/respond",
+            json={"profile": "p", "action": "explode"},
+        )
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()
