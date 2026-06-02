@@ -1332,10 +1332,12 @@
                 item.classList.add('active');
                 // Bascule en mode rapport (au cas où on était sur le chat
                 // d'une conv Phase C avant de cliquer sur ce run A/B).
-                const chatView = document.getElementById('tax-refonte-chat-view');
-                const reportView = document.getElementById('tax-refonte-report-view');
-                if (chatView) chatView.style.display = 'none';
-                if (reportView) reportView.style.display = '';
+                const _chatView = document.getElementById('tax-refonte-chat-view');
+                const _chatWrapper = document.getElementById('tax-refonte-chat-wrapper');
+                const _reportView = document.getElementById('tax-refonte-report-view');
+                if (_chatWrapper) _chatWrapper.style.display = 'none';
+                if (_chatView) _chatView.style.display = 'none';
+                if (_reportView) _reportView.style.display = '';
                 // Désélectionne la conv active
                 const convs = document.getElementById('tax-refonte-convs');
                 if (convs) convs.querySelectorAll('.tax-refonte-conv-item.active')
@@ -1557,6 +1559,7 @@
     const convsEl = document.getElementById('tax-refonte-convs');
     const reportView = document.getElementById('tax-refonte-report-view');
     const chatView = document.getElementById('tax-refonte-chat-view');
+    const chatWrapper = document.getElementById('tax-refonte-chat-wrapper');
     const chatConvIdEl = document.getElementById('tax-refonte-chat-conv-id');
     const chatStatusEl = document.getElementById('tax-refonte-chat-status');
     const chatMessagesEl = document.getElementById('tax-refonte-chat-messages');
@@ -1569,10 +1572,14 @@
 
     function showChatView() {
         reportView.style.display = 'none';
-        chatView.style.display = '';
+        // Bascule le WRAPPER pas l'inner view (wrapper est display:none par
+        // défaut côté HTML pour le responsive centré).
+        if (chatWrapper) chatWrapper.style.display = '';
+        if (chatView) chatView.style.display = '';
     }
     function showReportView() {
-        chatView.style.display = 'none';
+        if (chatWrapper) chatWrapper.style.display = 'none';
+        if (chatView) chatView.style.display = 'none';
         reportView.style.display = '';
     }
 
