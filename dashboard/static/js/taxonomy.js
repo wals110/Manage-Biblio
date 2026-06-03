@@ -2194,7 +2194,28 @@
     }
     const mappings = state.snapshot.mapping_by_folder[path] || [];
     const suffix = frozenBySpotlight ? ' (focus thème)' : '';
-    sub.textContent = `${path || 'racine'} · ${mappings.length} clé(s)${suffix}`;
+    // Compteur "X fichiers actuels · Y prévus au reclassify"
+    // - actuels  = file_count direct du folder dans tree.yaml (FS scan)
+    // - prévus   = somme des counts des thèmes LLM qui mappent vers ce folder
+    //   (= ce que classify_by_theme acheminerait au prochain reclassify)
+    const node = state.snapshot.tree
+        ? findNode(state.snapshot.tree, path) : null;
+    const nCurrent = node ? (node.file_count || 0) : 0;
+    const mappedLower = new Set(mappings.map(t => t.toLowerCase()));
+    const themesLLM = state.snapshot.themes_llm || [];
+    let nReclassify = 0;
+    for (const t of themesLLM) {
+      if (mappedLower.has((t.theme || '').toLowerCase())) {
+        nReclassify += (t.count || 0);
+      }
+    }
+    sub.textContent = `${path || 'racine'} · ${mappings.length} règle(s) · `
+                    + `${nCurrent} fichier(s) actuel(s) · `
+                    + `~${nReclassify} prévu(s) au reclassify${suffix}`;
+    sub.title = 'Compte des fichiers physiquement dans le dossier (snapshot FS) '
+              + 'vs estimation des fichiers qui y arriveraient au prochain '
+              + 'reclassify (somme des occurrences des thèmes mappés ici dans '
+              + 'le vision_cache).';
     if (mappings.length === 0) {
       list.appendChild(el('li', { class: 'muted small' },
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
@@ -2227,11 +2248,18 @@
       });
       cb.checked = bulkSet.has(keyL);
       const editBtn = el('button', {
-        class: 'tax-mapped-action', title: 'Rediriger ce mapping vers un autre dossier',
+        class: 'tax-mapped-action',
+        title: 'Rediriger : changer la destination de cette règle de routage. '
+             + 'Les fichiers déjà rangés ne bougent pas — seulement où ils '
+             + 'iraient au prochain reclassify.',
         onclick: e => { e.stopPropagation(); openMapPopover({ theme: t, count: '?', is_edit: true }, e.currentTarget); },
       }, ['↗']);
       const delBtn = el('button', {
-        class: 'tax-mapped-action tax-mapped-del', title: 'Supprimer ce mapping',
+        class: 'tax-mapped-action tax-mapped-del',
+        title: 'Supprimer cette règle de routage. Les fichiers déjà rangés '
+             + 'ne bougent pas. Au prochain reclassify, les fichiers portant '
+             + 'ce thème deviendront orphelins (à reclasser via Keyword '
+             + 'Classifier ou LLM Mapper).',
         onclick: e => { e.stopPropagation(); confirmDeleteMapping(t); },
       }, ['×']);
       const isTouched = touched.has(t);
