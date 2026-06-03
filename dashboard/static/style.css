@@ -5556,6 +5556,71 @@ th {
 }
 .tax-mapped-item.selected .tax-mapped-action { opacity: 1; }
 
+/* Bulk-delete des mappings : checkbox + toolbar (apparaît dès 1 cochée) */
+.tax-mapped-cb {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin: 0 4px 0 0;
+    cursor: pointer;
+    accent-color: var(--blue, #58a6ff);
+}
+.tax-mapped-item.bulk-selected {
+    background: rgba(248, 81, 73, 0.08);
+}
+.tax-mapped-item.bulk-selected.selected {
+    /* Si à la fois spotlight ET bulk-cochée : fond mixte */
+    background: rgba(88, 166, 255, 0.10);
+    border-left-color: var(--red, #f85149);
+}
+.tax-mapped-bulk-toolbar {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    margin: 0 0 6px 0;
+    background: rgba(248, 81, 73, 0.08);
+    border: 1px solid rgba(248, 81, 73, 0.25);
+    border-radius: 5px;
+    font-size: 12px;
+}
+.tax-mapped-bulk-count {
+    color: var(--text, #c9d1d9);
+    font-weight: 600;
+    margin-right: auto;
+}
+.tax-mapped-bulk-btn {
+    padding: 3px 8px;
+    font-size: 11.5px;
+    border: 1px solid var(--border, #30363d);
+    background: var(--bg-secondary, transparent);
+    color: var(--text, #c9d1d9);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.tax-mapped-bulk-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.06);
+    border-color: var(--border-light, #3a3a3a);
+}
+.tax-mapped-bulk-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.tax-mapped-bulk-btn.tax-mapped-bulk-danger {
+    background: rgba(248, 81, 73, 0.18);
+    border-color: rgba(248, 81, 73, 0.45);
+    color: #ff8a82;
+    font-weight: 600;
+}
+.tax-mapped-bulk-btn.tax-mapped-bulk-danger:hover:not(:disabled) {
+    background: rgba(248, 81, 73, 0.3);
+    border-color: var(--red, #f85149);
+    color: #ffb3ad;
+}
+
 /* Inline expand under a selected mapped theme — tabs + file list */
 .tax-mapped-expand {
     list-style: none;

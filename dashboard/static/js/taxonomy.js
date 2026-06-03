@@ -74,6 +74,12 @@
     selectedMappedTheme: null,
     mappedFilesByTheme: new Map(),
     mappedFilesTab: 'future',  // 'future' | 'current'
+
+    // Mapped panel — multi-sélection pour bulk delete. Scopée au folder
+    // courant : changement de folder = clear automatique (cf. helper
+    // bulkSelectionForPath). Permet de cocher plusieurs thèmes et de
+    // les supprimer en un seul appel (POST /mappings/bulk-delete).
+    bulkMappedSelection: { folderPath: null, keysLower: new Set() },
   };
 
   // Touched folders / themes — derived from snapshot.stats (which diffs
@@ -2199,7 +2205,27 @@
     // that doesn't contain the spotlit theme. The user exits via the
     // 🔦× button in the tree subtitle.
     const touched = touchedThemesSet();
+    const bulkSet = bulkSelectionForPath(path);
+
+    // Mini-toolbar de sélection bulk (apparaît dès qu'au moins 1 cochée
+    // OU si le user a fait Tout cocher sur ce folder).
+    if (bulkSet.size > 0) {
+      list.appendChild(renderBulkMappedToolbar(path, mappings, bulkSet));
+    }
+
     for (const t of mappings) {
+      const keyL = t.toLowerCase();
+      const cb = el('input', {
+        type: 'checkbox',
+        class: 'tax-mapped-cb',
+        title: 'Sélectionner pour suppression en lot',
+        onclick: e => {
+          e.stopPropagation();
+          toggleBulkMapping(t, path);
+          renderMappedPanel();
+        },
+      });
+      cb.checked = bulkSet.has(keyL);
       const editBtn = el('button', {
         class: 'tax-mapped-action', title: 'Rediriger ce mapping vers un autre dossier',
         onclick: e => { e.stopPropagation(); openMapPopover({ theme: t, count: '?', is_edit: true }, e.currentTarget); },
@@ -2209,20 +2235,117 @@
         onclick: e => { e.stopPropagation(); confirmDeleteMapping(t); },
       }, ['×']);
       const isTouched = touched.has(t);
-      const isSelected = state.selectedMappedTheme === t.toLowerCase();
+      const isSelected = state.selectedMappedTheme === keyL;
+      const isInBulk = bulkSet.has(keyL);
       const dot = isTouched
         ? el('span', { class: 'tax-touched-dot', title: 'Modifié — annulable via le bouton Annuler' })
         : null;
       const item = el('li', {
         class: 'tax-mapped-item'
                + (isTouched ? ' touched' : '')
-               + (isSelected ? ' selected' : ''),
+               + (isSelected ? ' selected' : '')
+               + (isInBulk ? ' bulk-selected' : ''),
         title: t + ' — clic pour voir les fichiers concernés',
         onclick: () => toggleMappedThemeSelection(t),
-      }, [el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]);
+      }, [cb, el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]);
       list.appendChild(item);
       if (isSelected) list.appendChild(renderMappedFilesExpand(t));
     }
+  }
+
+  // ── Bulk delete des mappings d'un folder ───────────────────────────────
+
+  function bulkSelectionForPath(path) {
+    // Si le path change, on réinitialise la sélection : éviter de
+    // supprimer accidentellement des thèmes d'un folder qu'on ne voit plus.
+    if (state.bulkMappedSelection.folderPath !== path) {
+      state.bulkMappedSelection = { folderPath: path, keysLower: new Set() };
+    }
+    return state.bulkMappedSelection.keysLower;
+  }
+
+  function toggleBulkMapping(theme, path) {
+    const set = bulkSelectionForPath(path);
+    const k = theme.toLowerCase();
+    if (set.has(k)) set.delete(k); else set.add(k);
+  }
+
+  function selectAllMappingsForPath(path, mappings) {
+    const set = bulkSelectionForPath(path);
+    for (const t of mappings) set.add(t.toLowerCase());
+  }
+
+  function clearBulkMappingSelection() {
+    state.bulkMappedSelection.keysLower.clear();
+  }
+
+  function renderBulkMappedToolbar(path, mappings, bulkSet) {
+    const n = bulkSet.size;
+    const total = mappings.length;
+    const allSelected = n >= total;
+    const toolbar = el('li', { class: 'tax-mapped-bulk-toolbar' }, [
+      el('span', { class: 'tax-mapped-bulk-count' },
+         [`${n} sélectionné${n > 1 ? 's' : ''}`]),
+      el('button', {
+        class: 'tax-mapped-bulk-btn', title: 'Cocher tous les thèmes du dossier',
+        disabled: allSelected,
+        onclick: e => {
+          e.stopPropagation();
+          selectAllMappingsForPath(path, mappings);
+          renderMappedPanel();
+        },
+      }, [allSelected ? '☑ Tout coché' : `☑ Tout (${total})`]),
+      el('button', {
+        class: 'tax-mapped-bulk-btn', title: 'Tout désélectionner',
+        onclick: e => {
+          e.stopPropagation();
+          clearBulkMappingSelection();
+          renderMappedPanel();
+        },
+      }, ['Annuler sélection']),
+      el('button', {
+        class: 'tax-mapped-bulk-btn tax-mapped-bulk-danger',
+        title: 'Supprimer les mappings cochés',
+        onclick: e => {
+          e.stopPropagation();
+          confirmBulkDeleteMappings(path, mappings);
+        },
+      }, [`🗑 Supprimer (${n})`]),
+    ]);
+    return toolbar;
+  }
+
+  async function confirmBulkDeleteMappings(path, mappings) {
+    const bulkSet = bulkSelectionForPath(path);
+    if (bulkSet.size === 0) return;
+    // Récupère les clés EXACTES (casse préservée) depuis mappings
+    const keys = mappings.filter(t => bulkSet.has(t.toLowerCase()));
+    const preview = keys.slice(0, 5).map(k => `  • ${k}`).join('\n');
+    const more = keys.length > 5 ? `\n  + ${keys.length - 5} autre(s)` : '';
+    const ok = await showConfirm({
+      title: `Supprimer ${keys.length} mapping(s) ?`,
+      body: `Folder : ${path || 'racine'}\n\n${preview}${more}\n\n`
+          + 'Les thèmes bruts restent dans le vision_cache — seuls les '
+          + 'mappings (theme_mapping.yaml) sont retirés. Backup auto + '
+          + 'Annulable via le bouton Annuler du header.',
+      confirmLabel: `Supprimer ${keys.length} clé(s)`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await withBusy(`Suppression de ${keys.length} mapping(s)…`, async () => {
+      try {
+        const r = await postBulkDeleteMappings(keys);
+        showToast(`✓ ${r.n_deleted} mapping(s) supprimé(s)`, 'success');
+        if (r.not_found && r.not_found.length) {
+          showToast(`⚠ ${r.not_found.length} introuvable(s) ignoré(s)`, 'info');
+        }
+        clearBulkMappingSelection();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
   }
 
   function toggleMappedThemeSelection(theme) {
