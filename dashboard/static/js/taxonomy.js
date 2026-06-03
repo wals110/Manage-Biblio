@@ -80,6 +80,12 @@
     // bulkSelectionForPath). Permet de cocher plusieurs thèmes et de
     // les supprimer en un seul appel (POST /mappings/bulk-delete).
     bulkMappedSelection: { folderPath: null, keysLower: new Set() },
+
+    // Cache du breakdown 3-way (stable / incoming / outgoing) par path.
+    // Permet à l'UI d'afficher ce qui va RESTER, ARRIVER, PARTIR au prochain
+    // reclassify sans devoir lancer un dryrun. Lazily fetché à l'ouverture
+    // du panel Routage. Invalidé par renderAll() après une mutation.
+    folderBreakdown: new Map(),
   };
 
   // Touched folders / themes — derived from snapshot.stats (which diffs
@@ -168,6 +174,9 @@
     if (state.mappedFilesByTheme && state.mappedFilesByTheme.size > 0) {
       state.mappedFilesByTheme.clear();
     }
+    if (state.folderBreakdown && state.folderBreakdown.size > 0) {
+      state.folderBreakdown.clear();
+    }
     return r.json();
   }
   async function fetchFiles(path, offset, limit) {
@@ -175,6 +184,13 @@
                 `&path=${encodeURIComponent(path)}&offset=${offset}&limit=${limit}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error('files HTTP ' + r.status);
+    return r.json();
+  }
+  async function fetchFolderBreakdown(path) {
+    const url = `/api/taxonomy/folder/theme-breakdown?profile=${encodeURIComponent(state.profile)}` +
+                `&path=${encodeURIComponent(path)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('breakdown HTTP ' + r.status);
     return r.json();
   }
   async function fetchFileMetadata(path) {
@@ -2216,6 +2232,13 @@
               + 'vs estimation des fichiers qui y arriveraient au prochain '
               + 'reclassify (somme des occurrences des thèmes mappés ici dans '
               + 'le vision_cache).';
+
+    // ── Breakdown 3-way (Stables / Entrants / Sortants) ──
+    // Affiché AVANT la liste des règles, donne l'aperçu du churn au prochain
+    // reclassify. Lazily fetché : premier passage = "Chargement…", refetch
+    // automatique au prochain renderAll() après mutation.
+    list.appendChild(renderBreakdownSections(path));
+
     if (mappings.length === 0) {
       list.appendChild(el('li', { class: 'muted small' },
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
@@ -2279,6 +2302,142 @@
       list.appendChild(item);
       if (isSelected) list.appendChild(renderMappedFilesExpand(t));
     }
+  }
+
+  // ── Breakdown 3-way : Stables / Entrants / Sortants ────────────────────
+  //
+  // Donne à l'utilisateur un aperçu IMMÉDIAT de ce qui se passera au prochain
+  // reclassify sur ce dossier, SANS lancer de dry-run :
+  //   ✓ Stables : déjà ici + mapping pointe ici → restent
+  //   → Entrants : mapping pointe ici mais fichier ailleurs → arriveront
+  //   ← Sortants : ici mais mapping ailleurs (ou orphelin) → partiront
+  //
+  // Fetch lazy (premier appel) + cache par path. Invalidation : renderAll()
+  // après mutation purge le cache via fetchSnapshot().
+
+  function renderBreakdownSections(path) {
+    const wrap = el('li', { class: 'tax-breakdown-wrap' });
+    const cached = state.folderBreakdown.get(path);
+
+    if (cached === undefined) {
+      // Premier passage : déclenche le fetch et affiche un placeholder.
+      // Note: le fetch reschedule un re-render asynchrone.
+      wrap.appendChild(el('div', { class: 'tax-breakdown-loading muted small' },
+        ['Chargement de la décomposition…']));
+      state.folderBreakdown.set(path, null);  // marqueur "fetch en cours"
+      (async () => {
+        try {
+          const data = await fetchFolderBreakdown(path);
+          state.folderBreakdown.set(path, data);
+        } catch (e) {
+          state.folderBreakdown.set(path, { error: e.message });
+        }
+        renderMappedPanel();
+      })();
+      return wrap;
+    }
+    if (cached === null) {
+      wrap.appendChild(el('div', { class: 'tax-breakdown-loading muted small' },
+        ['Chargement de la décomposition…']));
+      return wrap;
+    }
+    if (cached.error) {
+      wrap.appendChild(el('div', { class: 'tax-breakdown-error error small' },
+        ['✗ ' + cached.error]));
+      return wrap;
+    }
+
+    const stable = cached.stable || [];
+    const incoming = cached.incoming || [];
+    const outgoing = cached.outgoing || [];
+    const totalThemes = stable.length + incoming.length + outgoing.length;
+    if (totalThemes === 0) {
+      wrap.appendChild(el('div', { class: 'muted small tax-breakdown-empty' },
+        ['Aucun thème détecté ici, ni mappé vers ici.']));
+      return wrap;
+    }
+
+    wrap.appendChild(renderBreakdownSection({
+      icon: '✓',
+      label: 'Stables',
+      items: stable,
+      cssMod: 'stable',
+      countKey: 'count_in_folder',
+      hint: 'Thèmes présents dans les fichiers actuels ET mappés vers ce dossier. '
+          + 'Au prochain reclassify, ces fichiers RESTENT ici.',
+      emptyText: '— aucun thème stable —',
+    }));
+    wrap.appendChild(renderBreakdownSection({
+      icon: '→',
+      label: 'Entrants',
+      items: incoming,
+      cssMod: 'incoming',
+      countKey: 'count_expected',
+      hint: 'Thèmes mappés vers ce dossier mais ABSENTS des fichiers actuels. '
+          + 'Au prochain reclassify, ces fichiers ARRIVENT depuis ailleurs.',
+      emptyText: '— rien à recevoir —',
+    }));
+    wrap.appendChild(renderBreakdownSection({
+      icon: '←',
+      label: 'Sortants',
+      items: outgoing,
+      cssMod: 'outgoing',
+      countKey: 'count_in_folder',
+      hint: 'Thèmes des fichiers actuels mais mappés vers un autre dossier '
+          + '(ou orphelins). Au prochain reclassify, ces fichiers PARTENT.',
+      emptyText: '— rien ne sort —',
+      renderExtra: x => x.target
+        ? el('span', { class: 'tax-breakdown-target', title: `Destination : ${x.target}` },
+              [` → ${shortPath(x.target)}`])
+        : el('span', { class: 'tax-breakdown-orphan', title: 'Aucun mapping pour ce thème' },
+              [' · orphelin']),
+    }));
+    return wrap;
+  }
+
+  function shortPath(p) {
+    // Affichage compact : "01-SCIENCES/PHYSIQUE/QUANTIQUE" → ".../QUANTIQUE"
+    if (!p) return '';
+    const parts = p.split('/').filter(Boolean);
+    if (parts.length <= 1) return p;
+    if (parts.length === 2) return p;
+    return '…/' + parts[parts.length - 1];
+  }
+
+  function renderBreakdownSection(cfg) {
+    const { icon, label, items, cssMod, countKey, hint, emptyText, renderExtra } = cfg;
+    const n = items.length;
+    const totalFiles = items.reduce((acc, x) => acc + (x[countKey] || 0), 0);
+    const header = el('div', { class: 'tax-breakdown-header', title: hint }, [
+      el('span', { class: 'tax-breakdown-icon' }, [icon]),
+      el('span', { class: 'tax-breakdown-label' }, [label]),
+      el('span', { class: 'tax-breakdown-count' },
+        [n ? ` · ${n} thème(s) · ${totalFiles} fichier(s)` : ' · 0']),
+    ]);
+    const body = el('ul', { class: 'tax-breakdown-list' });
+    if (n === 0) {
+      body.appendChild(el('li', { class: 'muted small tax-breakdown-empty-row' },
+        [emptyText]));
+    } else {
+      // Limite l'affichage à 8 pour ne pas noyer le panneau. Le détail
+      // complet reste accessible via la liste des règles (entrants) ou le
+      // dryrun reclassify (sortants).
+      const display = items.slice(0, 8);
+      for (const x of display) {
+        const row = el('li', { class: 'tax-breakdown-item' }, [
+          el('span', { class: 'tax-breakdown-theme', title: x.theme }, [x.theme]),
+          el('span', { class: 'tax-breakdown-num' }, [` ${x[countKey]}`]),
+          renderExtra ? renderExtra(x) : null,
+        ]);
+        body.appendChild(row);
+      }
+      if (items.length > display.length) {
+        body.appendChild(el('li', { class: 'muted small tax-breakdown-more' },
+          [`+ ${items.length - display.length} autre(s)`]));
+      }
+    }
+    return el('div', { class: 'tax-breakdown-section tax-breakdown-' + cssMod },
+      [header, body]);
   }
 
   // ── Bulk delete des mappings d'un folder ───────────────────────────────

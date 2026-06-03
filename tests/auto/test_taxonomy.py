@@ -2584,5 +2584,206 @@ class TestFileOpsEndpoints(TaxonomyTestBase):
         self.assertEqual(body["dest_folder"], "02-INFORMATIQUE")
 
 
+# ─── 9. Routage — breakdown stable / incoming / outgoing ─────────────────
+
+
+class TestFolderThemeBreakdown(TaxonomyTestBase):
+    """`compute_folder_theme_breakdown` doit classer correctement :
+
+      - stable  : thème mappé ICI + détecté sur fichiers ICI
+      - incoming: thème mappé ICI mais ABSENT des fichiers actuels
+      - outgoing: thème DÉTECTÉ ICI mais mappé AILLEURS (ou orphelin)
+    """
+
+    def _setup_fixture(self):
+        """Construit un set où chaque cas est représenté."""
+        from lib.thumbnail import compute_content_key
+
+        # Réinitialise la lib avec des fichiers de contenu DISTINCT (head bytes
+        # différents) pour que les content_keys soient uniques.
+        shutil.rmtree(self.target, ignore_errors=True)
+        self.target.mkdir(parents=True)
+        (self.target / "01-SCIENCES" / "PHYSIQUE").mkdir(parents=True)
+        (self.target / "01-SCIENCES" / "MATHEMATIQUES").mkdir(parents=True)
+        (self.target / "02-INFORMATIQUE").mkdir(parents=True)
+
+        # Fichier 1: dans PHYSIQUE, thème "physics" mappé vers PHYSIQUE → stable
+        f1 = self.target / "01-SCIENCES" / "PHYSIQUE" / "mech.pdf"
+        f1.write_bytes(b"%PDF-1.4 file-1-unique-content")
+        # Fichier 2: dans PHYSIQUE, thème "machine learning" mappé AILLEURS
+        f2 = self.target / "01-SCIENCES" / "PHYSIQUE" / "wrong.pdf"
+        f2.write_bytes(b"%PDF-1.4 file-2-unique-content")
+        # Fichier 3: dans PHYSIQUE, thème "unknown-theme" non mappé → outgoing orphan
+        f3 = self.target / "01-SCIENCES" / "PHYSIQUE" / "orphan.pdf"
+        f3.write_bytes(b"%PDF-1.4 file-3-unique-content")
+        # Fichier 4: dans MATHS, théoriquement hors panneau PHYSIQUE
+        f4 = self.target / "01-SCIENCES" / "MATHEMATIQUES" / "alg.pdf"
+        f4.write_bytes(b"%PDF-1.4 file-4-unique-content")
+
+        k1 = compute_content_key(f1)
+        k2 = compute_content_key(f2)
+        k3 = compute_content_key(f3)
+        k4 = compute_content_key(f4)
+
+        # Mapping : physics → PHYSIQUE, quantum mechanics → PHYSIQUE
+        # (quantum mechanics est dans le mapping mais ABSENT des fichiers → incoming)
+        # machine learning → 02-INFORMATIQUE
+        # algebra → MATHS (pour f4)
+        mapping = {
+            "physics": "01-SCIENCES/PHYSIQUE",
+            "quantum mechanics": "01-SCIENCES/PHYSIQUE",
+            "machine learning": "02-INFORMATIQUE",
+            "algebra": "01-SCIENCES/MATHEMATIQUES",
+        }
+        (self.profile_dir / "theme_mapping.yaml").write_text(
+            yaml.safe_dump(mapping, sort_keys=False)
+        )
+
+        # vision_cache : confiance > 0.5 pour tous (sinon filtré par _MIN_CONFIDENCE)
+        vc = {
+            k1: {"result": {"themes": [
+                {"theme": "Physics", "confidence": 0.9},
+            ]}},
+            k2: {"result": {"themes": [
+                {"theme": "machine learning", "confidence": 0.85},
+            ]}},
+            k3: {"result": {"themes": [
+                {"theme": "unknown-niche-topic", "confidence": 0.8},
+            ]}},
+            k4: {"result": {"themes": [
+                {"theme": "algebra", "confidence": 0.9},
+                # quantum mechanics aussi sur f4 → boost le count_expected
+                {"theme": "quantum mechanics", "confidence": 0.95},
+            ]}},
+        }
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text(
+            json.dumps(vc)
+        )
+        taxonomy.reset_cache()
+
+    def test_stable_theme_classified_correctly(self):
+        self._setup_fixture()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "01-SCIENCES/PHYSIQUE",
+        )
+        themes_stable = {x["theme"].lower() for x in out["stable"]}
+        self.assertIn("physics", themes_stable)
+
+    def test_incoming_theme_when_mapped_but_absent(self):
+        """quantum mechanics est mappé vers PHYSIQUE mais aucun fichier IN
+        PHYSIQUE ne le porte. Doit apparaître en incoming."""
+        self._setup_fixture()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "01-SCIENCES/PHYSIQUE",
+        )
+        themes_incoming = {x["theme"].lower() for x in out["incoming"]}
+        self.assertIn("quantum mechanics", themes_incoming)
+        qm = next(x for x in out["incoming"] if x["theme"].lower() == "quantum mechanics")
+        # quantum mechanics est détecté sur f4 (mathematiques) → count_expected ≥ 1
+        self.assertGreaterEqual(qm["count_expected"], 1)
+
+    def test_outgoing_when_mapped_elsewhere(self):
+        """machine learning détecté dans PHYSIQUE mais mappé vers INFO."""
+        self._setup_fixture()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "01-SCIENCES/PHYSIQUE",
+        )
+        outgoing = {x["theme"].lower(): x for x in out["outgoing"]}
+        self.assertIn("machine learning", outgoing)
+        self.assertEqual(
+            outgoing["machine learning"]["target"], "02-INFORMATIQUE",
+        )
+        self.assertEqual(outgoing["machine learning"]["reason"], "mapped_elsewhere")
+
+    def test_outgoing_orphan_when_not_mapped(self):
+        self._setup_fixture()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "01-SCIENCES/PHYSIQUE",
+        )
+        outgoing = {x["theme"].lower(): x for x in out["outgoing"]}
+        self.assertIn("unknown-niche-topic", outgoing)
+        self.assertIsNone(outgoing["unknown-niche-topic"]["target"])
+        self.assertEqual(outgoing["unknown-niche-topic"]["reason"], "orphan")
+
+    def test_summary_counts(self):
+        self._setup_fixture()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "01-SCIENCES/PHYSIQUE",
+        )
+        s = out["summary"]
+        self.assertEqual(s["path"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(s["n_stable"], len(out["stable"]))
+        self.assertEqual(s["n_incoming"], len(out["incoming"]))
+        self.assertEqual(s["n_outgoing"], len(out["outgoing"]))
+        # n_mapped_rules = physics + quantum mechanics = 2
+        self.assertEqual(s["n_mapped_rules"], 2)
+
+    def test_empty_folder_returns_empty_lists(self):
+        """02-INFORMATIQUE est vide et a aucun mapping → tout vide."""
+        self._setup_fixture()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "02-INFORMATIQUE",
+        )
+        self.assertEqual(out["stable"], [])
+        # machine learning est mappé vers INFO mais le fichier qui le porte
+        # est dans PHYSIQUE → incoming (le folder INFO le verra arriver).
+        themes_incoming = {x["theme"].lower() for x in out["incoming"]}
+        self.assertIn("machine learning", themes_incoming)
+        self.assertEqual(out["outgoing"], [])
+
+    def test_nonexistent_path_returns_empty(self):
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "99-DOES-NOT-EXIST",
+        )
+        self.assertEqual(out["stable"], [])
+        self.assertEqual(out["outgoing"], [])
+
+    def test_low_confidence_themes_filtered(self):
+        """Les thèmes avec confidence < 0.5 ne doivent pas être comptés."""
+        from lib.thumbnail import compute_content_key
+
+        shutil.rmtree(self.target, ignore_errors=True)
+        self.target.mkdir(parents=True)
+        (self.target / "01-SCIENCES" / "PHYSIQUE").mkdir(parents=True)
+
+        f = self.target / "01-SCIENCES" / "PHYSIQUE" / "doc.pdf"
+        f.write_bytes(b"%PDF-1.4 low-conf-test")
+        k = compute_content_key(f)
+
+        (self.profile_dir / "theme_mapping.yaml").write_text(
+            yaml.safe_dump({"physics": "01-SCIENCES/PHYSIQUE"}, sort_keys=False)
+        )
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text(
+            json.dumps({k: {"result": {"themes": [
+                {"theme": "Physics", "confidence": 0.3},  # < seuil
+            ]}}})
+        )
+        taxonomy.reset_cache()
+        out = taxonomy.compute_folder_theme_breakdown(
+            self.profile_name, "01-SCIENCES/PHYSIQUE",
+        )
+        # Pas de stable car le seul thème est en dessous du seuil.
+        self.assertEqual(out["stable"], [])
+
+
+class TestFolderThemeBreakdownEndpoint(TaxonomyTestBase):
+
+    def test_endpoint_happy(self):
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        with TestClient(app) as client:
+            r = client.get(
+                "/api/taxonomy/folder/theme-breakdown",
+                params={"profile": self.profile_name, "path": "01-SCIENCES/PHYSIQUE"},
+            )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("stable", body)
+        self.assertIn("incoming", body)
+        self.assertIn("outgoing", body)
+        self.assertIn("summary", body)
+
+
 if __name__ == "__main__":
     unittest.main()

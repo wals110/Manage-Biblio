@@ -262,6 +262,153 @@ def _aggregate_themes_llm(profile: str, mapping: dict) -> tuple[list[dict], dict
     return themes_out, stats
 
 
+# ─── Folder theme breakdown (stable / incoming / outgoing) ───────────────
+
+
+def _aggregate_themes_in_folder_files(
+    profile: str, path: str,
+) -> dict[str, dict]:
+    """Pour chaque fichier physiquement présent dans `path`, agrège les
+    thèmes détectés (via vision_cache). Retourne `{theme_lower: {count, label}}`
+    où `label` est la forme canonique du thème (Title Case d'origine).
+
+    Le matching fichier ↔ vision_cache se fait via `compute_content_key`
+    (MD5 des head bytes) — survit aux renames. Filtre par
+    `_MIN_CONFIDENCE` pour cohérence avec _aggregate_themes_llm.
+    """
+    from lib.thumbnail import compute_content_key
+    target = _profile_target_path(profile)
+    if target is None or not target.exists():
+        return {}
+    folder_path = (target / path) if path else target
+    if not folder_path.is_dir():
+        return {}
+
+    cache_path = _vision_cache_path(profile)
+    if not cache_path.exists():
+        return {}
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    # Optionnel : canonisation Phase dédupli si theme-canon.json présent
+    try:
+        from lib.theme_canon import canonicalize, load_canon_table
+        canon_table = load_canon_table(profile)
+    except Exception:  # noqa: BLE001
+        canon_table = None
+
+        def canonicalize(t, _ct):  # type: ignore[no-redef]
+            return t
+
+    counts: dict[str, dict] = {}
+    # Pas de récursion : seulement fichiers DIRECTEMENT dans le folder
+    # (cohérent avec _scan_folder_counts qui sert au file_count du tree).
+    for f in folder_path.iterdir():
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in (".pdf", ".epub"):
+            continue
+        key = compute_content_key(f)
+        if not key:
+            continue
+        entry = cache.get(key)
+        if not entry:
+            continue
+        for theme_str, conf in _iter_themes({"x": entry}):
+            if conf < _MIN_CONFIDENCE:
+                continue
+            canonical = canonicalize(theme_str, canon_table)
+            kl = canonical.lower()
+            slot = counts.setdefault(
+                kl, {"label": canonical, "count": 0},
+            )
+            slot["count"] += 1
+    return counts
+
+
+def compute_folder_theme_breakdown(
+    profile: str, path: str,
+) -> dict[str, list[dict]]:
+    """Décomposition des thèmes d'un dossier pour visualiser l'impact d'un
+    futur reclassify.
+
+    Renvoie `{stable, incoming, outgoing, summary}` où :
+
+      - **stable** : thèmes mappés vers `path` ET détectés sur les fichiers
+        actuels du dossier. Au reclassify, leurs fichiers RESTENT.
+      - **incoming** : thèmes mappés vers `path` mais PAS détectés sur les
+        fichiers actuels. Au reclassify, des fichiers ARRIVENT depuis ailleurs.
+      - **outgoing** : thèmes détectés sur les fichiers actuels mais mappés
+        ailleurs (ou orphelins). Au reclassify, ces fichiers PARTENT.
+
+    Le résultat est utile pour répondre "que se passera-t-il au prochain
+    reclassify sur ce dossier ?" — sans avoir à lancer un dry-run complet.
+    """
+    mapping = _load_mapping(profile)
+    mapping_lower = {k.lower(): v for k, v in mapping.items()}
+
+    # 1. Thèmes mappés VERS ce path (avec casse originale + count global)
+    mapped_to_here_keys = [k for k, v in mapping.items() if v == path]
+    mapped_to_here_lower = {k.lower() for k in mapped_to_here_keys}
+
+    # 2. Thèmes effectivement présents dans les fichiers du dossier
+    in_folder = _aggregate_themes_in_folder_files(profile, path)
+
+    # 3. Univers global pour les counts d'incoming
+    themes_llm, _stats = _aggregate_themes_llm(profile, mapping)
+    counts_global = {t["theme"].lower(): t["count"] for t in themes_llm}
+
+    stable: list[dict] = []
+    outgoing: list[dict] = []
+    for theme_l, slot in in_folder.items():
+        target_folder = mapping_lower.get(theme_l)
+        entry = {
+            "theme": slot["label"],
+            "count_in_folder": slot["count"],
+        }
+        if target_folder == path:
+            stable.append(entry)
+        elif target_folder is None:
+            outgoing.append({**entry, "target": None, "reason": "orphan"})
+        else:
+            outgoing.append({
+                **entry, "target": target_folder, "reason": "mapped_elsewhere",
+            })
+
+    incoming: list[dict] = []
+    for theme in mapped_to_here_keys:
+        if theme.lower() in in_folder:
+            continue
+        total = counts_global.get(theme.lower(), 0)
+        incoming.append({
+            "theme": theme,
+            "count_expected": total,  # pas dans le folder = arrivera entièrement
+        })
+
+    stable.sort(key=lambda x: -x["count_in_folder"])
+    incoming.sort(key=lambda x: -x["count_expected"])
+    outgoing.sort(key=lambda x: -x["count_in_folder"])
+
+    summary = {
+        "path": path,
+        "n_stable": len(stable),
+        "n_incoming": len(incoming),
+        "n_outgoing": len(outgoing),
+        "files_stable": sum(s["count_in_folder"] for s in stable),
+        "files_incoming": sum(s["count_expected"] for s in incoming),
+        "files_outgoing": sum(s["count_in_folder"] for s in outgoing),
+        "n_mapped_rules": len(mapped_to_here_lower),
+    }
+    return {
+        "stable": stable,
+        "incoming": incoming,
+        "outgoing": outgoing,
+        "summary": summary,
+    }
+
+
 # ─── Live file counts per folder ──────────────────────────────────────────
 
 

@@ -1922,6 +1922,22 @@ async def taxonomy_files_api(
     return JSONResponse(taxonomy.list_files_in_folder(profile, path, offset, limit))
 
 
+@app.get("/api/taxonomy/folder/theme-breakdown")
+async def taxonomy_folder_theme_breakdown_api(profile: str, path: str = ""):
+    """3-way breakdown des thèmes d'un dossier — stable / incoming / outgoing.
+
+    Permet à l'utilisateur de visualiser, dans le panneau "Routage", ce qui
+    va RESTER, ce qui va ARRIVER et ce qui va PARTIR au prochain reclassify,
+    sans avoir besoin d'un dry-run complet.
+    """
+    from fastapi.responses import JSONResponse
+    try:
+        data = taxonomy.compute_folder_theme_breakdown(profile, path)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(data)
+
+
 @app.get("/api/taxonomy/theme/files")
 async def taxonomy_theme_files_api(
     profile: str,

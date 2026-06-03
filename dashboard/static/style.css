@@ -5642,6 +5642,124 @@ th {
     color: #fff;
 }
 
+/* ───────────────────────────────────────────────────────────────────────
+   Breakdown 3-way : Stables / Entrants / Sortants
+   Affiché en haut du panneau Routage, avant la liste des règles.
+   Donne l'aperçu visuel de ce qui RESTE / ARRIVE / PART au prochain reclassify.
+   ─────────────────────────────────────────────────────────────────────── */
+.tax-breakdown-wrap {
+    list-style: none;
+    margin: 0 0 10px 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.tax-breakdown-loading,
+.tax-breakdown-empty,
+.tax-breakdown-error {
+    padding: 6px 8px;
+    font-style: italic;
+}
+.tax-breakdown-section {
+    border: 1px solid var(--border, #30363d);
+    border-left-width: 3px;
+    border-radius: 4px;
+    padding: 4px 6px 6px 6px;
+    background: rgba(255, 255, 255, 0.015);
+}
+.tax-breakdown-stable {
+    border-left-color: #3fb950;
+}
+.tax-breakdown-incoming {
+    border-left-color: #58a6ff;
+}
+.tax-breakdown-outgoing {
+    border-left-color: #d29922;
+}
+.tax-breakdown-header {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text, #c9d1d9);
+    margin-bottom: 3px;
+    cursor: help;
+}
+.tax-breakdown-icon {
+    font-size: 13px;
+    width: 14px;
+    display: inline-block;
+    text-align: center;
+}
+.tax-breakdown-stable .tax-breakdown-icon { color: #3fb950; }
+.tax-breakdown-incoming .tax-breakdown-icon { color: #58a6ff; }
+.tax-breakdown-outgoing .tax-breakdown-icon { color: #d29922; }
+.tax-breakdown-label {
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-size: 11px;
+}
+.tax-breakdown-count {
+    font-weight: normal;
+    font-size: 11px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-breakdown-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.tax-breakdown-item {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    padding: 1px 4px;
+    font-size: 12px;
+    color: var(--text, #c9d1d9);
+    border-radius: 2px;
+}
+.tax-breakdown-item:hover {
+    background: rgba(255,255,255,0.04);
+}
+.tax-breakdown-theme {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tax-breakdown-num {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted, #8b949e);
+    font-size: 11px;
+    margin-left: 4px;
+}
+.tax-breakdown-target {
+    color: var(--text-muted, #8b949e);
+    font-size: 11px;
+    margin-left: 4px;
+    font-style: italic;
+}
+.tax-breakdown-orphan {
+    color: #d29922;
+    font-size: 11px;
+    margin-left: 4px;
+    font-style: italic;
+}
+.tax-breakdown-more {
+    padding: 2px 4px;
+    font-size: 11px;
+}
+.tax-breakdown-empty-row {
+    padding: 2px 4px;
+    font-size: 11px;
+}
+
 /* Inline expand under a selected mapped theme — tabs + file list */
 .tax-mapped-expand {
     list-style: none;
