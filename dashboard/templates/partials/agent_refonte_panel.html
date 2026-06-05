@@ -20,6 +20,11 @@
                 <span class="tax-refonte-start-icon">🔧</span>
                 <span>Proposer une refonte</span>
             </button>
+            <button id="tax-refonte-new-conv" class="tax-refonte-propose-btn"
+                    title="Démarrer une conversation avec l'agent (Phase C) — créer/renommer/fusionner des dossiers, ajouter des mappings">
+                <span class="tax-refonte-start-icon">🗨</span>
+                <span>Nouvelle conversation</span>
+            </button>
             <div class="tax-refonte-budget-field">
                 <label for="tax-refonte-budget" class="filter-label">Budget LLM</label>
                 <input type="number" id="tax-refonte-budget" value="5" min="1" max="20">
@@ -33,33 +38,84 @@
         </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: 320px 1fr; gap: 16px; margin-top: 16px;">
-        <!-- COL 1 : runs récents -->
+    <div class="tax-refonte-c-grid">
+        <!-- COL 1 : runs récents + conversations -->
         <div>
             <h3 style="margin-top: 0;">Runs récents</h3>
             <div id="tax-refonte-runs">
                 <p class="muted small">Chargement…</p>
             </div>
+            <h3 style="margin-top: 20px; display: flex; align-items: center; gap: 6px;">
+                <span>🗨 Conversations</span>
+            </h3>
+            <div id="tax-refonte-convs">
+                <p class="muted small">Aucune conversation.</p>
+            </div>
         </div>
-        <!-- COL 2 : rapport courant -->
+        <!-- COL 2 : rapport courant OU chat (selon sélection) -->
         <div>
-            <div class="tax-refonte-report-header">
-                <h3 style="margin: 0;">Rapport</h3>
-                <div class="tax-refonte-report-actions">
-                    <button id="tax-refonte-copy" class="btn-secondary" type="button"
-                            title="Copier le rapport markdown" disabled>📋 Copier</button>
-                    <button id="tax-refonte-download" class="btn-secondary" type="button"
-                            title="Télécharger en .md" disabled>⬇ Télécharger</button>
+            <!-- Mode RAPPORT (Phase A/B) -->
+            <div id="tax-refonte-report-view">
+                <div class="tax-refonte-report-header">
+                    <h3 style="margin: 0;">Rapport</h3>
+                    <div class="tax-refonte-report-actions">
+                        <button id="tax-refonte-copy" class="btn-secondary" type="button"
+                                title="Copier le rapport markdown" disabled>📋 Copier</button>
+                        <button id="tax-refonte-download" class="btn-secondary" type="button"
+                                title="Télécharger en .md" disabled>⬇ Télécharger</button>
+                    </div>
+                </div>
+                <div id="tax-refonte-report-container"
+                     style="padding: 16px; border: 1px solid var(--border);
+                            border-radius: 8px; min-height: 400px;
+                            background: var(--bg-secondary);">
+                    <div id="tax-refonte-status" class="muted" style="margin-bottom: 12px;">
+                        Sélectionne un run à gauche ou lance un nouveau diagnostic.
+                    </div>
+                    <div id="tax-refonte-report" class="tax-refonte-md"></div>
                 </div>
             </div>
-            <div id="tax-refonte-report-container"
-                 style="padding: 16px; border: 1px solid var(--border);
-                        border-radius: 8px; min-height: 400px;
-                        background: var(--bg-secondary);">
-                <div id="tax-refonte-status" class="muted" style="margin-bottom: 12px;">
-                    Sélectionne un run à gauche ou lance un nouveau diagnostic.
+            <!-- Wrapper centré pour le chat (limite max-width sur ultra-wide) -->
+            <div id="tax-refonte-chat-wrapper" class="tax-refonte-chat-wrapper" style="display: none;">
+            <!-- Mode CHAT (Phase C) -->
+            <div id="tax-refonte-chat-view">
+                <div class="tax-refonte-report-header">
+                    <h3 style="margin: 0;">
+                        🗨 Conversation
+                        <span id="tax-refonte-chat-conv-id" class="muted small"
+                              style="margin-left: 8px; font-weight: normal;"></span>
+                    </h3>
+                    <div class="tax-refonte-report-actions">
+                        <span id="tax-refonte-chat-status" class="muted small"></span>
+                    </div>
                 </div>
-                <div id="tax-refonte-report" class="tax-refonte-md"></div>
+                <div class="tax-refonte-chat-container">
+                    <div id="tax-refonte-chat-messages" class="tax-refonte-chat-messages">
+                        <p class="muted small" style="text-align: center; padding: 24px;">
+                            Décris ce que tu veux changer dans la taxonomie.
+                        </p>
+                    </div>
+                    <div class="tax-refonte-chat-input-row">
+                        <textarea id="tax-refonte-chat-input"
+                                  placeholder="Crée le dossier 'Rust' dans 02-INFORMATIQUE/03-Langages..."
+                                  rows="2"></textarea>
+                        <button id="tax-refonte-chat-send" class="btn-primary"
+                                type="button" title="Envoyer (Entrée)">Envoyer</button>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /chat-wrapper -->
+        </div>
+        <!-- COL 3 : timeline mutations (visible ≥ 1280px) -->
+        <div id="tax-refonte-timeline-col" class="tax-refonte-timeline-col">
+            <h3 style="margin-top: 0; display:flex; align-items:center; gap:6px;">
+                <span>📋 Timeline</span>
+                <button id="tax-refonte-timeline-refresh" class="btn-secondary"
+                        type="button" style="padding:2px 8px;font-size:11px;margin-left:auto;"
+                        title="Recharger">↻</button>
+            </h3>
+            <div id="tax-refonte-timeline">
+                <p class="muted small">Aucune mutation.</p>
             </div>
         </div>
     </div>
@@ -498,6 +554,229 @@
 .tax-refonte-md code { background: var(--bg-tertiary, #1a1a1a); padding: 1px 5px;
                        border-radius: 3px; font-size: 0.9em; }
 .tax-refonte-md strong { color: var(--text-primary, inherit); }
+
+/* ─── Phase C : Grid responsive + Chat + Conversations sidebar ───────── */
+
+/* Grid 2-col (défaut) avec wrapper centré pour le chat */
+.tax-refonte-c-grid {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+}
+.tax-refonte-timeline-col { display: none; }
+.tax-refonte-chat-wrapper {
+    max-width: 960px;       /* limite la largeur du chat même sans col 3 */
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* ≥ 1280 px : 3 colonnes — la timeline mutations apparaît à droite */
+@media (min-width: 1280px) {
+    .tax-refonte-c-grid {
+        grid-template-columns: 320px minmax(0, 1fr) 320px;
+    }
+    .tax-refonte-timeline-col { display: block; }
+    .tax-refonte-chat-wrapper { max-width: 920px; }
+}
+
+/* ≥ 1920 px (écrans wide/ultra-wide) : col 3 plus large pour respirer */
+@media (min-width: 1920px) {
+    .tax-refonte-c-grid {
+        grid-template-columns: 340px minmax(0, 1100px) 380px;
+        justify-content: center;  /* centre toute la grille horizontalement */
+    }
+    .tax-refonte-chat-wrapper { max-width: 1100px; }
+}
+
+/* < 900 px (mobile/tablette) : tout empilé sur 1 colonne */
+@media (max-width: 900px) {
+    .tax-refonte-c-grid {
+        grid-template-columns: 1fr;
+    }
+    .tax-refonte-chat-wrapper { max-width: 100%; }
+}
+
+
+
+/* Item conversation (sidebar col 1) */
+.tax-refonte-conv-item {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    background: var(--bg-secondary);
+    transition: background 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tax-refonte-conv-item:hover {
+    background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+    border-color: var(--border-light, #3a3a3a);
+}
+.tax-refonte-conv-item.active {
+    border-color: rgba(168, 85, 247, 0.6);
+    background: rgba(168, 85, 247, 0.08);
+    box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.18);
+}
+.tax-refonte-conv-icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #c084fc);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.tax-refonte-conv-meta { flex: 1; min-width: 0; }
+.tax-refonte-conv-id {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tax-refonte-conv-status {
+    font-size: 11.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.tax-refonte-conv-status::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+.tax-refonte-conv-status[data-status="idle"]::before { background: #6b7280; }
+.tax-refonte-conv-status[data-status="thinking"]::before,
+.tax-refonte-conv-status[data-status="executing"]::before {
+    background: #4f6ef2; animation: taxRefontePulse 1.4s ease-in-out infinite;
+}
+.tax-refonte-conv-status[data-status="awaiting_confirm"]::before { background: #f59e0b; }
+.tax-refonte-conv-status[data-status="done"]::before { background: #22c55e; }
+.tax-refonte-conv-status[data-status="error"]::before { background: #ef4444; }
+@keyframes taxRefontePulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.2); opacity: 0.6; }
+}
+
+/* Chat panel (col 2 quand mode chat) */
+.tax-refonte-chat-container {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    height: 540px;
+    display: flex;
+    flex-direction: column;
+}
+.tax-refonte-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.tax-refonte-chat-msg {
+    max-width: min(85%, 680px);  /* lisibilité sur ultra-wide */
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+.tax-refonte-chat-msg.user {
+    align-self: flex-end;
+    background: rgba(79, 110, 242, 0.15);
+    border: 1px solid rgba(79, 110, 242, 0.3);
+}
+.tax-refonte-chat-msg.assistant {
+    align-self: flex-start;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+}
+.tax-refonte-chat-msg.assistant.preview {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.06);
+}
+.tax-refonte-chat-msg-ts {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.tax-refonte-chat-confirm-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+}
+.tax-refonte-chat-confirm-actions button {
+    padding: 5px 12px;
+    font-size: 12.5px;
+}
+.tax-refonte-chat-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+    border-radius: 0 0 8px 8px;
+}
+.tax-refonte-chat-input-row textarea {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--bg-tertiary, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary, #e6e6e6);
+    font-size: 13px;
+    resize: vertical;
+    min-height: 38px;
+    max-height: 120px;
+}
+.tax-refonte-chat-input-row button {
+    align-self: flex-end;
+    padding: 8px 16px;
+}
+
+/* Timeline mutations (col 3) */
+.tax-refonte-timeline-item {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg-secondary);
+    font-size: 12px;
+}
+.tax-refonte-timeline-item.ok      { border-left-color: #22c55e; }
+.tax-refonte-timeline-item.error   { border-left-color: #ef4444; }
+.tax-refonte-timeline-item.rolled  { border-left-color: #6b7280; opacity: 0.65; }
+.tax-refonte-timeline-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 6px; margin-bottom: 4px;
+}
+.tax-refonte-timeline-bid {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.tax-refonte-timeline-ts { font-size: 11px; color: var(--text-muted); }
+.tax-refonte-timeline-tools {
+    font-size: 12px;
+    color: var(--text-primary, #e6e6e6);
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+.tax-refonte-timeline-actions {
+    display: flex; gap: 4px; margin-top: 6px;
+}
+.tax-refonte-timeline-actions button {
+    padding: 3px 8px; font-size: 11px;
+}
+
 </style>
 
 <script>
@@ -1051,6 +1330,18 @@
                 runsEl.querySelectorAll('.tax-refonte-run-item.active')
                       .forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
+                // Bascule en mode rapport (au cas où on était sur le chat
+                // d'une conv Phase C avant de cliquer sur ce run A/B).
+                const _chatView = document.getElementById('tax-refonte-chat-view');
+                const _chatWrapper = document.getElementById('tax-refonte-chat-wrapper');
+                const _reportView = document.getElementById('tax-refonte-report-view');
+                if (_chatWrapper) _chatWrapper.style.display = 'none';
+                if (_chatView) _chatView.style.display = 'none';
+                if (_reportView) _reportView.style.display = '';
+                // Désélectionne la conv active
+                const convs = document.getElementById('tax-refonte-convs');
+                if (convs) convs.querySelectorAll('.tax-refonte-conv-item.active')
+                                .forEach(el => el.classList.remove('active'));
                 // Si on change de run : clear le report area pour éviter
                 // d'afficher le contenu du run précédent ("Commence maintenant."
                 // fantôme observé en prod 2026-05-25). Sera re-rempli si le
@@ -1259,5 +1550,406 @@
     // sous-onglet Taxonomie ça permet de reprendre un run lancé avant
     // un reload de page.
     loadRuns();
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Phase C — Agent conversationnel (C.3 UI)
+    // ════════════════════════════════════════════════════════════════════
+
+    const newConvBtn = document.getElementById('tax-refonte-new-conv');
+    const convsEl = document.getElementById('tax-refonte-convs');
+    const reportView = document.getElementById('tax-refonte-report-view');
+    const chatView = document.getElementById('tax-refonte-chat-view');
+    const chatWrapper = document.getElementById('tax-refonte-chat-wrapper');
+    const chatConvIdEl = document.getElementById('tax-refonte-chat-conv-id');
+    const chatStatusEl = document.getElementById('tax-refonte-chat-status');
+    const chatMessagesEl = document.getElementById('tax-refonte-chat-messages');
+    const chatInputEl = document.getElementById('tax-refonte-chat-input');
+    const chatSendBtn = document.getElementById('tax-refonte-chat-send');
+
+    let currentConvId = null;
+    let chatPollTimer = null;
+    const CHAT_POLL_MS = 1500;
+
+    function showChatView() {
+        reportView.style.display = 'none';
+        // Bascule le WRAPPER pas l'inner view (wrapper est display:none par
+        // défaut côté HTML pour le responsive centré).
+        if (chatWrapper) chatWrapper.style.display = '';
+        if (chatView) chatView.style.display = '';
+    }
+    function showReportView() {
+        if (chatWrapper) chatWrapper.style.display = 'none';
+        if (chatView) chatView.style.display = 'none';
+        reportView.style.display = '';
+    }
+
+    async function loadConvs() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/conv?profile='
+                                + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            renderConvs(data.conversations || []);
+        } catch (err) {
+            convsEl.innerHTML = '<p class="muted small">Erreur : ' + err.message + '</p>';
+        }
+    }
+
+    function renderConvs(convs) {
+        if (!convs.length) {
+            convsEl.innerHTML = '<p class="muted small">Aucune conversation. Clique "Nouvelle conversation" ↑</p>';
+            return;
+        }
+        convsEl.innerHTML = '';
+        for (const c of convs) {
+            const item = document.createElement('div');
+            item.className = 'tax-refonte-conv-item';
+            if (currentConvId === c.conv_id) item.classList.add('active');
+            item.dataset.convId = c.conv_id;
+            const shortId = c.conv_id.slice(0, 8);
+            const status = c.status || 'idle';
+            item.innerHTML =
+                '<div class="tax-refonte-conv-icon">🗨</div>'
+              + '<div class="tax-refonte-conv-meta">'
+              + '  <div><code class="tax-refonte-conv-id">' + shortId + '</code></div>'
+              + '  <div><span class="tax-refonte-conv-status" data-status="' + status + '">' + status + '</span> · '
+              + (c.n_messages || 0) + ' msg</div>'
+              + '</div>';
+            item.addEventListener('click', () => openConv(c.conv_id));
+            convsEl.appendChild(item);
+        }
+    }
+
+    async function openConv(convId) {
+        currentConvId = convId;
+        // Highlight item
+        convsEl.querySelectorAll('.tax-refonte-conv-item.active')
+              .forEach(el => el.classList.remove('active'));
+        const target = convsEl.querySelector('[data-conv-id="' + convId + '"]');
+        if (target) target.classList.add('active');
+        // Deselect run (l'icône chat prend priorité)
+        runsEl.querySelectorAll('.tax-refonte-run-item.active')
+              .forEach(el => el.classList.remove('active'));
+        showChatView();
+        chatConvIdEl.textContent = convId.slice(0, 8) + '…';
+        await refreshConvState();
+        startChatPolling();
+    }
+
+    async function refreshConvState() {
+        if (!currentConvId) return;
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/conv/'
+                                + encodeURIComponent(currentConvId)
+                                + '?profile=' + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const state = await r.json();
+            renderChatState(state);
+            // Pause polling si état stable
+            if (['idle', 'awaiting_confirm', 'done', 'error'].includes(state.status)) {
+                stopChatPolling();
+            } else if (!chatPollTimer) {
+                startChatPolling();
+            }
+        } catch (e) {
+            chatStatusEl.textContent = 'Erreur : ' + e.message;
+        }
+    }
+
+    function startChatPolling() {
+        if (chatPollTimer) return;
+        chatPollTimer = setInterval(refreshConvState, CHAT_POLL_MS);
+    }
+    function stopChatPolling() {
+        if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+    }
+
+    function renderChatState(state) {
+        chatStatusEl.textContent = stateLabel(state.status);
+        chatMessagesEl.innerHTML = '';
+        const messages = state.messages || [];
+        if (!messages.length) {
+            chatMessagesEl.innerHTML =
+                '<p class="muted small" style="text-align:center;padding:24px;">'
+              + 'Décris ce que tu veux changer dans la taxonomie.</p>';
+        } else {
+            for (let i = 0; i < messages.length; i++) {
+                const isLast = i === messages.length - 1;
+                appendChatMessage(messages[i],
+                    isLast && state.status === 'awaiting_confirm');
+            }
+        }
+        // Si awaiting_confirm, render des boutons Apply/Skip/Modify dans
+        // le dernier message assistant (preview) — sinon disabled send btn
+        chatSendBtn.disabled = (state.status === 'thinking' ||
+                                state.status === 'executing');
+        chatInputEl.disabled = (state.status === 'thinking' ||
+                                state.status === 'executing');
+        // Scroll bas
+        chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    }
+
+    function stateLabel(status) {
+        const labels = {
+            'idle': 'En attente de ton message',
+            'thinking': '⌛ Réflexion en cours…',
+            'awaiting_confirm': '⚠ En attente de ta validation',
+            'executing': '⌛ Application en cours…',
+            'done': '✓ Mutation appliquée',
+            'error': '❌ Erreur',
+        };
+        return labels[status] || status;
+    }
+
+    function appendChatMessage(msg, attachConfirmActions) {
+        const div = document.createElement('div');
+        div.className = 'tax-refonte-chat-msg ' + (msg.role || 'assistant');
+        if (attachConfirmActions) div.classList.add('preview');
+        const content = document.createElement('div');
+        content.textContent = msg.content || '';
+        div.appendChild(content);
+        const ts = document.createElement('div');
+        ts.className = 'tax-refonte-chat-msg-ts';
+        ts.textContent = formatTs(msg.ts);
+        div.appendChild(ts);
+        if (attachConfirmActions) {
+            const actions = document.createElement('div');
+            actions.className = 'tax-refonte-chat-confirm-actions';
+            actions.innerHTML =
+                '<button class="btn-primary" data-action="apply">✓ Apply</button>'
+              + '<button class="btn-secondary" data-action="skip">✕ Skip</button>'
+              + '<button class="btn-secondary" data-action="modify">✎ Modify</button>';
+            actions.querySelector('[data-action="apply"]')
+                   .addEventListener('click', () => respond('apply'));
+            actions.querySelector('[data-action="skip"]')
+                   .addEventListener('click', () => respond('skip'));
+            actions.querySelector('[data-action="modify"]')
+                   .addEventListener('click', () => {
+                       chatInputEl.placeholder = 'Modifier la proposition…';
+                       chatInputEl.focus();
+                       // Le user re-tape un message → send() détectera awaiting_confirm
+                       // et basculera en modify via une réponse spéciale.
+                       chatInputEl.dataset.modifyMode = '1';
+                   });
+            div.appendChild(actions);
+        }
+        chatMessagesEl.appendChild(div);
+    }
+
+    function formatTs(iso) {
+        if (!iso) return '';
+        try {
+            return new Date(iso).toLocaleTimeString('fr-FR', {
+                hour: '2-digit', minute: '2-digit',
+            });
+        } catch (e) { return ''; }
+    }
+
+    async function startNewConv() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/conv', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({profile}),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Erreur : ' + (err.error || r.status));
+                return;
+            }
+            const state = await r.json();
+            await loadConvs();
+            await openConv(state.conv_id);
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+        }
+    }
+
+    async function sendChatMessage() {
+        const text = chatInputEl.value.trim();
+        if (!text || !currentConvId) return;
+        const profile = currentProfile();
+        const modifyMode = chatInputEl.dataset.modifyMode === '1';
+        chatInputEl.value = '';
+        chatInputEl.placeholder = 'Crée le dossier...';
+        delete chatInputEl.dataset.modifyMode;
+        try {
+            const url = modifyMode
+                ? '/api/agent/refonte/c/conv/' + encodeURIComponent(currentConvId) + '/respond'
+                : '/api/agent/refonte/c/conv/' + encodeURIComponent(currentConvId) + '/message';
+            const body = modifyMode
+                ? {profile, action: 'modify', modification_text: text}
+                : {profile, text};
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Erreur : ' + (err.error || r.status));
+                return;
+            }
+            const state = await r.json();
+            renderChatState(state);
+            startChatPolling();
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+        }
+    }
+
+    async function respond(action) {
+        if (!currentConvId) return;
+        if (action === 'modify') return;  // géré via le bouton lui-même
+        const profile = currentProfile();
+        try {
+            const r = await fetch(
+                '/api/agent/refonte/c/conv/' + encodeURIComponent(currentConvId) + '/respond',
+                {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({profile, action}),
+                });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Erreur : ' + (err.error || r.status));
+                return;
+            }
+            const state = await r.json();
+            renderChatState(state);
+            loadConvs();  // refresh sidebar status
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+        }
+    }
+
+    newConvBtn.addEventListener('click', startNewConv);
+    chatSendBtn.addEventListener('click', sendChatMessage);
+    chatInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
+
+    // ─── Timeline mutations (col 3, visible ≥ 1280px) ───────────────────
+    const timelineEl = document.getElementById('tax-refonte-timeline');
+    const timelineRefreshBtn = document.getElementById('tax-refonte-timeline-refresh');
+
+    async function loadTimeline() {
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/batches?profile='
+                                + encodeURIComponent(profile));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            renderTimeline(data.batches || []);
+        } catch (e) {
+            timelineEl.innerHTML = '<p class="muted small">Erreur : ' + e.message + '</p>';
+        }
+    }
+
+    function renderTimeline(batches) {
+        if (!batches.length) {
+            timelineEl.innerHTML = '<p class="muted small">Aucune mutation.</p>';
+            return;
+        }
+        timelineEl.innerHTML = '';
+        for (const b of batches) {
+            const item = document.createElement('div');
+            const klass = b.rolled_back ? 'rolled'
+                        : (b.n_error > 0 ? 'error' : 'ok');
+            item.className = 'tax-refonte-timeline-item ' + klass;
+            const bid = (b.batch_id || '').slice(0, 8);
+            const ts = b.ts_last ? new Date(b.ts_last).toLocaleString('fr-FR', {
+                day: '2-digit', month: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+            }) : '';
+            const toolsList = (b.tools || []).join(', ') || '?';
+            const status = b.rolled_back ? '⏪ rolled back'
+                         : (b.n_error > 0 ? '❌ ' + b.n_error + ' err' : '✓ ' + b.n_ok);
+            item.innerHTML =
+                '<div class="tax-refonte-timeline-head">'
+              + '  <code class="tax-refonte-timeline-bid">' + bid + '</code>'
+              + '  <span class="tax-refonte-timeline-ts">' + ts + '</span>'
+              + '</div>'
+              + '<div class="tax-refonte-timeline-tools">' + escapeHtml(toolsList) + '</div>'
+              + '<div class="muted small">' + status + '</div>'
+              + (b.rolled_back ? ''
+                 : '<div class="tax-refonte-timeline-actions">'
+                 + '  <button class="btn-secondary" data-action="rollback" '
+                 + '          data-bid="' + b.batch_id + '">⏪ Rollback</button>'
+                 + '</div>');
+            const rb = item.querySelector('[data-action="rollback"]');
+            if (rb) rb.addEventListener('click', () => rollbackBatch(b.batch_id));
+            timelineEl.appendChild(item);
+        }
+    }
+
+    async function rollbackBatch(batchId) {
+        const ok = await showConfirm({
+            title: 'Rollback de la mutation ?',
+            body: 'Va restaurer tree.yaml et theme_mapping.yaml depuis le '
+                + 'snapshot. Les fichiers physiques déplacés ne reviennent PAS. '
+                + 'Le rollback est lui-même journalisé.',
+            confirmLabel: 'Rollback',
+            cancelLabel: 'Annuler',
+            variant: 'danger',
+        });
+        if (!ok) return;
+        const profile = currentProfile();
+        try {
+            const r = await fetch('/api/agent/refonte/c/rollback', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({profile, batch_id: batchId}),
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                showToast('Erreur : ' + (err.error || r.status), 'error');
+                return;
+            }
+            const data = await r.json();
+            const warn = data.warning_newer_batches > 0
+                ? ' (⚠ ' + data.warning_newer_batches + ' batch(es) plus récents)'
+                : '';
+            showToast('✓ Rollback effectué' + warn, 'success');
+            loadTimeline();
+        } catch (e) {
+            showToast('Erreur réseau : ' + e.message, 'error');
+        }
+    }
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    timelineRefreshBtn.addEventListener('click', loadTimeline);
+
+    // Refresh timeline + convs après chaque mutation (apply via chat)
+    const _originalRefreshConvState = refreshConvState;
+    refreshConvState = async function() {
+        const prev = currentConvId
+            ? (await fetch('/api/agent/refonte/c/conv/' + encodeURIComponent(currentConvId)
+                          + '?profile=' + encodeURIComponent(currentProfile()))
+                .then(r => r.ok ? r.json() : null).catch(() => null))
+            : null;
+        await _originalRefreshConvState();
+        // Si le status vient de passer de executing/thinking à done → reload timeline
+        if (prev && prev.status === 'executing') {
+            loadTimeline();
+            loadConvs();
+        }
+    };
+
+    // Chargement initial des convs + timeline
+    loadConvs();
+    loadTimeline();
 })();
 </script>

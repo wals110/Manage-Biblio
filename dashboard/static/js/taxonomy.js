@@ -74,6 +74,18 @@
     selectedMappedTheme: null,
     mappedFilesByTheme: new Map(),
     mappedFilesTab: 'future',  // 'future' | 'current'
+
+    // Mapped panel — multi-sélection pour bulk delete. Scopée au folder
+    // courant : changement de folder = clear automatique (cf. helper
+    // bulkSelectionForPath). Permet de cocher plusieurs thèmes et de
+    // les supprimer en un seul appel (POST /mappings/bulk-delete).
+    bulkMappedSelection: { folderPath: null, keysLower: new Set() },
+
+    // Cache du breakdown 3-way (stable / incoming / outgoing) par path.
+    // Permet à l'UI d'afficher ce qui va RESTER, ARRIVER, PARTIR au prochain
+    // reclassify sans devoir lancer un dryrun. Lazily fetché à l'ouverture
+    // du panel Routage. Invalidé par renderAll() après une mutation.
+    folderBreakdown: new Map(),
   };
 
   // Touched folders / themes — derived from snapshot.stats (which diffs
@@ -162,6 +174,9 @@
     if (state.mappedFilesByTheme && state.mappedFilesByTheme.size > 0) {
       state.mappedFilesByTheme.clear();
     }
+    if (state.folderBreakdown && state.folderBreakdown.size > 0) {
+      state.folderBreakdown.clear();
+    }
     return r.json();
   }
   async function fetchFiles(path, offset, limit) {
@@ -169,6 +184,13 @@
                 `&path=${encodeURIComponent(path)}&offset=${offset}&limit=${limit}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error('files HTTP ' + r.status);
+    return r.json();
+  }
+  async function fetchFolderBreakdown(path) {
+    const url = `/api/taxonomy/folder/theme-breakdown?profile=${encodeURIComponent(state.profile)}` +
+                `&path=${encodeURIComponent(path)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('breakdown HTTP ' + r.status);
     return r.json();
   }
   async function fetchFileMetadata(path) {
@@ -326,6 +348,18 @@
     t.style.display = 'block';
     clearTimeout(showToast._tid);
     showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
+  }
+
+  // Suffixe à concaténer aux toasts rename/move quand des entries de
+  // categories.yaml ont été cascadées en plus du mapping (mention "merged"
+  // si une collision a fusionné des mots-clés).
+  function _catSuffix(r) {
+    const n = r && r.n_categories_updated;
+    if (!n) return '';
+    const m = r.n_categories_merged || 0;
+    return m > 0
+      ? `, ${n} catégorie(s) cascadée(s) [${m} fusionnée(s)]`
+      : `, ${n} catégorie(s) cascadée(s)`;
   }
 
   // ── Busy overlay ─────────────────────────────────────────────────────
@@ -2188,7 +2222,35 @@
     }
     const mappings = state.snapshot.mapping_by_folder[path] || [];
     const suffix = frozenBySpotlight ? ' (focus thème)' : '';
-    sub.textContent = `${path || 'racine'} · ${mappings.length} clé(s)${suffix}`;
+    // Compteur "X fichiers actuels · Y prévus au reclassify"
+    // - actuels  = file_count direct du folder dans tree.yaml (FS scan)
+    // - prévus   = somme des counts des thèmes LLM qui mappent vers ce folder
+    //   (= ce que classify_by_theme acheminerait au prochain reclassify)
+    const node = state.snapshot.tree
+        ? findNode(state.snapshot.tree, path) : null;
+    const nCurrent = node ? (node.file_count || 0) : 0;
+    const mappedLower = new Set(mappings.map(t => t.toLowerCase()));
+    const themesLLM = state.snapshot.themes_llm || [];
+    let nReclassify = 0;
+    for (const t of themesLLM) {
+      if (mappedLower.has((t.theme || '').toLowerCase())) {
+        nReclassify += (t.count || 0);
+      }
+    }
+    sub.textContent = `${path || 'racine'} · ${mappings.length} règle(s) · `
+                    + `${nCurrent} fichier(s) actuel(s) · `
+                    + `~${nReclassify} prévu(s) au reclassify${suffix}`;
+    sub.title = 'Compte des fichiers physiquement dans le dossier (snapshot FS) '
+              + 'vs estimation des fichiers qui y arriveraient au prochain '
+              + 'reclassify (somme des occurrences des thèmes mappés ici dans '
+              + 'le vision_cache).';
+
+    // ── Breakdown 3-way (Stables / Entrants / Sortants) ──
+    // Affiché AVANT la liste des règles, donne l'aperçu du churn au prochain
+    // reclassify. Lazily fetché : premier passage = "Chargement…", refetch
+    // automatique au prochain renderAll() après mutation.
+    list.appendChild(renderBreakdownSections(path));
+
     if (mappings.length === 0) {
       list.appendChild(el('li', { class: 'muted small' },
         ['Aucun thème mappé. Glisse un thème LLM ici ou utilise « + Mapper ».']));
@@ -2199,30 +2261,290 @@
     // that doesn't contain the spotlit theme. The user exits via the
     // 🔦× button in the tree subtitle.
     const touched = touchedThemesSet();
+    const bulkSet = bulkSelectionForPath(path);
+
+    // Mini-toolbar de sélection bulk (apparaît dès qu'au moins 1 cochée
+    // OU si le user a fait Tout cocher sur ce folder).
+    if (bulkSet.size > 0) {
+      list.appendChild(renderBulkMappedToolbar(path, mappings, bulkSet));
+    }
+
     for (const t of mappings) {
+      const keyL = t.toLowerCase();
+      const cb = el('input', {
+        type: 'checkbox',
+        class: 'tax-mapped-cb',
+        title: 'Sélectionner pour suppression en lot',
+        onclick: e => {
+          e.stopPropagation();
+          toggleBulkMapping(t, path);
+          renderMappedPanel();
+        },
+      });
+      cb.checked = bulkSet.has(keyL);
       const editBtn = el('button', {
-        class: 'tax-mapped-action', title: 'Rediriger ce mapping vers un autre dossier',
+        class: 'tax-mapped-action',
+        title: 'Rediriger : changer la destination de cette règle de routage. '
+             + 'Les fichiers déjà rangés ne bougent pas — seulement où ils '
+             + 'iraient au prochain reclassify.',
         onclick: e => { e.stopPropagation(); openMapPopover({ theme: t, count: '?', is_edit: true }, e.currentTarget); },
       }, ['↗']);
       const delBtn = el('button', {
-        class: 'tax-mapped-action tax-mapped-del', title: 'Supprimer ce mapping',
+        class: 'tax-mapped-action tax-mapped-del',
+        title: 'Supprimer cette règle de routage. Les fichiers déjà rangés '
+             + 'ne bougent pas. Au prochain reclassify, les fichiers portant '
+             + 'ce thème deviendront orphelins (à reclasser via Keyword '
+             + 'Classifier ou LLM Mapper).',
         onclick: e => { e.stopPropagation(); confirmDeleteMapping(t); },
       }, ['×']);
       const isTouched = touched.has(t);
-      const isSelected = state.selectedMappedTheme === t.toLowerCase();
+      const isSelected = state.selectedMappedTheme === keyL;
+      const isInBulk = bulkSet.has(keyL);
       const dot = isTouched
         ? el('span', { class: 'tax-touched-dot', title: 'Modifié — annulable via le bouton Annuler' })
         : null;
       const item = el('li', {
         class: 'tax-mapped-item'
                + (isTouched ? ' touched' : '')
-               + (isSelected ? ' selected' : ''),
+               + (isSelected ? ' selected' : '')
+               + (isInBulk ? ' bulk-selected' : ''),
         title: t + ' — clic pour voir les fichiers concernés',
         onclick: () => toggleMappedThemeSelection(t),
-      }, [el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]);
+      }, [cb, el('span', { class: 'tax-mapped-key' }, [t]), dot, editBtn, delBtn]);
       list.appendChild(item);
       if (isSelected) list.appendChild(renderMappedFilesExpand(t));
     }
+  }
+
+  // ── Breakdown 3-way : Stables / Entrants / Sortants ────────────────────
+  //
+  // Donne à l'utilisateur un aperçu IMMÉDIAT de ce qui se passera au prochain
+  // reclassify sur ce dossier, SANS lancer de dry-run :
+  //   ✓ Stables : déjà ici + mapping pointe ici → restent
+  //   → Entrants : mapping pointe ici mais fichier ailleurs → arriveront
+  //   ← Sortants : ici mais mapping ailleurs (ou orphelin) → partiront
+  //
+  // Fetch lazy (premier appel) + cache par path. Invalidation : renderAll()
+  // après mutation purge le cache via fetchSnapshot().
+
+  function renderBreakdownSections(path) {
+    const wrap = el('li', { class: 'tax-breakdown-wrap' });
+    const cached = state.folderBreakdown.get(path);
+
+    if (cached === undefined) {
+      // Premier passage : déclenche le fetch et affiche un placeholder.
+      // Note: le fetch reschedule un re-render asynchrone.
+      wrap.appendChild(el('div', { class: 'tax-breakdown-loading muted small' },
+        ['Chargement de la décomposition…']));
+      state.folderBreakdown.set(path, null);  // marqueur "fetch en cours"
+      (async () => {
+        try {
+          const data = await fetchFolderBreakdown(path);
+          state.folderBreakdown.set(path, data);
+        } catch (e) {
+          state.folderBreakdown.set(path, { error: e.message });
+        }
+        renderMappedPanel();
+      })();
+      return wrap;
+    }
+    if (cached === null) {
+      wrap.appendChild(el('div', { class: 'tax-breakdown-loading muted small' },
+        ['Chargement de la décomposition…']));
+      return wrap;
+    }
+    if (cached.error) {
+      wrap.appendChild(el('div', { class: 'tax-breakdown-error error small' },
+        ['✗ ' + cached.error]));
+      return wrap;
+    }
+
+    const stable = cached.stable || [];
+    const incoming = cached.incoming || [];
+    const outgoing = cached.outgoing || [];
+    const totalThemes = stable.length + incoming.length + outgoing.length;
+    if (totalThemes === 0) {
+      wrap.appendChild(el('div', { class: 'muted small tax-breakdown-empty' },
+        ['Aucun thème détecté ici, ni mappé vers ici.']));
+      return wrap;
+    }
+
+    wrap.appendChild(renderBreakdownSection({
+      icon: '✓',
+      label: 'Stables',
+      items: stable,
+      cssMod: 'stable',
+      countKey: 'count_in_folder',
+      hint: 'Thèmes présents dans les fichiers actuels ET mappés vers ce dossier. '
+          + 'Au prochain reclassify, ces fichiers RESTENT ici.',
+      emptyText: '— aucun thème stable —',
+    }));
+    wrap.appendChild(renderBreakdownSection({
+      icon: '→',
+      label: 'Entrants',
+      items: incoming,
+      cssMod: 'incoming',
+      countKey: 'count_expected',
+      hint: 'Thèmes mappés vers ce dossier mais ABSENTS des fichiers actuels. '
+          + 'Au prochain reclassify, ces fichiers ARRIVENT depuis ailleurs.',
+      emptyText: '— rien à recevoir —',
+    }));
+    wrap.appendChild(renderBreakdownSection({
+      icon: '←',
+      label: 'Sortants',
+      items: outgoing,
+      cssMod: 'outgoing',
+      countKey: 'count_in_folder',
+      hint: 'Thèmes des fichiers actuels mais mappés vers un autre dossier '
+          + '(ou orphelins). Au prochain reclassify, ces fichiers PARTENT.',
+      emptyText: '— rien ne sort —',
+      renderExtra: x => x.target
+        ? el('span', { class: 'tax-breakdown-target', title: `Destination : ${x.target}` },
+              [` → ${shortPath(x.target)}`])
+        : el('span', { class: 'tax-breakdown-orphan', title: 'Aucun mapping pour ce thème' },
+              [' · orphelin']),
+    }));
+    return wrap;
+  }
+
+  function shortPath(p) {
+    // Affichage compact : "01-SCIENCES/PHYSIQUE/QUANTIQUE" → ".../QUANTIQUE"
+    if (!p) return '';
+    const parts = p.split('/').filter(Boolean);
+    if (parts.length <= 1) return p;
+    if (parts.length === 2) return p;
+    return '…/' + parts[parts.length - 1];
+  }
+
+  function renderBreakdownSection(cfg) {
+    const { icon, label, items, cssMod, countKey, hint, emptyText, renderExtra } = cfg;
+    const n = items.length;
+    const totalFiles = items.reduce((acc, x) => acc + (x[countKey] || 0), 0);
+    const header = el('div', { class: 'tax-breakdown-header', title: hint }, [
+      el('span', { class: 'tax-breakdown-icon' }, [icon]),
+      el('span', { class: 'tax-breakdown-label' }, [label]),
+      el('span', { class: 'tax-breakdown-count' },
+        [n ? ` · ${n} thème(s) · ${totalFiles} fichier(s)` : ' · 0']),
+    ]);
+    const body = el('ul', { class: 'tax-breakdown-list' });
+    if (n === 0) {
+      body.appendChild(el('li', { class: 'muted small tax-breakdown-empty-row' },
+        [emptyText]));
+    } else {
+      // Limite l'affichage à 8 pour ne pas noyer le panneau. Le détail
+      // complet reste accessible via la liste des règles (entrants) ou le
+      // dryrun reclassify (sortants).
+      const display = items.slice(0, 8);
+      for (const x of display) {
+        const row = el('li', { class: 'tax-breakdown-item' }, [
+          el('span', { class: 'tax-breakdown-theme', title: x.theme }, [x.theme]),
+          el('span', { class: 'tax-breakdown-num' }, [` ${x[countKey]}`]),
+          renderExtra ? renderExtra(x) : null,
+        ]);
+        body.appendChild(row);
+      }
+      if (items.length > display.length) {
+        body.appendChild(el('li', { class: 'muted small tax-breakdown-more' },
+          [`+ ${items.length - display.length} autre(s)`]));
+      }
+    }
+    return el('div', { class: 'tax-breakdown-section tax-breakdown-' + cssMod },
+      [header, body]);
+  }
+
+  // ── Bulk delete des mappings d'un folder ───────────────────────────────
+
+  function bulkSelectionForPath(path) {
+    // Si le path change, on réinitialise la sélection : éviter de
+    // supprimer accidentellement des thèmes d'un folder qu'on ne voit plus.
+    if (state.bulkMappedSelection.folderPath !== path) {
+      state.bulkMappedSelection = { folderPath: path, keysLower: new Set() };
+    }
+    return state.bulkMappedSelection.keysLower;
+  }
+
+  function toggleBulkMapping(theme, path) {
+    const set = bulkSelectionForPath(path);
+    const k = theme.toLowerCase();
+    if (set.has(k)) set.delete(k); else set.add(k);
+  }
+
+  function selectAllMappingsForPath(path, mappings) {
+    const set = bulkSelectionForPath(path);
+    for (const t of mappings) set.add(t.toLowerCase());
+  }
+
+  function clearBulkMappingSelection() {
+    state.bulkMappedSelection.keysLower.clear();
+  }
+
+  function renderBulkMappedToolbar(path, mappings, bulkSet) {
+    const n = bulkSet.size;
+    const total = mappings.length;
+    const allSelected = n >= total;
+    const toolbar = el('li', { class: 'tax-mapped-bulk-toolbar' }, [
+      el('span', { class: 'tax-mapped-bulk-count' },
+         [`${n} sélectionné${n > 1 ? 's' : ''}`]),
+      el('button', {
+        class: 'tax-mapped-bulk-btn', title: 'Cocher tous les thèmes du dossier',
+        disabled: allSelected,
+        onclick: e => {
+          e.stopPropagation();
+          selectAllMappingsForPath(path, mappings);
+          renderMappedPanel();
+        },
+      }, [allSelected ? '☑ Tout coché' : `☑ Tout (${total})`]),
+      el('button', {
+        class: 'tax-mapped-bulk-btn', title: 'Tout désélectionner',
+        onclick: e => {
+          e.stopPropagation();
+          clearBulkMappingSelection();
+          renderMappedPanel();
+        },
+      }, ['Annuler sélection']),
+      el('button', {
+        class: 'tax-mapped-bulk-btn tax-mapped-bulk-danger',
+        title: 'Supprimer les mappings cochés',
+        onclick: e => {
+          e.stopPropagation();
+          confirmBulkDeleteMappings(path, mappings);
+        },
+      }, [`🗑 Supprimer (${n})`]),
+    ]);
+    return toolbar;
+  }
+
+  async function confirmBulkDeleteMappings(path, mappings) {
+    const bulkSet = bulkSelectionForPath(path);
+    if (bulkSet.size === 0) return;
+    // Récupère les clés EXACTES (casse préservée) depuis mappings
+    const keys = mappings.filter(t => bulkSet.has(t.toLowerCase()));
+    const preview = keys.slice(0, 5).map(k => `  • ${k}`).join('\n');
+    const more = keys.length > 5 ? `\n  + ${keys.length - 5} autre(s)` : '';
+    const ok = await showConfirm({
+      title: `Supprimer ${keys.length} mapping(s) ?`,
+      body: `Folder : ${path || 'racine'}\n\n${preview}${more}\n\n`
+          + 'Les thèmes bruts restent dans le vision_cache — seuls les '
+          + 'mappings (theme_mapping.yaml) sont retirés. Backup auto + '
+          + 'Annulable via le bouton Annuler du header.',
+      confirmLabel: `Supprimer ${keys.length} clé(s)`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await withBusy(`Suppression de ${keys.length} mapping(s)…`, async () => {
+      try {
+        const r = await postBulkDeleteMappings(keys);
+        showToast(`✓ ${r.n_deleted} mapping(s) supprimé(s)`, 'success');
+        if (r.not_found && r.not_found.length) {
+          showToast(`⚠ ${r.not_found.length} introuvable(s) ignoré(s)`, 'info');
+        }
+        clearBulkMappingSelection();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
   }
 
   function toggleMappedThemeSelection(theme) {
@@ -2519,7 +2841,7 @@
           return;
         }
         showToast(
-          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s)`,
+          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s)${_catSuffix(r)}`,
           'success',
         );
         // Rewrite expanded set + selection prefixes (same logic as the
@@ -2947,7 +3269,7 @@
           return;
         }
         showToast(
-          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)${_catSuffix(r)}`,
           'success',
         );
         // Rewrite expanded set + selection prefixes
@@ -2982,7 +3304,7 @@
           return;
         }
         showToast(
-          `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+          `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)${_catSuffix(r)}`,
           'success',
         );
         // Update expanded set: replace old prefix with new

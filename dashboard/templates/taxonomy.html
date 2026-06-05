@@ -154,7 +154,10 @@
     <section class="tax-col tax-col-themes">
         <div class="tax-themes-mapped">
             <header class="tax-col-header">
-                <h2 class="tax-col-title">Thèmes mappés</h2>
+                <h2 class="tax-col-title" title="Liste des règles de routage : ces thèmes IRAIENT vers le dossier sélectionné au prochain reclassify. Pas les fichiers actuellement dedans.">
+                    Routage : thèmes → ce dossier
+                    <span class="tax-routing-help" title="Ces thèmes sont une RÈGLE DE ROUTAGE (theme_mapping.yaml), pas la liste des fichiers actuels du dossier. Au prochain reclassify, les fichiers dont le LLM Vision a détecté un de ces thèmes y seraient déplacés. Supprimer une règle n'affecte pas les fichiers déjà rangés — seulement où ils iraient au prochain reclassify.">ⓘ</span>
+                </h2>
                 <span class="tax-col-sub" id="tax-mapped-sub">Sélectionne un dossier</span>
             </header>
             <ul id="tax-mapped-list" class="tax-mapped-list"></ul>

@@ -1857,6 +1857,22 @@ async def categories_dormant_api(profile: str):
     return JSONResponse(categories.dormant_audit(profile))
 
 
+@app.get("/api/categories/suggest-path")
+async def categories_suggest_path_api(profile: str, chemin: str):
+    """Propose un chemin du tree.yaml comme cible pour un orphan.
+
+    Pour aider l'utilisateur à corriger les entries dont la cible n'existe
+    plus (typiquement après un rename de folder qui n'a pas pu cascader).
+    Le frontend appelle cet endpoint au clic sur le bouton « 💡 Suggérer »
+    du panneau Détail entry, pré-remplit le popover Renommer chemin avec
+    la suggestion + affiche la raison + les alternatives.
+    """
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    return JSONResponse(categories.suggest_target_path(profile, chemin))
+
+
 @app.post("/api/categories/keywords/bulk-delete")
 async def categories_keywords_bulk_delete_api(request: Request):
     """Delete multiple keywords in one transaction (one backup)."""
@@ -1920,6 +1936,22 @@ async def taxonomy_files_api(
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     return JSONResponse(taxonomy.list_files_in_folder(profile, path, offset, limit))
+
+
+@app.get("/api/taxonomy/folder/theme-breakdown")
+async def taxonomy_folder_theme_breakdown_api(profile: str, path: str = ""):
+    """3-way breakdown des thèmes d'un dossier — stable / incoming / outgoing.
+
+    Permet à l'utilisateur de visualiser, dans le panneau "Routage", ce qui
+    va RESTER, ce qui va ARRIVER et ce qui va PARTIR au prochain reclassify,
+    sans avoir besoin d'un dry-run complet.
+    """
+    from fastapi.responses import JSONResponse
+    try:
+        data = taxonomy.compute_folder_theme_breakdown(profile, path)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(data)
 
 
 @app.get("/api/taxonomy/theme/files")
@@ -2487,6 +2519,196 @@ async def api_agent_refonte_tree_diff(run_id: str, profile: str):
         return JSONResponse({"error": "profile query param is required"}, status_code=400)
     diff = agent_refonte.get_proposition_tree_diff(profile, run_id)
     return JSONResponse(diff)
+
+
+# ──────────── Phase C : Dialog (mutations + rollback) ────────────
+
+
+@app.get("/api/agent/refonte/c/batches")
+async def api_agent_refonte_c_batches(profile: str):
+    """Liste les batches de mutations agent (Phase C) pour le profil."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    return JSONResponse({
+        "profile": profile,
+        "batches": _c.list_batches(profile),
+    })
+
+
+@app.get("/api/agent/refonte/c/entries")
+async def api_agent_refonte_c_entries(
+    profile: str, batch_id: str | None = None, limit: int = 100,
+):
+    """Liste les entrées du journal (toutes ou filtrées par batch_id)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    limit = max(1, min(int(limit), 500))
+    return JSONResponse({
+        "profile": profile,
+        "entries": _c.list_entries(profile, batch_id=batch_id, limit=limit),
+    })
+
+
+@app.post("/api/agent/refonte/c/rollback")
+async def api_agent_refonte_c_rollback(request: Request):
+    """Restaure les YAML depuis le backup d'un batch ciblé.
+
+    Body: {profile, batch_id}.
+    """
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    batch_id = (body.get("batch_id") or "").strip()
+    try:
+        result = _c.rollback_batch(profile, batch_id)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except _c.RollbackError as exc:
+        msg = str(exc)
+        # "already been rolled back" → 409, "not found" / "no backup" → 404
+        if "already" in msg:
+            return JSONResponse({"error": msg}, status_code=409)
+        return JSONResponse({"error": msg}, status_code=404)
+
+
+@app.get("/api/agent/refonte/c/tools")
+async def api_agent_refonte_c_tools():
+    """Liste des outils mutables disponibles."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    return JSONResponse({"tools": _c.list_available_tools()})
+
+
+@app.post("/api/agent/refonte/c/conv")
+async def api_agent_refonte_c_conv_start(request: Request):
+    """Crée une nouvelle conversation pour le profil. Body: {profile}."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    try:
+        return JSONResponse(_c.start_conversation(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.get("/api/agent/refonte/c/conv")
+async def api_agent_refonte_c_conv_list(profile: str, limit: int = 20):
+    """Liste les conversations du profil."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    limit = max(1, min(int(limit), 100))
+    return JSONResponse({
+        "profile": profile,
+        "conversations": _c.list_conversations(profile, limit=limit),
+    })
+
+
+@app.get("/api/agent/refonte/c/conv/{conv_id}")
+async def api_agent_refonte_c_conv_get(conv_id: str, profile: str):
+    """Lit l'état d'une conversation (polling UI)."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    if not profile:
+        return JSONResponse({"error": "profile query param is required"}, status_code=400)
+    state = _c.get_conversation(profile, conv_id)
+    if state is None:
+        return JSONResponse({"error": f"conversation not found: {conv_id}"}, status_code=404)
+    return JSONResponse(state)
+
+
+@app.post("/api/agent/refonte/c/conv/{conv_id}/message")
+async def api_agent_refonte_c_conv_message(conv_id: str, request: Request):
+    """Envoie un message texte libre dans la conversation. Body: {profile, text}."""
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    text = (body.get("text") or "").strip()
+    try:
+        return JSONResponse(_c.send_user_message(profile, conv_id, text))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.post("/api/agent/refonte/c/conv/{conv_id}/respond")
+async def api_agent_refonte_c_conv_respond(conv_id: str, request: Request):
+    """Répond apply/skip/modify à une proposition.
+
+    Body: {profile, action, modification_text?}.
+    """
+    from fastapi.responses import JSONResponse
+
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    action = (body.get("action") or "").strip()
+    modification_text = body.get("modification_text")
+    try:
+        return JSONResponse(_c.send_user_response(
+            profile, conv_id, action,
+            modification_text=modification_text,
+        ))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+@app.post("/api/agent/refonte/c/mutate")
+async def api_agent_refonte_c_mutate(request: Request):
+    """Invoque une mutation agent (add_folder, rename, merge, etc.).
+
+    Body: {profile, tool, args, batch_id?}.
+    `batch_id` est optionnel — généré si absent. Passer le même batch_id
+    sur plusieurs appels groupe les mutations sous un seul snapshot
+    (rollback restaure l'état AVANT la 1re mutation du batch).
+    """
+    from fastapi.responses import JSONResponse
+
+    from agents.refonte import mutations as _mut
+    from dashboard import agent_refonte_phase_c as _c
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    tool = (body.get("tool") or "").strip()
+    args = body.get("args") or {}
+    batch_id = body.get("batch_id")
+    if not isinstance(args, dict):
+        return JSONResponse({"error": "args must be a JSON object"}, status_code=400)
+    try:
+        result = _c.invoke_mutation(profile, tool, args, batch_id=batch_id)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except _mut.MutationError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except TypeError as exc:
+        # Arguments manquants ou en trop pour le tool
+        return JSONResponse({"error": f"invalid args: {exc}"}, status_code=400)
 
 
 @app.get("/api/agent/refonte/proposition/{run_id}/simulation")

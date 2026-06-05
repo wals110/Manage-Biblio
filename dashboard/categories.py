@@ -143,8 +143,15 @@ def _load_raw(profile: str) -> dict:
     return loaded if isinstance(loaded, dict) else {}
 
 
-def _normalize_entry(raw: dict) -> dict | None:
-    """Validate + clean a single entry. Returns None on bad shape."""
+def _normalize_entry(raw: dict, tree_folders: set[str] | None = None) -> dict | None:
+    """Validate + clean a single entry. Returns None on bad shape.
+
+    Quand ``tree_folders`` est fourni (set des chemins de ``tree.yaml``),
+    chaque entry est annotée ``is_orphan: bool`` — True si la ``chemin``
+    cible n'existe plus dans l'arborescence (typiquement après un rename
+    de folder fait AVANT que la cascade Phase X n'existe). L'UI peut alors
+    afficher un badge ⚠ pour permettre à l'utilisateur de corriger.
+    """
     if not isinstance(raw, dict):
         return None
     chemin = str(raw.get("chemin") or "").strip()
@@ -158,12 +165,15 @@ def _normalize_entry(raw: dict) -> dict | None:
     if not isinstance(mots_cles_raw, list):
         mots_cles_raw = []
     mots_cles = [str(m).strip() for m in mots_cles_raw if str(m).strip()]
-    return {
+    entry = {
         "chemin": chemin,
         "priorite": priorite,
         "mots_cles": mots_cles,
         "n_keywords": len(mots_cles),
     }
+    if tree_folders is not None:
+        entry["is_orphan"] = chemin not in tree_folders
+    return entry
 
 
 def build_snapshot(profile: str, force_reload: bool = False) -> dict:
@@ -210,18 +220,34 @@ def build_snapshot(profile: str, force_reload: bool = False) -> dict:
         return out
 
     raw = _load_raw(profile)
+    # Charge tree.yaml du profil pour annoter chaque entry avec is_orphan
+    # (chemin qui n'existe plus dans l'arbo après un rename antérieur au
+    # cascade fix). Échec silencieux ou fichier absent : on n'annote pas,
+    # l'UI ne montrera juste pas de badge (vs annoter à tort comme orphan
+    # quand on n'a pas l'info — ce qui rendrait toutes les entries rouges).
+    tree_folders: set[str] | None = None
+    try:
+        from dashboard import taxonomy as _tax
+        if _tax._tree_path(profile).exists():
+            tree_folders = set(_tax._load_tree(profile))
+    except Exception:  # noqa: BLE001
+        tree_folders = None
+
     total_entries = 0
     total_keywords = 0
+    n_orphans = 0
     groups = []
     for group_name, group_entries in raw.items():
         if not isinstance(group_entries, list):
             continue
         cleaned: list[dict] = []
         for raw_entry in group_entries:
-            normalized = _normalize_entry(raw_entry)
+            normalized = _normalize_entry(raw_entry, tree_folders)
             if normalized is None:
                 continue
             cleaned.append(normalized)
+            if normalized.get("is_orphan"):
+                n_orphans += 1
         # Sort: lowest priority first (1 = highest), then path alpha
         cleaned.sort(key=lambda r: (r["priorite"], r["chemin"].lower()))
         for e in cleaned:
@@ -230,6 +256,7 @@ def build_snapshot(profile: str, force_reload: bool = False) -> dict:
         groups.append({
             "group": str(group_name),
             "n_entries": len(cleaned),
+            "n_orphans": sum(1 for e in cleaned if e.get("is_orphan")),
             "entries": cleaned,
         })
     groups.sort(key=lambda g: g["group"].lower())
@@ -239,6 +266,7 @@ def build_snapshot(profile: str, force_reload: bool = False) -> dict:
         "n_groups": len(groups),
         "n_entries": total_entries,
         "n_keywords": total_keywords,
+        "n_orphans": n_orphans,
         "avg_keywords": (round(total_keywords / total_entries, 1)
                          if total_entries else 0.0),
     }
@@ -487,6 +515,267 @@ def delete_entry(profile: str, group: str, chemin: str) -> dict:
         "n_keywords_removed": len(removed.get("mots_cles") or []),
         "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
     }
+
+
+def cascade_rename_target(
+    profile: str, old_path: str, new_path: str,
+) -> dict:
+    """Rewrite every `chemin: <old_path>` (or `<old_path>/*`) in
+    ``categories.yaml`` to point at ``new_path`` (or ``new_path/*``).
+
+    Appelée depuis ``taxonomy._change_folder_path`` après un rename/move de
+    folder dans l'arbo : sans ce relayage, les entries des Catégories
+    pointaient vers un dossier qui n'existait plus côté tree.yaml /
+    filesystem, donc la classification fallback (étape 2 du pipeline) ne
+    rangeait plus rien depuis ce groupe.
+
+    Collision possible : si une entry ``new_path`` existe DÉJÀ dans le même
+    groupe (le user l'avait créée à la main avant le rename), on fusionne
+    les ``mots_cles`` (dedup case-insensitive) et on garde la ``priorite``
+    minimale des deux. Aucune perte de travail manuel.
+
+    No-op (retour ``n_entries_updated=0``) si :
+      - ``categories.yaml`` absent du profil
+      - aucun chemin ne matche ``old_path`` (ni en exact ni en préfixe)
+
+    Backup créé UNIQUEMENT si quelque chose change — pas de pollution
+    inutile du dossier ``.cache/categories-backups/``.
+    """
+    old_path = (old_path or "").strip().strip("/")
+    new_path = (new_path or "").strip().strip("/")
+    if not old_path or not new_path or old_path == new_path:
+        return {"ok": True, "n_entries_updated": 0, "n_merged": 0,
+                "backup": None}
+
+    if not _categories_path(profile).exists():
+        return {"ok": True, "n_entries_updated": 0, "n_merged": 0,
+                "backup": None, "skipped": "no_categories_yaml"}
+
+    prefix = old_path + "/"
+
+    def _remap(chemin_val: str) -> str | None:
+        s = (chemin_val or "").strip()
+        if not s:
+            return None
+        if s == old_path:
+            return new_path
+        if s.startswith(prefix):
+            return new_path + "/" + s[len(prefix):]
+        return None
+
+    with _locks[profile]:
+        payload = _load_mutable(profile)
+        if not payload:
+            return {"ok": True, "n_entries_updated": 0, "n_merged": 0,
+                    "backup": None}
+
+        n_updated = 0
+        n_merged = 0
+        for group_name, entries in list(payload.items()):
+            if not isinstance(entries, list) or not entries:
+                continue
+            # Index des chemins existants APRÈS rename hypothétique → permet
+            # de détecter et fusionner les collisions à l'intérieur du group.
+            by_path: dict[str, dict] = {}
+            new_entries: list[dict] = []
+            for raw in entries:
+                if not isinstance(raw, dict):
+                    new_entries.append(raw)
+                    continue
+                remapped = _remap(str(raw.get("chemin") or ""))
+                if remapped is not None:
+                    raw = dict(raw)  # avoid mutating input
+                    raw["chemin"] = remapped
+                    n_updated += 1
+                key = str(raw.get("chemin") or "")
+                if key in by_path:
+                    # Fusion : dedup mots_cles case-insensitive + min(priorite)
+                    existing = by_path[key]
+                    ex_mots = existing.get("mots_cles") or []
+                    new_mots = raw.get("mots_cles") or []
+                    seen = {str(m).strip().lower(): str(m).strip()
+                            for m in ex_mots if str(m).strip()}
+                    for m in new_mots:
+                        ml = str(m).strip().lower()
+                        if ml and ml not in seen:
+                            seen[ml] = str(m).strip()
+                    existing["mots_cles"] = list(seen.values())
+                    try:
+                        p_ex = int(existing.get("priorite") or 0)
+                        p_new = int(raw.get("priorite") or 0)
+                        # priorite 0 = absente, on prend la valeur réelle si l'autre est 0
+                        if p_ex == 0:
+                            existing["priorite"] = p_new
+                        elif p_new == 0:
+                            pass
+                        else:
+                            existing["priorite"] = min(p_ex, p_new)
+                    except (TypeError, ValueError):
+                        pass
+                    n_merged += 1
+                else:
+                    by_path[key] = raw
+                    new_entries.append(raw)
+            payload[group_name] = new_entries
+
+        if n_updated == 0:
+            return {"ok": True, "n_entries_updated": 0, "n_merged": 0,
+                    "backup": None}
+
+        backup = _backup_file(profile)
+        _save_mutable(profile, payload)
+        reset_cache(profile)
+
+    return {
+        "ok": True,
+        "n_entries_updated": n_updated,
+        "n_merged": n_merged,
+        "backup": (str(backup.relative_to(data.get_project_root()))
+                   if backup else None),
+    }
+
+
+_PREFIX_NUM_RE = re.compile(r"^\s*\d{1,2}\s*-?\s*")
+
+
+def _normalize_segment(s: str) -> str:
+    """Drop leading numeric prefix ("01 - ", "02-", "1 ") + lowercase.
+    Permet de matcher 'CHIMIE' avec '03 - CHIMIE' ou 'JEUX-VIDEO' avec
+    '06 - JEUX-VIDEO' — pattern systématique d'ordonnancement des folders
+    qu'on observe dans la bibliothèque."""
+    return _PREFIX_NUM_RE.sub("", (s or "").strip()).strip().lower()
+
+
+def _normalize_path(p: str) -> str:
+    return "/".join(_normalize_segment(seg) for seg in (p or "").split("/") if seg)
+
+
+def suggest_target_path(profile: str, orphan_chemin: str) -> dict:
+    """Propose un chemin du tree.yaml comme cible pour un orphan.
+
+    Cas typiques d'orphans (cf. cause racine de la cascade) :
+      - Folder renommé en ajoutant un préfixe d'ordonnancement (``01 - ``,
+        ``02 - ``…) à un segment du milieu : ``X/CHIMIE/Y`` → ``X/03 -
+        CHIMIE/Y``. Le matching après normalisation (drop prefixes) fait
+        ressortir un candidat unique.
+      - Folder déplacé ailleurs : matching exact échoue, on tente par
+        suffixe descendant (nom le plus long → nom de base).
+      - Folder supprimé : aucun match → l'utilisateur doit décider (supprimer
+        l'entry, ou re-créer le folder).
+
+    Renvoie::
+
+        {
+          "suggestion": str | None,
+          "confidence": "high" | "medium" | "low" | "none",
+          "alternatives": [str, ...],     # autres candidats <= 5
+          "reason": str                   # humain-lisible, pour l'UI
+        }
+
+    Confidence :
+      - high   : chemin normalisé == path normalisé d'UN folder du tree
+                 (collision typique d'ajout de préfixe numérique).
+      - medium : match unique sur le suffixe long (>= 2 segments).
+      - low    : match unique sur le segment final uniquement, OU plusieurs
+                 candidats matched (alternatives renseignées).
+      - none   : aucun match.
+    """
+    from dashboard import taxonomy as _tax
+    chemin = (orphan_chemin or "").strip().strip("/")
+    if not chemin:
+        return {"suggestion": None, "confidence": "none",
+                "alternatives": [], "reason": "chemin vide"}
+
+    try:
+        tree = _tax._load_tree(profile)
+    except Exception:  # noqa: BLE001
+        tree = []
+    if not tree:
+        return {"suggestion": None, "confidence": "none",
+                "alternatives": [],
+                "reason": "tree.yaml introuvable ou vide pour ce profil"}
+
+    # Si le chemin existe déjà dans le tree, pas d'orphan (mais on l'a quand
+    # même appelé) — renvoie tel quel.
+    if chemin in tree:
+        return {"suggestion": chemin, "confidence": "high",
+                "alternatives": [],
+                "reason": "ce chemin existe déjà dans tree.yaml"}
+
+    chemin_n = _normalize_path(chemin)
+    # Index tree paths par leur version normalisée
+    tree_by_norm: dict[str, list[str]] = {}
+    for t in tree:
+        tn = _normalize_path(t)
+        tree_by_norm.setdefault(tn, []).append(t)
+
+    # Stratégie 1 — match exact après normalisation. Couvre le cas "préfixe
+    # numérique ajouté à un segment du milieu".
+    if chemin_n in tree_by_norm:
+        cands = tree_by_norm[chemin_n]
+        if len(cands) == 1:
+            return {
+                "suggestion": cands[0],
+                "confidence": "high",
+                "alternatives": [],
+                "reason": "match normalisé unique (préfixe numérique ajouté)",
+            }
+        return {
+            "suggestion": cands[0],
+            "confidence": "low",
+            "alternatives": cands[1:5],
+            "reason": f"{len(cands)} folders ont le même chemin normalisé",
+        }
+
+    # Stratégie 2 — suffixe long (>= 2 segments) sur le chemin normalisé.
+    parts_n = chemin_n.split("/")
+    for n in range(min(3, len(parts_n)), 1, -1):  # 3, 2 segments
+        suffix = "/".join(parts_n[-n:])
+        cands = [
+            t for t, tn in (
+                (orig, _normalize_path(orig)) for orig in tree
+            ) if tn.endswith("/" + suffix) or tn == suffix
+        ]
+        if not cands:
+            continue
+        if len(cands) == 1:
+            return {
+                "suggestion": cands[0],
+                "confidence": "medium",
+                "alternatives": [],
+                "reason": f"match unique par suffixe ({n} segments)",
+            }
+        return {
+            "suggestion": cands[0],
+            "confidence": "low",
+            "alternatives": cands[1:5],
+            "reason": f"{len(cands)} candidats sur suffixe {n}-segments",
+        }
+
+    # Stratégie 3 — segment final uniquement.
+    last_n = parts_n[-1]
+    cands = []
+    for orig in tree:
+        tn_parts = _normalize_path(orig).split("/")
+        if tn_parts and tn_parts[-1] == last_n:
+            cands.append(orig)
+    if cands:
+        if len(cands) == 1:
+            return {
+                "suggestion": cands[0],
+                "confidence": "low",
+                "alternatives": [],
+                "reason": "match unique sur le nom de base (parent différent)",
+            }
+        return {
+            "suggestion": cands[0],
+            "confidence": "low",
+            "alternatives": cands[1:5],
+            "reason": f"{len(cands)} candidats sur le nom de base",
+        }
+
+    return {"suggestion": None, "confidence": "none", "alternatives": [],
+            "reason": "aucun candidat trouvé — folder probablement supprimé"}
 
 
 def add_keyword(profile: str, group: str, chemin: str, keyword: str) -> dict:

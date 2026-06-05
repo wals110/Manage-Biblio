@@ -1039,5 +1039,284 @@ class TestEntryFilesEndpoint(WriteTestBase):
         # limit clamped at 500 server-side
 
 
+# ─── Cascade rename (taxonomy → categories) ──────────────────────────────
+
+
+class TestCascadeRenameTarget(CategoriesTestBase):
+    """`cascade_rename_target` doit rewriter les `chemin:` qui matchent
+    l'ancien chemin (en exact ou en préfixe), backup la version pré-rename,
+    invalider le cache, et fusionner intelligemment les collisions."""
+
+    def _write_tree(self, folders: list[str]):
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": folders}, sort_keys=False)
+        )
+
+    def test_exact_path_renamed(self):
+        self._write_yaml({
+            "loisirs": [
+                {"chemin": "08-LOISIRS/JEUX-VIDEO",
+                 "priorite": 2, "mots_cles": ["gaming", "console"]},
+            ],
+        })
+        r = categories.cascade_rename_target(
+            self.profile_name,
+            "08-LOISIRS/JEUX-VIDEO",
+            "08-LOISIRS/06 - JEUX-VIDEO",
+        )
+        self.assertEqual(r["n_entries_updated"], 1)
+        self.assertEqual(r["n_merged"], 0)
+        self.assertIsNotNone(r["backup"])
+        # Snapshot reflète le nouveau chemin
+        snap = categories.build_snapshot(self.profile_name, force_reload=True)
+        chemins = [e["chemin"] for g in snap["groups"] for e in g["entries"]]
+        self.assertIn("08-LOISIRS/06 - JEUX-VIDEO", chemins)
+        self.assertNotIn("08-LOISIRS/JEUX-VIDEO", chemins)
+
+    def test_prefix_path_renamed_cascades_children(self):
+        """rename `08-LOISIRS` → `LOISIRS-NEW` doit aussi remapper
+        `08-LOISIRS/JEUX-VIDEO` vers `LOISIRS-NEW/JEUX-VIDEO`."""
+        self._write_yaml({
+            "loisirs": [
+                {"chemin": "08-LOISIRS/JEUX-VIDEO", "priorite": 2, "mots_cles": []},
+                {"chemin": "08-LOISIRS/CUISINE",    "priorite": 5, "mots_cles": []},
+                {"chemin": "01-AUTRE",              "priorite": 5, "mots_cles": []},
+            ],
+        })
+        r = categories.cascade_rename_target(
+            self.profile_name, "08-LOISIRS", "LOISIRS-NEW",
+        )
+        self.assertEqual(r["n_entries_updated"], 2)
+        snap = categories.build_snapshot(self.profile_name, force_reload=True)
+        chemins = [e["chemin"] for g in snap["groups"] for e in g["entries"]]
+        self.assertIn("LOISIRS-NEW/JEUX-VIDEO", chemins)
+        self.assertIn("LOISIRS-NEW/CUISINE", chemins)
+        self.assertIn("01-AUTRE", chemins)  # intouché
+
+    def test_no_match_no_backup_no_op(self):
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/AI", "priorite": 2, "mots_cles": ["ai"]},
+            ],
+        })
+        r = categories.cascade_rename_target(
+            self.profile_name, "08-LOISIRS", "LOISIRS-NEW",
+        )
+        self.assertEqual(r["n_entries_updated"], 0)
+        self.assertIsNone(r["backup"])
+
+    def test_missing_categories_yaml_returns_no_op(self):
+        r = categories.cascade_rename_target(
+            self.profile_name, "any", "thing",
+        )
+        self.assertEqual(r["n_entries_updated"], 0)
+        self.assertIn("skipped", r)
+
+    def test_same_old_new_returns_no_op(self):
+        self._write_yaml({"g": [{"chemin": "X", "priorite": 1, "mots_cles": []}]})
+        r = categories.cascade_rename_target(self.profile_name, "X", "X")
+        self.assertEqual(r["n_entries_updated"], 0)
+        self.assertIsNone(r["backup"])
+
+    def test_collision_merges_keywords_and_takes_min_priority(self):
+        """User avait déjà créé manuellement une entry au futur chemin.
+        Lors du rename, les deux entries collident → on fusionne mots_cles
+        (dedup case-insensitive) + on garde la priorite minimale."""
+        self._write_yaml({
+            "loisirs": [
+                {"chemin": "JV-OLD",
+                 "priorite": 7, "mots_cles": ["gaming", "console"]},
+                {"chemin": "JV-NEW",
+                 "priorite": 3, "mots_cles": ["Gaming", "jeu video"]},
+            ],
+        })
+        r = categories.cascade_rename_target(
+            self.profile_name, "JV-OLD", "JV-NEW",
+        )
+        self.assertEqual(r["n_entries_updated"], 1)
+        self.assertEqual(r["n_merged"], 1)
+        snap = categories.build_snapshot(self.profile_name, force_reload=True)
+        loisirs = next(g for g in snap["groups"] if g["group"] == "loisirs")
+        self.assertEqual(len(loisirs["entries"]), 1)
+        entry = loisirs["entries"][0]
+        self.assertEqual(entry["chemin"], "JV-NEW")
+        self.assertEqual(entry["priorite"], 3)  # min(7, 3)
+        # Dedup case-insensitive : "gaming" et "Gaming" → 1 seul
+        mots_lower = sorted(m.lower() for m in entry["mots_cles"])
+        self.assertEqual(mots_lower, ["console", "gaming", "jeu video"])
+
+    def test_collision_with_priority_zero_takes_other(self):
+        """priorite=0 dans le YAML = absente. Quand on fusionne, on prend
+        l'autre valeur si l'une est 0."""
+        self._write_yaml({
+            "g": [
+                {"chemin": "OLD", "priorite": 0, "mots_cles": ["a"]},
+                {"chemin": "NEW", "priorite": 5, "mots_cles": ["b"]},
+            ],
+        })
+        r = categories.cascade_rename_target(self.profile_name, "OLD", "NEW")
+        self.assertEqual(r["n_merged"], 1)
+        snap = categories.build_snapshot(self.profile_name, force_reload=True)
+        e = snap["groups"][0]["entries"][0]
+        self.assertEqual(e["priorite"], 5)
+
+
+# ─── Orphan detection in snapshot ────────────────────────────────────────
+
+
+class TestOrphanDetection(CategoriesTestBase):
+
+    def _write_tree(self, folders: list[str]):
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": folders}, sort_keys=False)
+        )
+
+    def test_is_orphan_when_chemin_absent_from_tree(self):
+        self._write_tree(["02-INFO", "02-INFO/AI"])
+        self._write_yaml({
+            "informatique": [
+                {"chemin": "02-INFO/AI", "priorite": 2, "mots_cles": ["ai"]},
+                {"chemin": "02-INFO/REMOVED-FOLDER",
+                 "priorite": 5, "mots_cles": ["x"]},
+            ],
+        })
+        r = categories.build_snapshot(self.profile_name, force_reload=True)
+        entries = {e["chemin"]: e for g in r["groups"] for e in g["entries"]}
+        self.assertFalse(entries["02-INFO/AI"]["is_orphan"])
+        self.assertTrue(entries["02-INFO/REMOVED-FOLDER"]["is_orphan"])
+
+    def test_stats_counts_n_orphans(self):
+        self._write_tree(["A"])
+        self._write_yaml({
+            "g": [
+                {"chemin": "A",   "priorite": 1, "mots_cles": []},
+                {"chemin": "B",   "priorite": 2, "mots_cles": []},
+                {"chemin": "C",   "priorite": 3, "mots_cles": []},
+            ],
+        })
+        r = categories.build_snapshot(self.profile_name, force_reload=True)
+        self.assertEqual(r["stats"]["n_orphans"], 2)
+        self.assertEqual(r["groups"][0]["n_orphans"], 2)
+
+    def test_no_tree_yaml_falls_back_without_orphan_flag(self):
+        """Profil sans tree.yaml → on ne crash pas, on n'annote pas."""
+        self._write_yaml({
+            "g": [{"chemin": "X", "priorite": 1, "mots_cles": []}],
+        })
+        r = categories.build_snapshot(self.profile_name, force_reload=True)
+        e = r["groups"][0]["entries"][0]
+        # is_orphan absent quand pas de tree_folders disponible
+        self.assertNotIn("is_orphan", e)
+
+
+# ─── Suggest target path (heuristique pour assister la correction) ──────
+
+
+class TestSuggestTargetPath(CategoriesTestBase):
+    """`suggest_target_path` propose un chemin du tree.yaml comme cible pour
+    un orphan, par normalisation des préfixes numériques + match suffixe."""
+
+    def _write_tree(self, folders: list[str]):
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": folders}, sort_keys=False)
+        )
+
+    def test_high_confidence_normalized_match(self):
+        """Pattern typique : préfixe '0X - ' ajouté au milieu du chemin."""
+        self._write_tree([
+            "01-SCIENCES",
+            "01-SCIENCES/03 - CHIMIE",
+            "01-SCIENCES/03 - CHIMIE/01-Chimie-Organique",
+        ])
+        r = categories.suggest_target_path(
+            self.profile_name, "01-SCIENCES/CHIMIE/01-Chimie-Organique",
+        )
+        self.assertEqual(r["suggestion"],
+                         "01-SCIENCES/03 - CHIMIE/01-Chimie-Organique")
+        self.assertEqual(r["confidence"], "high")
+        self.assertEqual(r["alternatives"], [])
+
+    def test_medium_confidence_suffix_match(self):
+        """Suffixe 2-segments unique sans match normalisé exact."""
+        self._write_tree([
+            "07-LOISIRS",
+            "07-LOISIRS/01 - DESSIN",
+            "07-LOISIRS/01 - DESSIN/Paysage",
+        ])
+        r = categories.suggest_target_path(
+            self.profile_name, "08-LOISIRS/DESSIN/Paysage",
+        )
+        # Le préfixe 08- ≠ 07-, donc le match normalisé exact échoue, mais
+        # le suffixe "dessin/paysage" matche un seul tree path.
+        self.assertEqual(r["suggestion"], "07-LOISIRS/01 - DESSIN/Paysage")
+        self.assertIn(r["confidence"], ("high", "medium"))
+
+    def test_no_match_returns_none(self):
+        self._write_tree(["01-SCIENCES", "02-INFORMATIQUE"])
+        r = categories.suggest_target_path(
+            self.profile_name, "99-RELIGIONS/CHRISTIANISME",
+        )
+        self.assertIsNone(r["suggestion"])
+        self.assertEqual(r["confidence"], "none")
+
+    def test_ambiguous_returns_alternatives(self):
+        """Deux folders dans le tree ont le même chemin normalisé."""
+        self._write_tree([
+            "A",
+            "A/01 - X",
+            "B",
+            "B/02 - X",
+        ])
+        # Orphan "A/X" — normalise en "a/x", deux candidats matchent par suffixe
+        r = categories.suggest_target_path(self.profile_name, "Z/X")
+        # Le match exact normalisé n'existe pas pour "z/x" (Z absent), mais
+        # via suffixe ou nom de base, on a 2 candidats : A/01 - X et B/02 - X.
+        self.assertIsNotNone(r["suggestion"])
+        self.assertEqual(r["confidence"], "low")
+        self.assertGreaterEqual(len(r["alternatives"]), 1)
+
+    def test_chemin_already_exists_in_tree_high_confidence(self):
+        """Cas dégénéré : le chemin n'est pas orphan, on retourne tel quel."""
+        self._write_tree(["X/Y", "Z"])
+        r = categories.suggest_target_path(self.profile_name, "X/Y")
+        self.assertEqual(r["suggestion"], "X/Y")
+        self.assertEqual(r["confidence"], "high")
+
+    def test_no_tree_yaml_returns_none(self):
+        # Pas de tree.yaml créé du tout
+        r = categories.suggest_target_path(self.profile_name, "anything")
+        self.assertIsNone(r["suggestion"])
+        self.assertEqual(r["confidence"], "none")
+
+    def test_empty_chemin_returns_none(self):
+        self._write_tree(["X"])
+        r = categories.suggest_target_path(self.profile_name, "")
+        self.assertIsNone(r["suggestion"])
+
+
+class TestSuggestPathEndpoint(CategoriesTestBase):
+
+    def test_endpoint_returns_suggestion(self):
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": [
+                "01-SCIENCES",
+                "01-SCIENCES/03 - CHIMIE",
+            ]}, sort_keys=False)
+        )
+        with TestClient(app) as client:
+            r = client.get(
+                "/api/categories/suggest-path",
+                params={"profile": self.profile_name,
+                        "chemin": "01-SCIENCES/CHIMIE"},
+            )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["suggestion"], "01-SCIENCES/03 - CHIMIE")
+        self.assertEqual(body["confidence"], "high")
+
+
 if __name__ == "__main__":
     unittest.main()
