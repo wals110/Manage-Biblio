@@ -1,9 +1,9 @@
-{% extends "base.html" %}
-{% from 'macros/widgets.html' import kpi_card %}
-{% set active = "comparer" %}
-{% block title %}Comparer{% endblock %}
+{# Sub-tab "Comparer" du hub Tests — anciennement /comparer.
+   Diff check-by-check entre run courant et un ancien run.
+   Contexte attendu : current_run, old_run_data, old_runs, selected_old_run,
+   common_series, series_filter, diff. #}
+{% from "macros/widgets.html" import kpi_card %}
 
-{% block content %}
 <h1 class="page-title">Comparer</h1>
 <p class="page-subtitle">Diff entre le run courant et un ancien run</p>
 
@@ -30,7 +30,8 @@
 
         <div class="diff-run-card">
             <label class="diff-label">Ancien run</label>
-            <form method="get" action="/comparer" id="compare-form">
+            <form method="get" action="/tests" id="compare-form">
+                <input type="hidden" name="view" value="comparer">
                 <select name="old_run" class="filter-select" onchange="this.form.submit()">
                     <option value="">-- Choisir un run --</option>
                     {% for r in old_runs %}
@@ -136,5 +137,3 @@
     <p class="text-muted">Le run courant sera compar&eacute; check par check avec l'ancien run choisi.</p>
 </div>
 {% endif %}
-
-{% endblock %}

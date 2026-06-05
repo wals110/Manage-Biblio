@@ -1,9 +1,11 @@
-{% extends "base.html" %}
-{% from 'macros/widgets.html' import kpi_card, pagination, filter_bar, data_table %}
-{% set active = "rapports" %}
-{% block title %}Rapports{% endblock %}
+{# Sub-tab "Rapports" du hub Tests — anciennement /rapports.
+   Viewer CSV avec filtres / pagination / tri.
+   Contexte attendu : report_type, csv_files, available_tests, test_filter,
+   selected_file, headers, rows, stats, statuses, sections, search,
+   status_filter, section_filter, sort, order, page, total_pages,
+   total_rows, associated_test. #}
+{% from "macros/widgets.html" import kpi_card, pagination, filter_bar, data_table %}
 
-{% block content %}
 <div class="page-header-row">
     <h1 class="page-title">Rapports</h1>
     <div class="header-selectors">
@@ -42,7 +44,7 @@
 
 {% if associated_test %}
 <div class="test-link-banner">
-    Produit par <a href="/tests#{{ associated_test.id }}">{{ associated_test.id }}{% if associated_test.name %} &mdash; {{ associated_test.name }}{% endif %}</a>
+    Produit par <a href="/tests?view=exec#{{ associated_test.id }}">{{ associated_test.id }}{% if associated_test.name %} &mdash; {{ associated_test.name }}{% endif %}</a>
 </div>
 {% endif %}
 
@@ -104,6 +106,7 @@ const state = {
 function buildUrl(overrides) {
     const params = new URLSearchParams();
     const s = {...state, ...overrides};
+    params.set('view', 'rapports');
     params.set('type', s.type);
     if (s.test) params.set('test', s.test);
     if (s.file) params.set('file', s.file);
@@ -113,7 +116,7 @@ function buildUrl(overrides) {
     if (s.sort) params.set('sort', s.sort);
     if (s.order) params.set('order', s.order);
     if (s.page > 1) params.set('page', s.page);
-    return '/rapports?' + params.toString();
+    return '/tests?' + params.toString();
 }
 
 function updateType(type) {
@@ -129,4 +132,3 @@ function updateFile(file) {
 }
 </script>
 <script src="/static/js/filters.js"></script>
-{% endblock %}

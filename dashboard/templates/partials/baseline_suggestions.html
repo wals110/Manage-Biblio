@@ -1,9 +1,8 @@
-{% extends "base.html" %}
-{% from 'macros/widgets.html' import kpi_card %}
-{% set active = "suggestions" %}
-{% block title %}Suggestions{% endblock %}
+{# Sub-tab "Suggestions" du hub Baseline — anciennement /suggestions.
+   Propositions de nouveaux dossiers issues du pipeline classify.
+   Contexte attendu : suggestions (list), total_files (int). #}
+{% from "macros/widgets.html" import kpi_card %}
 
-{% block content %}
 <h1 class="page-title">Suggestions</h1>
 <p class="page-subtitle">Propositions de nouveaux dossiers issues de la classification</p>
 
@@ -50,4 +49,3 @@
     <div class="empty-state-hint">Lancez une classification pour en g&eacute;n&eacute;rer :<br><code>./klodo.sh classify /chemin --execute</code></div>
 </div>
 {% endif %}
-{% endblock %}

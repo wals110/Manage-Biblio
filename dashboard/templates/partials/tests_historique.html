@@ -1,9 +1,8 @@
-{% extends "base.html" %}
-{% from 'macros/widgets.html' import kpi_card %}
-{% set active = "historique" %}
-{% block title %}Historique{% endblock %}
+{# Sub-tab "Historique" du hub Tests — anciennement /historique.
+   Timeline KPI + table évolution des runs.
+   Contexte attendu : history (list), run_type (str), run_types (list). #}
+{% from "macros/widgets.html" import kpi_card %}
 
-{% block content %}
 <h1 class="page-title">Historique</h1>
 <p class="page-subtitle">&Eacute;volution des r&eacute;sultats de tests fonctionnels au fil du temps</p>
 
@@ -77,7 +76,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        <a href="/tests?run={{ run.filename }}" class="btn btn-sm">Voir</a>
+                        <a href="/tests?view=exec&run={{ run.filename }}" class="btn btn-sm">Voir</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -89,4 +88,3 @@
 <!-- TODO: Graphiques par série à implémenter dans une prochaine itération -->
 
 {% endif %}
-{% endblock %}

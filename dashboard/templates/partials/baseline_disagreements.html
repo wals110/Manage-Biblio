@@ -1,0 +1,205 @@
+{# Sub-tab "Désaccords" du hub Baseline — anciennement /baseline.
+   Validation manuelle des désaccords entre prédiction Klodo et placement
+   actuel des fichiers.
+   Contexte attendu : profile, available_profiles, runs, selected_run,
+   record, folders, stats. #}
+
+<h1 class="page-title">Baseline classification</h1>
+<p class="page-subtitle">
+    Compare les prédictions du Klodo courant à l'emplacement actuel des fichiers.
+    Tu n'arbitres que les désaccords ; les accords sont considérés corrects.
+</p>
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# Bandeau profil + run sélectionné                                  #}
+{# ════════════════════════════════════════════════════════════════ #}
+<div class="baseline-toolbar">
+    <div class="baseline-toolbar-group">
+        <label class="filter-label">Profil :</label>
+        <select id="profile-select" class="filter-select"
+                onchange="window.location.href='/baseline?view=disagreements&profile=' + this.value">
+            {% for p in available_profiles %}
+            <option value="{{ p }}" {% if p == profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="baseline-toolbar-group">
+        <label class="filter-label">Run :</label>
+        {% if runs %}
+        <select id="run-select" class="filter-select"
+                onchange="window.location.href='/baseline?view=disagreements&profile={{ profile }}&run_id=' + this.value">
+            {% for r in runs %}
+            <option value="{{ r.run_id }}"
+                    {% if selected_run and r.run_id == selected_run.run_id %}selected{% endif %}>
+                {{ r.created_at[:16] }} · v{{ r.klodo_version }} · {{ r.n_disagreements }}/{{ r.n_files }} désaccords
+            </option>
+            {% endfor %}
+        </select>
+        {% else %}
+        <span class="text-muted">Aucun run pour ce profil</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if not runs %}
+<div class="no-data">
+    <p><strong>Aucun run baseline pour le profil <code>{{ profile }}</code>.</strong></p>
+    <p>Lance un run avec :</p>
+    <pre class="code-block">uv run python scripts/baseline_run.py --profile {{ profile }} --workers 8</pre>
+    <p class="text-muted">
+        Le run prédit où Klodo classerait chaque fichier (avec cache vision)
+        puis identifie les désaccords avec l'emplacement actuel.
+    </p>
+</div>
+
+{% elif record is none %}
+<div class="baseline-done">
+    <h2>✓ Tous les désaccords arbitrés</h2>
+    {% if stats %}
+    <p>
+        <strong>{{ stats.klodo_right }}</strong> Klodo a raison ·
+        <strong>{{ stats.actual_right }}</strong> Actuel a raison ·
+        <strong>{{ stats.neither_right }}</strong> Aucun des deux ·
+        <strong>{{ stats.skip }}</strong> sautés
+    </p>
+    <p class="text-muted">
+        ({{ stats.n_agreements }} accords + {{ stats.n_disagreements }} désaccords arbitrés
+        sur {{ stats.n_files }} fichiers évalués)
+    </p>
+    {% endif %}
+    <p>Pour générer le rapport :</p>
+    <pre class="code-block">uv run python scripts/compute_baseline.py --profile {{ profile }} --run-id {{ selected_run.run_id }}</pre>
+</div>
+
+{% else %}
+<div class="baseline-container"
+     data-profile="{{ profile }}"
+     data-run-id="{{ selected_run.run_id }}">
+
+    <div class="baseline-progress-wrap">
+        <div class="baseline-progress-bar">
+            <div class="baseline-progress-fill"
+                 style="width: {% if stats.n_disagreements %}{{ 100 * stats.validated / stats.n_disagreements }}{% else %}0{% endif %}%"></div>
+        </div>
+        <div class="baseline-progress-text">
+            <strong id="baseline-validated">{{ stats.validated }}</strong> /
+            <strong id="baseline-total">{{ stats.n_disagreements }}</strong>
+            {% if stats.sample_active %}
+            <span class="baseline-sample-badge">échantillon</span>
+            (sur {{ stats.n_disagreements_total }} désaccords totaux)
+            {% else %}
+            désaccords
+            {% endif %}
+            arbitrés
+            <span class="text-muted">·
+                <span id="baseline-kr">{{ stats.klodo_right }}</span> Klodo ·
+                <span id="baseline-ar">{{ stats.actual_right }}</span> Actuel ·
+                <span id="baseline-nr">{{ stats.neither_right }}</span> Aucun ·
+                <span id="baseline-sk">{{ stats.skip }}</span> skip
+                · ({{ stats.n_agreements }} accords présumés corrects)
+            </span>
+        </div>
+    </div>
+
+    <div class="baseline-card">
+        <div class="baseline-thumbnail-pane">
+            <img id="baseline-thumb"
+                 src="/api/baseline/thumbnail/{{ record.file_id }}?profile={{ profile }}&run_id={{ selected_run.run_id }}"
+                 alt="Couverture"
+                 class="baseline-thumb-img">
+        </div>
+
+        <div class="baseline-info-pane">
+            <div class="baseline-filename" id="baseline-filename">{{ record.filename }}</div>
+            <div class="baseline-relpath text-muted" id="baseline-relpath">{{ record.rel_path }}</div>
+
+            <div id="baseline-vision-meta" class="baseline-vision-meta text-muted{% if not (record.theme or record.title) %} hidden{% endif %}">
+                <div id="baseline-title-row" {% if not record.title %}style="display:none"{% endif %}>
+                    📕 <em id="baseline-title">{{ record.title }}</em>
+                </div>
+                <div id="baseline-theme-row" {% if not record.theme %}style="display:none"{% endif %}>
+                    🏷️ thème détecté : <span id="baseline-theme">{{ record.theme }}</span>
+                    <span id="baseline-conf-wrap" class="text-muted" {% if not record.confidence %}style="display:none"{% endif %}>(conf. <span id="baseline-conf">{{ (record.confidence * 100) | round(0) | int if record.confidence else 0 }}</span>%)</span>
+                </div>
+            </div>
+
+            <div class="baseline-comparison">
+                <div class="baseline-side baseline-side-actual">
+                    <div class="baseline-label">Emplacement actuel</div>
+                    <code id="baseline-actual">{{ record.current_folder or '(racine)' }}</code>
+                </div>
+                <div class="baseline-vs">vs</div>
+                <div class="baseline-side baseline-side-klodo">
+                    <div class="baseline-label">Klodo prédit</div>
+                    <code id="baseline-predicted">{{ record.predicted_folder }}</code>
+                </div>
+            </div>
+
+            <div id="baseline-revisit-banner" class="baseline-revisit-banner hidden">
+                ⚠️ Tu reviens sur un fichier déjà arbitré. Verdict actuel :
+                <strong id="baseline-revisit-verdict">—</strong>.
+                Choisis un nouveau verdict pour l'écraser.
+            </div>
+
+            <div class="baseline-question">Qui a raison ?</div>
+            <div class="baseline-actions">
+                <button class="btn btn-success" data-action="klodo_right">
+                    K · Klodo a raison
+                </button>
+                <button class="btn btn-info" data-action="actual_right">
+                    A · Actuel a raison
+                </button>
+                <button class="btn btn-warning" data-action="neither_right">
+                    N · Aucun des deux…
+                </button>
+                <button class="btn btn-muted" data-action="skip">
+                    S · Skip
+                </button>
+                <button id="baseline-back-btn" class="btn btn-muted baseline-back-btn"
+                        title="Revenir au fichier précédent">
+                    ← B · Précédent
+                </button>
+            </div>
+
+            <div id="baseline-folder-picker" class="baseline-folder-picker hidden">
+                <label for="baseline-folder-input">Bon dossier :</label>
+                <input type="text" id="baseline-folder-input"
+                       class="baseline-autocomplete"
+                       placeholder="Tape pour filtrer parmi {{ folders | length }} dossiers…"
+                       autocomplete="off">
+                <div id="baseline-folder-suggestions" class="baseline-suggestions"></div>
+                <div class="baseline-folder-actions">
+                    <button id="baseline-folder-confirm" class="btn btn-success" disabled>
+                        Confirmer (Enter)
+                    </button>
+                    <button id="baseline-folder-cancel" class="btn btn-muted">
+                        Annuler (Esc)
+                    </button>
+                </div>
+            </div>
+
+            <div class="baseline-shortcuts text-muted">
+                <strong>Raccourcis :</strong>
+                <kbd>K</kbd> = Klodo correct ·
+                <kbd>A</kbd> = Actuel correct ·
+                <kbd>N</kbd> = Aucun (pickr) ·
+                <kbd>S</kbd> = Skip ·
+                <kbd>B</kbd> = Précédent ·
+                <kbd>↓</kbd>/<kbd>↑</kbd> nav suggestions ·
+                <kbd>Enter</kbd> confirmer ·
+                <kbd>Esc</kbd> annuler
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="baseline-folders-data" type="application/json">{{ folders | tojson }}</script>
+<script>
+window._baselineConfig = {
+    profile: "{{ profile }}",
+    runId: "{{ selected_run.run_id }}",
+    initialFileId: "{{ record.file_id }}",
+};
+</script>
+<script src="/static/js/baseline.js"></script>
+{% endif %}
