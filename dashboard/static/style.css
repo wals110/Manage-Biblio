@@ -3881,6 +3881,22 @@ th {
 .tax-cat-entry.dormant {
     opacity: 0.55;
 }
+.tax-cat-entry.orphan {
+    background: rgba(248, 81, 73, 0.06);
+    border-left: 2px solid rgba(248, 81, 73, 0.45);
+    padding-left: 8px;
+}
+.tax-cat-entry.orphan.selected {
+    background: rgba(248, 81, 73, 0.14);
+    border-left-color: var(--red, #f85149);
+}
+.tax-cat-entry-orphan {
+    color: #f85149;
+    font-size: 11px;
+    margin-right: 4px;
+    cursor: help;
+    flex-shrink: 0;
+}
 .tax-cat-entry-path {
     flex: 1;
     white-space: nowrap;
@@ -3888,6 +3904,11 @@ th {
     text-overflow: ellipsis;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
+}
+.tax-cat-entry.orphan .tax-cat-entry-path {
+    text-decoration: line-through;
+    text-decoration-color: rgba(248, 81, 73, 0.6);
+    color: var(--text-muted, #8b949e);
 }
 .tax-cat-entry-prio {
     font-size: 9px;
@@ -3897,6 +3918,12 @@ th {
     border-radius: 8px;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
+}
+.tax-cat-group-orphan-count {
+    color: #f85149;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: help;
 }
 
 /* Col 2 — detail */

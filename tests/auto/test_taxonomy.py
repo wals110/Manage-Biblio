@@ -963,6 +963,54 @@ class TestRenameFolder(TaxonomyTestBase):
         self.assertIn("01-SCIENCES/PHYSIQUE", tree["folders"])
 
 
+class TestRenameFolderCascadeCategories(TaxonomyTestBase):
+    """Intégration : rename d'un folder doit cascader sur categories.yaml
+    via cascade_rename_target. Sans ce relayage, les `chemin:` resteraient
+    figés sur l'ancien path → entries orphelines."""
+
+    def test_rename_cascades_to_categories_yaml(self):
+        from dashboard import categories as _cat
+        (self.profile_dir / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "loisirs": [
+                    {"chemin": "01-SCIENCES/PHYSIQUE",
+                     "priorite": 2, "mots_cles": ["physics"]},
+                    {"chemin": "01-SCIENCES/PHYSIQUE/QUANTUM",
+                     "priorite": 5, "mots_cles": ["quantum"]},
+                    {"chemin": "01-SCIENCES/MATHEMATIQUES",
+                     "priorite": 5, "mots_cles": ["math"]},
+                ],
+            }, sort_keys=False)
+        )
+        _cat.reset_cache()
+
+        r = taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS",
+        )
+        # Réponse remonte le compteur cascade
+        self.assertEqual(r["n_categories_updated"], 2)
+        self.assertEqual(r.get("n_categories_merged", 0), 0)
+        self.assertIsNotNone(r.get("categories_backup"))
+
+        # Le YAML reflète bien le nouveau chemin
+        cats = yaml.safe_load((self.profile_dir / "categories.yaml").read_text())
+        chemins = [e["chemin"] for e in cats["loisirs"]]
+        self.assertIn("01-SCIENCES/PHYS", chemins)
+        self.assertIn("01-SCIENCES/PHYS/QUANTUM", chemins)
+        self.assertIn("01-SCIENCES/MATHEMATIQUES", chemins)  # intouché
+        self.assertNotIn("01-SCIENCES/PHYSIQUE", chemins)
+
+    def test_rename_without_categories_yaml_is_noop_safe(self):
+        """Profil sans categories.yaml ne doit pas crasher le rename."""
+        # Pas de categories.yaml créé. Rename normal doit fonctionner.
+        r = taxonomy.rename_folder(
+            self.profile_name, "01-SCIENCES/PHYSIQUE", "PHYS",
+        )
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["n_categories_updated"], 0)
+        self.assertIsNone(r.get("categories_backup"))
+
+
 class TestRenameFolderEndpoint(TaxonomyTestBase):
 
     def setUp(self):

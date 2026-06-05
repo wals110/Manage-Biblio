@@ -350,6 +350,18 @@
     showToast._tid = setTimeout(() => { t.style.display = 'none'; }, 4500);
   }
 
+  // Suffixe à concaténer aux toasts rename/move quand des entries de
+  // categories.yaml ont été cascadées en plus du mapping (mention "merged"
+  // si une collision a fusionné des mots-clés).
+  function _catSuffix(r) {
+    const n = r && r.n_categories_updated;
+    if (!n) return '';
+    const m = r.n_categories_merged || 0;
+    return m > 0
+      ? `, ${n} catégorie(s) cascadée(s) [${m} fusionnée(s)]`
+      : `, ${n} catégorie(s) cascadée(s)`;
+  }
+
   // ── Busy overlay ─────────────────────────────────────────────────────
   // Locks the UI during async write actions (snapshot refetch takes 2-3s
   // and the user shouldn't be able to fire concurrent writes).
@@ -2829,7 +2841,7 @@
           return;
         }
         showToast(
-          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s)`,
+          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s)${_catSuffix(r)}`,
           'success',
         );
         // Rewrite expanded set + selection prefixes (same logic as the
@@ -3257,7 +3269,7 @@
           return;
         }
         showToast(
-          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+          `✓ Déplacé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)${_catSuffix(r)}`,
           'success',
         );
         // Rewrite expanded set + selection prefixes
@@ -3292,7 +3304,7 @@
           return;
         }
         showToast(
-          `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)`,
+          `✓ Renommé : ${r.new_path}  ·  ${r.n_tree_entries_renamed} entrée(s) tree, ${r.n_mappings_updated} mapping(s) cascadé(s)${_catSuffix(r)}`,
           'success',
         );
         // Update expanded set: replace old prefix with new

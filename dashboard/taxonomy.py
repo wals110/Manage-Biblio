@@ -2414,6 +2414,19 @@ def _change_folder_path(profile: str, old_path: str, new_path: str) -> dict:
                     pass
             raise
 
+        # Cascade categories.yaml — relaie le rename de chemin sur les
+        # entries de l'étape 2 du pipeline (KeywordClassifier). Lazy import
+        # pour éviter une dépendance circulaire à l'import et un échec sur
+        # les profils sans categories.yaml (cascade_rename_target no-op).
+        # Best-effort : si la cascade categories crash, on n'annule PAS le
+        # rename — l'utilisateur verra les badges ⚠ orphelin et corrigera.
+        cat_result: dict = {"n_entries_updated": 0, "n_merged": 0, "backup": None}
+        try:
+            from dashboard import categories as _cat
+            cat_result = _cat.cascade_rename_target(profile, old_path, new_path)
+        except Exception:  # noqa: BLE001
+            pass
+
         reset_cache(profile)
         return {
             "ok": True,
@@ -2421,6 +2434,8 @@ def _change_folder_path(profile: str, old_path: str, new_path: str) -> dict:
             "new_path": new_path,
             "n_tree_entries_renamed": n_renamed,
             "n_mappings_updated": n_mappings_updated,
+            "n_categories_updated": cat_result.get("n_entries_updated", 0),
+            "n_categories_merged": cat_result.get("n_merged", 0),
             "fs_renamed": fs_renamed,
             "tree_backup": (
                 str(tree_backup.relative_to(data.get_project_root()))
@@ -2430,6 +2445,7 @@ def _change_folder_path(profile: str, old_path: str, new_path: str) -> dict:
                 str(mapping_backup.relative_to(data.get_project_root()))
                 if mapping_backup else None
             ),
+            "categories_backup": cat_result.get("backup"),
         }
 
 

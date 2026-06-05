@@ -195,9 +195,18 @@
       return;
     }
     const s = state.snapshot.stats;
-    sub.textContent = `${s.n_groups} groupes · ${s.n_entries} entries`;
+    const nOrphans = s.n_orphans || 0;
+    sub.textContent = `${s.n_groups} groupes · ${s.n_entries} entries`
+                    + (nOrphans ? ` · ⚠ ${nOrphans} orphelin(s)` : '');
+    sub.title = nOrphans
+      ? `${nOrphans} entry(s) pointent vers un chemin qui n'existe plus dans `
+      + 'tree.yaml — souvent un folder renommé/supprimé avant que la cascade '
+      + 'automatique n\'existe. Modifie la cible (action Renommer chemin) '
+      + 'ou supprime l\'entry.'
+      : '';
     for (const g of state.snapshot.groups) {
       const collapsed = state.collapsedGroups.has(g.group);
+      const nGroupOrphans = g.n_orphans || 0;
       const header = el('div', {
         class: 'tax-cat-group' + (collapsed ? ' collapsed' : ''),
       }, [
@@ -212,6 +221,12 @@
           el('span', { class: 'tax-cat-group-chevron' }, [collapsed ? '▶' : '▼']),
           ' ', g.group, ' ',
           el('span', { class: 'muted small' }, [`(${g.n_entries})`]),
+          nGroupOrphans
+            ? el('span', {
+                class: 'tax-cat-group-orphan-count',
+                title: `${nGroupOrphans} entry(s) avec chemin obsolète`,
+              }, [` · ⚠ ${nGroupOrphans}`])
+            : null,
         ]),
         el('button', {
           class: 'tax-cat-group-add',
@@ -226,17 +241,29 @@
                    && state.selectedEntry.group === g.group
                    && state.selectedEntry.chemin === e.chemin;
         const isDormant = e.n_keywords === 0;
+        const isOrphan = !!e.is_orphan;
+        const children = [
+          el('span', { class: 'tax-cat-entry-path' }, [shortenPath(e.chemin)]),
+        ];
+        if (isOrphan) {
+          children.push(el('span', {
+            class: 'tax-cat-entry-orphan',
+            title: `Chemin obsolète : "${e.chemin}" n'existe plus dans `
+                 + 'tree.yaml. Probablement un folder renommé/supprimé '
+                 + 'avant la cascade automatique. Clique pour modifier la '
+                 + 'cible.',
+          }, ['⚠']));
+        }
+        children.push(el('span', { class: 'tax-cat-entry-prio', title: 'Priorité' },
+                                  ['P' + e.priorite]));
         wrap.appendChild(el('div', {
           class: 'tax-cat-entry'
                  + (isSel ? ' selected' : '')
-                 + (isDormant ? ' dormant' : ''),
-          title: e.chemin,
+                 + (isDormant ? ' dormant' : '')
+                 + (isOrphan ? ' orphan' : ''),
+          title: e.chemin + (isOrphan ? ' — chemin obsolète' : ''),
           onclick: () => selectEntry(g.group, e.chemin),
-        }, [
-          el('span', { class: 'tax-cat-entry-path' }, [shortenPath(e.chemin)]),
-          el('span', { class: 'tax-cat-entry-prio', title: 'Priorité' },
-                     ['P' + e.priorite]),
-        ]));
+        }, children));
       }
     }
     // "New group" footer action
