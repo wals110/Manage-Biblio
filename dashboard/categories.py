@@ -635,6 +635,149 @@ def cascade_rename_target(
     }
 
 
+_PREFIX_NUM_RE = re.compile(r"^\s*\d{1,2}\s*-?\s*")
+
+
+def _normalize_segment(s: str) -> str:
+    """Drop leading numeric prefix ("01 - ", "02-", "1 ") + lowercase.
+    Permet de matcher 'CHIMIE' avec '03 - CHIMIE' ou 'JEUX-VIDEO' avec
+    '06 - JEUX-VIDEO' — pattern systématique d'ordonnancement des folders
+    qu'on observe dans la bibliothèque."""
+    return _PREFIX_NUM_RE.sub("", (s or "").strip()).strip().lower()
+
+
+def _normalize_path(p: str) -> str:
+    return "/".join(_normalize_segment(seg) for seg in (p or "").split("/") if seg)
+
+
+def suggest_target_path(profile: str, orphan_chemin: str) -> dict:
+    """Propose un chemin du tree.yaml comme cible pour un orphan.
+
+    Cas typiques d'orphans (cf. cause racine de la cascade) :
+      - Folder renommé en ajoutant un préfixe d'ordonnancement (``01 - ``,
+        ``02 - ``…) à un segment du milieu : ``X/CHIMIE/Y`` → ``X/03 -
+        CHIMIE/Y``. Le matching après normalisation (drop prefixes) fait
+        ressortir un candidat unique.
+      - Folder déplacé ailleurs : matching exact échoue, on tente par
+        suffixe descendant (nom le plus long → nom de base).
+      - Folder supprimé : aucun match → l'utilisateur doit décider (supprimer
+        l'entry, ou re-créer le folder).
+
+    Renvoie::
+
+        {
+          "suggestion": str | None,
+          "confidence": "high" | "medium" | "low" | "none",
+          "alternatives": [str, ...],     # autres candidats <= 5
+          "reason": str                   # humain-lisible, pour l'UI
+        }
+
+    Confidence :
+      - high   : chemin normalisé == path normalisé d'UN folder du tree
+                 (collision typique d'ajout de préfixe numérique).
+      - medium : match unique sur le suffixe long (>= 2 segments).
+      - low    : match unique sur le segment final uniquement, OU plusieurs
+                 candidats matched (alternatives renseignées).
+      - none   : aucun match.
+    """
+    from dashboard import taxonomy as _tax
+    chemin = (orphan_chemin or "").strip().strip("/")
+    if not chemin:
+        return {"suggestion": None, "confidence": "none",
+                "alternatives": [], "reason": "chemin vide"}
+
+    try:
+        tree = _tax._load_tree(profile)
+    except Exception:  # noqa: BLE001
+        tree = []
+    if not tree:
+        return {"suggestion": None, "confidence": "none",
+                "alternatives": [],
+                "reason": "tree.yaml introuvable ou vide pour ce profil"}
+
+    # Si le chemin existe déjà dans le tree, pas d'orphan (mais on l'a quand
+    # même appelé) — renvoie tel quel.
+    if chemin in tree:
+        return {"suggestion": chemin, "confidence": "high",
+                "alternatives": [],
+                "reason": "ce chemin existe déjà dans tree.yaml"}
+
+    chemin_n = _normalize_path(chemin)
+    # Index tree paths par leur version normalisée
+    tree_by_norm: dict[str, list[str]] = {}
+    for t in tree:
+        tn = _normalize_path(t)
+        tree_by_norm.setdefault(tn, []).append(t)
+
+    # Stratégie 1 — match exact après normalisation. Couvre le cas "préfixe
+    # numérique ajouté à un segment du milieu".
+    if chemin_n in tree_by_norm:
+        cands = tree_by_norm[chemin_n]
+        if len(cands) == 1:
+            return {
+                "suggestion": cands[0],
+                "confidence": "high",
+                "alternatives": [],
+                "reason": "match normalisé unique (préfixe numérique ajouté)",
+            }
+        return {
+            "suggestion": cands[0],
+            "confidence": "low",
+            "alternatives": cands[1:5],
+            "reason": f"{len(cands)} folders ont le même chemin normalisé",
+        }
+
+    # Stratégie 2 — suffixe long (>= 2 segments) sur le chemin normalisé.
+    parts_n = chemin_n.split("/")
+    for n in range(min(3, len(parts_n)), 1, -1):  # 3, 2 segments
+        suffix = "/".join(parts_n[-n:])
+        cands = [
+            t for t, tn in (
+                (orig, _normalize_path(orig)) for orig in tree
+            ) if tn.endswith("/" + suffix) or tn == suffix
+        ]
+        if not cands:
+            continue
+        if len(cands) == 1:
+            return {
+                "suggestion": cands[0],
+                "confidence": "medium",
+                "alternatives": [],
+                "reason": f"match unique par suffixe ({n} segments)",
+            }
+        return {
+            "suggestion": cands[0],
+            "confidence": "low",
+            "alternatives": cands[1:5],
+            "reason": f"{len(cands)} candidats sur suffixe {n}-segments",
+        }
+
+    # Stratégie 3 — segment final uniquement.
+    last_n = parts_n[-1]
+    cands = []
+    for orig in tree:
+        tn_parts = _normalize_path(orig).split("/")
+        if tn_parts and tn_parts[-1] == last_n:
+            cands.append(orig)
+    if cands:
+        if len(cands) == 1:
+            return {
+                "suggestion": cands[0],
+                "confidence": "low",
+                "alternatives": [],
+                "reason": "match unique sur le nom de base (parent différent)",
+            }
+        return {
+            "suggestion": cands[0],
+            "confidence": "low",
+            "alternatives": cands[1:5],
+            "reason": f"{len(cands)} candidats sur le nom de base",
+        }
+
+    return {"suggestion": None, "confidence": "none", "alternatives": [],
+            "reason": "aucun candidat trouvé — folder probablement supprimé"}
+
+
 def add_keyword(profile: str, group: str, chemin: str, keyword: str) -> dict:
     """Append a keyword to an entry's `mots_cles` list. Dedups (case-insensitive
     on lowercased form) — silent no-op when already present."""

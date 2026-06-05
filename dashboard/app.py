@@ -1857,6 +1857,22 @@ async def categories_dormant_api(profile: str):
     return JSONResponse(categories.dormant_audit(profile))
 
 
+@app.get("/api/categories/suggest-path")
+async def categories_suggest_path_api(profile: str, chemin: str):
+    """Propose un chemin du tree.yaml comme cible pour un orphan.
+
+    Pour aider l'utilisateur à corriger les entries dont la cible n'existe
+    plus (typiquement après un rename de folder qui n'a pas pu cascader).
+    Le frontend appelle cet endpoint au clic sur le bouton « 💡 Suggérer »
+    du panneau Détail entry, pré-remplit le popover Renommer chemin avec
+    la suggestion + affiche la raison + les alternatives.
+    """
+    from fastapi.responses import JSONResponse
+
+    from dashboard import categories
+    return JSONResponse(categories.suggest_target_path(profile, chemin))
+
+
 @app.post("/api/categories/keywords/bulk-delete")
 async def categories_keywords_bulk_delete_api(request: Request):
     """Delete multiple keywords in one transaction (one backup)."""

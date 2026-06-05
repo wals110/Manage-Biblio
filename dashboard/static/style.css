@@ -3925,6 +3925,27 @@ th {
     font-weight: 600;
     cursor: help;
 }
+.tax-cat-orphan-banner {
+    padding: 6px 10px;
+    margin: 4px 0 8px 0;
+    background: rgba(248, 81, 73, 0.12);
+    border: 1px solid rgba(248, 81, 73, 0.35);
+    border-radius: 4px;
+    color: #ffb3ad;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: help;
+}
+.tax-cat-action-suggest {
+    background: rgba(56, 139, 253, 0.18) !important;
+    border-color: rgba(56, 139, 253, 0.45) !important;
+    color: #79c0ff !important;
+    font-weight: 600;
+}
+.tax-cat-action-suggest:hover {
+    background: rgba(56, 139, 253, 0.28) !important;
+    border-color: var(--blue, #58a6ff) !important;
+}
 
 /* Col 2 — detail */
 .tax-cat-field {

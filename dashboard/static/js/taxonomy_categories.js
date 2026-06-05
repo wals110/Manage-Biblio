@@ -364,24 +364,43 @@
       ]),
     ]));
     // Actions
-    wrap.appendChild(el('div', { class: 'tax-cat-field', style: 'border-bottom:none;' }, [
+    const actionChildren = [
       el('label', null, ['Actions']),
-      el('button', {
-        class: 'btn-secondary tax-cat-action',
-        onclick: () => openRenamePopover(state.selectedEntry.group, e.chemin),
-      }, ['Renommer chemin']),
-      ' ',
-      el('button', {
-        class: 'btn-secondary tax-cat-action',
-        onclick: () => openPriorityPopover(state.selectedEntry.group,
-                                            e.chemin, e.priorite),
-      }, ['Modifier priorité']),
-      ' ',
-      el('button', {
-        class: 'btn-danger tax-cat-action',
-        onclick: () => deleteSelectedEntry(),
-      }, ['Supprimer entry']),
-    ]));
+    ];
+    if (e.is_orphan) {
+      // Banneau d'avertissement orphan + bouton Suggérer en premier
+      actionChildren.push(el('div', {
+        class: 'tax-cat-orphan-banner',
+        title: 'Le chemin actuel n\'existe plus dans tree.yaml. Clique '
+             + '« 💡 Suggérer » pour proposer une cible existante.',
+      }, [
+        '⚠ Chemin obsolète — n\'existe plus dans tree.yaml',
+      ]));
+      actionChildren.push(el('button', {
+        class: 'btn-secondary tax-cat-action tax-cat-action-suggest',
+        title: 'Trouver le folder le plus proche dans tree.yaml et pré-remplir '
+             + 'le popover de renommage',
+        onclick: () => openSuggestPopover(state.selectedEntry.group, e.chemin),
+      }, ['💡 Suggérer cible']));
+      actionChildren.push(' ');
+    }
+    actionChildren.push(el('button', {
+      class: 'btn-secondary tax-cat-action',
+      onclick: () => openRenamePopover(state.selectedEntry.group, e.chemin),
+    }, ['Renommer chemin']));
+    actionChildren.push(' ');
+    actionChildren.push(el('button', {
+      class: 'btn-secondary tax-cat-action',
+      onclick: () => openPriorityPopover(state.selectedEntry.group,
+                                          e.chemin, e.priorite),
+    }, ['Modifier priorité']));
+    actionChildren.push(' ');
+    actionChildren.push(el('button', {
+      class: 'btn-danger tax-cat-action',
+      onclick: () => deleteSelectedEntry(),
+    }, ['Supprimer entry']));
+    wrap.appendChild(el('div', { class: 'tax-cat-field', style: 'border-bottom:none;' },
+                       actionChildren));
   }
 
   // ── Column 3 — keywords (chips) ─────────────────────────────────────
@@ -640,6 +659,55 @@
       title: 'Renommer le chemin de cette entry',
       label: `Nouveau chemin (group « ${group} »)`,
       initial: chemin,
+      confirmLabel: 'Renommer',
+      validator: v => v ? null : 'chemin vide',
+    });
+    if (!value || value === chemin) return;
+    await withBusy('Renommage…', async () => {
+      try {
+        await patchJSON('/api/categories/entry',
+                        { group, chemin, new_chemin: value });
+        showToast(`✓ Renommé : ${value}`, 'success');
+        state.selectedEntry = { group, chemin: value };
+        await reloadAfterWrite();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
+  }
+
+  async function openSuggestPopover(group, chemin) {
+    // Fetch la suggestion serveur (recherche heuristique dans tree.yaml par
+    // normalisation des préfixes numériques + match suffixe / nom de base).
+    let payload;
+    try {
+      const url = `/api/categories/suggest-path?profile=${encodeURIComponent(state.profile)}`
+                + `&chemin=${encodeURIComponent(chemin)}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('suggest HTTP ' + r.status);
+      payload = await r.json();
+    } catch (err) {
+      showToast('✗ ' + err.message, 'error');
+      return;
+    }
+    if (!payload.suggestion) {
+      showToast(`Aucune suggestion : ${payload.reason || 'folder probablement supprimé'}`,
+                'info');
+      return;
+    }
+    // Affiche le bandeau + ouvre le prompt rename avec la suggestion en initial.
+    const confidence = payload.confidence;
+    const conLabel = { high: 'haute', medium: 'moyenne',
+                       low: 'faible', none: '—' }[confidence] || confidence;
+    const altInfo = (payload.alternatives && payload.alternatives.length)
+      ? `\n\nAlternatives :\n  • ${payload.alternatives.join('\n  • ')}`
+      : '';
+    const value = await showPrompt({
+      title: '💡 Suggestion de cible',
+      label: `Confiance ${conLabel} — ${payload.reason || ''}.\n`
+           + `Le bouton « Renommer » accepte la suggestion telle quelle, `
+           + `ou modifie-la avant de valider.${altInfo}`,
+      initial: payload.suggestion,
       confirmLabel: 'Renommer',
       validator: v => v ? null : 'chemin vide',
     });

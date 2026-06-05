@@ -1209,5 +1209,114 @@ class TestOrphanDetection(CategoriesTestBase):
         self.assertNotIn("is_orphan", e)
 
 
+# ─── Suggest target path (heuristique pour assister la correction) ──────
+
+
+class TestSuggestTargetPath(CategoriesTestBase):
+    """`suggest_target_path` propose un chemin du tree.yaml comme cible pour
+    un orphan, par normalisation des préfixes numériques + match suffixe."""
+
+    def _write_tree(self, folders: list[str]):
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": folders}, sort_keys=False)
+        )
+
+    def test_high_confidence_normalized_match(self):
+        """Pattern typique : préfixe '0X - ' ajouté au milieu du chemin."""
+        self._write_tree([
+            "01-SCIENCES",
+            "01-SCIENCES/03 - CHIMIE",
+            "01-SCIENCES/03 - CHIMIE/01-Chimie-Organique",
+        ])
+        r = categories.suggest_target_path(
+            self.profile_name, "01-SCIENCES/CHIMIE/01-Chimie-Organique",
+        )
+        self.assertEqual(r["suggestion"],
+                         "01-SCIENCES/03 - CHIMIE/01-Chimie-Organique")
+        self.assertEqual(r["confidence"], "high")
+        self.assertEqual(r["alternatives"], [])
+
+    def test_medium_confidence_suffix_match(self):
+        """Suffixe 2-segments unique sans match normalisé exact."""
+        self._write_tree([
+            "07-LOISIRS",
+            "07-LOISIRS/01 - DESSIN",
+            "07-LOISIRS/01 - DESSIN/Paysage",
+        ])
+        r = categories.suggest_target_path(
+            self.profile_name, "08-LOISIRS/DESSIN/Paysage",
+        )
+        # Le préfixe 08- ≠ 07-, donc le match normalisé exact échoue, mais
+        # le suffixe "dessin/paysage" matche un seul tree path.
+        self.assertEqual(r["suggestion"], "07-LOISIRS/01 - DESSIN/Paysage")
+        self.assertIn(r["confidence"], ("high", "medium"))
+
+    def test_no_match_returns_none(self):
+        self._write_tree(["01-SCIENCES", "02-INFORMATIQUE"])
+        r = categories.suggest_target_path(
+            self.profile_name, "99-RELIGIONS/CHRISTIANISME",
+        )
+        self.assertIsNone(r["suggestion"])
+        self.assertEqual(r["confidence"], "none")
+
+    def test_ambiguous_returns_alternatives(self):
+        """Deux folders dans le tree ont le même chemin normalisé."""
+        self._write_tree([
+            "A",
+            "A/01 - X",
+            "B",
+            "B/02 - X",
+        ])
+        # Orphan "A/X" — normalise en "a/x", deux candidats matchent par suffixe
+        r = categories.suggest_target_path(self.profile_name, "Z/X")
+        # Le match exact normalisé n'existe pas pour "z/x" (Z absent), mais
+        # via suffixe ou nom de base, on a 2 candidats : A/01 - X et B/02 - X.
+        self.assertIsNotNone(r["suggestion"])
+        self.assertEqual(r["confidence"], "low")
+        self.assertGreaterEqual(len(r["alternatives"]), 1)
+
+    def test_chemin_already_exists_in_tree_high_confidence(self):
+        """Cas dégénéré : le chemin n'est pas orphan, on retourne tel quel."""
+        self._write_tree(["X/Y", "Z"])
+        r = categories.suggest_target_path(self.profile_name, "X/Y")
+        self.assertEqual(r["suggestion"], "X/Y")
+        self.assertEqual(r["confidence"], "high")
+
+    def test_no_tree_yaml_returns_none(self):
+        # Pas de tree.yaml créé du tout
+        r = categories.suggest_target_path(self.profile_name, "anything")
+        self.assertIsNone(r["suggestion"])
+        self.assertEqual(r["confidence"], "none")
+
+    def test_empty_chemin_returns_none(self):
+        self._write_tree(["X"])
+        r = categories.suggest_target_path(self.profile_name, "")
+        self.assertIsNone(r["suggestion"])
+
+
+class TestSuggestPathEndpoint(CategoriesTestBase):
+
+    def test_endpoint_returns_suggestion(self):
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": [
+                "01-SCIENCES",
+                "01-SCIENCES/03 - CHIMIE",
+            ]}, sort_keys=False)
+        )
+        with TestClient(app) as client:
+            r = client.get(
+                "/api/categories/suggest-path",
+                params={"profile": self.profile_name,
+                        "chemin": "01-SCIENCES/CHIMIE"},
+            )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["suggestion"], "01-SCIENCES/03 - CHIMIE")
+        self.assertEqual(body["confidence"], "high")
+
+
 if __name__ == "__main__":
     unittest.main()
