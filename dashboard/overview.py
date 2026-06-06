@@ -522,3 +522,41 @@ def _human_relative(seconds: float) -> str:
     if s < 86400:
         return f"il y a {s // 3600} h"
     return f"il y a {s // 86400} j"
+
+
+def build_profile_snapshot(profile: str, force: bool = False) -> dict:
+    """Construit le snapshot complet du profil. Cache 30 s sauf force=True."""
+    if not force:
+        with _cache_lock:
+            cached = _overview_cache.get(profile)
+            if cached is not None:
+                ts, snap = cached
+                if time.time() - ts < _CACHE_TTL_SECONDS:
+                    return snap
+    snap = {
+        "files": card_files_count(profile),
+        "classified": card_classified_rate(profile),
+        "folders": card_folders_count(profile),
+        "llm_cost": card_llm_cost(profile),
+        "health": card_health(profile),
+        "vision_cache": card_vision_cache(profile),
+        "inbox": card_inbox(profile),
+        "baseline_runs": card_baseline_runs(profile),
+        "agent_sessions": card_agent_sessions(profile),
+        "top_themes": card_top_themes(profile),
+        "top_folders": card_top_folders(profile),
+        "recent_activity": card_recent_activity(profile),
+    }
+    with _cache_lock:
+        _overview_cache[profile] = (time.time(), snap)
+    return snap
+
+
+def build_general_snapshot() -> dict:
+    """Snapshot statique tous-profils. Non caché (déjà rapide)."""
+    return {
+        "llm_models": card_llm_models(),
+        "api_keys": card_api_keys(),
+        "profiles_list": card_profiles_list(),
+        "global_cost": card_global_cost(),
+    }

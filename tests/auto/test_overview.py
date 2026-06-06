@@ -677,5 +677,64 @@ class TestCardGlobalCost(OverviewTestBase):
         self.assertNotIn("tiny", profiles)  # < 1% drop
 
 
+class TestBuildSnapshots(OverviewTestBase):
+
+    def test_profile_snapshot_returns_all_keys(self):
+        r = overview.build_profile_snapshot(self.profile_name)
+        expected = {
+            "files", "classified", "folders", "llm_cost", "health",
+            "vision_cache", "inbox", "baseline_runs", "agent_sessions",
+            "top_themes", "top_folders", "recent_activity",
+        }
+        self.assertEqual(set(r.keys()), expected)
+
+    def test_general_snapshot_returns_all_keys(self):
+        r = overview.build_general_snapshot()
+        self.assertEqual(set(r.keys()),
+                         {"llm_models", "api_keys", "profiles_list",
+                          "global_cost"})
+
+    def test_cache_hit_within_ttl(self):
+        # Spy sur card_files_count : seul le 1er appel doit hit
+        with mock.patch.object(overview, "card_files_count",
+                               wraps=overview.card_files_count) as spy:
+            overview.build_profile_snapshot(self.profile_name)
+            overview.build_profile_snapshot(self.profile_name)
+        self.assertEqual(spy.call_count, 1)
+
+    def test_force_invalidates_cache(self):
+        with mock.patch.object(overview, "card_files_count",
+                               wraps=overview.card_files_count) as spy:
+            overview.build_profile_snapshot(self.profile_name)
+            overview.build_profile_snapshot(self.profile_name, force=True)
+        self.assertEqual(spy.call_count, 2)
+
+    def test_cache_miss_after_ttl(self):
+        overview.build_profile_snapshot(self.profile_name)
+        # Avance le ts dans le cache
+        with overview._cache_lock:
+            ts, snap = overview._overview_cache[self.profile_name]
+            overview._overview_cache[self.profile_name] = (
+                ts - 31, snap,
+            )
+        with mock.patch.object(overview, "card_files_count",
+                               wraps=overview.card_files_count) as spy:
+            overview.build_profile_snapshot(self.profile_name)
+        self.assertEqual(spy.call_count, 1)
+
+    def test_cache_per_profile_isolation(self):
+        # Crée profile2
+        (self.profiles_root / "other").mkdir(parents=True)
+        (self.profiles_root / "other" / "profile.yaml").write_text(
+            yaml.safe_dump({"name": "other", "target": str(self.target),
+                            "defaults": {"cost_per_call": 0.0003}})
+        )
+        overview.build_profile_snapshot(self.profile_name)
+        with mock.patch.object(overview, "card_files_count",
+                               wraps=overview.card_files_count) as spy:
+            overview.build_profile_snapshot("other")
+        self.assertEqual(spy.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
