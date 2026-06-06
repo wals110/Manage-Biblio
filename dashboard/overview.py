@@ -485,6 +485,32 @@ def card_profiles_list() -> list[dict]:
     return out
 
 
+def card_global_cost() -> dict:
+    """Somme des coûts LLM estimés tous profils. Pie segments < 1 % cachés.
+    Retourne {total_usd, by_profile: [{profile, cost_usd, n_calls, pct}]}."""
+    by_profile_full: list[dict] = []
+    for p in data.get_available_profiles(include_all=True):
+        name = p["name"] if isinstance(p, dict) else p
+        cost = card_llm_cost(name)
+        if cost["n_calls"] > 0:
+            by_profile_full.append({
+                "profile": name,
+                "cost_usd": cost["cost_usd"],
+                "n_calls": cost["n_calls"],
+            })
+    total = round(sum(x["cost_usd"] for x in by_profile_full), 2)
+    if total == 0:
+        return {"total_usd": 0.0, "by_profile": []}
+    # Calcule pct et filtre les segments < 1 %
+    by_profile: list[dict] = []
+    for x in by_profile_full:
+        pct = round(x["cost_usd"] / total * 100, 1)
+        if pct >= 1.0:
+            by_profile.append({**x, "pct": pct})
+    by_profile.sort(key=lambda x: -x["pct"])
+    return {"total_usd": total, "by_profile": by_profile}
+
+
 def _human_relative(seconds: float) -> str:
     """Format relatif humain. Toujours préfixé 'il y a' pour cohérence
     visuelle dans la timeline."""

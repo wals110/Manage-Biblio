@@ -613,5 +613,45 @@ class TestCardProfilesList(OverviewTestBase):
         self.assertTrue(item["target_exists"])
 
 
+class TestCardGlobalCost(OverviewTestBase):
+
+    def _seed_profile(self, name: str, n_entries: int, cpc: float = 0.0003):
+        p = self.profiles_root / name
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "profile.yaml").write_text(yaml.safe_dump({
+            "name": name, "target": str(self.target),
+            "defaults": {"cost_per_call": cpc},
+        }))
+        (p / ".cache").mkdir(parents=True, exist_ok=True)
+        if n_entries:
+            (p / ".cache" / "vision_cache.json").write_text(
+                json.dumps({f"k{i}": {"result": {}} for i in range(n_entries)})
+            )
+
+    def test_sums_per_profile_costs(self):
+        self._seed_profile("test", 100)         # 0.03
+        self._seed_profile("test-local", 200)   # 0.06 (same cpc)
+        r = overview.card_global_cost()
+        self.assertAlmostEqual(r["total_usd"], 0.09, places=4)
+        # Chaque profil présent avec son pct
+        by_p = {x["profile"]: x for x in r["by_profile"]}
+        self.assertIn("test", by_p)
+        self.assertIn("test-local", by_p)
+
+    def test_empty_when_no_calls(self):
+        r = overview.card_global_cost()
+        self.assertEqual(r["total_usd"], 0.0)
+        self.assertEqual(r["by_profile"], [])
+
+    def test_pct_drops_below_1_segments(self):
+        # Profile 1 : 1000 entries, Profile 2 : 5 entries (~ 0.5%)
+        self._seed_profile("big", 1000)
+        self._seed_profile("tiny", 5)
+        r = overview.card_global_cost()
+        profiles = {x["profile"] for x in r["by_profile"]}
+        self.assertIn("big", profiles)
+        self.assertNotIn("tiny", profiles)  # < 1% drop
+
+
 if __name__ == "__main__":
     unittest.main()
