@@ -38,8 +38,13 @@
   <div class="dash-card">
     <h3>Détails</h3>
     <ul class="dash-details-list">
+      {% if s.folders.get('error') %}
+      <li title="{% if s.folders.error == 'tree_missing' %}tree.yaml introuvable — profil incomplet{% else %}tree.yaml invalide ({{ s.folders.error }}){% endif %}">🗂 — folders
+        <span class="muted">· {{ s.folders.error }}</span></li>
+      {% else %}
       <li>🗂 {{ s.folders.total }} folders
         <span class="muted">· profondeur max {{ s.folders.max_depth }}</span></li>
+      {% endif %}
       <li>👁 {{ s.vision_cache.n_entries }} analyses vision
         <span class="muted">· {{ s.vision_cache.size_kb }} Ko</span></li>
       <li>📥 {% if s.inbox.exists %}{{ s.inbox.n_files }} inbox
