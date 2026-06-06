@@ -445,6 +445,46 @@ def card_recent_activity(profile: str, limit: int = 5) -> list[dict]:
     return out
 
 
+def card_llm_models() -> list[dict]:
+    """Liste {profile, provider, model, endpoint} pour chaque profil."""
+    out: list[dict] = []
+    for p in data.get_available_profiles():
+        name = p["name"] if isinstance(p, dict) else p
+        cfg = _load_profile_config(name) or {}
+        llm = cfg.get("llm") or {}
+        out.append({
+            "profile": name,
+            "provider": llm.get("provider", ""),
+            "model": llm.get("model", ""),
+            "endpoint": llm.get("endpoint", ""),
+        })
+    return out
+
+
+def card_api_keys() -> list[dict]:
+    """Statut des API keys connues (SiliconFlow pour l'instant)."""
+    known = ["SILICONFLOW_API_KEY"]
+    return [
+        {"name": k, "configured": bool(os.environ.get(k))}
+        for k in known
+    ]
+
+
+def card_profiles_list() -> list[dict]:
+    """Liste de tous les profils + état de leur target."""
+    out: list[dict] = []
+    for p in data.get_available_profiles():
+        name = p["name"] if isinstance(p, dict) else p
+        cfg = _load_profile_config(name) or {}
+        target = str(cfg.get("target") or "")
+        out.append({
+            "name": name,
+            "target_path": target,
+            "target_exists": bool(target and Path(target).exists()),
+        })
+    return out
+
+
 def _human_relative(seconds: float) -> str:
     """Format relatif humain. Toujours préfixé 'il y a' pour cohérence
     visuelle dans la timeline."""

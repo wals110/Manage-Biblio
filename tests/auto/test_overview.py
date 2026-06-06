@@ -568,5 +568,50 @@ class TestCardRecentActivity(OverviewTestBase):
         self.assertIn("categories", actions)
 
 
+class TestCardLlmModels(OverviewTestBase):
+
+    def test_returns_per_profile_config(self):
+        # Crée un 2e profil
+        p2 = self.profiles_root / "test-local"
+        p2.mkdir(parents=True, exist_ok=True)
+        (p2 / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "test-local", "target": str(self.target),
+            "llm": {"provider": "ollama", "model": "qwen2-vl:7b",
+                    "endpoint": "http://localhost:11434"},
+        }))
+        r = overview.card_llm_models()
+        names = {x["profile"] for x in r}
+        self.assertIn("test", names)
+        self.assertIn("test-local", names)
+        local = next(x for x in r if x["profile"] == "test-local")
+        self.assertEqual(local["provider"], "ollama")
+
+
+class TestCardApiKeys(OverviewTestBase):
+
+    def test_siliconflow_status_reflects_env(self):
+        with mock.patch.dict(os.environ, {"SILICONFLOW_API_KEY": "sk-test"}):
+            r = overview.card_api_keys()
+        sf = next((x for x in r if x["name"] == "SILICONFLOW_API_KEY"), None)
+        self.assertIsNotNone(sf)
+        self.assertTrue(sf["configured"])
+
+    def test_siliconflow_missing(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            r = overview.card_api_keys()
+        sf = next((x for x in r if x["name"] == "SILICONFLOW_API_KEY"), None)
+        self.assertFalse(sf["configured"])
+
+
+class TestCardProfilesList(OverviewTestBase):
+
+    def test_returns_profiles_with_target_status(self):
+        r = overview.card_profiles_list()
+        names = {x["name"] for x in r}
+        self.assertIn("test", names)
+        item = next(x for x in r if x["name"] == "test")
+        self.assertTrue(item["target_exists"])
+
+
 if __name__ == "__main__":
     unittest.main()
