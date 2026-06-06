@@ -288,3 +288,58 @@ def card_agent_sessions(profile: str) -> dict:
         "refonte": _agent_info(profile, "refonte"),
         "dedupli": _agent_info(profile, "dedupli"),
     }
+
+
+_STALE_LOCK_SECONDS = 3600
+
+
+def card_health(profile: str) -> dict:
+    """Compte les orphelins (mappings vers folder absent, categories orphelins)
+    + locks actifs. {n_orphans_mappings, n_orphans_categories,
+    n_orphans_total, locks_active: [{name, age_seconds, stale}]}."""
+    from dashboard import taxonomy as _tax
+
+    # Orphans côté theme_mapping : mapping val absente de tree
+    tree_set = set()
+    try:
+        tree_set = set(_tax._load_tree(profile))
+    except Exception:  # noqa: BLE001
+        pass
+    mapping = {}
+    try:
+        mapping = _tax._load_mapping(profile)
+    except Exception:  # noqa: BLE001
+        pass
+    n_map_orphans = sum(1 for v in mapping.values() if v and v not in tree_set)
+
+    # Orphans côté categories : snapshot.stats.n_orphans
+    n_cat_orphans = 0
+    try:
+        from dashboard import categories as _cat
+        snap = _cat.build_snapshot(profile, force_reload=False)
+        n_cat_orphans = int((snap.get("stats") or {}).get("n_orphans") or 0)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Locks actifs : glob .cache/.*.lock
+    locks: list[dict] = []
+    cache_dir = data.get_project_root() / "profiles" / profile / ".cache"
+    if cache_dir.exists():
+        now = time.time()
+        for lock in cache_dir.glob(".*.lock"):
+            try:
+                age = now - lock.stat().st_mtime
+            except OSError:
+                continue
+            locks.append({
+                "name": lock.name,
+                "age_seconds": int(age),
+                "stale": age > _STALE_LOCK_SECONDS,
+            })
+
+    return {
+        "n_orphans_mappings": n_map_orphans,
+        "n_orphans_categories": n_cat_orphans,
+        "n_orphans_total": n_map_orphans + n_cat_orphans,
+        "locks_active": locks,
+    }

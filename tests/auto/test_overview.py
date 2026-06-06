@@ -363,5 +363,55 @@ class TestCardAgentSessions(OverviewTestBase):
         self.assertEqual(r["refonte"]["status"], "error")
 
 
+class TestCardHealth(OverviewTestBase):
+
+    def _write_tree(self, folders: list[str]):
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": folders})
+        )
+
+    def _write_mapping(self, mapping: dict):
+        (self.profile_dir / "theme_mapping.yaml").write_text(
+            yaml.safe_dump(mapping, sort_keys=False)
+        )
+
+    def test_clean_state_returns_zero_orphans(self):
+        self._write_tree(["A", "A/B"])
+        self._write_mapping({"theme1": "A", "theme2": "A/B"})
+        r = overview.card_health(self.profile_name)
+        self.assertEqual(r["n_orphans_total"], 0)
+        self.assertEqual(r["locks_active"], [])
+
+    def test_mapping_orphan_counted(self):
+        self._write_tree(["A"])
+        self._write_mapping({"good": "A", "orphan": "DOES-NOT-EXIST"})
+        r = overview.card_health(self.profile_name)
+        self.assertEqual(r["n_orphans_mappings"], 1)
+        self.assertEqual(r["n_orphans_total"], 1)
+
+    def test_active_lock_detected(self):
+        self._write_tree(["A"])
+        self._write_mapping({})
+        lock = self.profile_dir / ".cache" / ".taxonomy.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("")
+        r = overview.card_health(self.profile_name)
+        self.assertEqual(len(r["locks_active"]), 1)
+        self.assertEqual(r["locks_active"][0]["name"], ".taxonomy.lock")
+        self.assertIn("age_seconds", r["locks_active"][0])
+
+    def test_stale_lock_flagged(self):
+        self._write_tree(["A"])
+        self._write_mapping({})
+        lock = self.profile_dir / ".cache" / ".dedupli.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("")
+        # Force mtime > 1 h ago
+        old = lock.stat().st_mtime - 3700
+        os.utime(lock, (old, old))
+        r = overview.card_health(self.profile_name)
+        self.assertTrue(r["locks_active"][0]["stale"])
+
+
 if __name__ == "__main__":
     unittest.main()
