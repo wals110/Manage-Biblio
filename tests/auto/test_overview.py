@@ -802,5 +802,35 @@ class TestMiniBarMacro(unittest.TestCase):
         self.assertIn("Aucun thème en cache.", out)
 
 
+class TestActivityTimelineMacro(unittest.TestCase):
+
+    def _render(self, events, empty=""):
+        from jinja2 import Environment, FileSystemLoader
+        env = Environment(
+            loader=FileSystemLoader(
+                os.path.join(PROJECT_ROOT, "dashboard", "templates"),
+            ),
+            autoescape=False,
+        )
+        tmpl = env.from_string(
+            "{% from 'macros/widgets.html' import activity_timeline %}"
+            "{{ activity_timeline(events, empty=empty) }}"
+        )
+        return tmpl.render(events=events, empty=empty)
+
+    def test_renders_events(self):
+        out = self._render([
+            {"relative_time": "il y a 2 h",
+             "action": "rename", "target": "folder X"},
+        ])
+        self.assertIn("il y a 2 h", out)
+        self.assertIn("rename", out)
+        self.assertIn("folder X", out)
+
+    def test_empty(self):
+        out = self._render([], empty="Aucune mutation.")
+        self.assertIn("Aucune mutation.", out)
+
+
 if __name__ == "__main__":
     unittest.main()

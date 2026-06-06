@@ -6480,3 +6480,30 @@ th {
     color: var(--text-muted, #8b949e);
     font-variant-numeric: tabular-nums; font-size: 10.5px;
 }
+
+/* Activity timeline */
+.dash-activity {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 11px;
+}
+.dash-activity li {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.04);
+}
+.dash-activity-time {
+    color: var(--text-muted, #8b949e);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.dash-activity-action {
+    color: var(--blue, #58a6ff);
+    font-weight: 600;
+}
+.dash-activity-target {
+    color: var(--text, #c9d1d9);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

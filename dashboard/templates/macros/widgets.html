@@ -173,3 +173,19 @@
   </ul>
 {% else %}<p class="muted small">{{ empty }}</p>{% endif %}
 {% endmacro %}
+
+
+{# activity_timeline — liste temporelle des mutations récentes. #}
+{% macro activity_timeline(events, empty="") %}
+{% if events %}
+  <ul class="dash-activity">
+    {% for e in events %}
+    <li>
+      <span class="dash-activity-time">{{ e.relative_time }}</span>
+      <span class="dash-activity-action">{{ e.action }}</span>
+      <span class="dash-activity-target">{{ e.target }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}<p class="muted small">{{ empty }}</p>{% endif %}
+{% endmacro %}
