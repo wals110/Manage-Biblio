@@ -527,5 +527,30 @@ class TestCardTopFolders(OverviewTestBase):
         self.assertEqual(r, [])
 
 
+class TestCardRecentActivity(OverviewTestBase):
+
+    def test_merges_sources_and_sorts_recent_first(self):
+        # 3 backups taxonomy à mtimes différentes
+        bdir = self.profile_dir / ".cache" / "taxonomy-backups"
+        bdir.mkdir(parents=True, exist_ok=True)
+        f1 = bdir / "theme_mapping-20260101-100000-000000.yaml"
+        f2 = bdir / "tree-20260102-100000-000000.yaml"
+        f3 = bdir / "theme_mapping-20260103-100000-000000.yaml"
+        for f in [f1, f2, f3]:
+            f.write_text("")
+        import os as _os
+        _os.utime(f1, (1000, 1000))
+        _os.utime(f2, (2000, 2000))
+        _os.utime(f3, (3000, 3000))
+        r = overview.card_recent_activity(self.profile_name, limit=5)
+        self.assertEqual(len(r), 3)
+        # Plus récent en premier
+        self.assertEqual(r[0]["target"], f3.name)
+
+    def test_empty(self):
+        r = overview.card_recent_activity(self.profile_name)
+        self.assertEqual(r, [])
+
+
 if __name__ == "__main__":
     unittest.main()
