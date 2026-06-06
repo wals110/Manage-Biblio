@@ -208,3 +208,41 @@ def card_vision_cache(profile: str) -> dict:
         "size_kb": size_kb,
         "last_modified": mtime_iso,
     }
+
+
+def card_inbox(profile: str) -> dict:
+    """Stats sur le dossier inbox du profil. Retourne
+    {n_files, size_mb, oldest_iso, exists}."""
+    cfg = _load_profile_config(profile)
+    inbox_path = (cfg or {}).get("inbox")
+    if not inbox_path:
+        return {"n_files": 0, "size_mb": 0.0,
+                "oldest_iso": None, "exists": False}
+    inbox = Path(str(inbox_path))
+    if not inbox.exists() or not inbox.is_dir():
+        return {"n_files": 0, "size_mb": 0.0,
+                "oldest_iso": None, "exists": False}
+    n = 0
+    size_bytes = 0
+    oldest_mtime: float | None = None
+    for f in inbox.iterdir():
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in (".pdf", ".epub"):
+            continue
+        n += 1
+        try:
+            st = f.stat()
+            size_bytes += st.st_size
+            if oldest_mtime is None or st.st_mtime < oldest_mtime:
+                oldest_mtime = st.st_mtime
+        except OSError:
+            pass
+    return {
+        "n_files": n,
+        "size_mb": round(size_bytes / 1024**2, 4),
+        "oldest_iso": (time.strftime("%Y-%m-%dT%H:%M:%S",
+                                     time.localtime(oldest_mtime))
+                       if oldest_mtime else None),
+        "exists": True,
+    }

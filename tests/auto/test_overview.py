@@ -264,5 +264,34 @@ class TestCardVisionCache(OverviewTestBase):
         self.assertIsNone(r["last_modified"])
 
 
+class TestCardInbox(OverviewTestBase):
+
+    def test_inbox_with_files(self):
+        inbox = self.tmpdir / "inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        (inbox / "a.pdf").write_bytes(b"x" * 1024)
+        (inbox / "b.epub").write_bytes(b"x" * 512)
+        r = overview.card_inbox(self.profile_name)
+        self.assertEqual(r["n_files"], 2)
+        self.assertTrue(r["exists"])
+        self.assertGreater(r["size_mb"], 0)
+        self.assertIsNotNone(r["oldest_iso"])
+
+    def test_inbox_unconfigured(self):
+        # Réécrit profile.yaml sans inbox:
+        (self.profile_dir / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "test", "target": str(self.target),
+            "defaults": {"cost_per_call": 0.0003},
+        }))
+        r = overview.card_inbox(self.profile_name)
+        self.assertFalse(r["exists"])
+        self.assertEqual(r["n_files"], 0)
+
+    def test_inbox_configured_but_missing(self):
+        # inbox dans yaml mais dossier absent
+        r = overview.card_inbox(self.profile_name)
+        self.assertFalse(r["exists"])
+
+
 if __name__ == "__main__":
     unittest.main()
