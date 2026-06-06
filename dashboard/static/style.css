@@ -6413,3 +6413,42 @@ th {
     cursor: not-allowed;
 }
 .btn-danger:active:not(:disabled) { transform: translateY(1px); }
+
+/* ───────────────────────────────────────────────────────────────────
+   Overview cockpit — KPI vedettes (Layout B rangée 1)
+   ─────────────────────────────────────────────────────────────────── */
+.dash-kpi-big {
+    background: var(--bg-secondary, #1f1f1f);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: background 0.15s;
+}
+.dash-kpi-big:hover { background: rgba(255,255,255,0.03); }
+.dash-kpi-big .dash-kpi-label {
+    font-size: 11.5px;
+    color: var(--text-muted, #8b949e);
+    font-weight: 500;
+}
+.dash-kpi-big .dash-kpi-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text, #c9d1d9);
+    font-variant-numeric: tabular-nums;
+}
+.dash-kpi-big .dash-kpi-sub {
+    font-size: 10.5px;
+    color: var(--text-muted, #8b949e);
+}
+.dash-kpi-big-warn {
+    border-color: rgba(248, 81, 73, 0.4);
+    background: rgba(248, 81, 73, 0.05);
+}
+.dash-kpi-big-warn .dash-kpi-value { color: #ff8a82; }
+.dash-kpi-big-ok {
+    border-color: rgba(63, 185, 80, 0.4);
+}
+.dash-kpi-big-ok .dash-kpi-value { color: #7ee787; }

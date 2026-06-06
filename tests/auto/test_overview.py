@@ -736,5 +736,36 @@ class TestBuildSnapshots(OverviewTestBase):
         self.assertEqual(spy.call_count, 1)
 
 
+class TestKpiCardBigMacro(unittest.TestCase):
+    """Rend la macro dans un template inline + parse le résultat."""
+
+    def _render(self, **kwargs) -> str:
+        from jinja2 import Environment, FileSystemLoader
+        env = Environment(
+            loader=FileSystemLoader(
+                os.path.join(PROJECT_ROOT, "dashboard", "templates"),
+            ),
+            autoescape=False,
+        )
+        tmpl = env.from_string(
+            "{% from 'macros/widgets.html' import kpi_card_big %}"
+            "{{ kpi_card_big(label, value, subtitle, variant) }}"
+        )
+        return tmpl.render(**kwargs)
+
+    def test_renders_label_and_value(self):
+        out = self._render(label="Fichiers", value="19250",
+                           subtitle="2.1 Go", variant="default")
+        self.assertIn("Fichiers", out)
+        self.assertIn("19250", out)
+        self.assertIn("2.1 Go", out)
+        self.assertIn("dash-kpi-big-default", out)
+
+    def test_warn_variant_class(self):
+        out = self._render(label="Health", value="32",
+                           subtitle="orphans", variant="warn")
+        self.assertIn("dash-kpi-big-warn", out)
+
+
 if __name__ == "__main__":
     unittest.main()

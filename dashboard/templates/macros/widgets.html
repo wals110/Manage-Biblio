@@ -138,3 +138,14 @@
     </table>
 </div>
 {% endmacro %}
+
+
+{# kpi_card_big — KPI vedette pour le cockpit Overview.
+   variant ∈ {default, ok, warn}. Le subtitle est optionnel. #}
+{% macro kpi_card_big(label, value, subtitle="", variant="default") %}
+<div class="dash-kpi-big dash-kpi-big-{{ variant }}">
+  <div class="dash-kpi-label">{{ label }}</div>
+  <div class="dash-kpi-value">{{ value }}</div>
+  {% if subtitle %}<div class="dash-kpi-sub">{{ subtitle }}</div>{% endif %}
+</div>
+{% endmacro %}
