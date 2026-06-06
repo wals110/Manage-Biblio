@@ -68,5 +68,42 @@ class TestReset(OverviewTestBase):
         self.assertIn("b", overview._overview_cache)
 
 
+class TestCardFilesCount(OverviewTestBase):
+
+    def _make_files(self, files: dict[str, int]):
+        """files = {rel_path: size_bytes}"""
+        for rel, size in files.items():
+            p = self.target / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x" * size)
+
+    def test_happy_counts_pdf_and_epub(self):
+        self._make_files({
+            "a.pdf": 1024, "b.pdf": 2048, "c.epub": 512,
+            "subdir/d.pdf": 4096, "subdir/notes.txt": 100,
+        })
+        r = overview.card_files_count(self.profile_name)
+        self.assertEqual(r["total"], 4)
+        self.assertEqual(r["by_ext"]["pdf"], 3)
+        self.assertEqual(r["by_ext"]["epub"], 1)
+        self.assertNotIn("error", r)
+
+    def test_target_missing_returns_error(self):
+        shutil.rmtree(self.target)
+        r = overview.card_files_count(self.profile_name)
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["error"], "target_missing")
+
+    def test_profile_missing_returns_error(self):
+        r = overview.card_files_count("does-not-exist")
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["error"], "profile_missing")
+
+    def test_empty_target_returns_zero(self):
+        r = overview.card_files_count(self.profile_name)
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["size_gb"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
