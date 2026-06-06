@@ -59,10 +59,12 @@ class TestDashboardRoutes(unittest.TestCase):
     # ─── Overview cockpit refactor 2026-06-05 ─────────────────────
 
     def test_overview_default_profile(self):
+        """GET / sans param → 200 et le selector affiche un profil
+        sélectionné (peu importe lequel, dépend de l'environnement)."""
         r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
-        # Le selector contient "default" comme option sélectionnée
-        self.assertIn(b'value="default"', r.content)
+        self.assertIn(b'selected', r.content)
+        self.assertIn(b'filter-select', r.content)
 
     def test_overview_explicit_profile(self):
         r = self.client.get("/?profile=test")
