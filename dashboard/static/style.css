@@ -6507,3 +6507,104 @@ th {
     color: var(--text, #c9d1d9);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ───────────────────────────────────────────────────────────────────
+   Overview cockpit — header + grilles + cards génériques
+   ─────────────────────────────────────────────────────────────────── */
+.dash-overview-header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; margin-bottom: 16px;
+}
+.dash-overview-toolbar {
+    display: flex; align-items: center; gap: 10px;
+}
+.dash-overview-toolbar label {
+    color: var(--text-muted, #8b949e);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.dash-refresh-btn {
+    background: var(--bg-secondary, #1f1f1f);
+    border: 1px solid var(--border, #30363d);
+    color: var(--text, #c9d1d9);
+    width: 30px; height: 28px; border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none; font-size: 13px;
+    transition: background 0.12s;
+}
+.dash-refresh-btn:hover { background: rgba(255,255,255,0.06); }
+.dash-global-cost {
+    background: rgba(56, 139, 253, 0.1);
+    border: 1px solid rgba(56, 139, 253, 0.3);
+    color: var(--text, #c9d1d9);
+    padding: 4px 10px; border-radius: 5px;
+    font-size: 12px;
+}
+
+/* Grilles Layout B */
+.dash-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dash-grid-2-bias-right {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dash-grid-2-bias-left {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dash-card {
+    background: var(--bg-secondary, #1f1f1f);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    padding: 12px 14px;
+}
+.dash-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted, #8b949e);
+}
+.dash-details-list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12px;
+}
+.dash-details-list .muted {
+    color: var(--text-muted, #8b949e); font-size: 10.5px;
+}
+
+/* Section générale — grille 4×1 */
+.dash-general-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+/* Responsive */
+@media (max-width: 1280px) {
+    .dash-grid-2-bias-right,
+    .dash-grid-2-bias-left {
+        grid-template-columns: 1fr;
+    }
+}
+@media (max-width: 900px) {
+    .dash-kpi-row,
+    .dash-general-grid {
+        grid-template-columns: 1fr;
+    }
+    .dash-overview-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
