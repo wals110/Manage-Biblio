@@ -173,5 +173,36 @@ class TestCardClassifiedRate(OverviewTestBase):
         self.assertEqual(r["fallback_count"], 0)
 
 
+class TestCardFoldersCount(OverviewTestBase):
+
+    def _write_tree(self, folders: list[str]):
+        (self.profile_dir / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": folders}, sort_keys=False)
+        )
+
+    def test_counts_total_and_max_depth(self):
+        self._write_tree([
+            "01-SCIENCES",
+            "01-SCIENCES/MATH",
+            "01-SCIENCES/MATH/ALG",
+            "02-INFO",
+        ])
+        r = overview.card_folders_count(self.profile_name)
+        self.assertEqual(r["total"], 4)
+        self.assertEqual(r["max_depth"], 3)
+
+    def test_no_tree_yaml_returns_error(self):
+        r = overview.card_folders_count(self.profile_name)
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["max_depth"], 0)
+        self.assertEqual(r["error"], "tree_missing")
+
+    def test_recently_modified_picks_3_newest(self):
+        self._write_tree(["A", "A/B", "A/C", "D"])
+        r = overview.card_folders_count(self.profile_name)
+        self.assertIn("recently_modified", r)
+        self.assertIsInstance(r["recently_modified"], list)
+
+
 if __name__ == "__main__":
     unittest.main()

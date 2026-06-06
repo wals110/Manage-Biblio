@@ -124,3 +124,39 @@ def card_classified_rate(profile: str) -> dict:
         "rate": round(classified / total * 100, 1) if total else 0.0,
         "fallback_count": fallback_count,
     }
+
+
+def card_folders_count(profile: str) -> dict:
+    """Statistiques sur tree.yaml du profil. Retourne {total, max_depth,
+    recently_modified, error?}."""
+    tree_path = data.get_project_root() / "profiles" / profile / "tree.yaml"
+    if not tree_path.exists():
+        return {"total": 0, "max_depth": 0,
+                "recently_modified": [], "error": "tree_missing"}
+    try:
+        d = yaml.safe_load(tree_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return {"total": 0, "max_depth": 0,
+                "recently_modified": [], "error": "tree_invalid"}
+    folders = [str(f).strip() for f in (d.get("folders") or []) if f]
+    max_depth = max((f.count("/") + 1 for f in folders), default=0)
+    # recently_modified : 3 folders avec mtime FS la plus récente.
+    # Lookup via target. Best-effort : silent skip si target absent.
+    cfg = _load_profile_config(profile)
+    target_str = cfg.get("target") if cfg else None
+    rec: list[tuple[float, str]] = []
+    if target_str:
+        target = Path(str(target_str))
+        if target.exists():
+            for f in folders:
+                fp = target / f
+                try:
+                    rec.append((fp.stat().st_mtime, f))
+                except OSError:
+                    pass
+    rec.sort(reverse=True)
+    return {
+        "total": len(folders),
+        "max_depth": max_depth,
+        "recently_modified": [name for _, name in rec[:3]],
+    }
