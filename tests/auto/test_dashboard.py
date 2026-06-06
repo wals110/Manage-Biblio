@@ -56,6 +56,45 @@ class TestDashboardRoutes(unittest.TestCase):
         r = self.client.get("/suggestions")
         self.assertEqual(r.status_code, 200)
 
+    # ─── Overview cockpit refactor 2026-06-05 ─────────────────────
+
+    def test_overview_default_profile(self):
+        r = self.client.get("/")
+        self.assertEqual(r.status_code, 200)
+        # Le selector contient "default" comme option sélectionnée
+        self.assertIn(b'value="default"', r.content)
+
+    def test_overview_explicit_profile(self):
+        r = self.client.get("/?profile=test")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"test", r.content)
+
+    def test_overview_unknown_profile_falls_back(self):
+        """?profile=foo → fallback transparent (pas de 404)."""
+        r = self.client.get("/?profile=foo-does-not-exist")
+        self.assertEqual(r.status_code, 200)
+
+    def test_overview_refresh_param_returns_200(self):
+        r = self.client.get("/?profile=default&refresh=1")
+        self.assertEqual(r.status_code, 200)
+
+    def test_overview_contains_global_cost_banner(self):
+        r = self.client.get("/")
+        self.assertIn(b"Co", r.content)  # "Coût" présent (UTF-8 ou HTML entity)
+        self.assertIn(b"dash-global-cost", r.content)
+
+    def test_overview_contains_kpi_grid(self):
+        r = self.client.get("/")
+        self.assertIn(b"dash-kpi-big", r.content)
+
+    def test_overview_no_longer_contains_test_kpis(self):
+        """Régression : Overview ne doit plus afficher Pass/Fail/Skip."""
+        r = self.client.get("/")
+        # L'ancienne page contenait "Heatmap par phase"
+        self.assertNotIn(b"Heatmap par phase", r.content)
+        # Et "Release Gate"
+        self.assertNotIn(b"Release Gate", r.content)
+
     def test_admin_page(self):
         r = self.client.get("/admin")
         self.assertEqual(r.status_code, 200)
