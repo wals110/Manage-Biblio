@@ -470,6 +470,26 @@ class TestCardTopThemes(OverviewTestBase):
         r = overview.card_top_themes(self.profile_name)
         self.assertEqual(r, [])
 
+    def test_limit_truncates_list(self):
+        """limit=2 doit retourner exactement 2 thèmes (les 2 plus fréquents)."""
+        self._write_cache([
+            [("A", 0.9), ("B", 0.9), ("C", 0.9), ("D", 0.9), ("E", 0.9)],
+            [("A", 0.9), ("B", 0.9), ("C", 0.9)],
+            [("A", 0.9), ("B", 0.9)],
+            [("A", 0.9)],
+        ])
+        r = overview.card_top_themes(self.profile_name, limit=2)
+        self.assertEqual(len(r), 2)
+        self.assertEqual([x["theme"] for x in r], ["A", "B"])
+
+    def test_tie_break_alphabetical(self):
+        """À counts égaux, l'ordre doit être alphabétique (déterministe)."""
+        self._write_cache([
+            [("Zebra", 0.9), ("Apple", 0.9), ("Mango", 0.9)],
+        ])
+        r = overview.card_top_themes(self.profile_name)
+        self.assertEqual([x["theme"] for x in r], ["Apple", "Mango", "Zebra"])
+
 
 if __name__ == "__main__":
     unittest.main()
