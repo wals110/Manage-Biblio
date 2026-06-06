@@ -246,3 +246,45 @@ def card_inbox(profile: str) -> dict:
                        if oldest_mtime else None),
         "exists": True,
     }
+
+
+def card_baseline_runs(profile: str) -> dict:
+    """Délègue à baseline.list_runs. Retourne {n_runs, last_run_iso}."""
+    from dashboard import baseline
+    try:
+        runs = baseline.list_runs(profile)
+    except Exception:  # noqa: BLE001 — baseline peut crasher sur profil incomplet
+        runs = []
+    if not runs:
+        return {"n_runs": 0, "last_run_iso": None}
+    # baseline.list_runs trie déjà du plus récent au plus ancien
+    return {"n_runs": len(runs), "last_run_iso": runs[0].get("created_at")}
+
+
+def _agent_info(profile: str, agent: str) -> dict:
+    """Lit .cache/<agent>/batches/ + status.json. status ∈ {idle, running,
+    error, missing}."""
+    base = data.get_project_root() / "profiles" / profile / ".cache" / agent
+    if not base.exists():
+        return {"n_batches": 0, "status": "missing"}
+    batches_dir = base / "batches"
+    n = 0
+    if batches_dir.exists():
+        n = sum(1 for d in batches_dir.iterdir() if d.is_dir())
+    status_file = base / "status.json"
+    status = "missing"
+    if status_file.exists():
+        try:
+            data_ = json.loads(status_file.read_text(encoding="utf-8"))
+            status = str(data_.get("status") or "idle")
+        except (json.JSONDecodeError, OSError):
+            status = "error"
+    return {"n_batches": n, "status": status}
+
+
+def card_agent_sessions(profile: str) -> dict:
+    """Sessions des agents refonte + dedupli."""
+    return {
+        "refonte": _agent_info(profile, "refonte"),
+        "dedupli": _agent_info(profile, "dedupli"),
+    }

@@ -293,5 +293,58 @@ class TestCardInbox(OverviewTestBase):
         self.assertFalse(r["exists"])
 
 
+class TestCardBaselineRuns(OverviewTestBase):
+
+    def test_with_runs_via_mock(self):
+        from dashboard import baseline
+        fake_runs = [
+            {"run_id": "r2", "created_at": "2026-06-04T10:00:00",
+             "n_files": 100, "n_disagreements": 20, "klodo_version": "1.0"},
+            {"run_id": "r1", "created_at": "2026-06-01T08:00:00",
+             "n_files": 80, "n_disagreements": 30, "klodo_version": "1.0"},
+        ]
+        with mock.patch.object(baseline, "list_runs", return_value=fake_runs):
+            r = overview.card_baseline_runs(self.profile_name)
+        self.assertEqual(r["n_runs"], 2)
+        self.assertEqual(r["last_run_iso"], "2026-06-04T10:00:00")
+
+    def test_no_runs(self):
+        from dashboard import baseline
+        with mock.patch.object(baseline, "list_runs", return_value=[]):
+            r = overview.card_baseline_runs(self.profile_name)
+        self.assertEqual(r["n_runs"], 0)
+        self.assertIsNone(r["last_run_iso"])
+
+
+class TestCardAgentSessions(OverviewTestBase):
+
+    def _write_status(self, agent: str, status: str):
+        d = self.profile_dir / ".cache" / agent
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "status.json").write_text(json.dumps({"status": status}))
+
+    def _make_batches(self, agent: str, n: int):
+        for i in range(n):
+            d = self.profile_dir / ".cache" / agent / "batches" / f"batch-{i:03d}"
+            d.mkdir(parents=True, exist_ok=True)
+
+    def test_counts_batches_per_agent(self):
+        self._make_batches("refonte", 3)
+        self._make_batches("dedupli", 1)
+        self._write_status("refonte", "idle")
+        self._write_status("dedupli", "running")
+        r = overview.card_agent_sessions(self.profile_name)
+        self.assertEqual(r["refonte"]["n_batches"], 3)
+        self.assertEqual(r["refonte"]["status"], "idle")
+        self.assertEqual(r["dedupli"]["n_batches"], 1)
+        self.assertEqual(r["dedupli"]["status"], "running")
+
+    def test_missing_agents_default(self):
+        r = overview.card_agent_sessions(self.profile_name)
+        self.assertEqual(r["refonte"]["n_batches"], 0)
+        self.assertEqual(r["refonte"]["status"], "missing")
+        self.assertEqual(r["dedupli"]["status"], "missing")
+
+
 if __name__ == "__main__":
     unittest.main()
