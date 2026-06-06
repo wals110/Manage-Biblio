@@ -140,6 +140,57 @@
 {% endmacro %}
 
 
+{# kpi_card_big — KPI vedette pour le cockpit Overview.
+   variant ∈ {default, ok, warn}. Le subtitle est optionnel. #}
+{% macro kpi_card_big(label, value, subtitle="", variant="default") %}
+<div class="dash-kpi-big dash-kpi-big-{{ variant }}">
+  <div class="dash-kpi-label">{{ label }}</div>
+  <div class="dash-kpi-value">{{ value }}</div>
+  {% if subtitle %}<div class="dash-kpi-sub">{{ subtitle }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+
+{# mini_bar — liste de barres horizontales proportionnelles.
+   items     : list[dict] — chaque élément a au moins value_key et label_key
+   value_key : nom du champ numérique (count, n_files, …)
+   label_key : nom du champ texte (theme, path, …)
+   empty     : texte affiché si items est vide #}
+{% macro mini_bar(items, value_key='count', label_key='label', empty="") %}
+{% if items %}
+  {% set vmax = (items | map(attribute=value_key) | max) or 1 %}
+  <ul class="dash-mini-bars">
+    {% for it in items %}
+    <li class="dash-mini-bar-row" title="{{ it[label_key] }} · {{ it[value_key] }}">
+      <span class="dash-mini-bar-label">{{ it[label_key] }}</span>
+      <span class="dash-mini-bar-track">
+        <span class="dash-mini-bar-fill"
+              style="width: {{ (it[value_key] / vmax * 100) | round(1) }}%"></span>
+      </span>
+      <span class="dash-mini-bar-value">{{ it[value_key] }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}<p class="muted small">{{ empty }}</p>{% endif %}
+{% endmacro %}
+
+
+{# activity_timeline — liste temporelle des mutations récentes. #}
+{% macro activity_timeline(events, empty="") %}
+{% if events %}
+  <ul class="dash-activity">
+    {% for e in events %}
+    <li>
+      <span class="dash-activity-time">{{ e.relative_time }}</span>
+      <span class="dash-activity-action">{{ e.action }}</span>
+      <span class="dash-activity-target">{{ e.target }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}<p class="muted small">{{ empty }}</p>{% endif %}
+{% endmacro %}
+
+
 {# subtabs_header — header de sub-tabs server-rendered avec URL ?view=X.
    - base_path  : route racine (ex: '/tests', '/baseline')
    - current_view : str — view key actuellement active (mise en .active)

@@ -6414,6 +6414,201 @@ th {
 }
 .btn-danger:active:not(:disabled) { transform: translateY(1px); }
 
+/* ───────────────────────────────────────────────────────────────────
+   Overview cockpit — KPI vedettes (Layout B rangée 1)
+   ─────────────────────────────────────────────────────────────────── */
+.dash-kpi-big {
+    background: var(--bg-secondary, #1f1f1f);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: background 0.15s;
+}
+.dash-kpi-big:hover { background: rgba(255,255,255,0.03); }
+.dash-kpi-big .dash-kpi-label {
+    font-size: 11.5px;
+    color: var(--text-muted, #8b949e);
+    font-weight: 500;
+}
+.dash-kpi-big .dash-kpi-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text, #c9d1d9);
+    font-variant-numeric: tabular-nums;
+}
+.dash-kpi-big .dash-kpi-sub {
+    font-size: 10.5px;
+    color: var(--text-muted, #8b949e);
+}
+.dash-kpi-big-warn {
+    border-color: rgba(248, 81, 73, 0.4);
+    background: rgba(248, 81, 73, 0.05);
+}
+.dash-kpi-big-warn .dash-kpi-value { color: #ff8a82; }
+.dash-kpi-big-ok {
+    border-color: rgba(63, 185, 80, 0.4);
+}
+.dash-kpi-big-ok .dash-kpi-value { color: #7ee787; }
+
+/* Mini bars (top thèmes / top folders) */
+.dash-mini-bars {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.dash-mini-bar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 100px auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+}
+.dash-mini-bar-label {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text, #c9d1d9);
+}
+.dash-mini-bar-track {
+    background: rgba(255,255,255,0.05); border-radius: 3px;
+    height: 6px; overflow: hidden;
+}
+.dash-mini-bar-fill {
+    background: var(--blue, #58a6ff); height: 100%; display: block;
+}
+.dash-mini-bar-value {
+    color: var(--text-muted, #8b949e);
+    font-variant-numeric: tabular-nums; font-size: 10.5px;
+}
+
+/* Activity timeline */
+.dash-activity {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 11px;
+}
+.dash-activity li {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.04);
+}
+.dash-activity-time {
+    color: var(--text-muted, #8b949e);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.dash-activity-action {
+    color: var(--blue, #58a6ff);
+    font-weight: 600;
+}
+.dash-activity-target {
+    color: var(--text, #c9d1d9);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Overview cockpit — header + grilles + cards génériques
+   ─────────────────────────────────────────────────────────────────── */
+.dash-overview-header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; margin-bottom: 16px;
+}
+.dash-overview-toolbar {
+    display: flex; align-items: center; gap: 10px;
+}
+.dash-overview-toolbar label {
+    color: var(--text-muted, #8b949e);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.dash-refresh-btn {
+    background: var(--bg-secondary, #1f1f1f);
+    border: 1px solid var(--border, #30363d);
+    color: var(--text, #c9d1d9);
+    width: 30px; height: 28px; border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none; font-size: 13px;
+    transition: background 0.12s;
+}
+.dash-refresh-btn:hover { background: rgba(255,255,255,0.06); }
+.dash-global-cost {
+    background: rgba(56, 139, 253, 0.1);
+    border: 1px solid rgba(56, 139, 253, 0.3);
+    color: var(--text, #c9d1d9);
+    padding: 4px 10px; border-radius: 5px;
+    font-size: 12px;
+}
+
+/* Grilles Layout B */
+.dash-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dash-grid-2-bias-right {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dash-grid-2-bias-left {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dash-card {
+    background: var(--bg-secondary, #1f1f1f);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    padding: 12px 14px;
+}
+.dash-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted, #8b949e);
+}
+.dash-details-list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12px;
+}
+.dash-details-list .muted {
+    color: var(--text-muted, #8b949e); font-size: 10.5px;
+}
+
+/* Section générale — grille 4×1 */
+.dash-general-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+/* Responsive */
+@media (max-width: 1280px) {
+    .dash-grid-2-bias-right,
+    .dash-grid-2-bias-left {
+        grid-template-columns: 1fr;
+    }
+}
+@media (max-width: 900px) {
+    .dash-kpi-row,
+    .dash-general-grid {
+        grid-template-columns: 1fr;
+    }
+    .dash-overview-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
 /* ───────────────────────────────────────────────────────────────────────
    Dashboard sub-tabs (server-rendered, used by /tests, /baseline).
    Reprend visuellement le pattern de .tax-subtabs mais sur des <a> au lieu

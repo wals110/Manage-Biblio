@@ -1,0 +1,76 @@
+{# Moitié haute du cockpit Overview — Layout B (hiérarchique).
+   Contexte attendu : s (profile_snapshot). #}
+{% from "macros/widgets.html" import kpi_card_big, mini_bar, activity_timeline %}
+
+{# ── Rangée 1 : 4 KPI vedettes ── #}
+<div class="dash-kpi-row">
+  {% if s.files.get('error') %}
+    {{ kpi_card_big("📁 Fichiers", "—",
+                    "target manquant" if s.files.error == 'target_missing'
+                    else "profil incomplet",
+                    variant="warn") }}
+  {% else %}
+    {{ kpi_card_big("📁 Fichiers", s.files.total,
+                    s.files.size_gb ~ ' Go') }}
+  {% endif %}
+
+  {% if s.files.total %}
+    {{ kpi_card_big("📊 Classifiés", s.classified.rate ~ '%',
+                    s.classified.classified ~ '/' ~ s.files.total) }}
+  {% else %}
+    {{ kpi_card_big("📊 Classifiés", "—", "pas de fichier à classer") }}
+  {% endif %}
+
+  {{ kpi_card_big("💰 Coût LLM", '$' ~ s.llm_cost.cost_usd,
+                  s.llm_cost.n_calls ~ ' appel(s)') }}
+
+  {% set health_variant = "warn" if s.health.n_orphans_total > 0
+                         else ("ok" if s.health.locks_active|length == 0
+                               else "default") %}
+  {{ kpi_card_big("⚠ Health", s.health.n_orphans_total,
+                  "orphan(s)" if s.health.n_orphans_total
+                  else "tout propre",
+                  variant=health_variant) }}
+</div>
+
+{# ── Rangée 2 : Détails (1fr) + Top thèmes (1.3fr) ── #}
+<div class="dash-grid-2-bias-right">
+  <div class="dash-card">
+    <h3>Détails</h3>
+    <ul class="dash-details-list">
+      {% if s.folders.get('error') %}
+      <li title="{% if s.folders.error == 'tree_missing' %}tree.yaml introuvable — profil incomplet{% else %}tree.yaml invalide ({{ s.folders.error }}){% endif %}">🗂 — folders
+        <span class="muted">· {{ s.folders.error }}</span></li>
+      {% else %}
+      <li>🗂 {{ s.folders.total }} folders
+        <span class="muted">· profondeur max {{ s.folders.max_depth }}</span></li>
+      {% endif %}
+      <li>👁 {{ s.vision_cache.n_entries }} analyses vision
+        <span class="muted">· {{ s.vision_cache.size_kb }} Ko</span></li>
+      <li>📥 {% if s.inbox.exists %}{{ s.inbox.n_files }} inbox
+        <span class="muted">· {{ s.inbox.size_mb }} Mo</span>{% else %}— inbox{% endif %}</li>
+      <li>🎯 {{ s.baseline_runs.n_runs }} runs baseline</li>
+      <li>🤖 {{ s.agent_sessions.refonte.n_batches }} refonte
+        · {{ s.agent_sessions.dedupli.n_batches }} dédupli</li>
+    </ul>
+  </div>
+  <div class="dash-card">
+    <h3>🔥 Top 10 thèmes LLM</h3>
+    {{ mini_bar(s.top_themes, value_key='count', label_key='theme',
+                empty="Aucun thème en cache.") }}
+  </div>
+</div>
+
+{# ── Rangée 3 : Top folders (1.3fr) + Activité (1fr) ── #}
+<div class="dash-grid-2-bias-left">
+  <div class="dash-card">
+    <h3>📈 Top 10 folders</h3>
+    {{ mini_bar(s.top_folders, value_key='n_files', label_key='path',
+                empty="Aucun folder peuplé.") }}
+  </div>
+  <div class="dash-card">
+    <h3>🕒 Activité récente</h3>
+    {{ activity_timeline(s.recent_activity,
+                         empty="Aucune mutation enregistrée.") }}
+  </div>
+</div>
