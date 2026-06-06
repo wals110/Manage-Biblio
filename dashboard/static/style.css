@@ -6608,3 +6608,40 @@ th {
         align-items: flex-start;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Dashboard sub-tabs (server-rendered, used by /tests, /baseline).
+   Reprend visuellement le pattern de .tax-subtabs mais sur des <a> au lieu
+   de <button>. Ajout de text-decoration:none pour neutraliser le style
+   par défaut des liens.
+   ─────────────────────────────────────────────────────────────────────── */
+.dash-subtabs {
+    display: inline-flex;
+    margin: 0 0 14px 0;
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.dash-subtab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #8b949e);
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.1s, color 0.1s;
+}
+.dash-subtab:hover {
+    background: rgba(255,255,255,0.04);
+    color: var(--text, #c9d1d9);
+    text-decoration: none;
+}
+.dash-subtab.active {
+    background: var(--blue, #58a6ff);
+    color: white;
+}
+.dash-subtab.active:hover {
+    color: white;
+}

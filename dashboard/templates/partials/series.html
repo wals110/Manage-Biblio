@@ -147,7 +147,7 @@
                 {% if 'rapport_' in log or 'refine_' in log %}
                 <span class="log-icon">📊</span>
                 {% set log_type = 'rename' if 'rename' in log else ('classify' if 'classify' in log else ('refine' if 'refine' in log else ('process' if 'process' in log else 'classify'))) %}
-                <a href="/rapports?type={{ log_type }}&file={{ project_root }}/{{ log }}" class="log-link">{{ log_name }}</a>
+                <a href="/tests?view=rapports&type={{ log_type }}&file={{ project_root }}/{{ log }}" class="log-link">{{ log_name }}</a>
                 {% else %}
                 <span class="log-icon">📄</span>
                 <span class="text-muted">{{ log_name }}</span>

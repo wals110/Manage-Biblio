@@ -189,3 +189,25 @@
   </ul>
 {% else %}<p class="muted small">{{ empty }}</p>{% endif %}
 {% endmacro %}
+
+
+{# subtabs_header — header de sub-tabs server-rendered avec URL ?view=X.
+   - base_path  : route racine (ex: '/tests', '/baseline')
+   - current_view : str — view key actuellement active (mise en .active)
+   - tabs       : list[tuple[view_key, label]] — l'ordre est respecté
+   - extra_qs   : str — query string supplémentaire à préserver (ex:
+                  "profile=default&run=cosmic-koala"). Pas de leading '&'.
+
+   Pattern : les sub-tabs sont des <a> (server-render, pas de toggle JS).
+   Au clic, le browser recharge avec le nouveau ?view= et le serveur rend
+   le partial correspondant. URL bookmarkable, refresh restaure l'état. #}
+{% macro subtabs_header(base_path, current_view, tabs, extra_qs="") %}
+<div class="dash-subtabs" role="tablist">
+  {% for key, label in tabs %}
+    <a href="{{ base_path }}?view={{ key }}{% if extra_qs %}&{{ extra_qs }}{% endif %}"
+       class="dash-subtab {% if current_view == key %}active{% endif %}"
+       role="tab"
+       aria-selected="{% if current_view == key %}true{% else %}false{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+{% endmacro %}

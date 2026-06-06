@@ -54,6 +54,45 @@ _project_root = str(data.get_project_root())
 templates.env.globals["project_root"] = _project_root
 
 
+# ─── Redirections 301 — anciennes routes refondues ───────────────────────
+#
+# Les 5 routes ci-dessous sont remplacées par 2 hubs avec sub-tabs server-
+# rendered (cf. refactor UX dashboard du 2026-06-05) :
+#   - /rapports, /comparer, /historique, /metriques → /tests?view=X
+#   - /suggestions                                  → /baseline?view=suggestions
+#
+# Le statut 301 (Permanent) sert deux objectifs :
+#   1. Les bookmarks utilisateur restent fonctionnels (aucun lien mort).
+#   2. Le browser met la redirection en cache → un seul hop au 1er accès,
+#      puis appels directs vers la nouvelle URL.
+#
+# `request.url.query` préserve les filtres existants (ex: ?type=classify
+# → /tests?view=rapports&type=classify).
+from fastapi.responses import RedirectResponse  # noqa: E402
+
+_LEGACY_REDIRECTS = {
+    "/rapports":    ("/tests", "rapports"),
+    "/comparer":    ("/tests", "comparer"),
+    "/metriques":   ("/tests", "metriques"),
+    "/historique":  ("/tests", "historique"),
+    "/suggestions": ("/baseline", "suggestions"),
+}
+
+
+def _make_legacy_redirect(target_base: str, view: str):
+    """Factory : closure capture `target_base` et `view` (sinon toutes les
+    routes pointeraient vers la dernière itération de la boucle)."""
+    async def _redirect(request: Request):
+        qs = str(request.url.query)
+        url = f"{target_base}?view={view}" + (f"&{qs}" if qs else "")
+        return RedirectResponse(url, status_code=301)
+    return _redirect
+
+
+for _old, (_target, _view) in _LEGACY_REDIRECTS.items():
+    app.add_api_route(_old, _make_legacy_redirect(_target, _view), methods=["GET"])
+
+
 @app.get("/")
 async def overview(
     request: Request,
@@ -85,47 +124,241 @@ async def overview(
     })
 
 
-@app.get("/tests")
-async def tests_page(
-    request: Request,
-    phase: str | None = None,
-    status: str | None = None,
-    run: str | None = None,
-):
-    """Tests page — list, expand, run tests."""
+_TESTS_VIEWS = ("exec", "rapports", "comparer", "metriques", "historique")
+
+
+def _render_tests_exec(request: Request) -> dict:
+    """Contexte du sub-tab "Exécution" — anciennement /tests."""
+    qp = request.query_params
+    phase = qp.get("phase")
+    status = qp.get("status")
+    run = qp.get("run")
     phase_int = int(phase) if phase and phase.isdigit() else None
     status_val = status if status else None
     tests_yaml = data.get_tests_yaml()
     available_runs = data.get_available_runs()
 
-    # Load specific run from DuckDB, or latest
     db_report = data.get_run_from_db(run)
     if db_report:
-        # Merge with tests.yaml: keep DuckDB statuses, add missing series as not_run
         report = data.get_merged_test_view(db_report, tests_yaml)
-        # Override checks with DuckDB values (preserves manual validations)
         data.apply_db_statuses(report, db_report)
     else:
-        # Fallback: read from JSON files
         report = data.get_merged_test_view(data.get_latest_report(), tests_yaml)
 
-    return templates.TemplateResponse(
-        request,
-        "tests.html",
-        {
-            "report": report,
-            "tests": tests_yaml,
-            "phase": phase_int,
-            "status": status_val,
-            "active": "tests",
-            "api_key_set": any(k["set"] for k in _get_api_keys_status() if k["name"] == "SILICONFLOW_API_KEY"),
-            "available_runs": available_runs,
-            "selected_run": run or "",
-            "current_run_id": report.get("_run_id", run or "") if report else "",
-            "available_profiles": data.get_available_profiles(),
-            "current_profile": "test",
-        },
-    )
+    return {
+        "report": report,
+        "tests": tests_yaml,
+        "phase": phase_int,
+        "status": status_val,
+        "api_key_set": any(k["set"] for k in _get_api_keys_status()
+                           if k["name"] == "SILICONFLOW_API_KEY"),
+        "available_runs": available_runs,
+        "selected_run": run or "",
+        "current_run_id": report.get("_run_id", run or "") if report else "",
+        "available_profiles": data.get_available_profiles(),
+        "current_profile": "test",
+    }
+
+
+def _render_tests_rapports(request: Request) -> dict:
+    """Contexte du sub-tab "Rapports" — anciennement /rapports."""
+    qp = request.query_params
+    report_type = qp.get("type", "classify")
+    file = qp.get("file")
+    test = qp.get("test")
+    search = qp.get("search")
+    status = qp.get("status")
+    section = qp.get("section")
+    sort = qp.get("sort")
+    order = qp.get("order", "asc")
+    try:
+        page = max(1, int(qp.get("page", "1")))
+    except (TypeError, ValueError):
+        page = 1
+
+    tests_yaml = data.get_tests_yaml()
+    csv_files = data.get_csv_files(report_type, tests_yaml)
+    available_tests = data.get_available_tests(csv_files)
+
+    if test:
+        csv_files_filtered = [f for f in csv_files if f.get("test_id") == test]
+    else:
+        csv_files_filtered = csv_files
+
+    selected_file = file or (csv_files_filtered[0]["path"] if csv_files_filtered else None)
+    if selected_file and not _is_safe_file_path(selected_file):
+        selected_file = csv_files_filtered[0]["path"] if csv_files_filtered else None
+
+    headers: list[str] = []
+    rows: list[dict] = []
+    stats: dict = {}
+    statuses: list[str] = []
+    sections: list[str] = []
+    total_pages = 1
+    total_rows = 0
+    associated_test = None
+
+    if selected_file:
+        headers, rows = data.load_csv(selected_file)
+        stats = data.compute_csv_stats(rows, report_type)
+        statuses = data.get_csv_statuses(rows, report_type)
+        sections = data.get_csv_sections(rows)
+        associated_test = data.find_test_for_report(
+            os.path.basename(selected_file), tests_yaml,
+        )
+        if search:
+            rows = [r for r in rows if search.lower() in str(r).lower()]
+        if status:
+            status_key = "action" if report_type == "rename" else "status"
+            rows = [r for r in rows if r.get(status_key, "") == status]
+        if section:
+            rows = [r for r in rows if r.get("destination", "").startswith(section)]
+        if sort and sort in headers:
+            reverse = order == "desc"
+            rows.sort(key=lambda r: r.get(sort, ""), reverse=reverse)
+        per_page = 50
+        total_rows = len(rows)
+        total_pages = max(1, (total_rows + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        rows = rows[(page - 1) * per_page : page * per_page]
+
+    return {
+        "report_type": report_type,
+        "csv_files": csv_files,
+        "available_tests": available_tests,
+        "test_filter": test or "",
+        "selected_file": selected_file or "",
+        "headers": headers,
+        "rows": rows,
+        "stats": stats,
+        "statuses": statuses,
+        "sections": sections,
+        "search": search or "",
+        "status_filter": status or "",
+        "section_filter": section or "",
+        "sort": sort or "",
+        "order": order,
+        "page": page,
+        "total_pages": total_pages,
+        "total_rows": total_rows,
+        "associated_test": associated_test,
+    }
+
+
+def _render_tests_comparer(request: Request) -> dict:
+    """Contexte du sub-tab "Comparer" — anciennement /comparer."""
+    qp = request.query_params
+    old_run = qp.get("old_run")
+    series_filter = qp.get("series_filter")
+
+    available_runs = data.get_available_runs()
+    current_run = data.get_run_from_db() if available_runs else None
+    old_run_data = data.get_run_from_db(old_run) if old_run else None
+
+    diff = None
+    common_series: list[dict] = []
+    if current_run and old_run_data:
+        diff = data.compare_runs(current_run, old_run_data, series_filter)
+        current_series_ids = {
+            s["id"] for p in current_run.get("phases", []) for s in p.get("series", [])
+        }
+        old_series_ids = {
+            s["id"] for p in old_run_data.get("phases", []) for s in p.get("series", [])
+        }
+        common_ids = current_series_ids & old_series_ids
+        for p in current_run.get("phases", []):
+            for s in p.get("series", []):
+                if s["id"] in common_ids:
+                    common_series.append({"id": s["id"], "name": s.get("name", s["id"])})
+        common_series.sort(key=lambda x: x["id"])
+
+    old_runs = [r for r in available_runs
+                if r.get("id") != (current_run or {}).get("_run_id")]
+
+    return {
+        "current_run": current_run,
+        "old_run_data": old_run_data,
+        "old_runs": old_runs,
+        "selected_old_run": old_run or "",
+        "common_series": common_series,
+        "series_filter": series_filter or "",
+        "diff": diff,
+    }
+
+
+def _render_tests_metriques(request: Request) -> dict:
+    """Contexte du sub-tab "Métriques" — anciennement /metriques."""
+    qp = request.query_params
+    run = qp.get("run")
+    available_runs = data.get_available_runs()
+    run_csvs = data.get_run_csv_files(run)
+    selected_run = run or ""
+    current_run = data.get_run_from_db(run)
+
+    classify_metrics = None
+    rename_metrics = None
+    classify_paths = run_csvs.get("classify", []) + run_csvs.get("process", [])
+    rename_paths = run_csvs.get("rename", [])
+
+    if classify_paths:
+        classify_metrics = data.compute_aggregated_metrics(
+            classify_paths, data.compute_classification_metrics,
+        )
+    if rename_paths:
+        rename_metrics = data.compute_aggregated_metrics(
+            rename_paths, data.compute_rename_metrics,
+        )
+
+    return {
+        "classify_metrics": classify_metrics,
+        "rename_metrics": rename_metrics,
+        "available_runs": available_runs,
+        "selected_run": selected_run,
+        "current_run": current_run,
+        "classify_count": len(classify_paths),
+        "rename_count": len(rename_paths),
+    }
+
+
+def _render_tests_historique(request: Request) -> dict:
+    """Contexte du sub-tab "Historique" — anciennement /historique."""
+    qp = request.query_params
+    run_type = qp.get("run_type", "all")
+    history = data.get_history_data()
+    run_types = sorted({h.get("run_type", "unknown") for h in history})
+    if run_type != "all":
+        history = [h for h in history if h.get("run_type", "unknown") == run_type]
+    return {
+        "history": history,
+        "run_type": run_type,
+        "run_types": run_types,
+    }
+
+
+_TESTS_DISPATCH = {
+    "exec":       _render_tests_exec,
+    "rapports":   _render_tests_rapports,
+    "comparer":   _render_tests_comparer,
+    "metriques":  _render_tests_metriques,
+    "historique": _render_tests_historique,
+}
+
+
+@app.get("/tests")
+async def tests_page(request: Request, view: str = "exec"):
+    """Hub Tests — 5 sub-tabs server-rendered via `?view=X`.
+
+    Whitelist : `exec | rapports | comparer | metriques | historique`.
+    Fallback transparent vers `exec` si la valeur est inconnue (évite 500 sur
+    `?view=foo`). Chaque sub-tab a son contexte préparé par une fonction
+    interne `_render_tests_<view>(request)` qui lit ses propres query params.
+    """
+    if view not in _TESTS_VIEWS:
+        view = "exec"
+    context = _TESTS_DISPATCH[view](request)
+    context["active"] = "tests"
+    context["current_view"] = view
+    return templates.TemplateResponse(request, "tests.html", context)
 
 
 # Track running process and current series
@@ -348,108 +581,6 @@ async def run_test(
     return JSONResponse({"status": "done"})
 
 
-@app.get("/rapports")
-async def rapports_page(
-    request: Request,
-    type: str = "classify",
-    file: str | None = None,
-    test: str | None = None,
-    search: str | None = None,
-    status: str | None = None,
-    section: str | None = None,
-    sort: str | None = None,
-    order: str = "asc",
-    page: int = 1,
-):
-    """Rapports page — CSV viewer with filters, search, pagination."""
-    tests_yaml = data.get_tests_yaml()
-    csv_files = data.get_csv_files(type, tests_yaml)
-    available_tests = data.get_available_tests(csv_files)
-
-    # Filter by test if specified
-    if test:
-        csv_files_filtered = [f for f in csv_files if f.get("test_id") == test]
-    else:
-        csv_files_filtered = csv_files
-
-    # Use selected file or most recent from filtered list
-    selected_file = file or (csv_files_filtered[0]["path"] if csv_files_filtered else None)
-
-    # Path traversal protection
-    if selected_file and not _is_safe_file_path(selected_file):
-        selected_file = csv_files_filtered[0]["path"] if csv_files_filtered else None
-
-    headers: list[str] = []
-    rows: list[dict] = []
-    stats: dict = {}
-    statuses: list[str] = []
-    sections: list[str] = []
-    total_pages = 1
-    total_rows = 0
-
-    associated_test = None
-
-    if selected_file:
-        headers, rows = data.load_csv(selected_file)
-        stats = data.compute_csv_stats(rows, type)
-        statuses = data.get_csv_statuses(rows, type)
-        sections = data.get_csv_sections(rows)
-
-        # Find associated test series
-        tests_yaml = data.get_tests_yaml()
-        associated_test = data.find_test_for_report(
-            os.path.basename(selected_file), tests_yaml
-        )
-
-        # Apply filters
-        if search:
-            rows = [r for r in rows if search.lower() in str(r).lower()]
-        if status:
-            status_key = "action" if type == "rename" else "status"
-            rows = [r for r in rows if r.get(status_key, "") == status]
-        if section:
-            rows = [r for r in rows if r.get("destination", "").startswith(section)]
-
-        # Sort
-        if sort and sort in headers:
-            reverse = order == "desc"
-            rows.sort(key=lambda r: r.get(sort, ""), reverse=reverse)
-
-        # Paginate
-        per_page = 50
-        total_rows = len(rows)
-        total_pages = max(1, (total_rows + per_page - 1) // per_page)
-        page = max(1, min(page, total_pages))
-        rows = rows[(page - 1) * per_page : page * per_page]
-
-    return templates.TemplateResponse(
-        request,
-        "rapports.html",
-        {
-            "active": "rapports",
-            "report_type": type,
-            "csv_files": csv_files,
-            "available_tests": available_tests,
-            "test_filter": test or "",
-            "selected_file": selected_file or "",
-            "headers": headers,
-            "rows": rows,
-            "stats": stats,
-            "statuses": statuses,
-            "sections": sections,
-            "search": search or "",
-            "status_filter": status or "",
-            "section_filter": section or "",
-            "sort": sort or "",
-            "order": order,
-            "page": page,
-            "total_pages": total_pages,
-            "total_rows": total_rows,
-            "associated_test": associated_test,
-        },
-    )
-
-
 @app.get("/logs")
 async def logs_page(
     request: Request,
@@ -528,142 +659,6 @@ async def logs_page(
             "page": page,
             "total_pages": total_pages,
             "total_rows": total_rows,
-        },
-    )
-
-
-@app.get("/comparer")
-async def comparer_page(
-    request: Request,
-    old_run: str | None = None,
-    series_filter: str | None = None,
-):
-    """Comparer page — diff between current run and an older run."""
-    available_runs = data.get_available_runs()
-
-    # Current = most recent run
-    current_run = data.get_run_from_db() if available_runs else None
-    # Old = selected older run
-    old_run_data = data.get_run_from_db(old_run) if old_run else None
-
-    # Build comparison data
-    diff = None
-    common_series: list[dict] = []
-
-    if current_run and old_run_data:
-        diff = data.compare_runs(current_run, old_run_data, series_filter)
-        # Find series in common
-        current_series_ids = {
-            s["id"] for p in current_run.get("phases", []) for s in p.get("series", [])
-        }
-        old_series_ids = {
-            s["id"] for p in old_run_data.get("phases", []) for s in p.get("series", [])
-        }
-        common_ids = current_series_ids & old_series_ids
-        # Build list with names
-        for p in current_run.get("phases", []):
-            for s in p.get("series", []):
-                if s["id"] in common_ids:
-                    common_series.append({"id": s["id"], "name": s.get("name", s["id"])})
-        common_series.sort(key=lambda x: x["id"])
-
-    # Exclude current run from "old runs" dropdown
-    old_runs = [r for r in available_runs if r.get("id") != (current_run or {}).get("_run_id")]
-
-    return templates.TemplateResponse(
-        request,
-        "comparer.html",
-        {
-            "active": "comparer",
-            "current_run": current_run,
-            "old_run_data": old_run_data,
-            "old_runs": old_runs,
-            "selected_old_run": old_run or "",
-            "common_series": common_series,
-            "series_filter": series_filter or "",
-            "diff": diff,
-        },
-    )
-
-
-@app.get("/historique")
-async def historique_page(request: Request, run_type: str = "all"):
-    """Historique page — evolution charts and timeline."""
-    history = data.get_history_data()
-    run_types = sorted({h.get("run_type", "unknown") for h in history})
-    if run_type != "all":
-        history = [h for h in history if h.get("run_type", "unknown") == run_type]
-    return templates.TemplateResponse(
-        request,
-        "historique.html",
-        {
-            "active": "historique",
-            "history": history,
-            "run_type": run_type,
-            "run_types": run_types,
-        },
-    )
-
-
-@app.get("/metriques")
-async def metriques_page(
-    request: Request,
-    run: str | None = None,
-):
-    """Metriques page — quality metrics for a specific run."""
-    available_runs = data.get_available_runs()
-
-    # Get CSV files for selected run (or latest)
-    run_csvs = data.get_run_csv_files(run)
-    selected_run = run or ""
-
-    # Find which run is actually loaded
-    current_run = data.get_run_from_db(run)
-
-    classify_metrics = None
-    rename_metrics = None
-
-    classify_paths = run_csvs.get("classify", []) + run_csvs.get("process", [])
-    rename_paths = run_csvs.get("rename", [])
-
-    if classify_paths:
-        classify_metrics = data.compute_aggregated_metrics(
-            classify_paths, data.compute_classification_metrics
-        )
-
-    if rename_paths:
-        rename_metrics = data.compute_aggregated_metrics(
-            rename_paths, data.compute_rename_metrics
-        )
-
-    return templates.TemplateResponse(
-        request,
-        "metriques.html",
-        {
-            "active": "metriques",
-            "classify_metrics": classify_metrics,
-            "rename_metrics": rename_metrics,
-            "available_runs": available_runs,
-            "selected_run": selected_run,
-            "current_run": current_run,
-            "classify_count": len(classify_paths),
-            "rename_count": len(rename_paths),
-        },
-    )
-
-
-@app.get("/suggestions")
-async def suggestions_page(request: Request):
-    """Suggestions page — read-only viewer."""
-    suggestions = data.get_suggestions()
-    total_files = sum(len(s.get("files", [])) for s in suggestions)
-    return templates.TemplateResponse(
-        request,
-        "suggestions.html",
-        {
-            "active": "suggestions",
-            "suggestions": suggestions,
-            "total_files": total_files,
         },
     )
 
@@ -1408,18 +1403,14 @@ async def delete_run(id: str):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@app.get("/baseline")
-async def baseline_page(
-    request: Request,
-    profile: str | None = None,
-    run_id: str | None = None,
-):
-    """Validation UI for the latest baseline run of a profile.
+_BASELINE_VIEWS = ("disagreements", "suggestions")
 
-    Smart default: profile with the most recent run, else 'default'.
-    """
-    if not profile:
-        profile = baseline.smart_default_profile()
+
+def _render_baseline_disagreements(request: Request) -> dict:
+    """Contexte du sub-tab "Désaccords" — anciennement /baseline."""
+    qp = request.query_params
+    profile = qp.get("profile") or baseline.smart_default_profile()
+    run_id = qp.get("run_id")
 
     available_profiles = [
         p["name"] if isinstance(p, dict) else p
@@ -1439,20 +1430,57 @@ async def baseline_page(
         record = baseline.next_record(profile, rid)
         stats = baseline.stats(profile, rid)
 
-    return templates.TemplateResponse(
-        request,
-        "baseline.html",
-        {
-            "active": "baseline",
-            "profile": profile,
-            "available_profiles": available_profiles,
-            "runs": runs,
-            "selected_run": selected_run,
-            "record": record,
-            "folders": folders,
-            "stats": stats,
-        },
-    )
+    return {
+        "profile": profile,
+        "available_profiles": available_profiles,
+        "runs": runs,
+        "selected_run": selected_run,
+        "record": record,
+        "folders": folders,
+        "stats": stats,
+    }
+
+
+def _render_baseline_suggestions(request: Request) -> dict:
+    """Contexte du sub-tab "Suggestions" — anciennement /suggestions."""
+    suggestions = data.get_suggestions()
+    total_files = sum(len(s.get("files", [])) for s in suggestions)
+    # Profil exposé pour que le shell puisse préserver `profile=` dans
+    # extra_qs même quand on est sur la sub-tab Suggestions (qui ne s'en
+    # sert pas elle-même, mais on veut revenir aux Désaccords sans perdre
+    # le profil sélectionné).
+    qp = request.query_params
+    profile = qp.get("profile") or baseline.smart_default_profile()
+    return {
+        "profile": profile,
+        "suggestions": suggestions,
+        "total_files": total_files,
+    }
+
+
+_BASELINE_DISPATCH = {
+    "disagreements": _render_baseline_disagreements,
+    "suggestions":   _render_baseline_suggestions,
+}
+
+
+@app.get("/baseline")
+async def baseline_page(request: Request, view: str = "disagreements"):
+    """Hub Baseline — 2 sub-tabs server-rendered via `?view=X`.
+
+    Whitelist : `disagreements | suggestions`. Fallback transparent vers
+    `disagreements` si la valeur est inconnue. La sub-tab "Suggestions"
+    absorbe l'ancienne page `/suggestions` — `Suggestions` propose des
+    nouveaux thèmes / dossiers depuis le pipeline classify, `Désaccords`
+    arbitre les fichiers mal classés ; les deux flux convergent dans le
+    même hub « Validation ».
+    """
+    if view not in _BASELINE_VIEWS:
+        view = "disagreements"
+    context = _BASELINE_DISPATCH[view](request)
+    context["active"] = "baseline"
+    context["current_view"] = view
+    return templates.TemplateResponse(request, "baseline.html", context)
 
 
 @app.get("/api/baseline/runs")
