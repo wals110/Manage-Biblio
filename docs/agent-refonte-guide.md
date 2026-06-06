@@ -1,10 +1,16 @@
-# Guide d'usage — Agent Refonte (Phase A)
+# Guide d'usage — Agent Refonte (Phases A + B + C)
 
 [← Retour au README](../README.md) · [Spec complète](refonte-agent-spec.md) · [Autres agents](contributing.md#idées-de-contribution)
 
-> Premier agent IA de Klodo, en lecture seule. Analyse la taxonomie d'un profil et produit un rapport markdown listant les anomalies (catch-all qui débordent, dossiers sous-utilisés, doublons sémantiques, mappings orphelins, couverture faible).
+> Premier agent IA de Klodo : analyse la taxonomie d'un profil et l'accompagne dans sa refonte.
 >
-> **Statut : Phase A livrée.** Phases B (proposition de refonte) et C (dialog + mutations) à venir — cf. [spec](refonte-agent-spec.md).
+> **Statut : Phases A + B + C livrées** (juin 2026).
+>
+> - **Phase A — Diagnostic** (lecture seule) : produit un rapport markdown listant les anomalies (catch-all qui débordent, dossiers sous-utilisés, doublons sémantiques, mappings orphelins, couverture faible).
+> - **Phase B — Proposition** : génère un `tree-proposed.yaml` + simulation reclassify + diff tree visuel, permet de pré-visualiser l'impact d'une refonte complète avant tout commit.
+> - **Phase C — Dialog + mutations** : agent conversationnel LangGraph (parse intent → propose → confirm) avec 5 outils mutables (`add_folder`, `add_theme_mapping`, `rename_folder`, `merge_folders`, `bulk_move_files`), journal append-only, backup full snapshot rotation 50, rollback isolé par batch.
+>
+> Cf. [spec](refonte-agent-spec.md) pour les détails de design.
 
 ## Pré-requis
 

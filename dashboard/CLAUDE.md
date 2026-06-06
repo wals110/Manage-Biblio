@@ -1,15 +1,27 @@
-# Dashboard — Tests fonctionnels + Curation Klodo
+# Dashboard — Tests fonctionnels + Cockpit Biblio Klodo
 
 FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run python -m dashboard.app` (port 8080).
 
 ## Architecture
-- **Routes** : [app.py](app.py) — 12 pages (Overview, Tests, Rapports, Comparer, Métriques, Historique, Logs, Curation, Baseline, **Taxonomie**, Suggestions, Admin)
+
+- **Nav-bar 7 onglets** : Overview · Tests · Curation · Baseline · Taxonomie · Logs · Admin (refactor UX juin 2026 : 12 → 7)
+- **2 hubs avec sub-tabs server-rendered** (`?view=X`) :
+  - `/tests?view=` → exec | rapports | comparer | metriques | historique
+  - `/baseline?view=` → disagreements | suggestions
+- **Anciennes routes redirigées 301** (préserve les query params) : `/rapports`, `/comparer`, `/metriques`, `/historique` → `/tests?view=X` ; `/suggestions` → `/baseline?view=suggestions`
+- **Routes** : [app.py](app.py)
 - **Couche données** : [data.py](data.py) — fusion YAML + JSON + DuckDB + CSV + helpers viewer
-- **Module Taxonomie** : [taxonomy.py](taxonomy.py) — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json` + écritures sécurisées
+- **Module Overview cockpit** : [overview.py](overview.py) — 16 cartes + 2 builders (`build_profile_snapshot`, `build_general_snapshot`) + cache mémoire 30 s thread-safe
+- **Module Taxonomie** : [taxonomy.py](taxonomy.py) — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json` + écritures sécurisées + cascade rename → categories
+- **Module Catégories** : [categories.py](categories.py) — KeywordClassifier YAML, suggest_target_path pour orphelins
+- **Module Dédupli** : [dedupli.py](dedupli.py) — canonisation des thèmes long-tail (utilise `lib/theme_canon.py`)
+- **Modules Agent Refonte** : [agent_refonte.py](agent_refonte.py) (Phases A + B) + [agent_refonte_phase_c.py](agent_refonte_phase_c.py) (Phase C dialog/mutations) — délègue à `agents/refonte/`
+- **Module Baseline** : [baseline.py](baseline.py) — validation manuelle des désaccords prédiction Klodo vs placement actuel
 - **Backend tests fonctionnels** : DuckDB via [../tests/functional/db.py](../tests/functional/db.py) — tables `runs`, `series_results`, `check_results`, `manual_validations`
-- **Templates** : 13+ templates avec **macros réutilisables** dans `templates/macros/widgets.html` (kpi_card, status_badge, run_banner, pagination, filter_bar, data_table)
-- **Static JS** : modules dans `static/js/` (`common.js`, `validation.js`, `filters.js`, `tests.js`, `admin.js`, `viewer.js`, `taxonomy.js`) — tout extrait des templates
-- **Static CSS** : `static/style.css` (dark theme + composants viewer + treemap D3 + progress bar inline)
+- **Templates** : 10 templates principaux + ~12 partials (`partials/tests_*.html`, `partials/baseline_*.html`, `partials/overview_*.html`)
+- **Macros réutilisables** dans `templates/macros/widgets.html` : `kpi_card`, `kpi_card_big`, `status_badge`, `run_banner`, `pagination`, `filter_bar`, `data_table`, `mini_bar`, `activity_timeline`, `subtabs_header`
+- **Static JS** : modules dans `static/js/` (`common.js`, `validation.js`, `filters.js`, `tests.js`, `admin.js`, `viewer.js`, `taxonomy.js`, `taxonomy_categories.js`, `taxonomy_rename.js`) — tout extrait des templates
+- **Static CSS** : `static/style.css` (dark theme + composants viewer + treemap D3 + progress bar inline + classes `.dash-*` pour le cockpit Overview)
 
 ## Patterns clés
 - **Monitoring temps réel** : thread background lit stdout du subprocess runner
@@ -38,11 +50,51 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **Mockup statique** : `/viewer-mockup` reste accessible comme référence visuelle
 - **Logs viewer** (`/logs`) : page séparée pour visualiser les rapports CSV utilisateur dans `logs/`
 
-## Onglet Taxonomie (Phase 1)
+## Onglet Overview (cockpit Biblio, refactor juin 2026)
+
+- **Rôle** : cockpit profile-aware. Moitié haute = 12 cartes par profil (sélecteur dropdown), moitié basse = 4 cartes générales tous profils
+- **URL** : `/?profile=X&refresh=0|1` — fallback transparent si profil inconnu, `?refresh=1` invalide le cache 30 s
+- **Layout B hiérarchique** : 4 KPI vedettes (Fichiers, Classifiés, Coût LLM, Health) + bloc Détails + grilles 2-col (charts + activité)
+- **Cartes profile-aware** : `files_count`, `classified_rate`, `folders_count`, `llm_cost`, `health` (orphans + locks), `vision_cache`, `inbox`, `baseline_runs`, `agent_sessions`, `top_themes` (vision cache aggregation), `top_folders` (FS walk), `recent_activity` (mtime backups + rename-journal)
+- **Cartes générales** : `llm_models`, `api_keys`, `profiles_list`, `global_cost` (pie chart Chart.js — pie segments < 1 % filtrés)
+- **Cache mémoire** : `_overview_cache: dict[profile, (ts, snapshot)]` avec TTL 30 s + lock thread-safe
+- **Sentinelles d'erreur** affichées dans la card : `target_missing`, `profile_missing`, `tree_missing`, `tree_invalid`
+- **Bouton 🔄 refresh** : link `?refresh=1` invalide le cache du profil sélectionné
+
+## Onglet Tests (hub avec 5 sub-tabs)
+
+- **URL** : `/tests?view=exec|rapports|comparer|metriques|historique` — defaults à `exec`
+- **Server-render Jinja** : chaque sub-tab a son partial (`partials/tests_*.html`). Rendering 100 % serveur, pas de fetch JS ni HTMX swap.
+- **Macro `subtabs_header`** dans `widgets.html` génère les `<a class="dash-subtab">` selon `current_view`
+- **Sub-tab Exécution** : liste des phases/series avec actions de run et monitoring SSE temps réel
+- **Sub-tab Rapports** : viewer CSV avec filtres + pagination + tri (anciennement `/rapports`)
+- **Sub-tab Comparer** : diff check-by-check entre 2 runs (anciennement `/comparer`)
+- **Sub-tab Métriques** : agrégations DuckDB (classify, rename, refine) — anciennement `/metriques`
+- **Sub-tab Historique** : timeline des runs avec deltas (anciennement `/historique`)
+- **Redirects 301** sur les anciennes URLs avec préservation des query params
+
+## Onglet Baseline (hub avec 2 sub-tabs)
+
+- **URL** : `/baseline?view=disagreements|suggestions` — defaults à `disagreements`
+- **Sub-tab Désaccords** : interface de validation manuelle pour arbitrer les divergences prédiction Klodo vs placement actuel des fichiers (1 fichier par écran avec K/A/N/S keyboard shortcuts)
+- **Sub-tab Suggestions** : viewer des suggestions LLM Mapper (anciennement `/suggestions`)
+- **Redirect** : `/suggestions` → `/baseline?view=suggestions`
+
+## Onglet Taxonomie (5 sub-tabs)
 
 - **Rôle** : cockpit pour piloter la taxonomie — visualiser l'arborescence, voir l'univers des thèmes LLM, ajouter des mappings sans éditer le YAML à la main
-- **Trois sources agrégées** : `tree.yaml` (arborescence) + `theme_mapping.yaml` (mapping thème → dossier) + `vision_cache.json` (thèmes LLM bruts, filtré `confidence ≥ 0.5`)
-- **Layout 3 colonnes** : tree gauche (30%) + center stack (45%, viewer/card LLM/treemap en grid fixe 55/20/25) + thèmes droite (25%, mappés top / LLM universe bottom)
+- **Sub-tabs** :
+  - **Mappings** : la vue historique (tree + viewer + treemap + thèmes mappés/LLM)
+  - **Catégories** : éditeur du `categories.yaml` (KeywordClassifier) avec badge ⚠ orphelin + bouton 💡 Suggérer
+  - **Rename** : audit + commit des renommages
+  - **🤖 Refonte** : agent IA Phases A/B/C — diagnostic, proposition, dialog conversationnel + mutations YAML (cf. `agents/refonte/`)
+  - **🔗 Dédupli** : canonisation des thèmes LLM long-tail (cf. `dedupli.py` + `lib/theme_canon.py`)
+- **Trois sources agrégées sub-tab Mappings** : `tree.yaml` (arborescence) + `theme_mapping.yaml` (mapping thème → dossier) + `vision_cache.json` (thèmes LLM bruts, filtré `confidence ≥ 0.5`)
+- **Layout 3 colonnes Mappings** : tree gauche (30%) + center stack (45%, viewer/card LLM/treemap en grid fixe 55/20/25) + thèmes droite (25%, mappés top / LLM universe bottom)
+- **Routage 3-way** dans Mappings : ✓ Stables / → Entrants / ← Sortants — visualise l'impact d'un futur reclassify sur un dossier
+- **Cascade rename folder → categories.yaml** : un rename de folder dans le tree propage automatiquement les `chemin:` dans `categories.yaml` (merge intelligent en cas de collision)
+- **Badge ⚠ orphelin** dans Catégories : signale les entries dont la cible n'existe plus dans tree.yaml + bouton **💡 Suggérer** (matching normalisé par préfixe numérique)
+- **Bulk-delete** multi-thèmes mappés sur un folder (toolbar de sélection avec checkboxes)
 - **Tree** : dossiers + fichiers lazy-loaded (50 par page, bouton "Afficher N de plus"), chevron sur tout dossier expandable (sous-dossiers OU fichiers > 0)
 - **Viewer PDF** : cover seule par défaut + bouton "+ Voir pages 2-N" pour multipage à la demande (thumbnails via [../lib/thumbnail.py](../lib/thumbnail.py), cap 5 pages)
 - **Card Analyse LLM** : toujours visible, affiche titre / auteur / langue / thèmes détectés + destinations theme-only + emplacement actuel + prédiction `classify_by_theme` étiquetée
@@ -58,7 +110,9 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 
 ## Tests
 
-- **44+ tests** dans [../tests/auto/test_dashboard.py](../tests/auto/test_dashboard.py) (routes + data.py)
+- **63 tests** dans [../tests/auto/test_dashboard.py](../tests/auto/test_dashboard.py) (routes + data.py + hubs + redirects 301)
+- **70 tests** dans [../tests/auto/test_overview.py](../tests/auto/test_overview.py) (16 cards + 2 builders + cache TTL + 3 macros)
+- **182 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete)
+- **103 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection)
 - **9 tests** dans [../tests/auto/test_viewer_copy.py](../tests/auto/test_viewer_copy.py) (copy + clear destination, path traversal, refus de `default`)
 - **20 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
-- **16 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP)

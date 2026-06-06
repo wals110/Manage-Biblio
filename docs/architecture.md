@@ -144,20 +144,25 @@ CLI dédiée : `./klodo.sh thumbnails --execute [--pages N] [--max M] [--force]`
 
 Le module `dashboard/` est une appli FastAPI + Jinja2 + HTMX qui sert d'IDE pour la bibliothèque (port 8080). Quatre couches :
 
-- **Routes** (`dashboard/app.py`) — 12+ pages : Overview, Tests, Rapports, Comparer, Métriques, Historique, Logs, Curation, Baseline, Taxonomie, Suggestions, Admin
+- **Routes** (`dashboard/app.py`) — **7 onglets** (refactor UX juin 2026) : Overview · Tests · Curation · Baseline · Taxonomie · Logs · Admin. Deux hubs avec sub-tabs server-rendered : `/tests?view=X` (5 sub-tabs) et `/baseline?view=X` (2 sub-tabs). Anciennes routes (`/rapports`, `/comparer`, `/metriques`, `/historique`, `/suggestions`) → redirects HTTP 301 avec préservation des query params.
 - **Couche données** (`dashboard/data.py`) — fusion YAML + JSON + DuckDB + CSV + helpers viewer
 - **Modules dédiés** :
-  - `taxonomy.py` — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json`, drag-drop, backup auto, lock concurrence, ops fichier (delete soft / move avec impact preview / bulk)
+  - `overview.py` — cockpit Biblio profile-aware (16 cards + 2 builders + cache TTL 30 s thread-safe)
+  - `taxonomy.py` — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json`, drag-drop, backup auto, lock concurrence, ops fichier (delete soft / move avec impact preview / bulk), cascade rename folder → categories.yaml, breakdown 3-way du routage
   - `rename.py` — audit + apply + journal + undo (record/batch) + override + cache patch ciblé
-  - `categories.py` — CRUD sur `categories.yaml`, audit des dormants
+  - `categories.py` — CRUD sur `categories.yaml`, audit des dormants, `suggest_target_path` pour orphelins
+  - `dedupli.py` — canonisation des thèmes LLM long-tail (utilise `lib/theme_canon.py`)
+  - `agent_refonte.py` + `agent_refonte_phase_c.py` — bridge vers `agents/refonte/` (Phases A diagnostic, B proposition, C dialog + mutations)
   - `baseline.py` — agrégation des disagreements d'un baseline_run
-- **Couche présentation** — Jinja2 templates dans `dashboard/templates/`, JS modulaires dans `dashboard/static/js/` (`taxonomy.js`, `taxonomy_rename.js`, `taxonomy_categories.js`, etc.), CSS dark theme dans `dashboard/static/style.css`
+- **Couche présentation** — Jinja2 templates dans `dashboard/templates/` (10 principaux + ~12 partials), JS modulaires dans `dashboard/static/js/` (`taxonomy.js`, `taxonomy_rename.js`, `taxonomy_categories.js`, etc.), CSS dark theme dans `dashboard/static/style.css` (avec namespace `.dash-*` pour le cockpit Overview)
 
-Onglet **Taxonomie** (cockpit principal d'édition) : 3 sous-onglets
+Onglet **Taxonomie** (cockpit principal d'édition) : **5 sous-onglets**
 
-1. **Mappings** — arbre des dossiers + viewer PDF + card LLM + treemap interactif + drag-drop thème → dossier + ops fichier (delete / move avec impact preview classify_combined)
-2. **Catégories** — CRUD de `categories.yaml` (groupes + entrées + mots-clés) + audit des dormants
+1. **Mappings** — arbre des dossiers + viewer PDF + card LLM + treemap interactif + drag-drop thème → dossier + ops fichier (delete / move avec impact preview classify_combined) + breakdown 3-way du Routage (Stables / Entrants / Sortants)
+2. **Catégories** — CRUD de `categories.yaml` (groupes + entrées + mots-clés) + audit des dormants + badge ⚠ orphelin + bouton 💡 Suggérer
 3. **Rename** — audit divergence nom-actuel vs nom-suggéré + bulk rename + override + 📜 historique avec undo
+4. **🤖 Refonte** — agent IA (Phases A diagnostic, B proposition tree, C dialog conversationnel + mutations YAML)
+5. **🔗 Dédupli** — canonisation interactive des thèmes LLM long-tail
 
 → [Documentation complète du dashboard](functional-testing-and-dashboard.md)
 
