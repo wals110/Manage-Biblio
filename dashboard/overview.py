@@ -96,8 +96,12 @@ def card_classified_rate(profile: str) -> dict:
     if cfg is None:
         return {"classified": 0, "unclassified": 0, "rate": 0.0,
                 "fallback_count": 0}
-    target = Path(str(cfg.get("target") or ""))
+    target_str = cfg.get("target")
+    if not target_str:
+        return {"classified": 0, "unclassified": 0, "rate": 0.0,
+                "fallback_count": 0}
     fallback = str(cfg.get("fallback") or "_A-TRIER")
+    target = Path(str(target_str))
     if not target.exists():
         return {"classified": 0, "unclassified": 0, "rate": 0.0,
                 "fallback_count": 0}

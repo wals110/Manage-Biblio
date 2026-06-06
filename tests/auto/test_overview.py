@@ -156,6 +156,22 @@ class TestCardClassifiedRate(OverviewTestBase):
         r = overview.card_classified_rate(self.profile_name)
         self.assertEqual(r["rate"], 0.0)
 
+    def test_target_null_in_yaml_returns_zero(self):
+        """target: null doit retourner rate=0, pas walker le cwd."""
+        (self.profile_dir / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "test", "target": None,
+            "defaults": {"cost_per_call": 0.0003},
+        }))
+        r = overview.card_classified_rate(self.profile_name)
+        self.assertEqual(r["rate"], 0.0)
+        self.assertEqual(r["classified"], 0)
+
+    def test_profile_missing_returns_zero(self):
+        r = overview.card_classified_rate("does-not-exist")
+        self.assertEqual(r["rate"], 0.0)
+        self.assertEqual(r["classified"], 0)
+        self.assertEqual(r["fallback_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
