@@ -1,15 +1,16 @@
-{% extends "base.html" %}
-{% from 'macros/widgets.html' import kpi_card, run_banner %}
-{% set active = "metriques" %}
-{% block title %}M&eacute;triques{% endblock %}
+{# Sub-tab "Métriques" du hub Tests — anciennement /metriques.
+   Indicateurs qualité de classification et renommage avec Chart.js.
+   Contexte attendu : classify_metrics, rename_metrics, available_runs,
+   selected_run, current_run, classify_count, rename_count. #}
+{% from "macros/widgets.html" import kpi_card, run_banner %}
 
-{% block content %}
 <h1 class="page-title">M&eacute;triques</h1>
 <p class="page-subtitle">Indicateurs qualit&eacute; de classification et renommage</p>
 
 <!-- ── Run Selector ── -->
 <div class="metrics-selector">
-    <form method="get" action="/metriques" class="filters-form">
+    <form method="get" action="/tests" class="filters-form">
+        <input type="hidden" name="view" value="metriques">
         <select name="run" class="filter-select" onchange="this.form.submit()">
             <option value="">Dernier run</option>
             {% for r in available_runs %}
@@ -237,4 +238,3 @@ Chart.defaults.borderColor = '#334155';
 })();
 {% endif %}
 </script>
-{% endblock %}

@@ -28,33 +28,103 @@ class TestDashboardRoutes(unittest.TestCase):
         r = self.client.get("/tests")
         self.assertEqual(r.status_code, 200)
 
-    def test_rapports_page(self):
-        r = self.client.get("/rapports")
+    # ─── Refactor UX 2026-06-05 : hub /tests + /baseline avec sub-tabs ───
+
+    def test_tests_view_exec_default(self):
+        """GET /tests sans ?view → sub-tab exec par défaut."""
+        r = self.client.get("/tests")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Ex&eacute;cution", r.content)
+
+    def test_tests_view_exec_explicit(self):
+        r = self.client.get("/tests?view=exec")
         self.assertEqual(r.status_code, 200)
 
-    def test_rapports_classify(self):
-        r = self.client.get("/rapports?type=classify")
+    def test_tests_view_rapports(self):
+        r = self.client.get("/tests?view=rapports")
         self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Rapports", r.content)
 
-    def test_rapports_rename(self):
-        r = self.client.get("/rapports?type=rename")
+    def test_tests_view_comparer(self):
+        r = self.client.get("/tests?view=comparer")
         self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Comparer", r.content)
 
-    def test_comparer_page(self):
-        r = self.client.get("/comparer")
+    def test_tests_view_metriques(self):
+        r = self.client.get("/tests?view=metriques")
         self.assertEqual(r.status_code, 200)
+        self.assertIn(b"triques", r.content)
 
-    def test_metriques_page(self):
-        r = self.client.get("/metriques")
+    def test_tests_view_historique(self):
+        r = self.client.get("/tests?view=historique")
         self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Historique", r.content)
 
-    def test_historique_page(self):
-        r = self.client.get("/historique")
+    def test_tests_view_invalid_falls_back_to_exec(self):
+        """Une valeur inconnue ne doit pas crasher (500) — fallback exec."""
+        r = self.client.get("/tests?view=foo")
         self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Ex&eacute;cution", r.content)
 
-    def test_suggestions_page(self):
-        r = self.client.get("/suggestions")
+    def test_tests_subtab_marks_active(self):
+        """L'ancre active porte la classe `dash-subtab active`."""
+        r = self.client.get("/tests?view=rapports")
+        self.assertIn(b'class="dash-subtab active"', r.content)
+
+    def test_legacy_rapports_redirects_to_tests(self):
+        r = self.client.get("/rapports", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["location"], "/tests?view=rapports")
+
+    def test_legacy_rapports_preserves_query_params(self):
+        r = self.client.get("/rapports?type=classify", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["location"],
+                         "/tests?view=rapports&type=classify")
+
+    def test_legacy_rapports_rename(self):
+        r = self.client.get("/rapports?type=rename", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertIn("type=rename", r.headers["location"])
+
+    def test_legacy_comparer_redirect(self):
+        r = self.client.get("/comparer", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["location"], "/tests?view=comparer")
+
+    def test_legacy_metriques_redirect(self):
+        r = self.client.get("/metriques", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["location"], "/tests?view=metriques")
+
+    def test_legacy_historique_redirect(self):
+        r = self.client.get("/historique", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["location"], "/tests?view=historique")
+
+    def test_legacy_suggestions_redirect(self):
+        r = self.client.get("/suggestions", follow_redirects=False)
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["location"], "/baseline?view=suggestions")
+
+    def test_baseline_view_default_is_disagreements(self):
+        r = self.client.get("/baseline")
         self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Baseline classification", r.content)
+
+    def test_baseline_view_suggestions(self):
+        r = self.client.get("/baseline?view=suggestions")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Suggestions", r.content)
+
+    def test_baseline_view_invalid_falls_back(self):
+        r = self.client.get("/baseline?view=foo")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Baseline classification", r.content)
+
+    def test_baseline_subtab_active_marked(self):
+        r = self.client.get("/baseline?view=suggestions")
+        self.assertIn(b'class="dash-subtab active"', r.content)
 
     def test_admin_page(self):
         r = self.client.get("/admin")
