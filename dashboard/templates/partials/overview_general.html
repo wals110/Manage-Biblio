@@ -1,0 +1,93 @@
+{# Moitié basse du cockpit Overview — infos générales statiques.
+   Contexte attendu : g (general_snapshot). #}
+{% set g = general_snapshot %}
+
+<h2 class="section-title" style="margin-top: 20px;">Infos générales</h2>
+
+<div class="dash-general-grid">
+  {# 🧠 LLM models par profil #}
+  <div class="dash-card">
+    <h3>🧠 Modèles LLM</h3>
+    {% if g.llm_models %}
+    <ul class="dash-details-list" style="font-size: 11px;">
+      {% for m in g.llm_models %}
+      <li>
+        <strong>{{ m.profile }}</strong>
+        <div class="muted">{{ m.provider }} · {{ m.model }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted small">Aucun profil.</p>{% endif %}
+  </div>
+
+  {# 🔑 API keys #}
+  <div class="dash-card">
+    <h3>🔑 API keys</h3>
+    <ul class="dash-details-list" style="font-size: 12px;">
+      {% for k in g.api_keys %}
+      <li>
+        {% if k.configured %}
+          <span style="color: #7ee787;">●</span>
+        {% else %}
+          <span style="color: #f85149;">○</span>
+        {% endif %}
+        {{ k.name }}
+        <span class="muted">
+          {{ 'configurée' if k.configured else 'non configurée' }}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {# 👥 Profils existants #}
+  <div class="dash-card">
+    <h3>👥 Profils</h3>
+    <ul class="dash-details-list" style="font-size: 12px;">
+      {% for p in g.profiles_list %}
+      <li>
+        {% if p.target_exists %}
+          <span style="color: #7ee787;">●</span>
+        {% else %}
+          <span style="color: #d29922;" title="target absent">●</span>
+        {% endif %}
+        {{ p.name }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {# 💵 Coûts cumulés — pie chart Chart.js #}
+  <div class="dash-card">
+    <h3>💵 Coûts cumulés</h3>
+    {% if g.global_cost.by_profile %}
+    <canvas id="dash-cost-pie" height="140"></canvas>
+    <script>
+      (function() {
+        var ctx = document.getElementById('dash-cost-pie');
+        if (!ctx) return;
+        var data = {{ g.global_cost.by_profile | tojson }};
+        new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: data.map(function(d){return d.profile;}),
+            datasets: [{
+              data: data.map(function(d){return d.cost_usd;}),
+              backgroundColor: ['#58a6ff','#7ee787','#d29922','#f85149','#a371f7'],
+              borderColor: '#1f1f1f', borderWidth: 1,
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false, cutout: '55%',
+            plugins: { legend: { position: 'bottom', labels: {
+              color: '#8b949e', font: { size: 10 }, padding: 6,
+              boxWidth: 10, usePointStyle: true } } }
+          }
+        });
+      })();
+    </script>
+    {% else %}
+    <p class="muted small">Aucun appel LLM enregistré.</p>
+    {% endif %}
+  </div>
+</div>
