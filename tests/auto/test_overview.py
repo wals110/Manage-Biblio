@@ -197,6 +197,13 @@ class TestCardFoldersCount(OverviewTestBase):
         self.assertEqual(r["max_depth"], 0)
         self.assertEqual(r["error"], "tree_missing")
 
+    def test_invalid_tree_yaml_returns_tree_invalid(self):
+        """YAML cassé doit retourner sentinelle tree_invalid (pas crash)."""
+        (self.profile_dir / "tree.yaml").write_text("folders: [unclosed\n")
+        r = overview.card_folders_count(self.profile_name)
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["error"], "tree_invalid")
+
     def test_recently_modified_picks_3_newest(self):
         self._write_tree(["A", "A/B", "A/C", "D"])
         r = overview.card_folders_count(self.profile_name)
