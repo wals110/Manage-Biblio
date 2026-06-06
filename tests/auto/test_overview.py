@@ -56,10 +56,16 @@ class OverviewTestBase(unittest.TestCase):
 class TestReset(OverviewTestBase):
 
     def test_reset_cache_clears_all(self):
-        from dashboard import overview as ov
-        ov._overview_cache["foo"] = (0.0, {"x": 1})
-        ov.reset_cache()
-        self.assertEqual(ov._overview_cache, {})
+        overview._overview_cache["foo"] = (0.0, {"x": 1})
+        overview.reset_cache()
+        self.assertEqual(overview._overview_cache, {})
+
+    def test_reset_cache_clears_one_profile(self):
+        overview._overview_cache["a"] = (0.0, {})
+        overview._overview_cache["b"] = (0.0, {})
+        overview.reset_cache("a")
+        self.assertNotIn("a", overview._overview_cache)
+        self.assertIn("b", overview._overview_cache)
 
 
 if __name__ == "__main__":
