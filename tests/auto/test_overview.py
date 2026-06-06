@@ -104,6 +104,16 @@ class TestCardFilesCount(OverviewTestBase):
         self.assertEqual(r["total"], 0)
         self.assertEqual(r["size_gb"], 0.0)
 
+    def test_target_null_in_yaml_returns_error(self):
+        """target: null dans profile.yaml ne doit pas faire walker le cwd."""
+        (self.profile_dir / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "test", "target": None,
+            "defaults": {"cost_per_call": 0.0003},
+        }))
+        r = overview.card_files_count(self.profile_name)
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["error"], "target_missing")
+
 
 if __name__ == "__main__":
     unittest.main()

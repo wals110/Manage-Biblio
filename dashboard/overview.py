@@ -32,6 +32,7 @@ def reset_cache(profile: str | None = None) -> None:
 
 # ─── Helpers profil ───────────────────────────────────────────────
 def _profile_yaml_path(profile: str) -> Path:
+    """Chemin attendu de profiles/<profile>/profile.yaml."""
     return data.get_project_root() / "profiles" / profile / "profile.yaml"
 
 
@@ -58,7 +59,11 @@ def card_files_count(profile: str) -> dict:
     if cfg is None:
         return {"total": 0, "size_gb": 0.0,
                 "by_ext": {"pdf": 0, "epub": 0}, "error": "profile_missing"}
-    target = Path(str(cfg.get("target") or ""))
+    target_str = cfg.get("target")
+    if not target_str:
+        return {"total": 0, "size_gb": 0.0,
+                "by_ext": {"pdf": 0, "epub": 0}, "error": "target_missing"}
+    target = Path(str(target_str))
     if not target.exists():
         return {"total": 0, "size_gb": 0.0,
                 "by_ext": {"pdf": 0, "epub": 0}, "error": "target_missing"}
