@@ -46,10 +46,14 @@ class OverviewTestBase(unittest.TestCase):
         )
         self._patcher.start()
         overview.reset_cache()
+        from dashboard import categories as _cat
+        _cat.reset_cache()
 
     def tearDown(self):
         self._patcher.stop()
         overview.reset_cache()
+        from dashboard import categories as _cat
+        _cat.reset_cache()
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
 
@@ -411,6 +415,22 @@ class TestCardHealth(OverviewTestBase):
         os.utime(lock, (old, old))
         r = overview.card_health(self.profile_name)
         self.assertTrue(r["locks_active"][0]["stale"])
+
+    def test_categories_orphan_counted(self):
+        """n_orphans_categories doit refléter le snapshot categories."""
+        # Crée tree + theme_mapping vide + categories.yaml avec 1 entry
+        # dont le chemin n'existe pas dans tree → orphan détecté.
+        self._write_tree(["A"])
+        self._write_mapping({})
+        (self.profile_dir / "categories.yaml").write_text(yaml.safe_dump({
+            "Test": [{"chemin": "DOES-NOT-EXIST", "priorite": 1, "mots_cles": ["foo"]}],
+        }, sort_keys=False))
+        # Reset le cache du module categories (snapshot mémo)
+        from dashboard import categories
+        categories.reset_cache(self.profile_name)
+        r = overview.card_health(self.profile_name)
+        self.assertEqual(r["n_orphans_categories"], 1)
+        self.assertGreaterEqual(r["n_orphans_total"], 1)
 
 
 if __name__ == "__main__":
