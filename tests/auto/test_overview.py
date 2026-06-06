@@ -115,5 +115,47 @@ class TestCardFilesCount(OverviewTestBase):
         self.assertEqual(r["error"], "target_missing")
 
 
+class TestCardClassifiedRate(OverviewTestBase):
+
+    def _make(self, files: list[str]):
+        for rel in files:
+            p = self.target / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x")
+
+    def test_all_classified(self):
+        self._make(["folder1/a.pdf", "folder1/b.pdf", "folder2/c.epub"])
+        r = overview.card_classified_rate(self.profile_name)
+        self.assertEqual(r["classified"], 3)
+        self.assertEqual(r["unclassified"], 0)
+        self.assertEqual(r["rate"], 100.0)
+        self.assertEqual(r["fallback_count"], 0)
+
+    def test_some_in_root_and_fallback(self):
+        self._make([
+            "folder/ok.pdf",
+            "folder/sub/ok2.pdf",
+            "in-root.pdf",
+            "_A-TRIER/orphan.epub",
+            "_A-TRIER/nested/orphan2.pdf",
+        ])
+        r = overview.card_classified_rate(self.profile_name)
+        # classified = 2 (folder/ok + folder/sub/ok2)
+        # root = 1, fallback = 2 → unclassified = 3
+        self.assertEqual(r["classified"], 2)
+        self.assertEqual(r["unclassified"], 3)
+        self.assertEqual(r["fallback_count"], 2)
+        self.assertEqual(r["rate"], 40.0)
+
+    def test_empty_returns_zero(self):
+        r = overview.card_classified_rate(self.profile_name)
+        self.assertEqual(r["rate"], 0.0)
+
+    def test_target_missing(self):
+        shutil.rmtree(self.target)
+        r = overview.card_classified_rate(self.profile_name)
+        self.assertEqual(r["rate"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

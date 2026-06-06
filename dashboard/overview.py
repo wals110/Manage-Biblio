@@ -87,3 +87,36 @@ def card_files_count(profile: str) -> dict:
         "size_gb": round(size_bytes / 1024**3, 2),
         "by_ext": {"pdf": n_pdf, "epub": n_epub},
     }
+
+
+def card_classified_rate(profile: str) -> dict:
+    """% de fichiers rangés vs racine ou fallback. Retourne
+    {classified, unclassified, rate, fallback_count}."""
+    cfg = _load_profile_config(profile)
+    if cfg is None:
+        return {"classified": 0, "unclassified": 0, "rate": 0.0,
+                "fallback_count": 0}
+    target = Path(str(cfg.get("target") or ""))
+    fallback = str(cfg.get("fallback") or "_A-TRIER")
+    if not target.exists():
+        return {"classified": 0, "unclassified": 0, "rate": 0.0,
+                "fallback_count": 0}
+    classified = root_count = fallback_count = 0
+    for root, _dirs, files in os.walk(str(target)):
+        rel = Path(root).relative_to(target).as_posix()
+        candidates = [f for f in files if f.lower().endswith((".pdf", ".epub"))]
+        if not candidates:
+            continue
+        if rel == ".":
+            root_count += len(candidates)
+        elif rel.split("/", 1)[0] == fallback:
+            fallback_count += len(candidates)
+        else:
+            classified += len(candidates)
+    total = classified + root_count + fallback_count
+    return {
+        "classified": classified,
+        "unclassified": root_count + fallback_count,
+        "rate": round(classified / total * 100, 1) if total else 0.0,
+        "fallback_count": fallback_count,
+    }
