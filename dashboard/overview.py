@@ -402,8 +402,10 @@ def card_top_folders(profile: str, limit: int = 10) -> list[dict]:
 
 
 def card_recent_activity(profile: str, limit: int = 5) -> list[dict]:
-    """Liste les N mutations les plus récentes : backups taxonomy/categories
-    + tail rename-journal. Retourne [{ts, relative_time, action, target}]."""
+    """Liste les N mutations les plus récentes : backups taxonomy + backups
+    categories + 1 événement synthétique pour rename-journal (mtime du
+    fichier, pas tail par ligne). Retourne [{ts, relative_time, action,
+    target}]."""
     cache_dir = data.get_project_root() / "profiles" / profile / ".cache"
     events: list[tuple[float, str, str]] = []  # (mtime, action, target)
     if not cache_dir.exists():
@@ -421,8 +423,8 @@ def card_recent_activity(profile: str, limit: int = 5) -> list[dict]:
                 events.append((f.stat().st_mtime, action, f.name))
             except OSError:
                 pass
-    # Rename journal : on prend juste la mtime du fichier (un événement
-    # synthétique). Détail par ligne hors scope.
+    # Rename journal : 1 événement synthétique avec la mtime du fichier
+    # (pas tail par ligne — hors scope du cockpit, voir l'onglet Rename).
     rj = cache_dir / "rename-journal.jsonl"
     if rj.exists():
         try:
@@ -444,12 +446,13 @@ def card_recent_activity(profile: str, limit: int = 5) -> list[dict]:
 
 
 def _human_relative(seconds: float) -> str:
-    """3600 → '1 h', 60 → '1 min', etc."""
+    """Format relatif humain. Toujours préfixé 'il y a' pour cohérence
+    visuelle dans la timeline."""
     s = int(seconds)
     if s < 60:
-        return f"{s} s"
+        return f"il y a {s} s"
     if s < 3600:
-        return f"{s // 60} min"
+        return f"il y a {s // 60} min"
     if s < 86400:
         return f"il y a {s // 3600} h"
     return f"il y a {s // 86400} j"

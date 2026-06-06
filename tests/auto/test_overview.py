@@ -538,10 +538,9 @@ class TestCardRecentActivity(OverviewTestBase):
         f3 = bdir / "theme_mapping-20260103-100000-000000.yaml"
         for f in [f1, f2, f3]:
             f.write_text("")
-        import os as _os
-        _os.utime(f1, (1000, 1000))
-        _os.utime(f2, (2000, 2000))
-        _os.utime(f3, (3000, 3000))
+        os.utime(f1, (1000, 1000))
+        os.utime(f2, (2000, 2000))
+        os.utime(f3, (3000, 3000))
         r = overview.card_recent_activity(self.profile_name, limit=5)
         self.assertEqual(len(r), 3)
         # Plus récent en premier
@@ -550,6 +549,23 @@ class TestCardRecentActivity(OverviewTestBase):
     def test_empty(self):
         r = overview.card_recent_activity(self.profile_name)
         self.assertEqual(r, [])
+
+    def test_rename_journal_emits_event(self):
+        """rename-journal.jsonl présent → 1 événement action=rename."""
+        rj = self.profile_dir / ".cache" / "rename-journal.jsonl"
+        rj.write_text('{"ts":1,"op":"rename"}\n')
+        r = overview.card_recent_activity(self.profile_name)
+        actions = [e["action"] for e in r]
+        self.assertIn("rename", actions)
+
+    def test_categories_backups_source(self):
+        """Backup categories doit générer un événement action=categories."""
+        bdir = self.profile_dir / ".cache" / "categories-backups"
+        bdir.mkdir(parents=True, exist_ok=True)
+        (bdir / "categories-20260101-100000.yaml").write_text("")
+        r = overview.card_recent_activity(self.profile_name)
+        actions = [e["action"] for e in r]
+        self.assertIn("categories", actions)
 
 
 if __name__ == "__main__":
