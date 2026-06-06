@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 550" font-family="system-ui, -apple-system, sans-serif">
-  <rect x="0" y="0" width="1000" height="44" fill="#dc2626"/>
-  <text x="500" y="29" fill="white" text-anchor="middle" font-weight="bold" font-size="17" font-family="system-ui, -apple-system, sans-serif">⚠ OBSOLETE — voir PR docs/audit-20260606 (PRs #163-#168)</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -50 1000 600" font-family="system-ui, -apple-system, sans-serif">
+  <rect x="0" y="-50" width="1000" height="50" fill="#dc2626"/>
+  <text x="500" y="-18" fill="white" text-anchor="middle" font-weight="bold" font-size="18" font-family="system-ui, -apple-system, sans-serif">⚠ OBSOLETE — voir PR docs/audit-20260606 (PRs #163-#168)</text>
 
   <defs>
     <marker id="da" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
