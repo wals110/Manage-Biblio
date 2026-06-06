@@ -315,6 +315,15 @@ class TestCardBaselineRuns(OverviewTestBase):
         self.assertEqual(r["n_runs"], 0)
         self.assertIsNone(r["last_run_iso"])
 
+    def test_baseline_raises_returns_empty(self):
+        """Si baseline.list_runs lève une exception, on retourne empty."""
+        from dashboard import baseline
+        with mock.patch.object(baseline, "list_runs",
+                               side_effect=RuntimeError("boom")):
+            r = overview.card_baseline_runs(self.profile_name)
+        self.assertEqual(r["n_runs"], 0)
+        self.assertIsNone(r["last_run_iso"])
+
 
 class TestCardAgentSessions(OverviewTestBase):
 
@@ -344,6 +353,14 @@ class TestCardAgentSessions(OverviewTestBase):
         self.assertEqual(r["refonte"]["n_batches"], 0)
         self.assertEqual(r["refonte"]["status"], "missing")
         self.assertEqual(r["dedupli"]["status"], "missing")
+
+    def test_corrupt_status_json_returns_error(self):
+        """status.json corrompu → status='error', pas crash."""
+        d = self.profile_dir / ".cache" / "refonte"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "status.json").write_text("not json")
+        r = overview.card_agent_sessions(self.profile_name)
+        self.assertEqual(r["refonte"]["status"], "error")
 
 
 if __name__ == "__main__":
