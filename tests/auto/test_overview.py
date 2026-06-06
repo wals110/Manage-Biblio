@@ -491,5 +491,41 @@ class TestCardTopThemes(OverviewTestBase):
         self.assertEqual([x["theme"] for x in r], ["Apple", "Mango", "Zebra"])
 
 
+class TestCardTopFolders(OverviewTestBase):
+
+    def _make(self, files: dict[str, int]):
+        for rel, n in files.items():
+            d = self.target / rel
+            d.mkdir(parents=True, exist_ok=True)
+            for i in range(n):
+                (d / f"f{i}.pdf").write_bytes(b"x")
+
+    def test_top_folders_sorted_desc(self):
+        self._make({"A": 5, "B/C": 2, "D": 10, "E": 1})
+        r = overview.card_top_folders(self.profile_name, limit=3)
+        paths = [x["path"] for x in r]
+        self.assertEqual(paths, ["D", "A", "B/C"])
+        self.assertEqual(r[0]["n_files"], 10)
+        self.assertAlmostEqual(r[0]["pct"], 10 / 18 * 100, places=1)
+
+    def test_empty(self):
+        r = overview.card_top_folders(self.profile_name)
+        self.assertEqual(r, [])
+
+    def test_target_missing(self):
+        shutil.rmtree(self.target)
+        r = overview.card_top_folders(self.profile_name)
+        self.assertEqual(r, [])
+
+    def test_target_null_returns_empty(self):
+        """target: null doit retourner [], pas walker cwd."""
+        (self.profile_dir / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "test", "target": None,
+            "defaults": {"cost_per_call": 0.0003},
+        }))
+        r = overview.card_top_folders(self.profile_name)
+        self.assertEqual(r, [])
+
+
 if __name__ == "__main__":
     unittest.main()

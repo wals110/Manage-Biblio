@@ -369,3 +369,33 @@ def card_top_themes(profile: str, limit: int = 10) -> list[dict]:
         {"theme": t, "count": c, "pct": round(c / total_occ * 100, 1)}
         for t, c in items[:limit]
     ]
+
+
+def card_top_folders(profile: str, limit: int = 10) -> list[dict]:
+    """Top N folders par nombre de fichiers (PDF/EPUB). Exclut la racine
+    du target (qui contient les fichiers non classifiés)."""
+    cfg = _load_profile_config(profile)
+    if cfg is None:
+        return []
+    target_str = cfg.get("target")
+    if not target_str:
+        return []
+    target = Path(str(target_str))
+    if not target.exists():
+        return []
+    counts: dict[str, int] = {}
+    for root, _dirs, files in os.walk(str(target)):
+        rel = Path(root).relative_to(target).as_posix()
+        if rel == ".":
+            continue  # racine = "non classifié" → exclu
+        n = sum(1 for f in files if f.lower().endswith((".pdf", ".epub")))
+        if n:
+            counts[rel] = n
+    if not counts:
+        return []
+    total = sum(counts.values())
+    items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [
+        {"path": p, "n_files": n, "pct": round(n / total * 100, 1)}
+        for p, n in items[:limit]
+    ]
