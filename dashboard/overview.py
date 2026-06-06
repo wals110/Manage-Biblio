@@ -5,10 +5,10 @@ endpoint ou `reset_cache()` côté tests.
 """
 from __future__ import annotations
 
-import json  # noqa: F401 — used by upcoming card functions (Task 2+)
+import json
 import os
 import threading
-import time  # noqa: F401 — used by upcoming card functions (Task 2+)
+import time
 from pathlib import Path
 
 import yaml
@@ -159,4 +159,52 @@ def card_folders_count(profile: str) -> dict:
         "total": len(folders),
         "max_depth": max_depth,
         "recently_modified": [name for _, name in rec[:3]],
+    }
+
+
+def _vision_cache_path(profile: str) -> Path:
+    """Chemin attendu de profiles/<profile>/.cache/vision_cache.json."""
+    return (data.get_project_root() / "profiles" / profile
+            / ".cache" / "vision_cache.json")
+
+
+def _load_vision_cache(profile: str) -> dict | None:
+    """Lit vision_cache.json. None si absent, corrompu ou non-dict."""
+    p = _vision_cache_path(profile)
+    if not p.exists():
+        return None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def card_llm_cost(profile: str) -> dict:
+    """Coût LLM estimé = n_entries × cost_per_call (profile.yaml)."""
+    cfg = _load_profile_config(profile)
+    cpc = float(((cfg or {}).get("defaults") or {}).get("cost_per_call") or 0)
+    cache = _load_vision_cache(profile)
+    n = len(cache) if cache else 0
+    return {"cost_usd": round(n * cpc, 4), "n_calls": n, "cost_per_call": cpc}
+
+
+def card_vision_cache(profile: str) -> dict:
+    """Stats sur vision_cache.json. n_successful = entries avec result non vide."""
+    p = _vision_cache_path(profile)
+    cache = _load_vision_cache(profile)
+    if cache is None:
+        return {"n_entries": 0, "n_successful": 0, "size_kb": 0,
+                "last_modified": None}
+    n_ok = sum(1 for v in cache.values()
+               if isinstance(v, dict) and v.get("result"))
+    size_kb = round(p.stat().st_size / 1024, 1)
+    mtime_iso = time.strftime(
+        "%Y-%m-%dT%H:%M:%S", time.localtime(p.stat().st_mtime),
+    )
+    return {
+        "n_entries": len(cache),
+        "n_successful": n_ok,
+        "size_kb": size_kb,
+        "last_modified": mtime_iso,
     }

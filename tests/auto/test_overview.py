@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests pour dashboard/overview.py — cockpit Biblio."""
 
-import json  # noqa: F401 — used by upcoming card tests (Task 2+)
+import json
 import os
 import shutil
 import sys
@@ -209,6 +209,59 @@ class TestCardFoldersCount(OverviewTestBase):
         r = overview.card_folders_count(self.profile_name)
         self.assertIn("recently_modified", r)
         self.assertIsInstance(r["recently_modified"], list)
+
+
+class TestCardLlmCost(OverviewTestBase):
+
+    def _write_cache(self, n_entries: int):
+        cache = self.profile_dir / ".cache" / "vision_cache.json"
+        cache.write_text(json.dumps({
+            f"key{i}": {"result": {"title": f"book{i}"}}
+            for i in range(n_entries)
+        }))
+
+    def test_cost_proportional_to_entries(self):
+        self._write_cache(10)
+        r = overview.card_llm_cost(self.profile_name)
+        self.assertEqual(r["n_calls"], 10)
+        self.assertAlmostEqual(r["cost_usd"], 0.003, places=4)  # 10 * 0.0003
+        self.assertAlmostEqual(r["cost_per_call"], 0.0003)
+
+    def test_corrupt_json_returns_zero(self):
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text("not json")
+        r = overview.card_llm_cost(self.profile_name)
+        self.assertEqual(r["n_calls"], 0)
+        self.assertEqual(r["cost_usd"], 0.0)
+
+    def test_no_cache_returns_zero(self):
+        r = overview.card_llm_cost(self.profile_name)
+        self.assertEqual(r["n_calls"], 0)
+
+
+class TestCardVisionCache(OverviewTestBase):
+
+    def _write_cache(self, payload: dict):
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text(
+            json.dumps(payload)
+        )
+
+    def test_counts_entries_and_size(self):
+        self._write_cache({
+            "k1": {"result": {"title": "ok"}},
+            "k2": {"result": {"title": "ok"}},
+            "k3": {"result": None},  # raté
+        })
+        r = overview.card_vision_cache(self.profile_name)
+        self.assertEqual(r["n_entries"], 3)
+        self.assertEqual(r["n_successful"], 2)
+        self.assertGreater(r["size_kb"], 0)
+        self.assertIsNotNone(r["last_modified"])
+
+    def test_no_cache(self):
+        r = overview.card_vision_cache(self.profile_name)
+        self.assertEqual(r["n_entries"], 0)
+        self.assertEqual(r["size_kb"], 0)
+        self.assertIsNone(r["last_modified"])
 
 
 if __name__ == "__main__":
