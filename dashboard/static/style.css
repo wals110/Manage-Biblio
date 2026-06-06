@@ -6452,3 +6452,31 @@ th {
     border-color: rgba(63, 185, 80, 0.4);
 }
 .dash-kpi-big-ok .dash-kpi-value { color: #7ee787; }
+
+/* Mini bars (top thèmes / top folders) */
+.dash-mini-bars {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.dash-mini-bar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 100px auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+}
+.dash-mini-bar-label {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text, #c9d1d9);
+}
+.dash-mini-bar-track {
+    background: rgba(255,255,255,0.05); border-radius: 3px;
+    height: 6px; overflow: hidden;
+}
+.dash-mini-bar-fill {
+    background: var(--blue, #58a6ff); height: 100%; display: block;
+}
+.dash-mini-bar-value {
+    color: var(--text-muted, #8b949e);
+    font-variant-numeric: tabular-nums; font-size: 10.5px;
+}

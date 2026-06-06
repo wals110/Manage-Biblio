@@ -149,3 +149,27 @@
   {% if subtitle %}<div class="dash-kpi-sub">{{ subtitle }}</div>{% endif %}
 </div>
 {% endmacro %}
+
+
+{# mini_bar — liste de barres horizontales proportionnelles.
+   items     : list[dict] — chaque élément a au moins value_key et label_key
+   value_key : nom du champ numérique (count, n_files, …)
+   label_key : nom du champ texte (theme, path, …)
+   empty     : texte affiché si items est vide #}
+{% macro mini_bar(items, value_key='count', label_key='label', empty="") %}
+{% if items %}
+  {% set vmax = (items | map(attribute=value_key) | max) or 1 %}
+  <ul class="dash-mini-bars">
+    {% for it in items %}
+    <li class="dash-mini-bar-row" title="{{ it[label_key] }} · {{ it[value_key] }}">
+      <span class="dash-mini-bar-label">{{ it[label_key] }}</span>
+      <span class="dash-mini-bar-track">
+        <span class="dash-mini-bar-fill"
+              style="width: {{ (it[value_key] / vmax * 100) | round(1) }}%"></span>
+      </span>
+      <span class="dash-mini-bar-value">{{ it[value_key] }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}<p class="muted small">{{ empty }}</p>{% endif %}
+{% endmacro %}

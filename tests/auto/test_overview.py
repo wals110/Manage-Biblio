@@ -767,5 +767,40 @@ class TestKpiCardBigMacro(unittest.TestCase):
         self.assertIn("dash-kpi-big-warn", out)
 
 
+class TestMiniBarMacro(unittest.TestCase):
+
+    def _render(self, **kwargs) -> str:
+        from jinja2 import Environment, FileSystemLoader
+        env = Environment(
+            loader=FileSystemLoader(
+                os.path.join(PROJECT_ROOT, "dashboard", "templates"),
+            ),
+            autoescape=False,
+        )
+        tmpl = env.from_string(
+            "{% from 'macros/widgets.html' import mini_bar %}"
+            "{{ mini_bar(items, value_key=value_key, label_key=label_key,"
+            "            empty=empty) }}"
+        )
+        return tmpl.render(**kwargs)
+
+    def test_renders_items_with_proportional_widths(self):
+        out = self._render(
+            items=[{"theme": "Python", "count": 10},
+                   {"theme": "Linux", "count": 5}],
+            value_key="count", label_key="theme", empty="",
+        )
+        self.assertIn("Python", out)
+        self.assertIn("Linux", out)
+        self.assertIn("width: 100.0%", out)
+        self.assertIn("width: 50.0%", out)
+
+    def test_empty_uses_fallback_text(self):
+        out = self._render(items=[], value_key="count",
+                           label_key="theme",
+                           empty="Aucun thème en cache.")
+        self.assertIn("Aucun thème en cache.", out)
+
+
 if __name__ == "__main__":
     unittest.main()
