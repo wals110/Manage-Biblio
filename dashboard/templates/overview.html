@@ -1,124 +1,34 @@
 {% extends "base.html" %}
-{% from 'macros/widgets.html' import kpi_card, run_banner %}
 {% set active = "overview" %}
-{% block title %}Overview{% endblock %}
-
+{% block title %}Overview — {{ current_profile }}{% endblock %}
 {% block content %}
-{% if not api_key_set %}
-<div class="alert alert-warn">
-    &#9888; <strong>SILICONFLOW_API_KEY</strong> non d&eacute;finie &mdash; les tests classify/process ne fonctionneront pas.
-    <code>export SILICONFLOW_API_KEY=votre-cl&eacute;</code>
-</div>
-{% endif %}
-<h1 class="page-title">Overview</h1>
-{% if report and report.run_at is defined and report.run_at %}
-{{ run_banner(report, default_label='Dernier run') }}
-{% else %}
-<p class="page-subtitle">Aucun rapport disponible</p>
-{% endif %}
 
-{% if report %}
-{% set s = report.summary %}
-{% set rate = ((s.pass / s.total * 100) | round(1)) if s.total > 0 else 0 %}
-
-<!-- KPI Cards -->
-<div class="kpi-row">
-    {{ kpi_card("Pass", s.pass, "green") }}
-    {{ kpi_card("Fail", s.fail, "red") }}
-    {{ kpi_card("Skip", s.skip, "yellow") }}
-    {{ kpi_card("Taux de r&eacute;ussite" | safe, rate ~ '%', "blue") }}
-    {{ kpi_card("Dur&eacute;e" | safe, report.duration_seconds ~ 's', "purple") }}
-</div>
-
-<!-- LLM Config -->
-{% if llm_config %}
-<div class="llm-config-bar">
-    <div class="llm-config-item">
-        <span class="llm-config-label">Provider</span>
-        <span class="llm-config-value">{{ llm_config.provider }}</span>
+<div class="dash-overview-header">
+  <h1 class="page-title">📚 Overview</h1>
+  <div class="dash-overview-toolbar">
+    <label>Profil</label>
+    <select class="filter-select"
+            onchange="window.location.href='/?profile=' + encodeURIComponent(this.value)">
+      {% if not available_profiles %}
+      <option>(aucun profil)</option>
+      {% endif %}
+      {% for p in available_profiles %}
+      <option value="{{ p.name }}"
+              {% if p.name == current_profile %}selected{% endif %}>
+        {{ p.name }}
+      </option>
+      {% endfor %}
+    </select>
+    <a href="/?profile={{ current_profile }}&refresh=1"
+       class="dash-refresh-btn" title="Recalculer (force cache miss)">🔄</a>
+    <div class="dash-global-cost">
+      Coût total : <strong>${{ general_snapshot.global_cost.total_usd }}</strong>
     </div>
-    <div class="llm-config-item">
-        <span class="llm-config-label">Mod&egrave;le (Vision + Texte)</span>
-        <span class="llm-config-value">{{ llm_config.model }}</span>
-    </div>
-    <div class="llm-config-item">
-        <span class="llm-config-label">Co&ucirc;t / appel</span>
-        <span class="llm-config-value">${{ llm_config.cost_per_call }}</span>
-    </div>
-    <div class="llm-config-item">
-        <span class="llm-config-label">API Key</span>
-        {% if api_key_set %}
-        <span class="llm-config-value text-green">configur&eacute;e</span>
-        {% else %}
-        <span class="llm-config-value text-red">manquante</span>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
-
-<!-- Actions -->
-<div class="actions-bar">
-    <button class="btn btn-primary"
-            hx-post="/api/run"
-            hx-vals='{"mode": "all"}'
-            hx-swap="none">
-        Lancer tous les tests
-    </button>
-    <button class="btn"
-            hx-post="/api/run"
-            hx-vals='{"mode": "failures"}'
-            hx-swap="none">
-        Relancer les &eacute;checs
-    </button>
+  </div>
 </div>
 
-<!-- Content grid: heatmap + release gate -->
-<div class="content-grid">
-    <!-- Phase Heatmap -->
-    <div class="heatmap-card">
-        <h2 class="section-title">Heatmap par phase</h2>
-        {% for phase in report.phases %}
-        <div class="heatmap-phase">
-            <div class="heatmap-phase-name">{{ phase.name }}</div>
-            <div class="heatmap-squares">
-                {% for series in phase.series %}
-                <div class="heatmap-square {{ series.status }}"
-                     title="{{ series.id }} — {{ series.name }} ({{ series.status }})"></div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
+{% set s = profile_snapshot %}
+{% include "partials/overview_profile.html" %}
+{% include "partials/overview_general.html" %}
 
-    <!-- Release Gate -->
-    <div class="gate-card">
-        <h2 class="section-title">Release Gate</h2>
-        {% if s.fail == 0 and issues | length == 0 %}
-        <div class="gate-status ready">READY</div>
-        <p class="text-muted mt-1">Tous les tests passent, aucune issue ouverte.</p>
-        {% else %}
-        <div class="gate-status blocked">BLOCKED</div>
-        {% if s.fail > 0 %}
-        <p class="text-red mt-1">{{ s.fail }} s&eacute;rie(s) en &eacute;chec</p>
-        {% endif %}
-        {% if issues | length > 0 %}
-        <p class="text-muted mt-1">{{ issues | length }} issue(s) ouverte(s) :</p>
-        <ul class="gate-issues">
-            {% for issue in issues %}
-            <li><span class="issue-num">#{{ issue.number }}</span>{{ issue.title }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        {% endif %}
-    </div>
-</div>
-
-{% else %}
-<!-- No data state -->
-<div class="no-data">
-    <p>Aucun rapport de test trouv&eacute;.</p>
-    <p class="text-muted">Lancez les tests fonctionnels pour g&eacute;n&eacute;rer un rapport :</p>
-    <p><code>uv run python tests/functional/run_functional.py</code></p>
-</div>
-{% endif %}
 {% endblock %}

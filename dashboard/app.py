@@ -55,21 +55,34 @@ templates.env.globals["project_root"] = _project_root
 
 
 @app.get("/")
-async def overview(request: Request):
-    """Overview page with KPIs, heatmap, and release gate."""
-    report = data.get_run_from_db() or data.get_latest_report()
-    tests = data.get_tests_yaml()
-    issues = data.get_open_issues()
-    llm_config = data.get_llm_config()
-    api_keys = _get_api_keys_status()
-    api_key_set = any(k["set"] for k in api_keys if k["name"] == "SILICONFLOW_API_KEY")
-    return templates.TemplateResponse(
-        request,
-        "overview.html",
-        {"report": report, "tests": tests, "issues": issues,
-         "api_key_set": api_key_set,
-         "llm_config": llm_config},
-    )
+async def overview(
+    request: Request,
+    profile: str = "default",
+    refresh: bool = False,
+):
+    """Cockpit Biblio — moitié haute profile-aware, moitié basse générale.
+
+    Whitelist du paramètre `profile` : fallback transparent sur le 1er profil
+    disponible si la valeur est inconnue. `?refresh=1` invalide le cache 30 s.
+    """
+    from dashboard import overview as ov
+    available = data.get_available_profiles(include_all=True)
+    names = {p["name"] if isinstance(p, dict) else p for p in available}
+    if profile not in names:
+        if available:
+            first = available[0]
+            profile = first["name"] if isinstance(first, dict) else first
+        else:
+            profile = "default"
+    if refresh:
+        ov.reset_cache(profile)
+    return templates.TemplateResponse(request, "overview.html", {
+        "active": "overview",
+        "current_profile": profile,
+        "available_profiles": available,
+        "profile_snapshot": ov.build_profile_snapshot(profile, force=refresh),
+        "general_snapshot": ov.build_general_snapshot(),
+    })
 
 
 @app.get("/tests")
