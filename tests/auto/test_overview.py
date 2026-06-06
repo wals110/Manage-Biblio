@@ -433,5 +433,43 @@ class TestCardHealth(OverviewTestBase):
         self.assertGreaterEqual(r["n_orphans_total"], 1)
 
 
+class TestCardTopThemes(OverviewTestBase):
+
+    def _write_cache(self, themes_per_file: list[list[tuple[str, float]]]):
+        """themes_per_file = [[(theme, confidence), ...], ...]"""
+        cache: dict = {}
+        for i, themes in enumerate(themes_per_file):
+            cache[f"k{i}"] = {"result": {
+                "themes": [{"theme": t, "confidence": c} for t, c in themes]
+            }}
+        (self.profile_dir / ".cache" / "vision_cache.json").write_text(
+            json.dumps(cache)
+        )
+
+    def test_aggregates_and_sorts_descending(self):
+        self._write_cache([
+            [("Python", 0.9), ("Linux", 0.8)],
+            [("Python", 0.9)],
+            [("Python", 0.9), ("Math", 0.7)],
+        ])
+        r = overview.card_top_themes(self.profile_name, limit=3)
+        self.assertEqual(len(r), 3)
+        self.assertEqual(r[0]["theme"], "Python")
+        self.assertEqual(r[0]["count"], 3)
+        # Pct = count / total occurrences = 3 / 5 = 60
+        self.assertAlmostEqual(r[0]["pct"], 60.0, places=1)
+
+    def test_filters_low_confidence(self):
+        self._write_cache([[("Low", 0.3), ("Good", 0.9)]])
+        r = overview.card_top_themes(self.profile_name)
+        themes = [x["theme"] for x in r]
+        self.assertNotIn("Low", themes)
+        self.assertIn("Good", themes)
+
+    def test_empty_cache(self):
+        r = overview.card_top_themes(self.profile_name)
+        self.assertEqual(r, [])
+
+
 if __name__ == "__main__":
     unittest.main()

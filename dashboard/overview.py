@@ -343,3 +343,29 @@ def card_health(profile: str) -> dict:
         "n_orphans_total": n_map_orphans + n_cat_orphans,
         "locks_active": locks,
     }
+
+
+_MIN_CONFIDENCE = 0.5
+
+
+def card_top_themes(profile: str, limit: int = 10) -> list[dict]:
+    """Top thèmes LLM (vision_cache) triés par count décroissant. Filtre
+    confidence < _MIN_CONFIDENCE."""
+    from dashboard import taxonomy as _tax
+    cache = _load_vision_cache(profile)
+    if not cache:
+        return []
+    counts: dict[str, int] = {}
+    # Réutilise _iter_themes(cache) qui yield (theme, confidence)
+    for theme, conf in _tax._iter_themes(cache):
+        if conf < _MIN_CONFIDENCE:
+            continue
+        counts[theme] = counts.get(theme, 0) + 1
+    if not counts:
+        return []
+    total_occ = sum(counts.values())
+    items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [
+        {"theme": t, "count": c, "pct": round(c / total_occ * 100, 1)}
+        for t, c in items[:limit]
+    ]
