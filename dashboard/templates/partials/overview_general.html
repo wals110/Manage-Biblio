@@ -61,7 +61,13 @@
   <div class="dash-card">
     <h3>💵 Coûts cumulés</h3>
     {% if g.global_cost.by_profile %}
-    <canvas id="dash-cost-pie" height="140"></canvas>
+    {# Container avec hauteur fixée — Chart.js avec maintainAspectRatio:false
+       a besoin d'un parent à hauteur définie sinon il essaie de remplir
+       l'infini et casse le layout de la grille (bug observé : page qui
+       s'étire vers le bas). Cf. https://www.chartjs.org/docs/latest/configuration/responsive.html #}
+    <div class="dash-pie-wrap">
+      <canvas id="dash-cost-pie"></canvas>
+    </div>
     <script>
       (function() {
         var ctx = document.getElementById('dash-cost-pie');

@@ -6589,6 +6589,16 @@ th {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
     margin-top: 20px;
+    align-items: start; /* évite que les cartes courtes s'étirent à la
+                           hauteur de la cellule la plus haute */
+}
+/* Wrapper du pie chart — Chart.js avec maintainAspectRatio:false a
+   besoin d'une hauteur fixée sur le parent direct, sinon il essaie de
+   remplir l'infini (page qui s'étend vers le bas). */
+.dash-pie-wrap {
+    position: relative;
+    height: 200px;
+    width: 100%;
 }
 
 /* Responsive */
