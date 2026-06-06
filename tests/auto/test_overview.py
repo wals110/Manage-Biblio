@@ -586,6 +586,19 @@ class TestCardLlmModels(OverviewTestBase):
         local = next(x for x in r if x["profile"] == "test-local")
         self.assertEqual(local["provider"], "ollama")
 
+    def test_includes_non_test_profiles(self):
+        """Profil avec nom != 'test*' doit apparaître (include_all=True)."""
+        p = self.profiles_root / "default"
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "default", "target": str(self.target),
+            "llm": {"provider": "siliconflow", "model": "Qwen/Qwen3-VL-32B",
+                    "endpoint": "https://api.siliconflow.com/v1"},
+        }))
+        r = overview.card_llm_models()
+        names = {x["profile"] for x in r}
+        self.assertIn("default", names)
+
 
 class TestCardApiKeys(OverviewTestBase):
 
@@ -611,6 +624,17 @@ class TestCardProfilesList(OverviewTestBase):
         self.assertIn("test", names)
         item = next(x for x in r if x["name"] == "test")
         self.assertTrue(item["target_exists"])
+
+    def test_includes_non_test_profiles(self):
+        """Profil avec nom != 'test*' doit apparaître (include_all=True)."""
+        p = self.profiles_root / "default"
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "profile.yaml").write_text(yaml.safe_dump({
+            "name": "default", "target": str(self.target),
+        }))
+        r = overview.card_profiles_list()
+        names = {x["name"] for x in r}
+        self.assertIn("default", names)
 
 
 class TestCardGlobalCost(OverviewTestBase):

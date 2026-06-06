@@ -448,7 +448,7 @@ def card_recent_activity(profile: str, limit: int = 5) -> list[dict]:
 def card_llm_models() -> list[dict]:
     """Liste {profile, provider, model, endpoint} pour chaque profil."""
     out: list[dict] = []
-    for p in data.get_available_profiles():
+    for p in data.get_available_profiles(include_all=True):
         name = p["name"] if isinstance(p, dict) else p
         cfg = _load_profile_config(name) or {}
         llm = cfg.get("llm") or {}
@@ -473,7 +473,7 @@ def card_api_keys() -> list[dict]:
 def card_profiles_list() -> list[dict]:
     """Liste de tous les profils + état de leur target."""
     out: list[dict] = []
-    for p in data.get_available_profiles():
+    for p in data.get_available_profiles(include_all=True):
         name = p["name"] if isinstance(p, dict) else p
         cfg = _load_profile_config(name) or {}
         target = str(cfg.get("target") or "")
