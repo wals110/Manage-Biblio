@@ -20,11 +20,13 @@
                 <span class="tax-refonte-start-icon">🔧</span>
                 <span>Proposer une refonte</span>
             </button>
+            {% if phase_c_ui_enabled %}
             <button id="tax-refonte-new-conv" class="tax-refonte-propose-btn"
                     title="Démarrer une conversation avec l'agent (Phase C) — créer/renommer/fusionner des dossiers, ajouter des mappings">
                 <span class="tax-refonte-start-icon">🗨</span>
                 <span>Nouvelle conversation</span>
             </button>
+            {% endif %}
             <div class="tax-refonte-budget-field">
                 <label for="tax-refonte-budget" class="filter-label">Budget LLM</label>
                 <input type="number" id="tax-refonte-budget" value="5" min="1" max="20">
@@ -38,19 +40,21 @@
         </div>
     </div>
 
-    <div class="tax-refonte-c-grid">
+    <div class="tax-refonte-c-grid {% if not phase_c_ui_enabled %}tax-refonte-c-grid--no-timeline{% endif %}">
         <!-- COL 1 : runs récents + conversations -->
         <div>
             <h3 style="margin-top: 0;">Runs récents</h3>
             <div id="tax-refonte-runs">
                 <p class="muted small">Chargement…</p>
             </div>
+            {% if phase_c_ui_enabled %}
             <h3 style="margin-top: 20px; display: flex; align-items: center; gap: 6px;">
                 <span>🗨 Conversations</span>
             </h3>
             <div id="tax-refonte-convs">
                 <p class="muted small">Aucune conversation.</p>
             </div>
+            {% endif %}
         </div>
         <!-- COL 2 : rapport courant OU chat (selon sélection) -->
         <div>
@@ -75,6 +79,7 @@
                     <div id="tax-refonte-report" class="tax-refonte-md"></div>
                 </div>
             </div>
+            {% if phase_c_ui_enabled %}
             <!-- Wrapper centré pour le chat (limite max-width sur ultra-wide) -->
             <div id="tax-refonte-chat-wrapper" class="tax-refonte-chat-wrapper" style="display: none;">
             <!-- Mode CHAT (Phase C) -->
@@ -105,7 +110,9 @@
                 </div>
             </div>
             </div><!-- /chat-wrapper -->
+            {% endif %}
         </div>
+        {% if phase_c_ui_enabled %}
         <!-- COL 3 : timeline mutations (visible ≥ 1280px) -->
         <div id="tax-refonte-timeline-col" class="tax-refonte-timeline-col">
             <h3 style="margin-top: 0; display:flex; align-items:center; gap:6px;">
@@ -118,6 +125,7 @@
                 <p class="muted small">Aucune mutation.</p>
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -563,6 +571,12 @@
     grid-template-columns: 320px minmax(0, 1fr);
     gap: 16px;
     margin-top: 16px;
+}
+/* Modifier : Phase C UI désactivée → force 2 colonnes à TOUS les
+   breakpoints (sinon la règle 1280px+ réserve 320px à droite alors
+   qu'il n'y a pas de col 3 timeline à y mettre). */
+.tax-refonte-c-grid--no-timeline {
+    grid-template-columns: 320px minmax(0, 1fr) !important;
 }
 .tax-refonte-timeline-col { display: none; }
 .tax-refonte-chat-wrapper {
@@ -1554,6 +1568,7 @@
     // ════════════════════════════════════════════════════════════════════
     //  Phase C — Agent conversationnel (C.3 UI)
     // ════════════════════════════════════════════════════════════════════
+    {% if phase_c_ui_enabled %}
 
     const newConvBtn = document.getElementById('tax-refonte-new-conv');
     const convsEl = document.getElementById('tax-refonte-convs');
@@ -1951,5 +1966,6 @@
     // Chargement initial des convs + timeline
     loadConvs();
     loadTimeline();
+    {% endif %}
 })();
 </script>

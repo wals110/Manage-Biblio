@@ -1612,6 +1612,7 @@ async def baseline_stats_api(profile: str, run_id: str | None = None):
 @app.get("/taxonomy")
 async def taxonomy_page(request: Request, profile: str | None = None):
     """Interactive viewer of tree.yaml + theme_mapping.yaml + LLM themes."""
+    from dashboard.agent_refonte_phase_c import PHASE_C_UI_ENABLED
     profiles = taxonomy.list_profiles()
     if not profile and profiles:
         profile = profiles[0]["name"]
@@ -1622,6 +1623,7 @@ async def taxonomy_page(request: Request, profile: str | None = None):
             "active": "taxonomy",
             "profile": profile,
             "profiles": profiles,
+            "phase_c_ui_enabled": PHASE_C_UI_ENABLED,
         },
     )
 
@@ -2369,6 +2371,7 @@ async def taxonomy_file_move_api(request: Request):
 @app.get("/agent/refonte")
 async def agent_refonte_page(request: Request, profile: str = "default"):
     """Page dédiée à l'agent Refonte (Phase A — Diagnostic)."""
+    from dashboard.agent_refonte_phase_c import PHASE_C_UI_ENABLED
     available = [
         p["name"] if isinstance(p, dict) else p
         for p in data.get_available_profiles(include_all=True)
@@ -2384,6 +2387,7 @@ async def agent_refonte_page(request: Request, profile: str = "default"):
             "profile": profile,
             "available_profiles": available,
             "runs": runs,
+            "phase_c_ui_enabled": PHASE_C_UI_ENABLED,
         },
     )
 
