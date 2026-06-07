@@ -13,6 +13,19 @@ from typing import Any
 from agents.refonte import agent_backup, agent_journal, mutations
 from dashboard import data
 
+# ─── Feature flag UI ───────────────────────────────────────────────────
+# Si False, le sous-onglet Refonte du dashboard masque tous les éléments
+# Phase C (bouton "Nouvelle conversation", sidebar Conversations, vue
+# chat, timeline mutations). Les endpoints API et tout le code Python
+# restent intacts — seule la découverte UI est désactivée.
+#
+# Désactivé le 2026-06-07 (cf. discussion : pas assez de valeur ajoutée
+# vs UI atomique existante ; chat agentique limité à 5 tools, pas de
+# delete, 1 mutation/tour). Les actions disponibles dans le sub-tab
+# restent : "Lancer un diagnostic" (Phase A) + "Proposer une refonte"
+# (Phase B). Le code Phase C est conservé pour re-activation future.
+PHASE_C_UI_ENABLED: bool = False
+
 
 class RollbackError(Exception):
     """Tentative de rollback impossible (batch inexistant, déjà rollback, etc.)."""
