@@ -572,12 +572,10 @@
     gap: 16px;
     margin-top: 16px;
 }
-/* Modifier : Phase C UI désactivée → force 2 colonnes à TOUS les
-   breakpoints (sinon la règle 1280px+ réserve 320px à droite alors
-   qu'il n'y a pas de col 3 timeline à y mettre). */
-.tax-refonte-c-grid--no-timeline {
-    grid-template-columns: 320px minmax(0, 1fr) !important;
-}
+/* Modifier : Phase C UI désactivée → la col 3 timeline n'existe pas dans
+   le DOM. Les overrides spécifiques sont injectés dans chaque media
+   query ci-dessous (≥1280px et ≥1920px) pour neutraliser le 3e track
+   sans `!important` et sans casser le breakpoint mobile (<900px → 1fr). */
 .tax-refonte-timeline-col { display: none; }
 .tax-refonte-chat-wrapper {
     max-width: 960px;       /* limite la largeur du chat même sans col 3 */
@@ -590,6 +588,10 @@
     .tax-refonte-c-grid {
         grid-template-columns: 320px minmax(0, 1fr) 320px;
     }
+    /* Phase C désactivée → garde 2 colonnes (pas de col 3 vide à droite) */
+    .tax-refonte-c-grid--no-timeline {
+        grid-template-columns: 320px minmax(0, 1fr);
+    }
     .tax-refonte-timeline-col { display: block; }
     .tax-refonte-chat-wrapper { max-width: 920px; }
 }
@@ -599,6 +601,11 @@
     .tax-refonte-c-grid {
         grid-template-columns: 340px minmax(0, 1100px) 380px;
         justify-content: center;  /* centre toute la grille horizontalement */
+    }
+    /* Phase C désactivée → 2 colonnes, garde la grille centrée */
+    .tax-refonte-c-grid--no-timeline {
+        grid-template-columns: 340px minmax(0, 1100px);
+        justify-content: center;
     }
     .tax-refonte-chat-wrapper { max-width: 1100px; }
 }
