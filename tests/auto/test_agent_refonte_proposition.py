@@ -572,5 +572,200 @@ class TestInitNodeOrphanInjection(_ProposBase):
         self.assertIn("Group Theory", human_msg)
 
 
+class TestProposeChangesCategoriesIntegration(unittest.TestCase):
+    """Tests d'intégration : propose_changes écrit categories-proposed.yaml."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.profiles_root = Path(self.tmp) / "profiles"
+        self.profiles_root.mkdir(parents=True)
+        target = Path(self.tmp) / "target"
+        target.mkdir()
+        _make_profile(
+            self.profiles_root, "test_p",
+            target=target,
+            folders=["02-INFORMATIQUE/14-Web"],
+            mapping={"Web Development": "02-INFORMATIQUE/14-Web"},
+        )
+        # Write categories.yaml
+        (self.profiles_root / "test_p" / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "informatique": [
+                    {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                     "mots_cles": ["html", "css"]},
+                ],
+            }, allow_unicode=True),
+            encoding="utf-8",
+        )
+        # Patch chemins
+        self.patcher_root = mock.patch(
+            "dashboard.data.get_project_root",
+            return_value=Path(self.tmp),
+        )
+        self.patcher_root.start()
+
+    def tearDown(self):
+        self.patcher_root.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_propose_changes_writes_categories_proposed_yaml(self):
+        """Un rename est proposé → categories-proposed.yaml écrit avec
+        l'entry remappée."""
+        from agents.refonte.proposition_tools import propose_changes
+        # Mock le LLM categories pour éviter l'appel réel
+        with mock.patch(
+            "agents.refonte.proposition_tools.propose_keywords_for_new_folders",
+            return_value=[],
+        ):
+            propose_changes(
+                profile="test_p",
+                run_id="testrun-001",
+                creations=[],
+                renamings=[{
+                    "old_path": "02-INFORMATIQUE/14-Web",
+                    "new_path": "02-INFORMATIQUE/14-Web-Frontend",
+                    "rationale": "clearer naming",
+                }],
+            )
+        out_dir = self.profiles_root / "test_p" / ".cache" / "refonte" / "testrun-001" / "proposed"
+        cat_path = out_dir / "categories-proposed.yaml"
+        self.assertTrue(cat_path.exists())
+        proposed = yaml.safe_load(cat_path.read_text(encoding="utf-8"))
+        chemins = [e["chemin"] for e in proposed["informatique"]]
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend", chemins)
+        self.assertNotIn("02-INFORMATIQUE/14-Web", chemins)
+
+    def test_propose_changes_no_categories_when_no_changes_apply(self):
+        """Pas de renames/fusions/deletions/creations → pas de fichier écrit."""
+        from agents.refonte.proposition_tools import propose_changes
+        with mock.patch(
+            "agents.refonte.proposition_tools.propose_keywords_for_new_folders",
+            return_value=[],
+        ):
+            propose_changes(
+                profile="test_p",
+                run_id="testrun-002",
+                mappings_added=[{
+                    "theme": "Foo", "folder": "02-INFORMATIQUE/14-Web",
+                    "rationale": "x",
+                }],
+            )
+        cat_path = (self.profiles_root / "test_p" / ".cache" / "refonte"
+                    / "testrun-002" / "proposed" / "categories-proposed.yaml")
+        self.assertFalse(cat_path.exists())
+
+    def test_propose_changes_no_categories_when_profile_has_none(self):
+        """Profil sans categories.yaml → pas de fichier produit, pas de crash."""
+        # Remove categories.yaml
+        (self.profiles_root / "test_p" / "categories.yaml").unlink()
+
+        from agents.refonte.proposition_tools import propose_changes
+        with mock.patch(
+            "agents.refonte.proposition_tools.propose_keywords_for_new_folders",
+            return_value=[],
+        ):
+            result = propose_changes(
+                profile="test_p",
+                run_id="testrun-003",
+                creations=[{
+                    "path": "02-INFORMATIQUE/05-IA-ML/RAG",
+                    "rationale": "RAG folder",
+                }],
+            )
+        cat_path = (self.profiles_root / "test_p" / ".cache" / "refonte"
+                    / "testrun-003" / "proposed" / "categories-proposed.yaml")
+        self.assertFalse(cat_path.exists())
+        # propose_changes a quand même réussi (tree + mapping écrits)
+        self.assertIn("tree_proposed_path", result)
+
+    def test_phase_b_end_to_end_with_categories(self):
+        """End-to-end : 1 rename + 1 création + 1 fusion + 1 deletion.
+        Vérifie que les 4 artefacts proposed existent + rationale.md contient
+        la section CATÉGORIES."""
+        # Étendre categories.yaml avec entries supplémentaires
+        (self.profiles_root / "test_p" / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "informatique": [
+                    {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                     "mots_cles": ["html"]},
+                    {"chemin": "02-INFORMATIQUE/Old-Tag", "priorite": 5,
+                     "mots_cles": ["legacy"]},
+                ],
+                "bureautique": [
+                    {"chemin": "09-BUREAU/Excel", "priorite": 5,
+                     "mots_cles": ["excel"]},
+                    {"chemin": "09-BUREAU/Microsoft-Excel", "priorite": 3,
+                     "mots_cles": ["microsoft excel"]},
+                ],
+            }, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+        from agents.refonte.proposition_tools import propose_changes
+        # Mock LLM categories : retourne 1 entry pour la création
+        fake_llm_entries = [{
+            "chemin": "02-INFORMATIQUE/05-IA-ML/RAG",
+            "groupe": "informatique",
+            "priorite": 5,
+            "mots_cles": ["retrieval augmented", "RAG", "embedding"],
+        }]
+        with mock.patch(
+            "agents.refonte.proposition_tools.propose_keywords_for_new_folders",
+            return_value=fake_llm_entries,
+        ), mock.patch("agents.llm.get_agent_llm", return_value=mock.MagicMock()):
+            propose_changes(
+                profile="test_p",
+                run_id="testrun-e2e",
+                creations=[{
+                    "path": "02-INFORMATIQUE/05-IA-ML/RAG",
+                    "rationale": "RAG retrieval",
+                }],
+                renamings=[{
+                    "old_path": "02-INFORMATIQUE/14-Web",
+                    "new_path": "02-INFORMATIQUE/14-Web-Frontend",
+                    "rationale": "clearer",
+                }],
+                fusions=[{
+                    "sources": ["09-BUREAU/Excel"],
+                    "target": "09-BUREAU/Microsoft-Excel",
+                    "rationale": "dedup",
+                }],
+                deletions=[{
+                    "path": "02-INFORMATIQUE/Old-Tag",
+                    "rationale": "unused",
+                }],
+            )
+
+        out_dir = self.profiles_root / "test_p" / ".cache" / "refonte" / "testrun-e2e" / "proposed"
+        # 4 artefacts existent
+        self.assertTrue((out_dir / "tree-proposed.yaml").exists())
+        self.assertTrue((out_dir / "theme_mapping-proposed.yaml").exists())
+        self.assertTrue((out_dir / "categories-proposed.yaml").exists())
+        self.assertTrue((out_dir / "refonte-rationale.md").exists())
+
+        # categories-proposed.yaml reflète toutes les ops
+        proposed = yaml.safe_load((out_dir / "categories-proposed.yaml").read_text(encoding="utf-8"))
+        chemins = sorted(
+            e["chemin"]
+            for entries in proposed.values()
+            for e in entries
+        )
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend", chemins)   # rename
+        self.assertIn("02-INFORMATIQUE/05-IA-ML/RAG", chemins)      # creation
+        self.assertIn("09-BUREAU/Microsoft-Excel", chemins)         # fusion target
+        self.assertNotIn("02-INFORMATIQUE/14-Web", chemins)         # ancien rename
+        self.assertNotIn("09-BUREAU/Excel", chemins)                # source fusion
+        self.assertNotIn("02-INFORMATIQUE/Old-Tag", chemins)        # deletion
+
+        # rationale.md contient la section
+        rationale = (out_dir / "refonte-rationale.md").read_text(encoding="utf-8")
+        self.assertIn("## CATÉGORIES", rationale)
+        self.assertIn("rename", rationale)
+        self.assertIn("fusion", rationale)
+        self.assertIn("deletion", rationale)
+        self.assertIn("02-INFORMATIQUE/05-IA-ML/RAG", rationale)
+        self.assertIn("retrieval augmented", rationale)
+
+
 if __name__ == "__main__":
     unittest.main()
