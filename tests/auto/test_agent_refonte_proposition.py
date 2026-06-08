@@ -678,6 +678,94 @@ class TestProposeChangesCategoriesIntegration(unittest.TestCase):
         # propose_changes a quand même réussi (tree + mapping écrits)
         self.assertIn("tree_proposed_path", result)
 
+    def test_phase_b_end_to_end_with_categories(self):
+        """End-to-end : 1 rename + 1 création + 1 fusion + 1 deletion.
+        Vérifie que les 4 artefacts proposed existent + rationale.md contient
+        la section CATÉGORIES."""
+        # Étendre categories.yaml avec entries supplémentaires
+        (self.profiles_root / "test_p" / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "informatique": [
+                    {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                     "mots_cles": ["html"]},
+                    {"chemin": "02-INFORMATIQUE/Old-Tag", "priorite": 5,
+                     "mots_cles": ["legacy"]},
+                ],
+                "bureautique": [
+                    {"chemin": "09-BUREAU/Excel", "priorite": 5,
+                     "mots_cles": ["excel"]},
+                    {"chemin": "09-BUREAU/Microsoft-Excel", "priorite": 3,
+                     "mots_cles": ["microsoft excel"]},
+                ],
+            }, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+        from agents.refonte.proposition_tools import propose_changes
+        # Mock LLM categories : retourne 1 entry pour la création
+        fake_llm_entries = [{
+            "chemin": "02-INFORMATIQUE/05-IA-ML/RAG",
+            "groupe": "informatique",
+            "priorite": 5,
+            "mots_cles": ["retrieval augmented", "RAG", "embedding"],
+        }]
+        with mock.patch(
+            "agents.refonte.proposition_tools.propose_keywords_for_new_folders",
+            return_value=fake_llm_entries,
+        ), mock.patch("agents.llm.get_agent_llm", return_value=mock.MagicMock()):
+            propose_changes(
+                profile="test_p",
+                run_id="testrun-e2e",
+                creations=[{
+                    "path": "02-INFORMATIQUE/05-IA-ML/RAG",
+                    "rationale": "RAG retrieval",
+                }],
+                renamings=[{
+                    "old_path": "02-INFORMATIQUE/14-Web",
+                    "new_path": "02-INFORMATIQUE/14-Web-Frontend",
+                    "rationale": "clearer",
+                }],
+                fusions=[{
+                    "sources": ["09-BUREAU/Excel"],
+                    "target": "09-BUREAU/Microsoft-Excel",
+                    "rationale": "dedup",
+                }],
+                deletions=[{
+                    "path": "02-INFORMATIQUE/Old-Tag",
+                    "rationale": "unused",
+                }],
+            )
+
+        out_dir = self.profiles_root / "test_p" / ".cache" / "refonte" / "testrun-e2e" / "proposed"
+        # 4 artefacts existent
+        self.assertTrue((out_dir / "tree-proposed.yaml").exists())
+        self.assertTrue((out_dir / "theme_mapping-proposed.yaml").exists())
+        self.assertTrue((out_dir / "categories-proposed.yaml").exists())
+        self.assertTrue((out_dir / "refonte-rationale.md").exists())
+
+        # categories-proposed.yaml reflète toutes les ops
+        proposed = yaml.safe_load((out_dir / "categories-proposed.yaml").read_text(encoding="utf-8"))
+        chemins = sorted(
+            e["chemin"]
+            for entries in proposed.values()
+            for e in entries
+        )
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend", chemins)   # rename
+        self.assertIn("02-INFORMATIQUE/05-IA-ML/RAG", chemins)      # creation
+        self.assertIn("09-BUREAU/Microsoft-Excel", chemins)         # fusion target
+        self.assertNotIn("02-INFORMATIQUE/14-Web", chemins)         # ancien rename
+        self.assertNotIn("09-BUREAU/Excel", chemins)                # source fusion
+        self.assertNotIn("02-INFORMATIQUE/Old-Tag", chemins)        # deletion
+
+        # rationale.md contient la section
+        rationale = (out_dir / "refonte-rationale.md").read_text(encoding="utf-8")
+        self.assertIn("## CATÉGORIES", rationale)
+        self.assertIn("rename", rationale)
+        self.assertIn("fusion", rationale)
+        self.assertIn("deletion", rationale)
+        self.assertIn("02-INFORMATIQUE/05-IA-ML/RAG", rationale)
+        self.assertIn("retrieval augmented", rationale)
+
 
 if __name__ == "__main__":
     unittest.main()
