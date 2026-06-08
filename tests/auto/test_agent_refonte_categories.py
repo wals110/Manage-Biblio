@@ -306,6 +306,56 @@ class TestCategoriesLLM(unittest.TestCase):
         self.assertEqual(result[0]["chemin"], "02-INFO/RAG")
         self.assertEqual(result[0]["mots_cles"], [])
 
+    def test_propose_keywords_llm_error_fallback(self):
+        """LLM raise une exception → entries vides retournées."""
+        from agents.refonte.categories_llm import propose_keywords_for_new_folders
+        mock_llm = mock.MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.side_effect = \
+            RuntimeError("rate limit")
+        result = propose_keywords_for_new_folders(
+            llm=mock_llm,
+            creations=[{"path": "X/Y", "rationale": "test"}],
+            existing_groupes=["informatique"],
+            groupe_inference={"X/Y": "informatique"},
+            sample_entries={"informatique": []},
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["mots_cles"], [])
+        self.assertEqual(result[0]["priorite"], 99)
+        self.assertEqual(result[0]["groupe"], "informatique")
+
+    def test_propose_keywords_retry_on_validation_fail(self):
+        """Premier call retourne du n'importe quoi (1 entry hallucinée),
+        retry réussit avec une entry valide."""
+        from agents.refonte.categories_llm import (
+            _NewCategoriesProposal,
+            propose_keywords_for_new_folders,
+        )
+        bad = _NewCategoriesProposal(entries=[
+            _new_category_entry_lax(chemin="WRONG/PATH", groupe="informatique",
+                                    priorite=5, mots_cles=["a", "b", "c"]),
+        ])
+        good = _NewCategoriesProposal(entries=[
+            _new_category_entry_lax(chemin="X/Y", groupe="informatique",
+                                    priorite=5,
+                                    mots_cles=["alpha", "beta", "gamma"]),
+        ])
+        mock_llm = mock.MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.side_effect = [bad, good]
+
+        result = propose_keywords_for_new_folders(
+            llm=mock_llm,
+            creations=[{"path": "X/Y", "rationale": "test"}],
+            existing_groupes=["informatique"],
+            groupe_inference={"X/Y": "informatique"},
+            sample_entries={"informatique": []},
+        )
+        # 2 calls effectués (1er hallucination + retry)
+        self.assertEqual(
+            mock_llm.with_structured_output.return_value.invoke.call_count, 2)
+        self.assertEqual(result[0]["chemin"], "X/Y")
+        self.assertEqual(result[0]["mots_cles"], ["alpha", "beta", "gamma"])
+
 
 if __name__ == "__main__":
     unittest.main()

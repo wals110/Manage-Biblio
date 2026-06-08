@@ -83,13 +83,38 @@ def propose_keywords_for_new_folders(
             )
 
     structured = llm.with_structured_output(_NewCategoriesProposal)
-    try:
-        result = structured.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content="\n".join(user_lines)),
-        ])
-    except Exception as exc:
-        log.warning("LLM call failed for categories proposal: %s", exc)
+    result = None
+    last_error: str = ""
+    for attempt in range(2):  # 1 try + 1 retry
+        extra_user = ""
+        if attempt == 1 and last_error:
+            extra_user = (
+                f"\n\nLE PRÉCÉDENT ESSAI A ÉCHOUÉ : {last_error}. "
+                "Reprends en t'assurant que chaque `chemin` figure EXACTEMENT "
+                "dans la liste fournie et que `groupe` est dans la liste autorisée."
+            )
+        try:
+            result = structured.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content="\n".join(user_lines) + extra_user),
+            ])
+        except Exception as exc:
+            log.warning("LLM call failed for categories proposal: %s", exc)
+            return _fallback_entries()
+
+        # Vérifie la validité avant de quitter la boucle
+        invalid = [
+            e for e in result.entries
+            if e.chemin not in valid_paths or e.groupe not in valid_groupes
+        ]
+        if not invalid:
+            break
+        last_error = (
+            f"{len(invalid)} entries hallucinées (chemin ou groupe invalide)"
+        )
+        result = None  # force retry
+
+    if result is None:
         return _fallback_entries()
 
     # Post-validation : drop entries hallucinées
