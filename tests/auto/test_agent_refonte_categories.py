@@ -19,6 +19,13 @@ sys.path.insert(0, PROJECT_ROOT)
 from agents.refonte.proposition_tools import _groupe_from_path_prefix  # noqa: E402
 
 
+def _new_category_entry_lax(**kwargs):
+    """Construit un _NewCategoryEntry sans la validation 'groupe' /
+    'chemin' (utile pour simuler le retour d'un LLM qui hallucinerait)."""
+    from agents.refonte.categories_llm import _NewCategoryEntry
+    return _NewCategoryEntry.model_construct(**kwargs)
+
+
 class TestGroupeInference(unittest.TestCase):
 
     def setUp(self):
@@ -244,6 +251,60 @@ class TestCategoriesLLM(unittest.TestCase):
         entry = _NewCategoryEntry(chemin="X/Y", groupe="informatique",
                                   priorite=5, mots_cles=["a", "b", "c"])
         self.assertEqual(len(entry.mots_cles), 3)
+
+    def test_propose_keywords_pydantic_groupe_validation(self):
+        """Le LLM retourne un groupe inconnu → drop entry + fallback."""
+        from agents.refonte.categories_llm import (
+            _NewCategoriesProposal,
+            propose_keywords_for_new_folders,
+        )
+        # Mock LLM retourne un groupe non listé dans existing_groupes
+        fake_proposal = _NewCategoriesProposal(entries=[
+            _new_category_entry_lax(chemin="02-INFO/RAG", groupe="INVALID",
+                                    priorite=5, mots_cles=["a", "b", "c"]),
+        ])
+        mock_llm = mock.MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.return_value = fake_proposal
+
+        result = propose_keywords_for_new_folders(
+            llm=mock_llm,
+            creations=[{"path": "02-INFO/RAG", "rationale": "test"}],
+            existing_groupes=["informatique", "sciences"],
+            groupe_inference={"02-INFO/RAG": "informatique"},
+            sample_entries={"informatique": []},
+        )
+        # Groupe invalide → fallback entry vide
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["mots_cles"], [])
+        self.assertEqual(result[0]["chemin"], "02-INFO/RAG")
+        # Fallback utilise le groupe inféré, pas celui du LLM
+        self.assertEqual(result[0]["groupe"], "informatique")
+
+    def test_propose_keywords_pydantic_chemin_mismatch_rejected(self):
+        """Le LLM retourne un chemin différent des créations → refus."""
+        from agents.refonte.categories_llm import (
+            _NewCategoriesProposal,
+            propose_keywords_for_new_folders,
+        )
+        fake_proposal = _NewCategoriesProposal(entries=[
+            _new_category_entry_lax(chemin="02-INFO/HALLUCINATED",
+                                    groupe="informatique", priorite=5,
+                                    mots_cles=["a", "b", "c"]),
+        ])
+        mock_llm = mock.MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.return_value = fake_proposal
+
+        result = propose_keywords_for_new_folders(
+            llm=mock_llm,
+            creations=[{"path": "02-INFO/RAG", "rationale": "test"}],
+            existing_groupes=["informatique"],
+            groupe_inference={"02-INFO/RAG": "informatique"},
+            sample_entries={"informatique": []},
+        )
+        # Le LLM a renvoyé HALLUCINATED, la création était RAG → fallback
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["chemin"], "02-INFO/RAG")
+        self.assertEqual(result[0]["mots_cles"], [])
 
 
 if __name__ == "__main__":

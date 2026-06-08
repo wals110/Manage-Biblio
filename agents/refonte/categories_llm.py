@@ -43,5 +43,80 @@ def propose_keywords_for_new_folders(
     """
     if not creations:
         return []
-    # Reste implémenté dans les tâches suivantes.
-    raise NotImplementedError("LLM call not implemented yet")
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    valid_paths = {c["path"] for c in creations}
+    valid_groupes = set(existing_groupes) | {"autres"}
+
+    def _fallback_entries() -> list[dict]:
+        return [
+            {
+                "chemin": c["path"],
+                "groupe": groupe_inference.get(c["path"], "autres"),
+                "priorite": 99,
+                "mots_cles": [],
+            }
+            for c in creations
+        ]
+
+    system_prompt = (
+        "Tu génères des entries pour `categories.yaml` de Klodo (outil de "
+        "classification PDF). Pour chaque nouveau folder dans la liste, "
+        "propose 3 à 15 mots-clés représentatifs et une priorité (1=haute, "
+        "99=basse). Le groupe est déjà inféré, garde-le. Le chemin doit "
+        "rester strictement identique."
+    )
+    user_lines = []
+    user_lines.append("Nouveaux folders à enrichir :\n")
+    for c in creations:
+        groupe = groupe_inference.get(c["path"], "autres")
+        user_lines.append(f"- {c['path']} (groupe : {groupe})")
+        user_lines.append(f"  rationale : {c.get('rationale', '')}")
+    user_lines.append("\nExemples d'entries existantes (1-shot) :")
+    for groupe, samples in sample_entries.items():
+        for s in samples[:2]:
+            user_lines.append(
+                f"- groupe={groupe} chemin={s.get('chemin', '')} "
+                f"priorite={s.get('priorite', 5)} "
+                f"mots_cles={s.get('mots_cles', [])[:5]}"
+            )
+
+    structured = llm.with_structured_output(_NewCategoriesProposal)
+    try:
+        result = structured.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content="\n".join(user_lines)),
+        ])
+    except Exception as exc:
+        log.warning("LLM call failed for categories proposal: %s", exc)
+        return _fallback_entries()
+
+    # Post-validation : drop entries hallucinées
+    out: list[dict] = []
+    seen_paths: set[str] = set()
+    for entry in result.entries:
+        if entry.chemin not in valid_paths:
+            log.warning("LLM hallucinated chemin %r — skipping", entry.chemin)
+            continue
+        if entry.groupe not in valid_groupes:
+            log.warning("LLM hallucinated groupe %r — skipping", entry.groupe)
+            continue
+        out.append({
+            "chemin": entry.chemin,
+            "groupe": entry.groupe,
+            "priorite": entry.priorite,
+            "mots_cles": list(entry.mots_cles),
+        })
+        seen_paths.add(entry.chemin)
+
+    # Compléter avec fallback pour les créations non couvertes
+    for c in creations:
+        if c["path"] not in seen_paths:
+            out.append({
+                "chemin": c["path"],
+                "groupe": groupe_inference.get(c["path"], "autres"),
+                "priorite": 99,
+                "mots_cles": [],
+            })
+    return out
