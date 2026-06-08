@@ -270,6 +270,28 @@ def _cascade_categories_changes(
     return new_categories, log
 
 
+def _merge_categories_changes(
+    intermediate: dict[str, list[dict]],
+    new_entries: list[dict],
+) -> dict[str, list[dict]]:
+    """Combine la structure post-cascade avec les entries proposées par
+    le LLM. Les nouvelles entries sont ajoutées dans leur groupe (créé si
+    absent). Les champs `groupe` des new_entries sont consommés (le groupe
+    est utilisé comme clé, pas conservé dans l'entry).
+    """
+    merged: dict[str, list[dict]] = {
+        g: [dict(e) for e in entries] for g, entries in intermediate.items()
+    }
+    for entry in new_entries:
+        groupe = entry.get("groupe", "autres")
+        merged.setdefault(groupe, []).append({
+            "chemin": entry["chemin"],
+            "priorite": int(entry.get("priorite", 5)),
+            "mots_cles": list(entry.get("mots_cles", [])),
+        })
+    return merged
+
+
 def _proposal_dir(profile: str, run_id: str) -> Path:
     """Renvoie le dossier proposed/ pour ce run (créé si absent)."""
     base = data.get_project_root() / "profiles" / profile / ".cache" / "refonte" / run_id / "proposed"

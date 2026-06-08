@@ -357,5 +357,30 @@ class TestCategoriesLLM(unittest.TestCase):
         self.assertEqual(result[0]["mots_cles"], ["alpha", "beta", "gamma"])
 
 
+class TestMergeCategoriesChanges(unittest.TestCase):
+
+    def test_merge_categories_intermediate_plus_new(self):
+        from agents.refonte.proposition_tools import _merge_categories_changes
+        intermediate = {
+            "informatique": [
+                {"chemin": "02-INFO/Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+            ],
+            "sciences": [],
+        }
+        new_entries = [
+            {"chemin": "02-INFO/RAG", "groupe": "informatique",
+             "priorite": 5, "mots_cles": ["retrieval", "embedding", "vector"]},
+            {"chemin": "01-SCIENCES/CHIMIE/Materiaux", "groupe": "sciences",
+             "priorite": 6, "mots_cles": ["alloy", "polymer", "ceramic"]},
+        ]
+        merged = _merge_categories_changes(intermediate, new_entries)
+        chemins_info = [e["chemin"] for e in merged["informatique"]]
+        chemins_sci = [e["chemin"] for e in merged["sciences"]]
+        self.assertIn("02-INFO/Web", chemins_info)
+        self.assertIn("02-INFO/RAG", chemins_info)
+        self.assertIn("01-SCIENCES/CHIMIE/Materiaux", chemins_sci)
+
+
 if __name__ == "__main__":
     unittest.main()
