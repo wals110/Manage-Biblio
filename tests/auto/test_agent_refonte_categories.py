@@ -102,6 +102,39 @@ class TestCascadeCategories(unittest.TestCase):
         prefix_logs = [le for le in log if le["type"] == "rename_prefix"]
         self.assertEqual(len(prefix_logs), 2)
 
+    def test_cascade_renames_collision_merges_mots_cles(self):
+        # L'user avait déjà créé une entry pour le new_path → collision
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html", "css", "JavaScript"]},
+                {"chemin": "02-INFORMATIQUE/14-Web-Frontend", "priorite": 5,
+                 "mots_cles": ["frontend", "javascript"]},  # collision target
+            ],
+        }
+        renamings = [{"old_path": "02-INFORMATIQUE/14-Web",
+                      "new_path": "02-INFORMATIQUE/14-Web-Frontend"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=renamings, fusions=[], deletions=[])
+
+        # Une seule entry restante (les deux ont fusionné)
+        chemins = [e["chemin"] for e in new_cats["informatique"]]
+        self.assertEqual(chemins.count("02-INFORMATIQUE/14-Web-Frontend"), 1)
+        self.assertNotIn("02-INFORMATIQUE/14-Web", chemins)
+
+        merged = next(e for e in new_cats["informatique"]
+                      if e["chemin"] == "02-INFORMATIQUE/14-Web-Frontend")
+        # mots_cles : dedup case-insensitive (javascript == JavaScript)
+        self.assertEqual(
+            sorted([k.lower() for k in merged["mots_cles"]]),
+            sorted(["html", "css", "javascript", "frontend"]),
+        )
+        # priorite = min(3, 5) = 3
+        self.assertEqual(merged["priorite"], 3)
+        # Log mentionne la collision
+        rename_log = next(le for le in log if le["type"] == "rename")
+        self.assertEqual(rename_log.get("n_collisions", 0), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

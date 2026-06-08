@@ -142,6 +142,46 @@ def _cascade_categories_changes(
                     entry["_was_prefix_renamed"] = (old, new)  # marqueur temp
                     break
 
+    # Détection de collisions après rename : si 2 entries du même groupe ont
+    # le même chemin, fusionner (dedup mots_cles case-insensitive + min
+    # priorite). Log la collision.
+    n_collisions_by_target: dict[str, int] = {}
+    for groupe, entries in new_categories.items():
+        by_chemin: dict[str, list[dict]] = {}
+        for entry in entries:
+            by_chemin.setdefault(entry.get("chemin", ""), []).append(entry)
+        merged_entries: list[dict] = []
+        for chemin, group in by_chemin.items():
+            if len(group) == 1:
+                merged_entries.append(group[0])
+                continue
+            # Collision : merge
+            n_collisions_by_target[chemin] = (
+                n_collisions_by_target.get(chemin, 0) + len(group) - 1
+            )
+            seen: dict[str, str] = {}  # lower → original
+            for e in group:
+                for k in e.get("mots_cles", []) or []:
+                    if isinstance(k, str) and k.lower() not in seen:
+                        seen[k.lower()] = k
+            # Preserve internal marker '_was_prefix_renamed' if any of the
+            # merged entries had it, so the subsequent log loop still records
+            # the prefix-rename event.
+            preserved_marker = next(
+                (e.get("_was_prefix_renamed") for e in group
+                 if e.get("_was_prefix_renamed") is not None),
+                None,
+            )
+            merged = {
+                "chemin": chemin,
+                "priorite": min(int(e.get("priorite", 99)) for e in group),
+                "mots_cles": list(seen.values()),
+            }
+            if preserved_marker is not None:
+                merged["_was_prefix_renamed"] = preserved_marker
+            merged_entries.append(merged)
+        new_categories[groupe] = merged_entries
+
     for r in renamings:
         n_exact = sum(
             1
@@ -156,6 +196,11 @@ def _cascade_categories_changes(
                 "new": r["new_path"],
                 "n_entries": n_exact,
             })
+
+    # Enrichir le log : annoter n_collisions sur les entries rename
+    for le in log:
+        if le["type"] == "rename" and le["new"] in n_collisions_by_target:
+            le["n_collisions"] = n_collisions_by_target[le["new"]]
 
     for groupe, entries in new_categories.items():
         for entry in entries:
