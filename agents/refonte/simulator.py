@@ -84,13 +84,17 @@ def simulate_reclassify(
         str(k): str(v) for k, v in proposed_mapping_raw.items() if isinstance(v, str)
     }
 
-    # KeywordClassifier (fallback Niveau 2) — réutilise categories.yaml courant du
-    # profil. Phase B ne propose pas de changements à categories.yaml.
+    # KeywordClassifier (fallback Niveau 2). On préfère categories-proposed.yaml
+    # (output Phase B) si présent dans proposal_dir — c'est ce que valide
+    # l'utilisateur. Fallback sur categories.yaml de prod pour les anciens runs
+    # sans cet artefact (rétrocompat).
     target = tax._profile_target_path(profile)
     if target is None or not target.exists():
         return _empty_summary(proposal_dir)
 
-    cat_path = tax._profile_dir(profile) / "categories.yaml"
+    cat_path = proposal_dir / "categories-proposed.yaml"
+    if not cat_path.exists():
+        cat_path = tax._profile_dir(profile) / "categories.yaml"
     classifier = load_keyword_classifier(str(cat_path)) if cat_path.exists() else None
 
     # Vision cache

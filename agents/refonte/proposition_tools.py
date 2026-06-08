@@ -23,6 +23,7 @@ import yaml
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from agents.refonte.categories_llm import propose_keywords_for_new_folders
 from dashboard import data
 from dashboard import taxonomy as tax
 
@@ -80,6 +81,278 @@ class _ProposeChangesInput(BaseModel):
 
 
 # ─── Helpers privés ────────────────────────────────────────────────────────
+
+
+def _groupe_from_path_prefix(
+    path: str,
+    existing_categories: dict[str, list[dict]],
+) -> str:
+    """Infère le groupe d'un nouveau chemin à partir des préfixes des
+    entries existantes. Si un préfixe path correspond à un groupe (le plus
+    représenté en cas d'ambiguïté), retourne ce groupe. Sinon "autres".
+    """
+    # Compte, pour chaque groupe, combien d'entries partagent un préfixe
+    # avec `path` (par segment, du plus long au plus court).
+    parts = path.split("/")
+    for n_segments in range(len(parts), 0, -1):
+        prefix = "/".join(parts[:n_segments])
+        scores: dict[str, int] = {}
+        for groupe, entries in existing_categories.items():
+            for entry in entries:
+                chemin = entry.get("chemin", "")
+                if chemin.startswith(prefix + "/") or chemin == prefix:
+                    scores[groupe] = scores.get(groupe, 0) + 1
+        if scores:
+            # Groupe le plus représenté à ce niveau de préfixe
+            return max(scores.items(), key=lambda kv: kv[1])[0]
+    return "autres"
+
+
+def _cascade_categories_changes(
+    current_categories: dict[str, list[dict]],
+    renamings: list[dict],
+    fusions: list[dict],
+    deletions: list[dict],
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """Applique de manière déterministe renames/fusions/deletions sur les
+    entries existantes de categories.yaml. Pas d'appel LLM.
+
+    Retourne :
+        - new_categories : structure YAML mise à jour
+        - log_modifications : liste de dicts pour _render_rationale_markdown
+    """
+    # Copy défensive
+    new_categories: dict[str, list[dict]] = {
+        groupe: [dict(e) for e in entries]
+        for groupe, entries in current_categories.items()
+    }
+    log: list[dict] = []
+
+    # Apply fusions FIRST : transformer chaque source en target dans les
+    # chemins, le mécanisme de collision merge ensuite naturellement.
+    fusion_map: dict[str, str] = {}
+    for f in fusions:
+        for src in f["sources"]:
+            fusion_map[src] = f["target"]
+
+    if fusion_map:
+        for groupe, entries in new_categories.items():
+            for entry in entries:
+                chemin = entry.get("chemin", "")
+                if chemin in fusion_map:
+                    entry["chemin"] = fusion_map[chemin]
+
+    rename_map = {r["old_path"]: r["new_path"] for r in renamings}
+
+    for groupe, entries in new_categories.items():
+        for entry in entries:
+            chemin = entry.get("chemin", "")
+            if chemin in rename_map:
+                entry["chemin"] = rename_map[chemin]
+                continue
+            # Rename par préfixe : remplace old_path/* par new_path/*
+            for old, new in rename_map.items():
+                if chemin.startswith(old + "/"):
+                    entry["chemin"] = new + chemin[len(old):]
+                    entry["_was_prefix_renamed"] = (old, new)  # marqueur temp
+                    break
+
+    # Détection de collisions après rename : si 2 entries du même groupe ont
+    # le même chemin, fusionner (dedup mots_cles case-insensitive + min
+    # priorite). Log la collision.
+    n_collisions_by_target: dict[str, int] = {}
+    for groupe, entries in new_categories.items():
+        by_chemin: dict[str, list[dict]] = {}
+        for entry in entries:
+            by_chemin.setdefault(entry.get("chemin", ""), []).append(entry)
+        merged_entries: list[dict] = []
+        for chemin, group in by_chemin.items():
+            if len(group) == 1:
+                merged_entries.append(group[0])
+                continue
+            # Collision : merge
+            n_collisions_by_target[chemin] = (
+                n_collisions_by_target.get(chemin, 0) + len(group) - 1
+            )
+            seen: dict[str, str] = {}  # lower → original
+            for e in group:
+                for k in e.get("mots_cles", []) or []:
+                    if isinstance(k, str) and k.lower() not in seen:
+                        seen[k.lower()] = k
+            # Preserve internal marker '_was_prefix_renamed' if any of the
+            # merged entries had it, so the subsequent log loop still records
+            # the prefix-rename event.
+            preserved_marker = next(
+                (e.get("_was_prefix_renamed") for e in group
+                 if e.get("_was_prefix_renamed") is not None),
+                None,
+            )
+            merged = {
+                "chemin": chemin,
+                "priorite": min(int(e.get("priorite", 99)) for e in group),
+                "mots_cles": list(seen.values()),
+            }
+            if preserved_marker is not None:
+                merged["_was_prefix_renamed"] = preserved_marker
+            merged_entries.append(merged)
+        new_categories[groupe] = merged_entries
+
+    for r in renamings:
+        n_exact = sum(
+            1
+            for entries in new_categories.values()
+            for e in entries
+            if e.get("chemin") == r["new_path"]
+        )
+        if n_exact > 0:
+            log.append({
+                "type": "rename",
+                "old": r["old_path"],
+                "new": r["new_path"],
+                "n_entries": n_exact,
+            })
+
+    # Enrichir le log : annoter n_collisions sur les entries rename
+    for le in log:
+        if le["type"] == "rename" and le["new"] in n_collisions_by_target:
+            le["n_collisions"] = n_collisions_by_target[le["new"]]
+
+    # Log fusions
+    for f in fusions:
+        n = sum(
+            1
+            for entries in new_categories.values()
+            for e in entries
+            if e.get("chemin") == f["target"]
+        )
+        if n > 0:
+            log.append({
+                "type": "fusion",
+                "old": f["sources"],
+                "new": f["target"],
+                "n_entries": n,
+            })
+
+    for groupe, entries in new_categories.items():
+        for entry in entries:
+            marker = entry.pop("_was_prefix_renamed", None)
+            if marker:
+                old, new = marker
+                log.append({
+                    "type": "rename_prefix",
+                    "old": old,
+                    "new": new,
+                    "chemin_renamed": entry["chemin"],
+                    "n_entries": 1,
+                })
+
+    # Apply deletions : drop entries dont le chemin est dans la liste
+    deletion_set = {d["path"] for d in deletions}
+    if deletion_set:
+        for groupe in list(new_categories.keys()):
+            before = new_categories[groupe]
+            after = [e for e in before if e.get("chemin") not in deletion_set]
+            new_categories[groupe] = after
+
+        for d in deletions:
+            n = sum(
+                1
+                for entries in current_categories.values()
+                for e in entries
+                if e.get("chemin") == d["path"]
+            )
+            if n > 0:
+                log.append({
+                    "type": "deletion",
+                    "old": d["path"],
+                    "n_entries": n,
+                })
+
+    return new_categories, log
+
+
+def _merge_categories_changes(
+    intermediate: dict[str, list[dict]],
+    new_entries: list[dict],
+) -> dict[str, list[dict]]:
+    """Combine la structure post-cascade avec les entries proposées par
+    le LLM. Les nouvelles entries sont ajoutées dans leur groupe (créé si
+    absent). Les champs `groupe` des new_entries sont consommés (le groupe
+    est utilisé comme clé, pas conservé dans l'entry).
+    """
+    merged: dict[str, list[dict]] = {
+        g: [dict(e) for e in entries] for g, entries in intermediate.items()
+    }
+    for entry in new_entries:
+        groupe = entry.get("groupe", "autres")
+        merged.setdefault(groupe, []).append({
+            "chemin": entry["chemin"],
+            "priorite": int(entry.get("priorite", 5)),
+            "mots_cles": list(entry.get("mots_cles", [])),
+        })
+    return merged
+
+
+def _render_categories_section(
+    cascade_log: list[dict],
+    new_entries: list[dict],
+) -> str:
+    """Render la section ## CATÉGORIES du rationale markdown."""
+    if not cascade_log and not new_entries:
+        return ""
+
+    n_total = len(cascade_log) + len(new_entries)
+    lines: list[str] = []
+    lines.append(f"## CATÉGORIES ({n_total} entries modifiées)")
+    lines.append("")
+
+    if cascade_log:
+        lines.append(f"### Cascades automatiques ({len(cascade_log)})")
+        for entry in cascade_log:
+            t = entry["type"]
+            if t == "rename":
+                extra = (f", {entry['n_collisions']} collision(s) mergée(s)"
+                         if entry.get("n_collisions") else "")
+                lines.append(
+                    f"- **rename** : `{entry['old']}` → `{entry['new']}` "
+                    f"({entry['n_entries']} entry remappée{extra})"
+                )
+            elif t == "rename_prefix":
+                lines.append(
+                    f"- **rename par préfixe** : `{entry['old']}/*` → "
+                    f"`{entry['new']}/*` (entry : `{entry.get('chemin_renamed', '')}`)"
+                )
+            elif t == "fusion":
+                srcs = " + ".join(f"`{s}`" for s in entry["old"])
+                lines.append(
+                    f"- **fusion** : {srcs} → `{entry['new']}` "
+                    f"({entry['n_entries']} entry mergée, mots_cles dédupliqués)"
+                )
+            elif t == "deletion":
+                lines.append(
+                    f"- **deletion** : `{entry['old']}` "
+                    f"({entry['n_entries']} entry supprimée)"
+                )
+        lines.append("")
+
+    if new_entries:
+        lines.append(f"### Nouveaux folders (mots-clés générés par LLM) ({len(new_entries)})")
+        for entry in new_entries:
+            chemin = entry["chemin"]
+            groupe = entry["groupe"]
+            priorite = entry["priorite"]
+            mots = entry.get("mots_cles", [])
+            if not mots:
+                lines.append(
+                    f"- `{chemin}` (groupe `{groupe}`, priorité {priorite}) "
+                    "⚠ Mots-clés indisponibles (LLM) — à compléter manuellement"
+                )
+            else:
+                lines.append(f"- `{chemin}` (groupe `{groupe}`, priorité {priorite})")
+                lines.append(f"  - mots-clés : {', '.join(mots)}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def _proposal_dir(profile: str, run_id: str) -> Path:
@@ -297,6 +570,66 @@ def propose_changes(
         json.dumps(changes.model_dump(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    # ─── Steps 2-5 : categories.yaml proposition ──────────────────────────
+    cat_path_prod = tax._profile_dir(profile) / "categories.yaml"
+    has_cascade_change = bool(
+        changes.renamings or changes.fusions or changes.deletions
+    )
+    has_creation_change = bool(changes.creations)
+
+    if cat_path_prod.exists() and (has_cascade_change or has_creation_change):
+        try:
+            current_cats = yaml.safe_load(
+                cat_path_prod.read_text(encoding="utf-8")
+            ) or {}
+        except yaml.YAMLError:
+            current_cats = {}
+
+        # Step 2 : cascade déterministe
+        new_cats, cascade_log = _cascade_categories_changes(
+            current_cats,
+            renamings=[r.model_dump() for r in changes.renamings],
+            fusions=[f.model_dump() for f in changes.fusions],
+            deletions=[d.model_dump() for d in changes.deletions],
+        )
+
+        # Step 3 : LLM mots-clés pour créations
+        new_llm_entries: list[dict] = []
+        if changes.creations:
+            from agents.llm import get_agent_llm
+            llm = get_agent_llm()
+            existing_groupes = list(current_cats.keys())
+            groupe_inference = {
+                c.path: _groupe_from_path_prefix(c.path, current_cats)
+                for c in changes.creations
+            }
+            sample_entries = {
+                g: current_cats[g][:2] for g in existing_groupes
+            }
+            new_llm_entries = propose_keywords_for_new_folders(
+                llm=llm,
+                creations=[c.model_dump() for c in changes.creations],
+                existing_groupes=existing_groupes,
+                groupe_inference=groupe_inference,
+                sample_entries=sample_entries,
+            )
+
+        # Step 4 : merge + écriture
+        merged_cats = _merge_categories_changes(new_cats, new_llm_entries)
+        cat_proposed_path = out_dir / "categories-proposed.yaml"
+        cat_proposed_path.write_text(
+            yaml.safe_dump(merged_cats, allow_unicode=True, sort_keys=True),
+            encoding="utf-8",
+        )
+
+        # Step 5 : extend rationale markdown
+        section = _render_categories_section(cascade_log, new_llm_entries)
+        if section:
+            rationale_path.write_text(
+                rationale_path.read_text(encoding="utf-8") + "\n" + section,
+                encoding="utf-8",
+            )
 
     return {
         "tree_proposed_path": str(tree_path),
