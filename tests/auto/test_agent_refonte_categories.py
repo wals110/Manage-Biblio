@@ -454,6 +454,26 @@ class TestCategoriesNonListGroups(unittest.TestCase):
             "02-INFORMATIQUE/05-IA-ML/RAG", self._real_shape())
         self.assertEqual(groupe, "informatique")
 
+    def test_cascade_deletion_with_config_block(self):
+        # La boucle de comptage des deletions lit current_categories brut →
+        # doit skipper le bloc config (régression du loop ligne ~272).
+        from agents.refonte.proposition_tools import _cascade_categories_changes
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+            ],
+            "apprentissage": {"actif": True, "seuil_minimum_fichiers": 3},
+        }
+        deletions = [{"path": "02-INFORMATIQUE/14-Web"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=[], fusions=[], deletions=deletions)
+        # Deletion comptée + appliquée, pas de crash sur le bloc config
+        del_log = next(le for le in log if le["type"] == "deletion")
+        self.assertEqual(del_log["n_entries"], 1)
+        self.assertEqual(new_cats["informatique"], [])
+        self.assertEqual(new_cats["apprentissage"], current["apprentissage"])
+
     def test_merge_preserves_config_block(self):
         from agents.refonte.proposition_tools import _merge_categories_changes
         intermediate = self._real_shape()

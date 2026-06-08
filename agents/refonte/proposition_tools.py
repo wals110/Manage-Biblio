@@ -270,8 +270,9 @@ def _cascade_categories_changes(
             n = sum(
                 1
                 for entries in current_categories.values()
+                if isinstance(entries, list)
                 for e in entries
-                if e.get("chemin") == d["path"]
+                if isinstance(e, dict) and e.get("chemin") == d["path"]
             )
             if n > 0:
                 log.append({
@@ -624,7 +625,12 @@ def propose_changes(
         if changes.creations:
             from agents.llm import get_agent_llm
             llm = get_agent_llm()
-            existing_groupes = list(current_cats.keys())
+            # Ne garder que les groupes-catégories (list[dict]) : exclut les
+            # blocs config non-liste (ex. `apprentissage`) qui ne sont pas des
+            # cibles de classement et qui ne se slicent pas ([:2] → KeyError).
+            existing_groupes = [
+                g for g in current_cats if isinstance(current_cats[g], list)
+            ]
             groupe_inference = {
                 c.path: _groupe_from_path_prefix(c.path, current_cats)
                 for c in changes.creations
