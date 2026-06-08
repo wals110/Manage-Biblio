@@ -410,5 +410,84 @@ class TestRenderRationale(unittest.TestCase):
         self.assertIn("retrieval", md)
 
 
+class TestCategoriesNonListGroups(unittest.TestCase):
+    """Régression : le vrai categories.yaml mélange des groupes-catégories
+    (list[dict]) et des blocs de config (dict), ex. `apprentissage`
+    {actif, seuil_minimum_fichiers, ...}. Les helpers ne doivent pas
+    planter sur les blocs config (`dict(e) for e in <dict>` → ValueError
+    'dictionary update sequence element #0 has length 1; 2 is required')
+    et doivent les préserver verbatim dans la sortie.
+    Cf. crash run 3ccdb8d7 sur le profil default (2026-06-08).
+    """
+
+    def _real_shape(self):
+        return {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+            ],
+            # Bloc de config — PAS une liste d'entries
+            "apprentissage": {
+                "actif": True,
+                "seuil_minimum_fichiers": 3,
+                "poids_apprentissage": 0.4,
+            },
+        }
+
+    def test_cascade_preserves_config_block(self):
+        from agents.refonte.proposition_tools import _cascade_categories_changes
+        current = self._real_shape()
+        renamings = [{"old_path": "02-INFORMATIQUE/14-Web",
+                      "new_path": "02-INFORMATIQUE/14-Web-Frontend"}]
+        new_cats, _log = _cascade_categories_changes(
+            current, renamings=renamings, fusions=[], deletions=[])
+        # Pas de crash + le rename a bien été appliqué
+        chemins = [e["chemin"] for e in new_cats["informatique"]]
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend", chemins)
+        # Le bloc config est préservé verbatim
+        self.assertEqual(new_cats["apprentissage"],
+                         current["apprentissage"])
+
+    def test_groupe_inference_skips_config_block(self):
+        # Le bloc apprentissage ne doit pas faire planter l'inférence
+        groupe = _groupe_from_path_prefix(
+            "02-INFORMATIQUE/05-IA-ML/RAG", self._real_shape())
+        self.assertEqual(groupe, "informatique")
+
+    def test_cascade_deletion_with_config_block(self):
+        # La boucle de comptage des deletions lit current_categories brut →
+        # doit skipper le bloc config (régression du loop ligne ~272).
+        from agents.refonte.proposition_tools import _cascade_categories_changes
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+            ],
+            "apprentissage": {"actif": True, "seuil_minimum_fichiers": 3},
+        }
+        deletions = [{"path": "02-INFORMATIQUE/14-Web"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=[], fusions=[], deletions=deletions)
+        # Deletion comptée + appliquée, pas de crash sur le bloc config
+        del_log = next(le for le in log if le["type"] == "deletion")
+        self.assertEqual(del_log["n_entries"], 1)
+        self.assertEqual(new_cats["informatique"], [])
+        self.assertEqual(new_cats["apprentissage"], current["apprentissage"])
+
+    def test_merge_preserves_config_block(self):
+        from agents.refonte.proposition_tools import _merge_categories_changes
+        intermediate = self._real_shape()
+        new_entries = [{
+            "chemin": "02-INFORMATIQUE/05-IA-ML/RAG", "groupe": "informatique",
+            "priorite": 5, "mots_cles": ["retrieval", "embedding", "vector"],
+        }]
+        merged = _merge_categories_changes(intermediate, new_entries)
+        chemins = [e["chemin"] for e in merged["informatique"]]
+        self.assertIn("02-INFORMATIQUE/05-IA-ML/RAG", chemins)
+        # Bloc config intact
+        self.assertEqual(merged["apprentissage"],
+                         intermediate["apprentissage"])
+
+
 if __name__ == "__main__":
     unittest.main()

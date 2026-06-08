@@ -98,7 +98,13 @@ def _groupe_from_path_prefix(
         prefix = "/".join(parts[:n_segments])
         scores: dict[str, int] = {}
         for groupe, entries in existing_categories.items():
+            # Skip les blocs de config (ex. `apprentissage` = dict, pas une
+            # liste d'entries). Cf. lib/keyword_classifier.py:225.
+            if not isinstance(entries, list):
+                continue
             for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
                 chemin = entry.get("chemin", "")
                 if chemin.startswith(prefix + "/") or chemin == prefix:
                     scores[groupe] = scores.get(groupe, 0) + 1
@@ -121,11 +127,17 @@ def _cascade_categories_changes(
         - new_categories : structure YAML mise à jour
         - log_modifications : liste de dicts pour _render_rationale_markdown
     """
-    # Copy défensive
-    new_categories: dict[str, list[dict]] = {
-        groupe: [dict(e) for e in entries]
-        for groupe, entries in current_categories.items()
-    }
+    # Copy défensive. Le vrai categories.yaml mélange des groupes-catégories
+    # (list[dict]) et des blocs de config (ex. `apprentissage` = dict). On ne
+    # cascade que les groupes-catégories ; les blocs config sont préservés
+    # verbatim et ré-injectés à la fin. Cf. lib/keyword_classifier.py:223-225.
+    preserved: dict[str, object] = {}
+    new_categories: dict[str, list[dict]] = {}
+    for groupe, entries in current_categories.items():
+        if not isinstance(entries, list):
+            preserved[groupe] = entries
+            continue
+        new_categories[groupe] = [dict(e) for e in entries if isinstance(e, dict)]
     log: list[dict] = []
 
     # Apply fusions FIRST : transformer chaque source en target dans les
@@ -258,8 +270,9 @@ def _cascade_categories_changes(
             n = sum(
                 1
                 for entries in current_categories.values()
+                if isinstance(entries, list)
                 for e in entries
-                if e.get("chemin") == d["path"]
+                if isinstance(e, dict) and e.get("chemin") == d["path"]
             )
             if n > 0:
                 log.append({
@@ -268,6 +281,8 @@ def _cascade_categories_changes(
                     "n_entries": n,
                 })
 
+    # Ré-injecte les blocs de config préservés (ex. `apprentissage`).
+    new_categories.update(preserved)
     return new_categories, log
 
 
@@ -280,12 +295,23 @@ def _merge_categories_changes(
     absent). Les champs `groupe` des new_entries sont consommés (le groupe
     est utilisé comme clé, pas conservé dans l'entry).
     """
-    merged: dict[str, list[dict]] = {
-        g: [dict(e) for e in entries] for g, entries in intermediate.items()
-    }
+    # Préserve les blocs de config non-liste (ex. `apprentissage`) verbatim.
+    merged: dict[str, object] = {}
+    for g, entries in intermediate.items():
+        if not isinstance(entries, list):
+            merged[g] = entries
+            continue
+        merged[g] = [dict(e) for e in entries if isinstance(e, dict)]
     for entry in new_entries:
         groupe = entry.get("groupe", "autres")
-        merged.setdefault(groupe, []).append({
+        # Ne jamais écraser un bloc config : si la cible n'est pas une liste,
+        # bascule sur "autres" (cas théorique — l'inférence de groupe skippe
+        # déjà les blocs config).
+        if not isinstance(merged.get(groupe), list):
+            if groupe in merged:
+                groupe = "autres"
+            merged.setdefault(groupe, [])
+        merged[groupe].append({
             "chemin": entry["chemin"],
             "priorite": int(entry.get("priorite", 5)),
             "mots_cles": list(entry.get("mots_cles", [])),
@@ -599,7 +625,12 @@ def propose_changes(
         if changes.creations:
             from agents.llm import get_agent_llm
             llm = get_agent_llm()
-            existing_groupes = list(current_cats.keys())
+            # Ne garder que les groupes-catégories (list[dict]) : exclut les
+            # blocs config non-liste (ex. `apprentissage`) qui ne sont pas des
+            # cibles de classement et qui ne se slicent pas ([:2] → KeyError).
+            existing_groupes = [
+                g for g in current_cats if isinstance(current_cats[g], list)
+            ]
             groupe_inference = {
                 c.path: _groupe_from_path_prefix(c.path, current_cats)
                 for c in changes.creations

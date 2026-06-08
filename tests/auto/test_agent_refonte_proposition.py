@@ -682,7 +682,15 @@ class TestProposeChangesCategoriesIntegration(unittest.TestCase):
         """End-to-end : 1 rename + 1 création + 1 fusion + 1 deletion.
         Vérifie que les 4 artefacts proposed existent + rationale.md contient
         la section CATÉGORIES."""
-        # Étendre categories.yaml avec entries supplémentaires
+        # Étendre categories.yaml avec entries supplémentaires + un bloc de
+        # config NON-LISTE (`apprentissage`) pour reproduire le shape réel du
+        # profil default. Exerce le chemin complet propose_changes (cascade +
+        # bloc LLM sample_entries + merge + write) sur des données réalistes.
+        self._apprentissage = {
+            "actif": True,
+            "seuil_minimum_fichiers": 3,
+            "poids_apprentissage": 0.4,
+        }
         (self.profiles_root / "test_p" / "categories.yaml").write_text(
             yaml.safe_dump({
                 "informatique": [
@@ -697,6 +705,7 @@ class TestProposeChangesCategoriesIntegration(unittest.TestCase):
                     {"chemin": "09-BUREAU/Microsoft-Excel", "priorite": 3,
                      "mots_cles": ["microsoft excel"]},
                 ],
+                "apprentissage": self._apprentissage,
             }, allow_unicode=True),
             encoding="utf-8",
         )
@@ -748,6 +757,7 @@ class TestProposeChangesCategoriesIntegration(unittest.TestCase):
         chemins = sorted(
             e["chemin"]
             for entries in proposed.values()
+            if isinstance(entries, list)  # skip les blocs config (apprentissage)
             for e in entries
         )
         self.assertIn("02-INFORMATIQUE/14-Web-Frontend", chemins)   # rename
@@ -756,6 +766,8 @@ class TestProposeChangesCategoriesIntegration(unittest.TestCase):
         self.assertNotIn("02-INFORMATIQUE/14-Web", chemins)         # ancien rename
         self.assertNotIn("09-BUREAU/Excel", chemins)                # source fusion
         self.assertNotIn("02-INFORMATIQUE/Old-Tag", chemins)        # deletion
+        # Le bloc config non-liste survit au round-trip end-to-end
+        self.assertEqual(proposed.get("apprentissage"), self._apprentissage)
 
         # rationale.md contient la section
         rationale = (out_dir / "refonte-rationale.md").read_text(encoding="utf-8")
