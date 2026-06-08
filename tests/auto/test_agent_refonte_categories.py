@@ -82,6 +82,26 @@ class TestCascadeCategories(unittest.TestCase):
         self.assertEqual(log[0]["new"], "02-INFORMATIQUE/14-Web-Frontend")
         self.assertEqual(log[0]["n_entries"], 1)
 
+    def test_cascade_renames_prefix_propagation(self):
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web/React", "priorite": 4,
+                 "mots_cles": ["react", "jsx"]},
+                {"chemin": "02-INFORMATIQUE/14-Web/Vue", "priorite": 4,
+                 "mots_cles": ["vue", "vuex"]},
+            ],
+        }
+        renamings = [{"old_path": "02-INFORMATIQUE/14-Web",
+                      "new_path": "02-INFORMATIQUE/14-Web-Frontend"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=renamings, fusions=[], deletions=[])
+        chemins = [e["chemin"] for e in new_cats["informatique"]]
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend/React", chemins)
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend/Vue", chemins)
+        # Log : type rename_prefix pour les 2 entries
+        prefix_logs = [le for le in log if le["type"] == "rename_prefix"]
+        self.assertEqual(len(prefix_logs), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

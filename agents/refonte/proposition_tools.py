@@ -133,23 +133,42 @@ def _cascade_categories_changes(
         for entry in entries:
             chemin = entry.get("chemin", "")
             if chemin in rename_map:
-                new_chemin = rename_map[chemin]
-                entry["chemin"] = new_chemin
+                entry["chemin"] = rename_map[chemin]
+                continue
+            # Rename par préfixe : remplace old_path/* par new_path/*
+            for old, new in rename_map.items():
+                if chemin.startswith(old + "/"):
+                    entry["chemin"] = new + chemin[len(old):]
+                    entry["_was_prefix_renamed"] = (old, new)  # marqueur temp
+                    break
 
     for r in renamings:
-        n = sum(
+        n_exact = sum(
             1
             for entries in new_categories.values()
             for e in entries
             if e.get("chemin") == r["new_path"]
         )
-        if n > 0:
+        if n_exact > 0:
             log.append({
                 "type": "rename",
                 "old": r["old_path"],
                 "new": r["new_path"],
-                "n_entries": n,
+                "n_entries": n_exact,
             })
+
+    for groupe, entries in new_categories.items():
+        for entry in entries:
+            marker = entry.pop("_was_prefix_renamed", None)
+            if marker:
+                old, new = marker
+                log.append({
+                    "type": "rename_prefix",
+                    "old": old,
+                    "new": new,
+                    "chemin_renamed": entry["chemin"],
+                    "n_entries": 1,
+                })
 
     return new_categories, log
 
