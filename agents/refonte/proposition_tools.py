@@ -82,6 +82,31 @@ class _ProposeChangesInput(BaseModel):
 # ─── Helpers privés ────────────────────────────────────────────────────────
 
 
+def _groupe_from_path_prefix(
+    path: str,
+    existing_categories: dict[str, list[dict]],
+) -> str:
+    """Infère le groupe d'un nouveau chemin à partir des préfixes des
+    entries existantes. Si un préfixe path correspond à un groupe (le plus
+    représenté en cas d'ambiguïté), retourne ce groupe. Sinon "autres".
+    """
+    # Compte, pour chaque groupe, combien d'entries partagent un préfixe
+    # avec `path` (par segment, du plus long au plus court).
+    parts = path.split("/")
+    for n_segments in range(len(parts), 0, -1):
+        prefix = "/".join(parts[:n_segments])
+        scores: dict[str, int] = {}
+        for groupe, entries in existing_categories.items():
+            for entry in entries:
+                chemin = entry.get("chemin", "")
+                if chemin.startswith(prefix + "/") or chemin == prefix:
+                    scores[groupe] = scores.get(groupe, 0) + 1
+        if scores:
+            # Groupe le plus représenté à ce niveau de préfixe
+            return max(scores.items(), key=lambda kv: kv[1])[0]
+    return "autres"
+
+
 def _proposal_dir(profile: str, run_id: str) -> Path:
     """Renvoie le dossier proposed/ pour ce run (créé si absent)."""
     base = data.get_project_root() / "profiles" / profile / ".cache" / "refonte" / run_id / "proposed"
