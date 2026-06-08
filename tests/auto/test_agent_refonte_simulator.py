@@ -235,5 +235,70 @@ class TestSimulateReclassify(_SimBase):
         self.assertIn("theme_mapping-proposed.yaml manquant", str(ctx.exception))
 
 
+class TestSimulatorCategoriesIntegration(_SimBase):
+    """Le simulateur doit lire categories-proposed.yaml si présent, avec
+    fallback sur le categories.yaml de prod (rétrocompat anciens runs)."""
+
+    def setUp(self):
+        super().setUp()
+        _make_profile(
+            self.profiles_root, "test_sim",
+            target=self.target,
+            folders=["02-INFORMATIQUE/14-Web"],
+            mapping={"Web Development": "02-INFORMATIQUE/14-Web"},
+        )
+        # Fichier test à classifier (à la racine, pas dans un sous-dossier
+        # → current_folder == "" garantit changed=True dès que la
+        # classification produit un chemin).
+        (self.target / "alpha.pdf").write_bytes(b"%PDF-1.4\n")
+
+        # Categories prod avec un keyword qui matche le filename
+        (self.profiles_root / "test_sim" / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "informatique": [
+                    {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                     "mots_cles": ["alpha"]},
+                ],
+            }, allow_unicode=True),
+            encoding="utf-8",
+        )
+        self.proposal_dir = (
+            self.profiles_root / "test_sim" / ".cache" / "refonte"
+            / "testrun-sim" / "proposed"
+        )
+        self.proposal_dir.mkdir(parents=True)
+        # theme_mapping-proposed.yaml minimal (requis par le simulateur)
+        (self.proposal_dir / "theme_mapping-proposed.yaml").write_text(
+            yaml.safe_dump({}), encoding="utf-8",
+        )
+
+    def test_simulator_uses_proposed_categories_when_present(self):
+        """Si categories-proposed.yaml existe avec un chemin différent,
+        le simulateur l'utilise."""
+        (self.proposal_dir / "categories-proposed.yaml").write_text(
+            yaml.safe_dump({
+                "informatique": [
+                    {"chemin": "02-INFORMATIQUE/14-Web-Frontend",
+                     "priorite": 3, "mots_cles": ["alpha"]},
+                ],
+            }, allow_unicode=True),
+            encoding="utf-8",
+        )
+        with mock.patch("lib.vision_cache.compute_cache_key", return_value=None):
+            summary = simulate_reclassify("test_sim", self.proposal_dir)
+        # Le top destination doit être le nouveau chemin (proposé)
+        top = summary.get("top_destinations") or []
+        chemins = [d["folder"] for d in top]
+        self.assertIn("02-INFORMATIQUE/14-Web-Frontend", chemins)
+
+    def test_simulator_fallback_when_no_proposed_categories(self):
+        """Si categories-proposed.yaml absent (ancien run), fallback prod."""
+        # Pas de categories-proposed.yaml créé
+        with mock.patch("lib.vision_cache.compute_cache_key", return_value=None):
+            summary = simulate_reclassify("test_sim", self.proposal_dir)
+        # Ne doit pas crash + utilise le categories.yaml de prod
+        self.assertEqual(summary.get("n_files", -1), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
