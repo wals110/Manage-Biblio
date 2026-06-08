@@ -15,7 +15,7 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **Module Taxonomie** : [taxonomy.py](taxonomy.py) — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json` + écritures sécurisées + cascade rename → categories
 - **Module Catégories** : [categories.py](categories.py) — KeywordClassifier YAML, suggest_target_path pour orphelins
 - **Module Dédupli** : [dedupli.py](dedupli.py) — canonisation des thèmes long-tail (utilise `lib/theme_canon.py`)
-- **Modules Agent Refonte** : [agent_refonte.py](agent_refonte.py) (Phases A + B) + [agent_refonte_phase_c.py](agent_refonte_phase_c.py) (Phase C dialog/mutations) — délègue à `agents/refonte/`
+- **Modules Agent Refonte** : [agent_refonte.py](agent_refonte.py) (Phases A + B) + [agent_refonte_phase_c.py](agent_refonte_phase_c.py) (Phase C dialog/mutations — **UI désactivée** depuis 2026-06-07 via `PHASE_C_UI_ENABLED = False`, code conservé pour réactivation future) — délègue à `agents/refonte/`
 - **Module Baseline** : [baseline.py](baseline.py) — validation manuelle des désaccords prédiction Klodo vs placement actuel
 - **Backend tests fonctionnels** : DuckDB via [../tests/functional/db.py](../tests/functional/db.py) — tables `runs`, `series_results`, `check_results`, `manual_validations`
 - **Templates** : 10 templates principaux + ~12 partials (`partials/tests_*.html`, `partials/baseline_*.html`, `partials/overview_*.html`)
@@ -87,7 +87,7 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   - **Mappings** : la vue historique (tree + viewer + treemap + thèmes mappés/LLM)
   - **Catégories** : éditeur du `categories.yaml` (KeywordClassifier) avec badge ⚠ orphelin + bouton 💡 Suggérer
   - **Rename** : audit + commit des renommages
-  - **🤖 Refonte** : agent IA Phases A/B/C — diagnostic, proposition, dialog conversationnel + mutations YAML (cf. `agents/refonte/`)
+  - **🤖 Refonte** : agent IA — sub-tab affiche **Phases A + B** (diagnostic + proposition). La Phase C (dialog conversationnel + mutations YAML directes) existe en code dans `agents/refonte/dialog.py + mutations.py` mais son UI a été désactivée le 2026-06-07 (chat trop limité, voir PR #170) — pour réactiver : `PHASE_C_UI_ENABLED = True` dans `agent_refonte_phase_c.py`
   - **🔗 Dédupli** : canonisation des thèmes LLM long-tail (cf. `dedupli.py` + `lib/theme_canon.py`)
 - **Trois sources agrégées sub-tab Mappings** : `tree.yaml` (arborescence) + `theme_mapping.yaml` (mapping thème → dossier) + `vision_cache.json` (thèmes LLM bruts, filtré `confidence ≥ 0.5`)
 - **Layout 3 colonnes Mappings** : tree gauche (30%) + center stack (45%, viewer/card LLM/treemap en grid fixe 55/20/25) + thèmes droite (25%, mappés top / LLM universe bottom)

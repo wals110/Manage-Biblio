@@ -161,7 +161,7 @@ Onglet **Taxonomie** (cockpit principal d'édition) : **5 sous-onglets**
 1. **Mappings** — arbre des dossiers + viewer PDF + card LLM + treemap interactif + drag-drop thème → dossier + ops fichier (delete / move avec impact preview classify_combined) + breakdown 3-way du Routage (Stables / Entrants / Sortants)
 2. **Catégories** — CRUD de `categories.yaml` (groupes + entrées + mots-clés) + audit des dormants + badge ⚠ orphelin + bouton 💡 Suggérer
 3. **Rename** — audit divergence nom-actuel vs nom-suggéré + bulk rename + override + 📜 historique avec undo
-4. **🤖 Refonte** — agent IA (Phases A diagnostic, B proposition tree, C dialog conversationnel + mutations YAML)
+4. **🤖 Refonte** — agent IA Phases **A** (diagnostic) + **B** (proposition tree). La Phase C (dialog conversationnel + mutations YAML directes) est codée mais son UI est désactivée depuis 2026-06-07 (cf. flag `PHASE_C_UI_ENABLED` dans `dashboard/agent_refonte_phase_c.py`)
 5. **🔗 Dédupli** — canonisation interactive des thèmes LLM long-tail
 
 → [Documentation complète du dashboard](functional-testing-and-dashboard.md)
