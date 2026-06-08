@@ -654,6 +654,30 @@ class TestProposeChangesCategoriesIntegration(unittest.TestCase):
                     / "testrun-002" / "proposed" / "categories-proposed.yaml")
         self.assertFalse(cat_path.exists())
 
+    def test_propose_changes_no_categories_when_profile_has_none(self):
+        """Profil sans categories.yaml → pas de fichier produit, pas de crash."""
+        # Remove categories.yaml
+        (self.profiles_root / "test_p" / "categories.yaml").unlink()
+
+        from agents.refonte.proposition_tools import propose_changes
+        with mock.patch(
+            "agents.refonte.proposition_tools.propose_keywords_for_new_folders",
+            return_value=[],
+        ):
+            result = propose_changes(
+                profile="test_p",
+                run_id="testrun-003",
+                creations=[{
+                    "path": "02-INFORMATIQUE/05-IA-ML/RAG",
+                    "rationale": "RAG folder",
+                }],
+            )
+        cat_path = (self.profiles_root / "test_p" / ".cache" / "refonte"
+                    / "testrun-003" / "proposed" / "categories-proposed.yaml")
+        self.assertFalse(cat_path.exists())
+        # propose_changes a quand même réussi (tree + mapping écrits)
+        self.assertIn("tree_proposed_path", result)
+
 
 if __name__ == "__main__":
     unittest.main()
