@@ -54,5 +54,34 @@ class TestGroupeInference(unittest.TestCase):
         )
 
 
+from agents.refonte.proposition_tools import _cascade_categories_changes  # noqa: E402
+
+
+class TestCascadeCategories(unittest.TestCase):
+
+    def test_cascade_renames_simple_path(self):
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html", "css"]},
+            ],
+        }
+        renamings = [{"old_path": "02-INFORMATIQUE/14-Web",
+                      "new_path": "02-INFORMATIQUE/14-Web-Frontend"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=renamings, fusions=[], deletions=[])
+        self.assertEqual(new_cats["informatique"][0]["chemin"],
+                         "02-INFORMATIQUE/14-Web-Frontend")
+        # Mots_cles + priorite inchangés
+        self.assertEqual(new_cats["informatique"][0]["mots_cles"], ["html", "css"])
+        self.assertEqual(new_cats["informatique"][0]["priorite"], 3)
+        # Log contient l'entry rename
+        self.assertEqual(len(log), 1)
+        self.assertEqual(log[0]["type"], "rename")
+        self.assertEqual(log[0]["old"], "02-INFORMATIQUE/14-Web")
+        self.assertEqual(log[0]["new"], "02-INFORMATIQUE/14-Web-Frontend")
+        self.assertEqual(log[0]["n_entries"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

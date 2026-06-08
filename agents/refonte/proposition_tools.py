@@ -107,6 +107,53 @@ def _groupe_from_path_prefix(
     return "autres"
 
 
+def _cascade_categories_changes(
+    current_categories: dict[str, list[dict]],
+    renamings: list[dict],
+    fusions: list[dict],
+    deletions: list[dict],
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """Applique de manière déterministe renames/fusions/deletions sur les
+    entries existantes de categories.yaml. Pas d'appel LLM.
+
+    Retourne :
+        - new_categories : structure YAML mise à jour
+        - log_modifications : liste de dicts pour _render_rationale_markdown
+    """
+    # Copy défensive
+    new_categories: dict[str, list[dict]] = {
+        groupe: [dict(e) for e in entries]
+        for groupe, entries in current_categories.items()
+    }
+    log: list[dict] = []
+
+    rename_map = {r["old_path"]: r["new_path"] for r in renamings}
+
+    for groupe, entries in new_categories.items():
+        for entry in entries:
+            chemin = entry.get("chemin", "")
+            if chemin in rename_map:
+                new_chemin = rename_map[chemin]
+                entry["chemin"] = new_chemin
+
+    for r in renamings:
+        n = sum(
+            1
+            for entries in new_categories.values()
+            for e in entries
+            if e.get("chemin") == r["new_path"]
+        )
+        if n > 0:
+            log.append({
+                "type": "rename",
+                "old": r["old_path"],
+                "new": r["new_path"],
+                "n_entries": n,
+            })
+
+    return new_categories, log
+
+
 def _proposal_dir(profile: str, run_id: str) -> Path:
     """Renvoie le dossier proposed/ pour ce run (créé si absent)."""
     base = data.get_project_root() / "profiles" / profile / ".cache" / "refonte" / run_id / "proposed"
