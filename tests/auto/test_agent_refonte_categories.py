@@ -135,6 +135,52 @@ class TestCascadeCategories(unittest.TestCase):
         rename_log = next(le for le in log if le["type"] == "rename")
         self.assertEqual(rename_log.get("n_collisions", 0), 1)
 
+    def test_cascade_fusion_sources_merge_into_target(self):
+        current = {
+            "bureautique": [
+                {"chemin": "09-BUREAU/Excel", "priorite": 5,
+                 "mots_cles": ["excel", "xlsx"]},
+                {"chemin": "09-BUREAU/Microsoft-Excel", "priorite": 3,
+                 "mots_cles": ["microsoft excel"]},
+            ],
+        }
+        fusions = [{"sources": ["09-BUREAU/Excel"],
+                    "target": "09-BUREAU/Microsoft-Excel"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=[], fusions=fusions, deletions=[])
+
+        chemins = [e["chemin"] for e in new_cats["bureautique"]]
+        self.assertEqual(chemins, ["09-BUREAU/Microsoft-Excel"])
+        merged = new_cats["bureautique"][0]
+        self.assertEqual(
+            sorted([k.lower() for k in merged["mots_cles"]]),
+            sorted(["microsoft excel", "excel", "xlsx"]),
+        )
+        self.assertEqual(merged["priorite"], 3)
+        fusion_log = next(le for le in log if le["type"] == "fusion")
+        self.assertEqual(fusion_log["new"], "09-BUREAU/Microsoft-Excel")
+
+    def test_cascade_fusion_target_does_not_preexist(self):
+        # Target absent → fusion crée l'entry à partir des sources
+        current = {
+            "bureautique": [
+                {"chemin": "09-BUREAU/Excel", "priorite": 5,
+                 "mots_cles": ["excel"]},
+                {"chemin": "09-BUREAU/Calc", "priorite": 6,
+                 "mots_cles": ["libreoffice calc"]},
+            ],
+        }
+        fusions = [{"sources": ["09-BUREAU/Excel", "09-BUREAU/Calc"],
+                    "target": "09-BUREAU/Tableurs"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=[], fusions=fusions, deletions=[])
+        chemins = [e["chemin"] for e in new_cats["bureautique"]]
+        self.assertEqual(chemins, ["09-BUREAU/Tableurs"])
+        merged = new_cats["bureautique"][0]
+        self.assertEqual(merged["priorite"], 5)  # min(5, 6)
+        self.assertIn("excel", [k.lower() for k in merged["mots_cles"]])
+        self.assertIn("libreoffice calc", [k.lower() for k in merged["mots_cles"]])
+
 
 if __name__ == "__main__":
     unittest.main()

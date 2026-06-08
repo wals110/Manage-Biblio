@@ -127,6 +127,20 @@ def _cascade_categories_changes(
     }
     log: list[dict] = []
 
+    # Apply fusions FIRST : transformer chaque source en target dans les
+    # chemins, le mécanisme de collision merge ensuite naturellement.
+    fusion_map: dict[str, str] = {}
+    for f in fusions:
+        for src in f["sources"]:
+            fusion_map[src] = f["target"]
+
+    if fusion_map:
+        for groupe, entries in new_categories.items():
+            for entry in entries:
+                chemin = entry.get("chemin", "")
+                if chemin in fusion_map:
+                    entry["chemin"] = fusion_map[chemin]
+
     rename_map = {r["old_path"]: r["new_path"] for r in renamings}
 
     for groupe, entries in new_categories.items():
@@ -201,6 +215,22 @@ def _cascade_categories_changes(
     for le in log:
         if le["type"] == "rename" and le["new"] in n_collisions_by_target:
             le["n_collisions"] = n_collisions_by_target[le["new"]]
+
+    # Log fusions
+    for f in fusions:
+        n = sum(
+            1
+            for entries in new_categories.values()
+            for e in entries
+            if e.get("chemin") == f["target"]
+        )
+        if n > 0:
+            log.append({
+                "type": "fusion",
+                "old": f["sources"],
+                "new": f["target"],
+                "n_entries": n,
+            })
 
     for groupe, entries in new_categories.items():
         for entry in entries:
