@@ -11,6 +11,7 @@ Couvre :
 import os
 import sys
 import unittest
+from unittest import mock
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
@@ -212,6 +213,37 @@ class TestCascadeCategories(unittest.TestCase):
             current, renamings=[], fusions=[], deletions=[])
         self.assertEqual(new_cats, current)
         self.assertEqual(log, [])
+
+
+class TestCategoriesLLM(unittest.TestCase):
+
+    def test_propose_keywords_zero_creations_no_call(self):
+        from agents.refonte.categories_llm import propose_keywords_for_new_folders
+        mock_llm = mock.MagicMock()
+        result = propose_keywords_for_new_folders(
+            llm=mock_llm,
+            creations=[],
+            existing_groupes=["informatique"],
+            groupe_inference={},
+            sample_entries={},
+        )
+        self.assertEqual(result, [])
+        mock_llm.with_structured_output.assert_not_called()
+
+    def test_propose_keywords_pydantic_min_max_mots_cles(self):
+        from agents.refonte.categories_llm import _NewCategoryEntry
+        # min 3 mots_cles
+        with self.assertRaises(Exception):
+            _NewCategoryEntry(chemin="X/Y", groupe="informatique",
+                              priorite=5, mots_cles=["a", "b"])
+        # max 15 mots_cles
+        with self.assertRaises(Exception):
+            _NewCategoryEntry(chemin="X/Y", groupe="informatique",
+                              priorite=5, mots_cles=[f"k{i}" for i in range(16)])
+        # OK in range
+        entry = _NewCategoryEntry(chemin="X/Y", groupe="informatique",
+                                  priorite=5, mots_cles=["a", "b", "c"])
+        self.assertEqual(len(entry.mots_cles), 3)
 
 
 if __name__ == "__main__":
