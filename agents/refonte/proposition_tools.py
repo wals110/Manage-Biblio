@@ -23,6 +23,7 @@ import yaml
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from agents.refonte.categories_llm import propose_keywords_for_new_folders
 from dashboard import data
 from dashboard import taxonomy as tax
 
@@ -569,6 +570,66 @@ def propose_changes(
         json.dumps(changes.model_dump(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    # ─── Steps 2-5 : categories.yaml proposition ──────────────────────────
+    cat_path_prod = tax._profile_dir(profile) / "categories.yaml"
+    has_cascade_change = bool(
+        changes.renamings or changes.fusions or changes.deletions
+    )
+    has_creation_change = bool(changes.creations)
+
+    if cat_path_prod.exists() and (has_cascade_change or has_creation_change):
+        try:
+            current_cats = yaml.safe_load(
+                cat_path_prod.read_text(encoding="utf-8")
+            ) or {}
+        except yaml.YAMLError:
+            current_cats = {}
+
+        # Step 2 : cascade déterministe
+        new_cats, cascade_log = _cascade_categories_changes(
+            current_cats,
+            renamings=[r.model_dump() for r in changes.renamings],
+            fusions=[f.model_dump() for f in changes.fusions],
+            deletions=[d.model_dump() for d in changes.deletions],
+        )
+
+        # Step 3 : LLM mots-clés pour créations
+        new_llm_entries: list[dict] = []
+        if changes.creations:
+            from agents.llm import get_agent_llm
+            llm = get_agent_llm()
+            existing_groupes = list(current_cats.keys())
+            groupe_inference = {
+                c.path: _groupe_from_path_prefix(c.path, current_cats)
+                for c in changes.creations
+            }
+            sample_entries = {
+                g: current_cats[g][:2] for g in existing_groupes
+            }
+            new_llm_entries = propose_keywords_for_new_folders(
+                llm=llm,
+                creations=[c.model_dump() for c in changes.creations],
+                existing_groupes=existing_groupes,
+                groupe_inference=groupe_inference,
+                sample_entries=sample_entries,
+            )
+
+        # Step 4 : merge + écriture
+        merged_cats = _merge_categories_changes(new_cats, new_llm_entries)
+        cat_proposed_path = out_dir / "categories-proposed.yaml"
+        cat_proposed_path.write_text(
+            yaml.safe_dump(merged_cats, allow_unicode=True, sort_keys=True),
+            encoding="utf-8",
+        )
+
+        # Step 5 : extend rationale markdown
+        section = _render_categories_section(cascade_log, new_llm_entries)
+        if section:
+            rationale_path.write_text(
+                rationale_path.read_text(encoding="utf-8") + "\n" + section,
+                encoding="utf-8",
+            )
 
     return {
         "tree_proposed_path": str(tree_path),
