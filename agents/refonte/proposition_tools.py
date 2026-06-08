@@ -292,6 +292,68 @@ def _merge_categories_changes(
     return merged
 
 
+def _render_categories_section(
+    cascade_log: list[dict],
+    new_entries: list[dict],
+) -> str:
+    """Render la section ## CATÉGORIES du rationale markdown."""
+    if not cascade_log and not new_entries:
+        return ""
+
+    n_total = len(cascade_log) + len(new_entries)
+    lines: list[str] = []
+    lines.append(f"## CATÉGORIES ({n_total} entries modifiées)")
+    lines.append("")
+
+    if cascade_log:
+        lines.append(f"### Cascades automatiques ({len(cascade_log)})")
+        for entry in cascade_log:
+            t = entry["type"]
+            if t == "rename":
+                extra = (f", {entry['n_collisions']} collision(s) mergée(s)"
+                         if entry.get("n_collisions") else "")
+                lines.append(
+                    f"- **rename** : `{entry['old']}` → `{entry['new']}` "
+                    f"({entry['n_entries']} entry remappée{extra})"
+                )
+            elif t == "rename_prefix":
+                lines.append(
+                    f"- **rename par préfixe** : `{entry['old']}/*` → "
+                    f"`{entry['new']}/*` (entry : `{entry.get('chemin_renamed', '')}`)"
+                )
+            elif t == "fusion":
+                srcs = " + ".join(f"`{s}`" for s in entry["old"])
+                lines.append(
+                    f"- **fusion** : {srcs} → `{entry['new']}` "
+                    f"({entry['n_entries']} entry mergée, mots_cles dédupliqués)"
+                )
+            elif t == "deletion":
+                lines.append(
+                    f"- **deletion** : `{entry['old']}` "
+                    f"({entry['n_entries']} entry supprimée)"
+                )
+        lines.append("")
+
+    if new_entries:
+        lines.append(f"### Nouveaux folders (mots-clés générés par LLM) ({len(new_entries)})")
+        for entry in new_entries:
+            chemin = entry["chemin"]
+            groupe = entry["groupe"]
+            priorite = entry["priorite"]
+            mots = entry.get("mots_cles", [])
+            if not mots:
+                lines.append(
+                    f"- `{chemin}` (groupe `{groupe}`, priorité {priorite}) "
+                    "⚠ Mots-clés indisponibles (LLM) — à compléter manuellement"
+                )
+            else:
+                lines.append(f"- `{chemin}` (groupe `{groupe}`, priorité {priorite})")
+                lines.append(f"  - mots-clés : {', '.join(mots)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _proposal_dir(profile: str, run_id: str) -> Path:
     """Renvoie le dossier proposed/ pour ce run (créé si absent)."""
     base = data.get_project_root() / "profiles" / profile / ".cache" / "refonte" / run_id / "proposed"

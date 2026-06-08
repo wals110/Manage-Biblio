@@ -382,5 +382,33 @@ class TestMergeCategoriesChanges(unittest.TestCase):
         self.assertIn("01-SCIENCES/CHIMIE/Materiaux", chemins_sci)
 
 
+class TestRenderRationale(unittest.TestCase):
+
+    def test_render_rationale_categories_section(self):
+        from agents.refonte.proposition_tools import _render_categories_section
+        cascade_log = [
+            {"type": "rename", "old": "02-INFO/Web",
+             "new": "02-INFO/Web-Frontend", "n_entries": 1, "n_collisions": 0},
+            {"type": "fusion", "old": ["09-BUREAU/Excel"],
+             "new": "09-BUREAU/Microsoft-Excel", "n_entries": 1},
+            {"type": "deletion", "old": "02-INFO/Vieux", "n_entries": 1},
+        ]
+        new_entries = [
+            {"chemin": "02-INFO/RAG", "groupe": "informatique",
+             "priorite": 5, "mots_cles": ["retrieval", "embedding", "vector"]},
+        ]
+        md = _render_categories_section(cascade_log, new_entries)
+        self.assertIn("## CATÉGORIES", md)
+        self.assertIn("### Cascades automatiques", md)
+        self.assertIn("rename", md)
+        self.assertIn("02-INFO/Web", md)
+        self.assertIn("02-INFO/Web-Frontend", md)
+        self.assertIn("fusion", md)
+        self.assertIn("deletion", md)
+        self.assertIn("### Nouveaux folders", md)
+        self.assertIn("02-INFO/RAG", md)
+        self.assertIn("retrieval", md)
+
+
 if __name__ == "__main__":
     unittest.main()
