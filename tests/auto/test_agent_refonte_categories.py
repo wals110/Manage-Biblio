@@ -181,6 +181,38 @@ class TestCascadeCategories(unittest.TestCase):
         self.assertIn("excel", [k.lower() for k in merged["mots_cles"]])
         self.assertIn("libreoffice calc", [k.lower() for k in merged["mots_cles"]])
 
+    def test_cascade_deletion_drops_entries(self):
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+                {"chemin": "02-INFORMATIQUE/05-IA-ML", "priorite": 2,
+                 "mots_cles": ["ml"]},
+            ],
+        }
+        deletions = [{"path": "02-INFORMATIQUE/14-Web"}]
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=[], fusions=[], deletions=deletions)
+
+        chemins = [e["chemin"] for e in new_cats["informatique"]]
+        self.assertEqual(chemins, ["02-INFORMATIQUE/05-IA-ML"])
+        del_log = next(le for le in log if le["type"] == "deletion")
+        self.assertEqual(del_log["old"], "02-INFORMATIQUE/14-Web")
+        self.assertEqual(del_log["n_entries"], 1)
+
+    def test_cascade_no_changes_no_modifications(self):
+        # Aucun rename/fusion/deletion → categories inchangée + log vide
+        current = {
+            "informatique": [
+                {"chemin": "02-INFORMATIQUE/14-Web", "priorite": 3,
+                 "mots_cles": ["html"]},
+            ],
+        }
+        new_cats, log = _cascade_categories_changes(
+            current, renamings=[], fusions=[], deletions=[])
+        self.assertEqual(new_cats, current)
+        self.assertEqual(log, [])
+
 
 if __name__ == "__main__":
     unittest.main()

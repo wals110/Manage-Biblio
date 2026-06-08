@@ -245,6 +245,28 @@ def _cascade_categories_changes(
                     "n_entries": 1,
                 })
 
+    # Apply deletions : drop entries dont le chemin est dans la liste
+    deletion_set = {d["path"] for d in deletions}
+    if deletion_set:
+        for groupe in list(new_categories.keys()):
+            before = new_categories[groupe]
+            after = [e for e in before if e.get("chemin") not in deletion_set]
+            new_categories[groupe] = after
+
+        for d in deletions:
+            n = sum(
+                1
+                for entries in current_categories.values()
+                for e in entries
+                if e.get("chemin") == d["path"]
+            )
+            if n > 0:
+                log.append({
+                    "type": "deletion",
+                    "old": d["path"],
+                    "n_entries": n,
+                })
+
     return new_categories, log
 
 
