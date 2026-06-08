@@ -4,7 +4,19 @@
 
 ## Vue d'ensemble
 
-La classification est le cœur de Klodo. Elle transforme un thème détecté par LLM Vision en un chemin de dossier dans l'arborescence cible. Le système utilise 4 niveaux en cascade : chaque niveau n'est essayé que si le précédent échoue.
+La classification est le cœur de Klodo. Elle transforme un thème détecté par LLM Vision en un chemin de dossier dans l'arborescence cible. Le système utilise une cascade de **5 priorités** implémentées dans `lib.classifier.classify_combined()` :
+
+| Priorité | Mécanisme | Coût |
+|---|---|---|
+| **P1** | Theme Mapping si confiance ≥ seuil — avec `refine_to_subfolder` (affine vers sous-dossier sœur plus spécifique) + trigger conditionnel N3 sur catch-all | Gratuit (lookup) |
+| **P2** | Keyword Matcher sur texte enrichi (titre + thème + filename) | Gratuit (regex + TF-IDF) |
+| **P3** | LLM Mapper — résolution intelligente d'un thème inconnu (texte, ou vision si `--vision`) | 1 appel LLM |
+| **P4** | Theme Mapping en fallback bas confiance — accepte le thème LLM même si confiance < seuil | Gratuit |
+| **P5** | **FAILED** — rapporté en `non_identifié`, le fichier reste dans `_A-TRIER` | — |
+
+Historiquement décrit comme "4 niveaux", la cascade est restée à 4 niveaux conceptuels (N1 mapping, N2 keyword, N3 LLM mapper, N4 suggestions) mais le code expose en réalité une 5e priorité de fallback (P4) avant l'échec total, et le N1 a été raffiné en mai 2026.
+
+**N4 (Suggestions) est un mécanisme parallèle** : pas une priorité de classement mais un générateur de propositions de nouveaux dossiers (review humain), déclenché quand P3 répond `_AUCUN`.
 
 <p align="center">
   <img src="diagrams/cascade-classification.svg" alt="Cascade de classification" width="850">
@@ -99,7 +111,27 @@ L'option `--pages N` envoie les N premières pages au lieu de la seule couvertur
 
 **Module** : `lib/vision.py` — Fonctions : `extract_cover_image()`, `image_to_base64()`, `call_vision_api()`, `analyze_cover()`.
 
-## Niveau 1 : Theme Mapping (+ trigger conditionnel N3)
+### Prompt v2 — Multi-candidate themes (mai 2026)
+
+Depuis le commit `3d89316`, le prompt vision demande au LLM de retourner une **liste rankée de thèmes** plutôt qu'un seul, avec `confidence` et `reason` pour chacun :
+
+```json
+{
+  "title": "Quantum Field Theory in a Nutshell",
+  "author": "A. Zee",
+  "themes": [
+    {"theme": "Quantum Field Theory", "confidence": 0.95, "reason": "titre explicite"},
+    {"theme": "Theoretical Physics",  "confidence": 0.85, "reason": "discipline parente"},
+    {"theme": "Particle Physics",     "confidence": 0.70, "reason": "domaine connexe"}
+  ]
+}
+```
+
+Le `classify_combined()` itère sur ces candidats par ordre de confiance et applique la logique **`best_specific` vs `best_generic`** : il garde le 1er thème qui mappe vers un dossier spécifique (plusieurs segments) ; s'il n'en trouve qu'avec des dossiers génériques (racine de section), il garde le meilleur en fallback. Ce traitement multi-candidate permet de récupérer un classement précis quand le thème top-1 du LLM est correct mais pointe vers un dossier trop généraliste.
+
+Le format legacy (un seul champ `theme`) reste supporté — un seul candidat est alors évalué.
+
+## Niveau 1 : Theme Mapping (+ refine_to_subfolder + trigger conditionnel N3)
 
 Recherche directe du thème dans un dictionnaire de 355+ entrées (`theme_mapping.yaml`).
 
@@ -113,6 +145,20 @@ Islamic Finance: 05-RELIGIONS/ISLAM
 ```
 
 C'est le chemin le plus rapide : une simple lookup dans un dictionnaire. Aucun appel API, aucun calcul. Résout ~80% des fichiers au premier passage.
+
+### refine_to_subfolder — affinement N1 avant N3
+
+Avant même de déclencher le trigger N3, le code applique `_refine_to_subfolder()` (lib/classifier.py:169). L'idée : si N1 mappe vers un dossier parent `02-INFORMATIQUE/03-Langages-Programmation`, on regarde s'il existe un sous-dossier sœur plus spécifique (`Java`, `Python`, `C-Cpp-CSharp`, …) qui matche mieux le thème, le titre ou le nom de fichier.
+
+Le raffinement opère **dans la même branche top-level** (pas de cross-section) et exige que :
+
+- Le sous-dossier candidat existe dans `tree.yaml`
+- Un de ses keywords ou la racine de son nom matche le thème / titre / filename
+- Le chemin retourné est strictement plus profond que le N1 d'origine
+
+Si plusieurs sous-dossiers matchent, le scoring est pondéré (boost si le thème exact = dernier segment du sous-dossier). Cette étape est gratuite (pas d'appel LLM) et s'applique à 100 % des fichiers où N1 a réussi.
+
+L'output est labellisé **`LLM (theme→refined)`** dans le CSV pour distinguer du N1 brut.
 
 ### Trigger conditionnel N3 sur catch-all
 
@@ -205,6 +251,14 @@ Exemple 2 — Escalade vision (avec --vision) :
 Le LLM Mapper utilise le même endpoint et modèle que le reste du pipeline, configurés dans `profile.yaml`. Les paramètres d'appel : `max_tokens: 150`, `temperature: 0.1` (réponses déterministes), timeout de 20s avec 3 tentatives en cas d'erreur 429 (rate limit).
 
 **Module** : `lib/llm_mapper.py`
+
+## Priorité 4 : Theme Mapping fallback bas confiance
+
+Avant de déclarer l'échec total, le code tente une dernière fois `classify_by_theme()` avec le thème LLM même si sa confiance était sous `CONFIDENCE_THRESHOLD` (0.6 par défaut). Si le thème existe quand même dans `theme_mapping.yaml`, le fichier est rangé là, avec le label **`LLM (fallback)`** dans le CSV.
+
+L'intuition : si le LLM a hésité (conf 0.45 sur "Mécanique quantique") mais que le mapping a bien une entrée pour ce thème, il vaut mieux ranger dans un dossier probablement correct que de finir en `non_identifié`. Le score reporté reste la confiance d'origine (0.45) — l'utilisateur sait que le placement est moins fiable qu'un N1 confident.
+
+Cas concret typique : le LLM Vision retourne `confidence: 0.42` parce que la couverture est floue, mais `theme: "Linear Algebra"` est sans ambiguïté dans le titre extrait. P1 refuse (conf trop basse) ; P2 (keyword) ne trouve rien dans le filename hashé ; P3 (LLM mapper) refuse aussi (conf source < seuil → pas d'appel) ; P4 sauve le fichier en `01-SCIENCES/MATHEMATIQUES/01-Algebre`.
 
 ## Niveau 4 : Suggestions
 

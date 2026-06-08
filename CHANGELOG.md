@@ -2,6 +2,102 @@
 
 All notable changes to Klodo are documented in this file.
 
+## [1.0.0-dev] — 2026-06-06
+
+### Overview cockpit Biblio (PR #167 + #168)
+
+- Onglet `/` réécrit en cockpit Biblio profile-aware
+- Sélecteur de profil dropdown (`?profile=X`) avec fallback transparent
+- Bouton 🔄 refresh (`?refresh=1`) qui invalide le cache 30 s
+- Nouveau module `dashboard/overview.py` (~570 LOC) : **16 cartes**
+  + **2 builders** (`build_profile_snapshot`, `build_general_snapshot`)
+  + cache mémoire 30 s thread-safe
+- 12 cartes profile-aware (Layout B hiérarchique) : Fichiers · Classifiés ·
+  Coût LLM · Health · Vision cache · Inbox · Folders · Baseline runs ·
+  Agent sessions · Top 10 thèmes · Top 10 folders · Activité récente
+- 4 cartes générales statiques : Modèles LLM · API keys · Profils ·
+  Coûts cumulés (pie chart Chart.js)
+- Bandeau "Coût total tous profils" toujours visible en header
+- 3 nouvelles macros Jinja réutilisables : `kpi_card_big`, `mini_bar`,
+  `activity_timeline`
+- 2 partials : `partials/overview_profile.html` + `partials/overview_general.html`
+- 7 routing tests dans `test_dashboard.py` + **70 tests** dans
+  `test_overview.py` (cards + builders + macros + cache TTL)
+- Sentinelles d'erreur surfacées dans l'UI (`tree_missing`, `tree_invalid`,
+  `target_missing`, `profile_missing`)
+- **Hotfix #168** : wrap canvas Chart.js dans container à hauteur fixée
+  (la page s'étendait à l'infini)
+
+### Dashboard UX — nav-bar **12 → 7 onglets** (PR #166)
+
+- Nav-bar consolidée : **Overview · Tests · Curation · Baseline ·
+  Taxonomie · Logs · Admin** (7 entrées au lieu de 12)
+- **Hub Tests** (`/tests?view=X`) : 5 sub-tabs Exécution / Rapports /
+  Comparer / Métriques / Historique
+- **Hub Baseline** (`/baseline?view=X`) : 2 sub-tabs Désaccords / Suggestions
+- **Redirects HTTP 301** sur anciennes routes (avec préservation des
+  query params) : `/rapports`, `/comparer`, `/metriques`, `/historique` →
+  `/tests?view=X` ; `/suggestions` → `/baseline?view=suggestions`
+- 100 % server-render Jinja (pas de fetch JS ni HTMX swap)
+- 7 nouveaux partials créés (`partials/tests_*.html`, `partials/baseline_*.html`)
+- 5 templates orphelins supprimés
+- Macro `subtabs_header` réutilisable dans `widgets.html`
+- Diff net : −889 LOC, +18 routing tests
+
+### Agent Refonte — Phases B + C livrées (PRs #163, #165)
+
+Phase A déjà livrée précédemment (diagnostic + rapport markdown des
+anomalies). Cette release ajoute Phases B et C :
+
+- **Phase B — Proposition** : génération `tree-proposed.yaml` +
+  simulation reclassify + diff tree visuel
+  - Modules : `agents/refonte/proposition.py`, `simulator.py`,
+    `tools.py` (extension), `state.py`
+  - Phases B.1 (scaffolding), B.2 (simulateur), B.3 (UI bouton +
+    impact reclassify), B.3-bis (pré-extraction orphans), B.3-ter
+    (deletions + sous-utilisés)
+  - Sub-tab 🤖 Refonte dans onglet Taxonomie
+- **Phase C — Dialog conversationnel + mutations** :
+  - Modules : `agents/refonte/dialog.py`, `mutations.py`,
+    `agent_journal.py` (JSONL append-only), `agent_backup.py`
+    (full snapshots, rotation 50)
+  - 5 tools mutables : `add_folder`, `add_theme_mapping`,
+    `rename_folder`, `merge_folders`, `bulk_move_files`
+  - Agent conversationnel LangGraph (parse intent → propose → confirm)
+  - UI chat + sidebar conversations + timeline mutations (responsive
+    1280/900 px breakpoints)
+  - Rollback isolé par batch (warning si batchs plus récents existent)
+  - Endpoints `/api/agent/refonte/c/*` (conv, message, respond, mutate,
+    batches, entries, rollback)
+
+### Dédupli des thèmes LLM (PR #164)
+
+- Module `lib/theme_canon.py` + famille (canonisation des thèmes
+  long-tail issus du vision_cache)
+- Module `dashboard/dedupli.py` : workflow d'audit + propositions de
+  fusion (rapidfuzz pour similarité)
+- Sub-tab 🔗 Dédupli dans onglet Taxonomie
+- Status persisté par profil (`.cache/dedupli/status.json`)
+
+### Taxonomy — qualité du routage (sub-tab Mappings)
+
+- **Breakdown 3-way** "Routage" : ✓ Stables / → Entrants / ← Sortants
+  pour visualiser l'impact d'un futur reclassify sur un dossier
+- **Cascade rename folder → categories.yaml** : le rename d'un folder
+  dans tree propage automatiquement les `chemin:` dans `categories.yaml`
+  (merge intelligent en cas de collision : dedup mots_cles + min priorité)
+- **Badge ⚠ orphelin** sur les entries dont la cible n'existe plus
+  dans tree.yaml + compteur global + bouton **💡 Suggérer** qui propose
+  le chemin le plus proche (matching normalisé sur préfixes `0X - `)
+- **Bulk-delete** multi-thèmes mappés sur un folder (toolbar de sélection)
+- Tests : 182 tests dans `test_taxonomy.py`, 103 tests dans `test_categories.py`
+
+### Plan / spec mode workflows
+
+- Adoption progressive des skills superpowers (brainstorming, writing-plans,
+  subagent-driven-development) pour les chantiers structurants
+- 4 specs + 5 plans archivés dans `docs/superpowers/`
+
 ## [1.0.0-dev] — 2026-04-12
 
 ### Curation tab (dashboard)

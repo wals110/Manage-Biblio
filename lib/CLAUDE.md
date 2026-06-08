@@ -49,7 +49,27 @@ LLM Vision (thème, titre) → 1. Theme Mapping (355+ entrées, gratuit)
 - **ePub start_page > 1** : retourne 0 (pas d'extraction de pages internes)
 - **CLI dédiée** : `./klodo.sh thumbnails --execute --pages N` pour backfill batch (cf. `commands/thumbnails.py`)
 
-## Wordcheck — validation noms par dictionnaire
+## Theme Canon — canonisation des thèmes LLM (chantier Dédupli)
+
+Le vision_cache.json contient des milliers de thèmes long-tail issus du LLM (variations de casse, pluriel, langue, formulation). Le chantier dédupli les rassemble en thèmes canoniques.
+
+- **[theme_canon.py](theme_canon.py)** — chargement de `theme-canon.json` par profil + fonction `canonicalize(theme, canon_table)` utilisée par `dashboard/taxonomy.py` lors de l'agrégation des thèmes
+- **Helpers de la famille** (selon présents) : matching fuzzy via `rapidfuzz`, normalisation Unicode, parseurs de canons
+- Le dashboard `dedupli.py` orchestre l'audit + propositions de fusion + statut persisté sous `profiles/<p>/.cache/dedupli/status.json`
+- Sub-tab 🔗 **Dédupli** dans l'onglet Taxonomie pour l'UX
+
+## Agents IA — Agent Refonte (`agents/refonte/`)
+
+Module `agents/` (hors `lib/`) qui héberge les agents IA. Premier livré : Refonte (Phases A + B + C).
+
+- **`agents/refonte/diagnostic.py`** — Phase A, graphe LangGraph read-only, produit un rapport markdown des anomalies
+- **`agents/refonte/proposition.py`** + **`simulator.py`** + **`tools.py`** — Phase B, génère `tree-proposed.yaml`, simule reclassify, produit diff tree visuel
+- **`agents/refonte/dialog.py`** + **`mutations.py`** — Phase C, agent conversationnel (parse intent → propose → confirm), 5 outils mutables exposés au LLM
+- **`agents/refonte/agent_journal.py`** — JSONL append-only des mutations + `record_undo` pour audit trail complet
+- **`agents/refonte/agent_backup.py`** — full snapshots de `tree.yaml + theme_mapping.yaml` avant chaque batch, rotation 50, rollback isolé par batch
+- **`agents/refonte/state.py`** — schémas Pydantic du state graph
+
+Le dashboard `dashboard/agent_refonte.py` + `agent_refonte_phase_c.py` font le pont vers ces modules et exposent les routes `/api/agent/refonte/*`.
 
 ## Wordcheck — validation noms par dictionnaire
 

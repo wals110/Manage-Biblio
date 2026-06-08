@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -50 1000 670" font-family="Segoe Print, Comic Sans MS, cursive" font-size="13">
+  <rect x="0" y="-50" width="1000" height="50" fill="#dc2626"/>
+  <text x="500" y="-18" fill="white" text-anchor="middle" font-weight="bold" font-size="18" font-family="system-ui, -apple-system, sans-serif">⚠ OBSOLETE — voir PR docs/audit-20260606 (PRs #163-#168)</text>
+
   <defs>
     <filter id="h" x="-2%" y="-2%" width="104%" height="104%">
       <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="23"/>
