@@ -31,6 +31,26 @@ def bucket_source(source: str | None) -> str:
     return "p1_theme"
 
 
+def _top_segment(path: str) -> str:
+    return (path or "").strip("/").split("/", 1)[0]
+
+
+def is_inter_discipline_jump(current_folder: str, proposed_folder: str) -> bool:
+    """True si le fichier change de discipline (1er segment de chemin).
+
+    _INBOX / racine vide ne sont pas des disciplines : un fichier qui
+    vient de l'inbox est un classement frais, pas un saut. Destination
+    vide (no prediction) n'est pas un saut non plus.
+    """
+    src = _top_segment(current_folder)
+    dst = _top_segment(proposed_folder)
+    if not src or not dst:
+        return False
+    if src in ("_INBOX", "_A-TRIER"):
+        return False
+    return src != dst
+
+
 CONF_BANDS = ("0-0.5", "0.5-0.7", "0.7-0.9", "0.9-1.0")
 
 

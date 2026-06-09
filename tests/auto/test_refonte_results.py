@@ -51,5 +51,26 @@ class TestConfidenceBand(unittest.TestCase):
         self.assertEqual(confidence_band(None), "0-0.5")
 
 
+from dashboard.refonte_results import is_inter_discipline_jump  # noqa: E402
+
+
+class TestJump(unittest.TestCase):
+
+    def test_jump_between_disciplines(self):
+        self.assertTrue(is_inter_discipline_jump(
+            "04-SHS/03-HISTOIRE", "01-SCIENCES/02-PHYSIQUE"))
+
+    def test_same_discipline_no_jump(self):
+        self.assertFalse(is_inter_discipline_jump(
+            "01-SCIENCES/PHYSIQUE", "01-SCIENCES/MATHEMATIQUES"))
+
+    def test_inbox_origin_is_not_a_jump(self):
+        self.assertFalse(is_inter_discipline_jump("_INBOX", "02-INFORMATIQUE/14-Web"))
+        self.assertFalse(is_inter_discipline_jump("", "02-INFORMATIQUE/14-Web"))
+
+    def test_empty_destination_no_jump(self):
+        self.assertFalse(is_inter_discipline_jump("04-SHS", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
