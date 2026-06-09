@@ -90,5 +90,15 @@ class TestProposedTreeAPI(_Base):
         self.assertIn("01-SCI", names)
 
 
+class TestProvenanceAPI(_Base):
+    def test_provenance_endpoint(self):
+        r = self.client.get(
+            "/api/agent/refonte/proposition/run1/folder-provenance"
+            "?profile=default&folder=01-SCI/Astro")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertEqual(d["origins"], [{"folder": "04-SHS/HIST", "count": 1}])
+
+
 if __name__ == "__main__":
     unittest.main()

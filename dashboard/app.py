@@ -2798,6 +2798,13 @@ async def api_refonte_doubt_files(run_id: str, profile: str, page: int = 1,
         source_class=source_class, band=band))
 
 
+@app.get("/api/agent/refonte/proposition/{run_id}/folder-provenance")
+async def api_refonte_folder_provenance(run_id: str, profile: str, folder: str):
+    """Top dossiers d'origine des fichiers entrants d'un dossier proposé."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_folder_provenance(profile, run_id, folder))
+
+
 @app.post("/api/agent/refonte/proposition")
 async def api_agent_refonte_proposition_start(request: Request):
     """Démarre un run Phase B basé sur un diagnostic Phase A existant.

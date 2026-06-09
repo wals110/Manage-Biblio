@@ -298,6 +298,14 @@ def get_proposed_tree(profile: str, run_id: str) -> dict:
     return {"tree": refonte_results.build_proposed_tree(folders, rows, creations)}
 
 
+def get_folder_provenance(profile: str, run_id: str, folder: str) -> dict:
+    """Top dossiers d'origine des fichiers entrants d'un dossier proposé."""
+    from dashboard import refonte_results
+    run_dir = _run_dir(profile, run_id)
+    rows = refonte_results.read_projection_rows(run_dir)
+    return refonte_results.folder_provenance(rows, folder)
+
+
 def get_doubt_files(profile: str, run_id: str, *, page: int = 1,
                     page_size: int = 50, source_class: str | None = None,
                     band: str | None = None) -> dict:
