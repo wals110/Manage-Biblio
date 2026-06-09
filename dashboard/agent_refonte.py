@@ -280,6 +280,14 @@ def get_proposition_simulation(
     }
 
 
+def get_risk_matrix(profile: str, run_id: str) -> dict[str, Any]:
+    """Matrice de risque + budget + n_doubt pour un run de proposition."""
+    from dashboard import refonte_results
+    run_dir = _run_dir(profile, run_id)
+    rows = refonte_results.read_projection_rows(run_dir)
+    return refonte_results.build_risk_matrix(rows)
+
+
 def list_runs(profile: str, limit: int = 20) -> list[dict[str, Any]]:
     """Liste les runs récents pour un profil, triés par started_at desc.
 

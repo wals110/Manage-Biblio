@@ -2772,6 +2772,13 @@ async def api_agent_refonte_simulation(run_id: str, profile: str, sample_limit: 
     return JSONResponse(result)
 
 
+@app.get("/api/agent/refonte/proposition/{run_id}/risk-matrix")
+async def api_refonte_risk_matrix(run_id: str, profile: str):
+    """Matrice de risque (source_class × confidence_band) + budget + n_doubt."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_risk_matrix(profile, run_id))
+
+
 @app.post("/api/agent/refonte/proposition")
 async def api_agent_refonte_proposition_start(request: Request):
     """Démarre un run Phase B basé sur un diagnostic Phase A existant.
