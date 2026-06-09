@@ -72,5 +72,31 @@ class TestJump(unittest.TestCase):
         self.assertFalse(is_inter_discipline_jump("04-SHS", ""))
 
 
+from dashboard.refonte_results import risk_score  # noqa: E402
+
+
+class TestRiskScore(unittest.TestCase):
+
+    def test_failed_is_max(self):
+        r = risk_score("failed", confidence=0.0, is_jump=False, is_new_dest=False)
+        self.assertGreater(r, 0.5)
+
+    def test_p1_theme_high_conf_is_low(self):
+        r = risk_score("p1_theme", confidence=1.0, is_jump=False, is_new_dest=False)
+        self.assertEqual(r, 0.0)
+
+    def test_jump_and_new_dest_add_risk(self):
+        base = risk_score("keyword", confidence=0.9, is_jump=False, is_new_dest=False)
+        more = risk_score("keyword", confidence=0.9, is_jump=True, is_new_dest=True)
+        self.assertGreater(more, base)
+
+    def test_ordering_fallback_gt_keyword_gt_p1(self):
+        a = risk_score("fallback", 0.9, False, False)
+        b = risk_score("keyword", 0.9, False, False)
+        c = risk_score("p1_refined", 0.9, False, False)
+        self.assertGreater(a, b)
+        self.assertGreater(b, c)
+
+
 if __name__ == "__main__":
     unittest.main()
