@@ -288,6 +288,19 @@ def get_risk_matrix(profile: str, run_id: str) -> dict[str, Any]:
     return refonte_results.build_risk_matrix(rows)
 
 
+def get_doubt_files(profile: str, run_id: str, *, page: int = 1,
+                    page_size: int = 50, source_class: str | None = None,
+                    band: str | None = None) -> dict:
+    """Zone de doute paginée/filtrée/triée pour un run de proposition."""
+    from dashboard import refonte_results
+    run_dir = _run_dir(profile, run_id)
+    rows = refonte_results.read_projection_rows(run_dir)
+    creations = refonte_results.load_creations(run_dir)
+    return refonte_results.select_doubt_files(
+        rows, creations, page=page, page_size=page_size,
+        source_class=source_class, band=band)
+
+
 def list_runs(profile: str, limit: int = 20) -> list[dict[str, Any]]:
     """Liste les runs récents pour un profil, triés par started_at desc.
 

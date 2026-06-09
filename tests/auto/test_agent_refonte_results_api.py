@@ -58,5 +58,26 @@ class TestRiskMatrixAPI(_Base):
         self.assertEqual(d["n_doubt"], 2)  # fallback + failed
 
 
+class TestDoubtFilesAPI(_Base):
+    def test_doubt_files_excludes_safe_and_sorts(self):
+        r = self.client.get(
+            "/api/agent/refonte/proposition/run1/doubt-files?profile=default")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        paths = [x["rel_path"] for x in d["rows"]]
+        self.assertNotIn("a.pdf", paths)        # P1 0.95 sûr
+        self.assertEqual(d["total"], 2)
+        b = next(x for x in d["rows"] if x["rel_path"] == "b.pdf")
+        self.assertTrue(b["is_jump"])
+        self.assertTrue(b["is_new_dest"])
+
+    def test_doubt_files_filter_source_class(self):
+        r = self.client.get(
+            "/api/agent/refonte/proposition/run1/doubt-files"
+            "?profile=default&source_class=failed")
+        d = r.json()
+        self.assertEqual([x["rel_path"] for x in d["rows"]], ["c.pdf"])
+
+
 if __name__ == "__main__":
     unittest.main()

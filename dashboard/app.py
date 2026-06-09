@@ -2779,6 +2779,18 @@ async def api_refonte_risk_matrix(run_id: str, profile: str):
     return JSONResponse(agent_refonte.get_risk_matrix(profile, run_id))
 
 
+@app.get("/api/agent/refonte/proposition/{run_id}/doubt-files")
+async def api_refonte_doubt_files(run_id: str, profile: str, page: int = 1,
+                                  page_size: int = 50,
+                                  source_class: str | None = None,
+                                  band: str | None = None):
+    """Zone de doute paginée/filtrée/triée pour un run de proposition."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_doubt_files(
+        profile, run_id, page=page, page_size=page_size,
+        source_class=source_class, band=band))
+
+
 @app.post("/api/agent/refonte/proposition")
 async def api_agent_refonte_proposition_start(request: Request):
     """Démarre un run Phase B basé sur un diagnostic Phase A existant.
