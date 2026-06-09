@@ -9,6 +9,12 @@ donc on lit le CSV avec csv.DictReader et on agrège en Python (DRY).
 
 from __future__ import annotations
 
+import csv
+import json
+from pathlib import Path
+
+import yaml
+
 
 def bucket_source(source: str | None) -> str:
     """Bucketise le label `source` brut du CSV en classe de cascade.
@@ -236,3 +242,37 @@ def folder_provenance(rows: list[dict], folder: str, *, limit: int = 8) -> dict:
     origins = [{"folder": k, "count": n}
                for k, n in c.most_common(limit)]
     return {"folder": folder, "origins": origins}
+
+
+def read_projection_rows(run_dir: Path | str) -> list[dict]:
+    """Lit simulation/reclassify-projection.csv → list[dict]. [] si absent."""
+    p = Path(run_dir) / "simulation" / "reclassify-projection.csv"
+    if not p.exists():
+        return []
+    with p.open(encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def load_creations(run_dir: Path | str) -> set[str]:
+    """Ensemble des chemins de dossiers créés (changes.json:creations)."""
+    p = Path(run_dir) / "proposed" / "changes.json"
+    if not p.exists():
+        return set()
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {c.get("path", "") for c in (data.get("creations") or []) if c.get("path")}
+
+
+def load_proposed_folders(run_dir: Path | str) -> list[str]:
+    """Liste plate des dossiers de tree-proposed.yaml (clé 'folders')."""
+    p = Path(run_dir) / "proposed" / "tree-proposed.yaml"
+    if not p.exists():
+        return []
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return []
+    folders = data.get("folders") if isinstance(data, dict) else None
+    return [str(f) for f in folders] if isinstance(folders, list) else []

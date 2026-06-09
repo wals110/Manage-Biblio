@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Tests des agrégations pures de la restitution Phase B (refonte_results)."""
 
+import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
@@ -233,6 +237,54 @@ def _find(node, name):
         if r:
             return r
     return None
+
+
+from dashboard.refonte_results import (  # noqa: E402
+    load_creations,
+    load_proposed_folders,
+    read_projection_rows,
+)
+
+
+class TestReaders(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.run = Path(self.tmp) / "run1"
+        (self.run / "proposed").mkdir(parents=True)
+        (self.run / "simulation").mkdir(parents=True)
+        (self.run / "simulation" / "reclassify-projection.csv").write_text(
+            "rel_path,current_folder,proposed_folder,changed,source,top_theme,confidence,score\n"
+            "a.pdf,_INBOX,02-INFO/Web,true,LLM (theme),Web,0.95,0.9\n",
+            encoding="utf-8")
+        (self.run / "proposed" / "changes.json").write_text(
+            json.dumps({"creations": [{"path": "02-INFO/Web", "rationale": "x"}]}),
+            encoding="utf-8")
+        import yaml
+        (self.run / "proposed" / "tree-proposed.yaml").write_text(
+            yaml.safe_dump({"folders": ["02-INFO/Web", "02-INFO/IA"]}),
+            encoding="utf-8")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_read_rows(self):
+        rows = read_projection_rows(self.run)
+        self.assertEqual(rows[0]["rel_path"], "a.pdf")
+        self.assertEqual(rows[0]["proposed_folder"], "02-INFO/Web")
+
+    def test_load_creations(self):
+        self.assertEqual(load_creations(self.run), {"02-INFO/Web"})
+
+    def test_load_proposed_folders(self):
+        self.assertEqual(load_proposed_folders(self.run),
+                         ["02-INFO/Web", "02-INFO/IA"])
+
+    def test_missing_files_return_empty(self):
+        empty = Path(self.tmp) / "nope"
+        self.assertEqual(read_projection_rows(empty), [])
+        self.assertEqual(load_creations(empty), set())
+        self.assertEqual(load_proposed_folders(empty), [])
 
 
 if __name__ == "__main__":
