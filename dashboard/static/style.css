@@ -6655,3 +6655,43 @@ th {
 .dash-subtab.active:hover {
     color: white;
 }
+
+/* ── Restitution Phase B (outil de décision) ─────────────────────────── */
+.rr-budget{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--border);margin:6px 0}
+.rr-budget>div{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0b1220;cursor:default}
+.rr-doubt-kpi{color:#fbbf24;font-weight:700;margin:8px 0}
+.rr-mx{display:grid;grid-template-columns:150px repeat(4,1fr);gap:4px;max-width:680px;margin-top:8px}
+.rr-mx .rr-h{font-size:10px;color:var(--text-muted, #8b949e);text-align:center}
+.rr-rh{font-size:11px;display:flex;align-items:center}
+.rr-cell{border-radius:4px;padding:8px 2px;text-align:center;font-weight:700;font-size:12px;border:1px solid transparent}
+.rr-cell[data-sc]{cursor:pointer}
+.rr-cell[data-sc]:hover{border-color:#ffffff66}
+.rr-cell.sel{border-color:#fff}
+.rr-c0{background:#1e2a3d;color:#475569}
+.rr-cg{background:#14532d;color:#86efac}
+.rr-cy{background:#3b2f0c;color:#fbbf24}
+.rr-co{background:#3a230c;color:#fb923c}
+.rr-cr{background:#3a1414;color:#f87171}
+.rr-ftab{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.rr-ftab th{text-align:left;color:var(--text-muted, #8b949e);padding:5px 8px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase}
+.rr-ftab td{padding:6px 8px;border-bottom:1px solid #1b2536}
+.rr-table-head{margin-top:12px;color:var(--text-muted, #8b949e);font-size:11px}
+.rr-badge{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;background:#263349;color:#cbd5e1}
+.rr-arrow{font-family:monospace;font-size:11px;color:var(--text-muted, #8b949e)}
+.rr-gauge{display:inline-block;width:42px;height:6px;background:#1b2536;border-radius:3px;overflow:hidden;vertical-align:middle}
+.rr-gauge>i{display:block;height:100%}
+.rr-act{cursor:pointer;padding:0 3px;opacity:.7}
+.rr-act:hover{opacity:1}
+.rr-ic-legend{font-size:11px;color:var(--text-muted, #8b949e);margin-bottom:8px}
+.rr-icicle{display:flex;gap:4px;height:360px}
+.rr-ic-col{display:flex;flex-direction:column;gap:4px}
+.rr-ic-node{border-radius:5px;padding:6px 8px;font-size:11px;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:center;background:#1e3a5f;color:#bfdbfe;border:1px solid transparent}
+.rr-ic-node:hover{filter:brightness(1.18)}
+.rr-ic-node.sel{outline:2px solid #fff;outline-offset:-2px}
+.rr-ic-node small{opacity:.7;font-size:9.5px}
+.rr-ic-node.rr-new{background:#3a2a0c;color:#fbbf24;border-color:#f59e0b;box-shadow:0 0 8px #f59e0b55}
+.rr-prov{margin-top:14px;background:var(--bg-tertiary,#0b1220);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-height:60px}
+.rr-prov-h{margin:0 0 8px;font-size:12px}
+.rr-flow{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:5px}
+.rr-flow-l{width:230px}
+.rr-flow-bar{height:9px;border-radius:3px;background:#38bdf8}
