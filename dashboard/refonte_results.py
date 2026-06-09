@@ -29,3 +29,18 @@ def bucket_source(source: str | None) -> str:
     if s.startswith("LLM (theme"):
         return "p1_theme"
     return "p1_theme"
+
+
+CONF_BANDS = ("0-0.5", "0.5-0.7", "0.7-0.9", "0.9-1.0")
+
+
+def confidence_band(conf: float | None) -> str:
+    """Mappe une confiance (0-1) sur une bande discrète."""
+    c = float(conf) if conf is not None else 0.0
+    if c < 0.5:
+        return "0-0.5"
+    if c < 0.7:
+        return "0.5-0.7"
+    if c < 0.9:
+        return "0.7-0.9"
+    return "0.9-1.0"

@@ -8,7 +8,7 @@ import unittest
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
-from dashboard.refonte_results import bucket_source  # noqa: E402
+from dashboard.refonte_results import bucket_source, confidence_band  # noqa: E402
 
 
 class TestBucketSource(unittest.TestCase):
@@ -33,6 +33,22 @@ class TestBucketSource(unittest.TestCase):
         self.assertEqual(bucket_source("FAILED"), "failed")
         self.assertEqual(bucket_source(""), "failed")
         self.assertEqual(bucket_source(None), "failed")
+
+
+class TestConfidenceBand(unittest.TestCase):
+
+    def test_bands(self):
+        self.assertEqual(confidence_band(0.0), "0-0.5")
+        self.assertEqual(confidence_band(0.49), "0-0.5")
+        self.assertEqual(confidence_band(0.5), "0.5-0.7")
+        self.assertEqual(confidence_band(0.69), "0.5-0.7")
+        self.assertEqual(confidence_band(0.7), "0.7-0.9")
+        self.assertEqual(confidence_band(0.89), "0.7-0.9")
+        self.assertEqual(confidence_band(0.9), "0.9-1.0")
+        self.assertEqual(confidence_band(1.0), "0.9-1.0")
+
+    def test_none_is_lowest(self):
+        self.assertEqual(confidence_band(None), "0-0.5")
 
 
 if __name__ == "__main__":
