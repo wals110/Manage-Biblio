@@ -2779,6 +2779,13 @@ async def api_refonte_risk_matrix(run_id: str, profile: str):
     return JSONResponse(agent_refonte.get_risk_matrix(profile, run_id))
 
 
+@app.get("/api/agent/refonte/proposition/{run_id}/proposed-tree")
+async def api_refonte_proposed_tree(run_id: str, profile: str):
+    """Arbre hiérarchique des dossiers proposés pour un run de proposition."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_proposed_tree(profile, run_id))
+
+
 @app.get("/api/agent/refonte/proposition/{run_id}/doubt-files")
 async def api_refonte_doubt_files(run_id: str, profile: str, page: int = 1,
                                   page_size: int = 50,

@@ -79,5 +79,16 @@ class TestDoubtFilesAPI(_Base):
         self.assertEqual([x["rel_path"] for x in d["rows"]], ["c.pdf"])
 
 
+class TestProposedTreeAPI(_Base):
+    def test_tree_endpoint(self):
+        r = self.client.get(
+            "/api/agent/refonte/proposition/run1/proposed-tree?profile=default")
+        self.assertEqual(r.status_code, 200)
+        tree = r.json()["tree"]
+        names = [c["name"] for c in tree["children"]]
+        self.assertIn("02-INFO", names)
+        self.assertIn("01-SCI", names)
+
+
 if __name__ == "__main__":
     unittest.main()

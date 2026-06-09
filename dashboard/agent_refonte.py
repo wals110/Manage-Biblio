@@ -288,6 +288,16 @@ def get_risk_matrix(profile: str, run_id: str) -> dict[str, Any]:
     return refonte_results.build_risk_matrix(rows)
 
 
+def get_proposed_tree(profile: str, run_id: str) -> dict:
+    """Arbre hiérarchique des dossiers proposés pour un run de proposition."""
+    from dashboard import refonte_results
+    run_dir = _run_dir(profile, run_id)
+    rows = refonte_results.read_projection_rows(run_dir)
+    folders = refonte_results.load_proposed_folders(run_dir)
+    creations = refonte_results.load_creations(run_dir)
+    return {"tree": refonte_results.build_proposed_tree(folders, rows, creations)}
+
+
 def get_doubt_files(profile: str, run_id: str, *, page: int = 1,
                     page_size: int = 50, source_class: str | None = None,
                     band: str | None = None) -> dict:
