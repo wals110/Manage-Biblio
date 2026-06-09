@@ -203,6 +203,28 @@ class TestProposedTree(unittest.TestCase):
         self.assertEqual(rag["n_incoming"], 1)
 
 
+from dashboard.refonte_results import folder_provenance  # noqa: E402
+
+
+class TestProvenance(unittest.TestCase):
+
+    def test_top_origins_for_folder(self):
+        rows = [
+            {"proposed_folder": "X/Y", "current_folder": "_INBOX"},
+            {"proposed_folder": "X/Y", "current_folder": "_INBOX"},
+            {"proposed_folder": "X/Y", "current_folder": "04-SHS"},
+            {"proposed_folder": "Z", "current_folder": "_INBOX"},
+        ]
+        out = folder_provenance(rows, "X/Y")
+        self.assertEqual(out["origins"][0], {"folder": "_INBOX", "count": 2})
+        self.assertEqual(out["origins"][1], {"folder": "04-SHS", "count": 1})
+
+    def test_limit(self):
+        rows = [{"proposed_folder": "X", "current_folder": f"o{i}"} for i in range(20)]
+        out = folder_provenance(rows, "X", limit=8)
+        self.assertEqual(len(out["origins"]), 8)
+
+
 def _find(node, name):
     if node["name"] == name:
         return node

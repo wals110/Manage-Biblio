@@ -223,3 +223,16 @@ def build_proposed_tree(folders: list[str], rows: list[dict],
 
     _agg(root)
     return root
+
+
+def folder_provenance(rows: list[dict], folder: str, *, limit: int = 8) -> dict:
+    """Top dossiers d'origine (current_folder) des fichiers entrants d'un
+    proposed_folder donné, triés par compte décroissant."""
+    from collections import Counter
+    c = Counter(
+        r.get("current_folder", "") or "(racine)"
+        for r in rows if r.get("proposed_folder") == folder
+    )
+    origins = [{"folder": k, "count": n}
+               for k, n in c.most_common(limit)]
+    return {"folder": folder, "origins": origins}
