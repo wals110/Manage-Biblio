@@ -1055,67 +1055,43 @@
     // triage éphémère (V1) : marque la ligne, AUCUNE persistance
     function rrVerdict(elm, ok){const tr=elm.closest('tr');tr.style.opacity=0.4;tr.style.background=ok?'#14532d22':'#3a141422';}
 
-    async function loadTreeDiff(runId, profile, pane) {
-        try {
-            const r = await fetch('/api/agent/refonte/proposition/' + runId
-                                  + '/tree-diff?profile=' + encodeURIComponent(profile));
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const d = await r.json();
-            renderTreeDiff(d, pane);
-        } catch (err) {
-            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
-                           + err.message + '</p>';
-        }
+    async function loadProposedTree(runId, profile){
+      const el = document.getElementById('rr-arbre');
+      try {
+        const r = await fetch('/api/agent/refonte/proposition/'+runId+'/proposed-tree?profile='+encodeURIComponent(profile));
+        const d = await r.json();
+        renderIcicle(d.tree, runId, profile);
+      } catch(e){ el.innerHTML = '<p class="muted small">Erreur de chargement.</p>'; }
     }
-
-    function renderTreeDiff(d, pane) {
-        const parts = [];
-        parts.push('<p class="muted small">'
-          + d.n_folders_before + ' dossiers → ' + d.n_folders_after + ' après refonte</p>');
-        if (d.added && d.added.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#22c55e;">+ Créés (' + d.added.length + ')</h4>');
-            for (const f of d.added) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-add">'
-                  + '+ ' + escapeHtml(f) + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (d.removed && d.removed.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#ef4444;">− Supprimés (' + d.removed.length + ')</h4>');
-            for (const f of d.removed) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-remove">'
-                  + '− ' + escapeHtml(f) + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (d.renamed && d.renamed.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#f59e0b;">↻ Renommés (' + d.renamed.length + ')</h4>');
-            for (const r of d.renamed) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-rename">'
-                  + escapeHtml(r.old) + ' → ' + escapeHtml(r.new)
-                  + (r.rationale ? '<div class="muted small">' + escapeHtml(r.rationale) + '</div>' : '')
-                  + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (d.fused && d.fused.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#8b5cf6;">⇆ Fusions (' + d.fused.length + ')</h4>');
-            for (const f of d.fused) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-fusion">'
-                  + (f.sources || []).map(escapeHtml).join(' + ') + ' → ' + escapeHtml(f.target)
-                  + (f.rationale ? '<div class="muted small">' + escapeHtml(f.rationale) + '</div>' : '')
-                  + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (parts.length <= 1) {
-            parts.push('<p class="muted">Aucun changement structurel — uniquement des mappings ajoutés.</p>');
-        }
-        pane.innerHTML = parts.join('\n');
+    function renderIcicle(tree, runId, profile){
+      const el = document.getElementById('rr-arbre');
+      const sections = (tree.children||[]).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
+      let h = '<div class="rr-ic-legend">🆕 = dossier créé · hauteur = fichiers entrants · clic = provenance</div><div class="rr-icicle">';
+      h += '<div class="rr-ic-col" style="width:160px">';
+      sections.forEach(s=>{h+='<div class="rr-ic-node'+(s.is_creation?' rr-new':'')+'" style="flex:'+Math.max(1,s.n_incoming)+'" data-folder="'+s.path+'">'+s.name+'<small>'+s.n_incoming+'</small></div>';});
+      h += '</div><div class="rr-ic-col" style="flex:1" id="rr-ic-sub"></div></div>';
+      h += '<div class="rr-prov" id="rr-prov"><span class="muted small">Clique un dossier pour voir d\'où viennent ses fichiers.</span></div>';
+      el.innerHTML = h;
+      function showSub(node){
+        const sub = document.getElementById('rr-ic-sub');
+        const ch = (node && node.children ? node.children : []).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
+        sub.innerHTML = ch.map(c=>'<div class="rr-ic-node'+(c.is_creation?' rr-new':'')+'" style="flex:'+Math.max(1,c.n_incoming)+'" data-folder="'+c.path+'">'+(c.is_creation?'🆕 ':'')+c.name+'<small>'+c.n_incoming+'</small></div>').join('');
+        sub.querySelectorAll('.rr-ic-node').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
+      }
+      if(sections[0]) showSub(sections[0]);
+      el.querySelectorAll('.rr-ic-col:first-child .rr-ic-node').forEach(n=>n.onclick=()=>{
+        const node=sections.find(s=>s.path===n.dataset.folder); showSub(node); loadProvenance(runId,profile,n.dataset.folder,n);
+      });
+    }
+    async function loadProvenance(runId, profile, folder, nodeEl){
+      document.querySelectorAll('.rr-ic-node.sel').forEach(e=>e.classList.remove('sel'));
+      if(nodeEl) nodeEl.classList.add('sel');
+      const r = await fetch('/api/agent/refonte/proposition/'+runId+'/folder-provenance?profile='+encodeURIComponent(profile)+'&folder='+encodeURIComponent(folder));
+      const d = await r.json();
+      const max = Math.max(1, ...d.origins.map(o=>o.count));
+      document.getElementById('rr-prov').innerHTML =
+        '<h4 class="rr-prov-h">D\'où viennent les fichiers de « '+folder+' »</h4>'+
+        (d.origins.length? d.origins.map(o=>'<div class="rr-flow"><span class="rr-flow-l">'+o.folder+'</span><span class="rr-flow-bar" style="width:'+Math.round(o.count/max*180)+'px"></span><span class="muted">'+o.count+'</span></div>').join('') : '<span class="muted small">Aucun fichier entrant.</span>');
     }
 
     function escapeHtml(s) {
