@@ -132,5 +132,55 @@ class TestRiskMatrix(unittest.TestCase):
         self.assertEqual(out["n_doubt"], 3)
 
 
+from dashboard.refonte_results import enrich_row, select_doubt_files  # noqa: E402
+
+
+class TestDoubtFiles(unittest.TestCase):
+
+    def _rows(self):
+        return [
+            {"rel_path": "a.pdf", "current_folder": "_INBOX",
+             "proposed_folder": "02-INFORMATIQUE/14-Web", "source": "LLM (theme)",
+             "top_theme": "Web", "confidence": "0.95"},
+            {"rel_path": "b.pdf", "current_folder": "04-SHS/03-HISTOIRE",
+             "proposed_folder": "01-SCIENCES/02-PHYSIQUE/Astro", "source": "LLM (fallback)",
+             "top_theme": "Astro", "confidence": "0.93"},
+            {"rel_path": "c.pdf", "current_folder": "_INBOX",
+             "proposed_folder": "", "source": "FAILED", "top_theme": "",
+             "confidence": "0.0"},
+        ]
+
+    def test_enrich_flags(self):
+        row = enrich_row(self._rows()[1], creations={"01-SCIENCES/02-PHYSIQUE/Astro"})
+        self.assertEqual(row["source_class"], "fallback")
+        self.assertTrue(row["is_jump"])
+        self.assertTrue(row["is_new_dest"])
+        self.assertIn("risk", row)
+
+    def test_select_doubt_excludes_safe_p1(self):
+        out = select_doubt_files(self._rows(), creations=set(), page=1, page_size=50)
+        paths = [r["rel_path"] for r in out["rows"]]
+        self.assertNotIn("a.pdf", paths)
+        self.assertIn("b.pdf", paths)
+        self.assertIn("c.pdf", paths)
+        self.assertEqual(out["total"], 2)
+
+    def test_sorted_by_risk_desc(self):
+        out = select_doubt_files(self._rows(), creations=set(), page=1, page_size=50)
+        risks = [r["risk"] for r in out["rows"]]
+        self.assertEqual(risks, sorted(risks, reverse=True))
+
+    def test_filter_by_source_class_and_band(self):
+        out = select_doubt_files(self._rows(), creations=set(), page=1, page_size=50,
+                                 source_class="failed")
+        self.assertEqual([r["rel_path"] for r in out["rows"]], ["c.pdf"])
+
+    def test_pagination(self):
+        out = select_doubt_files(self._rows(), creations=set(), page=1, page_size=1)
+        self.assertEqual(len(out["rows"]), 1)
+        self.assertEqual(out["total"], 2)
+        self.assertEqual(out["page"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

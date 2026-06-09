@@ -125,3 +125,59 @@ def build_risk_matrix(rows: list[dict]) -> dict:
         for sc in SOURCE_CLASSES
     ]
     return {"matrix": matrix, "budget": budget_list, "n_doubt": n_doubt}
+
+
+def enrich_row(row: dict, creations: set[str]) -> dict:
+    """Enrichit une ligne CSV avec source_class, band, is_jump,
+    is_new_dest, risk. Retourne un nouveau dict (n'altère pas l'entrée)."""
+    try:
+        conf = float(row.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        conf = 0.0
+    sc = bucket_source(row.get("source"))
+    cur = row.get("current_folder", "")
+    prop = row.get("proposed_folder", "")
+    jump = is_inter_discipline_jump(cur, prop)
+    new_dest = bool(prop) and prop in creations
+    return {
+        "rel_path": row.get("rel_path", ""),
+        "current_folder": cur,
+        "proposed_folder": prop,
+        "source": row.get("source", ""),
+        "source_class": sc,
+        "top_theme": row.get("top_theme", ""),
+        "confidence": conf,
+        "band": confidence_band(conf),
+        "is_jump": jump,
+        "is_new_dest": new_dest,
+        "risk": risk_score(sc, conf, jump, new_dest),
+    }
+
+
+def _is_doubt(enriched: dict) -> bool:
+    sc = enriched["source_class"]
+    return not (sc in ("p1_theme", "p1_refined") and enriched["confidence"] >= 0.7)
+
+
+def select_doubt_files(rows: list[dict], creations: set[str], *,
+                       page: int = 1, page_size: int = 50,
+                       source_class: str | None = None,
+                       band: str | None = None) -> dict:
+    """Zone de doute enrichie, filtrée (source_class/band), triée par
+    risque décroissant, paginée côté serveur."""
+    enriched = [enrich_row(r, creations) for r in rows]
+    doubt = [e for e in enriched if _is_doubt(e)]
+    if source_class:
+        doubt = [e for e in doubt if e["source_class"] == source_class]
+    if band:
+        doubt = [e for e in doubt if e["band"] == band]
+    doubt.sort(key=lambda e: e["risk"], reverse=True)
+    total = len(doubt)
+    page = max(1, page)
+    start = (page - 1) * page_size
+    return {
+        "rows": doubt[start:start + page_size],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
