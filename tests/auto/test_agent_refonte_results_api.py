@@ -100,5 +100,16 @@ class TestProvenanceAPI(_Base):
         self.assertEqual(d["origins"], [{"folder": "04-SHS/HIST", "count": 1}])
 
 
+class TestPanelTabs(_Base):
+    def test_panel_has_three_decision_tabs(self):
+        r = self.client.get("/taxonomy?profile=default")
+        self.assertEqual(r.status_code, 200)
+        html = r.text
+        self.assertIn('data-pane="verdict"', html)
+        self.assertIn('data-pane="arbre"', html)
+        self.assertIn('data-pane="plan"', html)
+        self.assertIn("Verdict", html)
+
+
 if __name__ == "__main__":
     unittest.main()

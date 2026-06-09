@@ -922,38 +922,54 @@
     function renderPhaseBReport(runId, status) {
         const rationaleMd = status.rationale_md || '';
         const profile = currentProfile();
-        // Vue 3 onglets dans la zone Rapport, lazy-load des contenus Diff +
-        // Impact au clic (les requêtes peuvent être lourdes sur 18k fichiers).
+        // Vue 3 onglets décisionnels : Verdict (défaut, chargé d'emblée),
+        // Arbre proposé et Plan complet en lazy-load au clic (les requêtes
+        // peuvent être lourdes sur 18k fichiers).
         reportEl.innerHTML =
             '<div class="tax-refonte-phaseb-tabs" role="tablist">'
-          + '  <button class="tax-refonte-phaseb-tab active" data-pane="rationale">📋 Rationale</button>'
-          + '  <button class="tax-refonte-phaseb-tab" data-pane="diff">🌳 Diff tree</button>'
-          + '  <button class="tax-refonte-phaseb-tab" data-pane="impact">📊 Impact reclassify</button>'
+          + '  <button class="tax-refonte-phaseb-tab active" data-pane="verdict">🚦 Verdict &amp; Risque</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="arbre">🌳 Arbre proposé</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="plan">📋 Plan complet</button>'
           + '</div>'
-          + '<div class="tax-refonte-phaseb-pane active" data-pane="rationale">'
+          + '<div class="tax-refonte-phaseb-pane active" data-pane="verdict">'
+          + '  <div class="rr-verdict" id="rr-verdict"><p class="muted small">Chargement…</p></div>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="arbre">'
+          + '  <div class="rr-arbre" id="rr-arbre"></div>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="plan">'
           + '  <div class="tax-refonte-md" id="tax-refonte-rationale-md"></div>'
-          + '</div>'
-          + '<div class="tax-refonte-phaseb-pane" data-pane="diff">'
-          + '  <p class="muted small">Chargement du diff…</p>'
-          + '</div>'
-          + '<div class="tax-refonte-phaseb-pane" data-pane="impact">'
-          + '  <p class="muted small">Chargement de la projection…</p>'
           + '</div>';
-        // Rationale rendu inline
-        const rationaleEl = document.getElementById('tax-refonte-rationale-md');
-        if (window.marked && rationaleMd) {
-            rationaleEl.innerHTML = window.marked.parse(rationaleMd);
-            enhancePhaseBRationale(rationaleEl);
-        } else {
-            rationaleEl.textContent = rationaleMd || '(rationale vide)';
-        }
-        currentReportMd = rationaleMd;  // Copy/download retourne le rationale
+        // Le rationale (markdown) reste la source du copy/download
+        currentReportMd = rationaleMd;
         updateActionButtons(!!rationaleMd);
+
+        // Rend le rationale markdown dans le pane "Plan complet".
+        let planRendered = false;
+        function renderPlan() {
+            if (planRendered) return;
+            planRendered = true;
+            const rationaleEl = document.getElementById('tax-refonte-rationale-md');
+            if (!rationaleEl) return;
+            if (window.marked && rationaleMd) {
+                rationaleEl.innerHTML = window.marked.parse(rationaleMd);
+                enhancePhaseBRationale(rationaleEl);
+            } else {
+                rationaleEl.textContent = rationaleMd || '(rationale vide)';
+            }
+        }
+
+        // Verdict = pane par défaut : chargé d'emblée (loadVerdict arrive en
+        // tâche 15 — guardé tant qu'il n'existe pas).
+        let verdictLoaded = false, arbreLoaded = false;
+        if (!verdictLoaded) {
+            verdictLoaded = true;
+            if (typeof loadVerdict === 'function') loadVerdict(runId, profile);
+        }
 
         // Bind tabs : lazy load au clic
         const tabs = reportEl.querySelectorAll('.tax-refonte-phaseb-tab');
         const panes = reportEl.querySelectorAll('.tax-refonte-phaseb-pane');
-        let diffLoaded = false, impactLoaded = false;
         tabs.forEach(t => {
             t.addEventListener('click', () => {
                 tabs.forEach(x => x.classList.remove('active'));
@@ -962,12 +978,14 @@
                 const name = t.dataset.pane;
                 const pane = reportEl.querySelector('.tax-refonte-phaseb-pane[data-pane="' + name + '"]');
                 pane.classList.add('active');
-                if (name === 'diff' && !diffLoaded) {
-                    diffLoaded = true;
-                    loadTreeDiff(runId, profile, pane);
-                } else if (name === 'impact' && !impactLoaded) {
-                    impactLoaded = true;
-                    loadSimulation(runId, profile, pane);
+                if (name === 'verdict' && !verdictLoaded) {
+                    verdictLoaded = true;
+                    if (typeof loadVerdict === 'function') loadVerdict(runId, profile);
+                } else if (name === 'arbre' && !arbreLoaded) {
+                    arbreLoaded = true;
+                    if (typeof loadProposedTree === 'function') loadProposedTree(runId, profile);
+                } else if (name === 'plan') {
+                    renderPlan();
                 }
             });
         });
