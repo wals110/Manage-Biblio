@@ -181,3 +181,45 @@ def select_doubt_files(rows: list[dict], creations: set[str], *,
         "page": page,
         "page_size": page_size,
     }
+
+
+def build_proposed_tree(folders: list[str], rows: list[dict],
+                        creations: set[str]) -> dict:
+    """Construit une hiérarchie {name, path, children, n_incoming,
+    is_creation} depuis la liste plate des dossiers proposés. n_incoming
+    par dossier = nb de lignes dont proposed_folder == ce dossier ;
+    agrégé bottom-up sur les ancêtres."""
+    from collections import Counter
+    direct = Counter(r.get("proposed_folder", "") for r in rows)
+
+    root = {"name": "(racine)", "path": "", "children": [], "n_incoming": 0,
+            "is_creation": False}
+    index: dict[str, dict] = {"": root}
+
+    def _ensure(path: str) -> dict:
+        if path in index:
+            return index[path]
+        parent_path, _, name = path.rpartition("/")
+        parent = _ensure(parent_path)
+        node = {"name": name, "path": path, "children": [], "n_incoming": 0,
+                "is_creation": path in creations}
+        parent["children"].append(node)
+        index[path] = node
+        return node
+
+    for f in folders:
+        _ensure(f)
+    for path, n in direct.items():
+        if not path:
+            continue
+        _ensure(path)
+
+    def _agg(node: dict) -> int:
+        total = direct.get(node["path"], 0)
+        for c in node["children"]:
+            total += _agg(c)
+        node["n_incoming"] = total
+        return total
+
+    _agg(root)
+    return root

@@ -182,5 +182,36 @@ class TestDoubtFiles(unittest.TestCase):
         self.assertEqual(out["page"], 1)
 
 
+from dashboard.refonte_results import build_proposed_tree  # noqa: E402
+
+
+class TestProposedTree(unittest.TestCase):
+
+    def test_incoming_counts_and_creation_flag(self):
+        folders = ["02-INFORMATIQUE/14-Web", "02-INFORMATIQUE/05-IA-ML/RAG"]
+        rows = [
+            {"proposed_folder": "02-INFORMATIQUE/14-Web"},
+            {"proposed_folder": "02-INFORMATIQUE/14-Web"},
+            {"proposed_folder": "02-INFORMATIQUE/05-IA-ML/RAG"},
+        ]
+        tree = build_proposed_tree(folders, rows,
+                                   creations={"02-INFORMATIQUE/05-IA-ML/RAG"})
+        info = next(c for c in tree["children"] if c["name"] == "02-INFORMATIQUE")
+        self.assertEqual(info["n_incoming"], 3)
+        rag = _find(info, "RAG")
+        self.assertTrue(rag["is_creation"])
+        self.assertEqual(rag["n_incoming"], 1)
+
+
+def _find(node, name):
+    if node["name"] == name:
+        return node
+    for c in node.get("children", []):
+        r = _find(c, name)
+        if r:
+            return r
+    return None
+
+
 if __name__ == "__main__":
     unittest.main()
