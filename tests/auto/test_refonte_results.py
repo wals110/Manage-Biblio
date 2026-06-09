@@ -98,5 +98,39 @@ class TestRiskScore(unittest.TestCase):
         self.assertGreater(b, c)
 
 
+from dashboard.refonte_results import build_risk_matrix  # noqa: E402
+
+
+class TestRiskMatrix(unittest.TestCase):
+
+    def _rows(self):
+        return [
+            {"source": "LLM (theme)", "confidence": "0.95"},
+            {"source": "LLM (theme)", "confidence": "0.95"},
+            {"source": "Keyword (x)", "confidence": "0.40"},
+            {"source": "LLM (fallback)", "confidence": "0.95"},
+            {"source": "FAILED", "confidence": "0.0"},
+        ]
+
+    def test_matrix_counts(self):
+        out = build_risk_matrix(self._rows())
+        cell = next(c for c in out["matrix"]
+                    if c["source_class"] == "p1_theme" and c["band"] == "0.9-1.0")
+        self.assertEqual(cell["count"], 2)
+
+    def test_budget_totals(self):
+        out = build_risk_matrix(self._rows())
+        budget = {b["source_class"]: b["count"] for b in out["budget"]}
+        self.assertEqual(budget["p1_theme"], 2)
+        self.assertEqual(budget["keyword"], 1)
+        self.assertEqual(budget["fallback"], 1)
+        self.assertEqual(budget["failed"], 1)
+
+    def test_n_doubt_excludes_safe_p1(self):
+        # doute = tout sauf P1(theme/refined) à conf>=0.7. Ici keyword+fallback+failed=3
+        out = build_risk_matrix(self._rows())
+        self.assertEqual(out["n_doubt"], 3)
+
+
 if __name__ == "__main__":
     unittest.main()

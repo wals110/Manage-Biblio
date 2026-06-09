@@ -88,3 +88,40 @@ def confidence_band(conf: float | None) -> str:
     if c < 0.9:
         return "0.7-0.9"
     return "0.9-1.0"
+
+
+SOURCE_CLASSES = ("p1_theme", "p1_refined", "keyword", "fallback", "failed")
+
+
+def build_risk_matrix(rows: list[dict]) -> dict:
+    """Construit la matrice source_class × confidence_band + le budget
+    (totaux par source) + n_doubt (zone de doute).
+
+    Zone de doute = toutes les classes sauf P1 (theme/refined) à
+    confiance >= 0.7.
+    """
+    from collections import defaultdict
+    cells: dict = defaultdict(int)
+    budget: dict = defaultdict(int)
+    n_doubt = 0
+    for r in rows:
+        sc = bucket_source(r.get("source"))
+        try:
+            conf = float(r.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        band = confidence_band(conf)
+        cells[(sc, band)] += 1
+        budget[sc] += 1
+        is_safe = sc in ("p1_theme", "p1_refined") and conf >= 0.7
+        if not is_safe:
+            n_doubt += 1
+    matrix = [
+        {"source_class": sc, "band": b, "count": cells.get((sc, b), 0)}
+        for sc in SOURCE_CLASSES for b in CONF_BANDS
+    ]
+    budget_list = [
+        {"source_class": sc, "count": budget.get(sc, 0)}
+        for sc in SOURCE_CLASSES
+    ]
+    return {"matrix": matrix, "budget": budget_list, "n_doubt": n_doubt}
