@@ -1070,11 +1070,32 @@
         '<span class="rr-trow-count">'+(node.n_incoming||0).toLocaleString('fr')+'</span></div>'+
         '<div class="rr-trow-track"><i style="width:'+w+'%"></i></div></div>';
     }
+    function rrCollectCreations(node, out){
+      if(node.is_creation && node.path) out.push(node);
+      (node.children||[]).forEach(c=>rrCollectCreations(c, out));
+      return out;
+    }
     function renderIcicle(tree, runId, profile){
       const el = document.getElementById('rr-arbre');
       const sections = (tree.children||[]).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
       const maxSec = Math.max(1, ...sections.map(s=>s.n_incoming));
       let h = '<div class="rr-ic-legend">🆕 = dossier créé · barre = nb de fichiers entrants · clic = provenance</div>';
+      // Liste dédiée des dossiers créés (souvent profonds : invisibles dans
+      // la vue 2-niveaux). Triés par entrants ; les peu-remplis flaggés.
+      const created = rrCollectCreations(tree, []).sort((a,b)=>b.n_incoming-a.n_incoming);
+      if(created.length){
+        const maxC = Math.max(1, ...created.map(c=>c.n_incoming));
+        h += '<details class="rr-created" open><summary>🆕 '+created.length+' dossiers créés par la refonte <span class="muted small">(cliquer pour replier · ⚠ = se remplit peu)</span></summary><div class="rr-created-list">';
+        h += created.map(c=>{
+          const w = Math.max(2, Math.round((c.n_incoming/maxC)*100));
+          const low = c.n_incoming < 5;
+          return '<div class="rr-trow rr-new" data-folder="'+c.path+'" title="'+c.path+'">'+
+            '<div class="rr-trow-top"><span class="rr-trow-name">'+(low?'⚠ ':'')+c.path+'</span>'+
+            '<span class="rr-trow-count">'+(c.n_incoming||0).toLocaleString('fr')+'</span></div>'+
+            '<div class="rr-trow-track"><i style="width:'+w+'%"></i></div></div>';
+        }).join('');
+        h += '</div></details>';
+      }
       h += '<div class="rr-tree"><div class="rr-tcol" id="rr-tcol-sec"><div class="rr-tcol-h">Sections</div>';
       h += sections.map(s=>rrTreeRow(s, maxSec)).join('');
       h += '</div><div class="rr-tcol" id="rr-tcol-sub"><div class="rr-tcol-h">Sous-dossiers</div>'+
@@ -1094,6 +1115,8 @@
       document.getElementById('rr-tcol-sec').querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>{
         const node=sections.find(s=>s.path===n.dataset.folder); showSub(node); loadProvenance(runId,profile,n.dataset.folder,n);
       });
+      // clic sur un dossier créé → sa provenance (sans changer de colonne)
+      el.querySelectorAll('.rr-created-list .rr-trow').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
     }
     async function loadProvenance(runId, profile, folder, nodeEl){
       document.querySelectorAll('.rr-trow.sel').forEach(e=>e.classList.remove('sel'));
