@@ -1063,28 +1063,40 @@
         renderIcicle(d.tree, runId, profile);
       } catch(e){ el.innerHTML = '<p class="muted small">Erreur de chargement.</p>'; }
     }
+    function rrTreeRow(node, maxVal){
+      const w = Math.max(2, Math.round((node.n_incoming / Math.max(1, maxVal)) * 100));
+      return '<div class="rr-trow'+(node.is_creation?' rr-new':'')+'" data-folder="'+node.path+'" title="'+node.path+'">'+
+        '<div class="rr-trow-top"><span class="rr-trow-name">'+(node.is_creation?'🆕 ':'')+node.name+'</span>'+
+        '<span class="rr-trow-count">'+(node.n_incoming||0).toLocaleString('fr')+'</span></div>'+
+        '<div class="rr-trow-track"><i style="width:'+w+'%"></i></div></div>';
+    }
     function renderIcicle(tree, runId, profile){
       const el = document.getElementById('rr-arbre');
       const sections = (tree.children||[]).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
-      let h = '<div class="rr-ic-legend">🆕 = dossier créé · hauteur = fichiers entrants · clic = provenance</div><div class="rr-icicle">';
-      h += '<div class="rr-ic-col" style="width:160px">';
-      sections.forEach(s=>{h+='<div class="rr-ic-node'+(s.is_creation?' rr-new':'')+'" style="flex:'+Math.max(1,s.n_incoming)+'" data-folder="'+s.path+'">'+s.name+'<small>'+s.n_incoming+'</small></div>';});
-      h += '</div><div class="rr-ic-col" style="flex:1" id="rr-ic-sub"></div></div>';
+      const maxSec = Math.max(1, ...sections.map(s=>s.n_incoming));
+      let h = '<div class="rr-ic-legend">🆕 = dossier créé · barre = nb de fichiers entrants · clic = provenance</div>';
+      h += '<div class="rr-tree"><div class="rr-tcol" id="rr-tcol-sec"><div class="rr-tcol-h">Sections</div>';
+      h += sections.map(s=>rrTreeRow(s, maxSec)).join('');
+      h += '</div><div class="rr-tcol" id="rr-tcol-sub"><div class="rr-tcol-h">Sous-dossiers</div>'+
+           '<span class="muted small" style="padding:8px;display:block">Clique une section.</span></div></div>';
       h += '<div class="rr-prov" id="rr-prov"><span class="muted small">Clique un dossier pour voir d\'où viennent ses fichiers.</span></div>';
       el.innerHTML = h;
       function showSub(node){
-        const sub = document.getElementById('rr-ic-sub');
+        const sub = document.getElementById('rr-tcol-sub');
         const ch = (node && node.children ? node.children : []).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
-        sub.innerHTML = ch.map(c=>'<div class="rr-ic-node'+(c.is_creation?' rr-new':'')+'" style="flex:'+Math.max(1,c.n_incoming)+'" data-folder="'+c.path+'">'+(c.is_creation?'🆕 ':'')+c.name+'<small>'+c.n_incoming+'</small></div>').join('');
-        sub.querySelectorAll('.rr-ic-node').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
+        const maxCh = Math.max(1, ...ch.map(c=>c.n_incoming));
+        sub.innerHTML = '<div class="rr-tcol-h">Sous-dossiers de '+(node?node.name:'')+'</div>'+
+          (ch.length ? ch.map(c=>rrTreeRow(c, maxCh)).join('')
+                     : '<span class="muted small" style="padding:8px;display:block">Aucun sous-dossier.</span>');
+        sub.querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
       }
       if(sections[0]) showSub(sections[0]);
-      el.querySelectorAll('.rr-ic-col:first-child .rr-ic-node').forEach(n=>n.onclick=()=>{
+      document.getElementById('rr-tcol-sec').querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>{
         const node=sections.find(s=>s.path===n.dataset.folder); showSub(node); loadProvenance(runId,profile,n.dataset.folder,n);
       });
     }
     async function loadProvenance(runId, profile, folder, nodeEl){
-      document.querySelectorAll('.rr-ic-node.sel').forEach(e=>e.classList.remove('sel'));
+      document.querySelectorAll('.rr-trow.sel').forEach(e=>e.classList.remove('sel'));
       if(nodeEl) nodeEl.classList.add('sel');
       const r = await fetch('/api/agent/refonte/proposition/'+runId+'/folder-provenance?profile='+encodeURIComponent(profile)+'&folder='+encodeURIComponent(folder));
       const d = await r.json();

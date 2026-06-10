@@ -6695,3 +6695,17 @@ th {
 .rr-flow{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:5px}
 .rr-flow-l{width:230px}
 .rr-flow-bar{height:9px;border-radius:3px;background:#38bdf8}
+/* ── Arbre proposé : liste à barres (remplace l'icicle écrasé) ───────── */
+.rr-tree{display:flex;gap:14px;margin-top:4px}
+.rr-tcol{flex:1;max-height:440px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px}
+.rr-tcol-h{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#8b949e);font-weight:700;padding:4px 6px 8px;position:sticky;top:0;background:#0f172a;z-index:1}
+.rr-trow{padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px}
+.rr-trow:hover{background:#ffffff0d}
+.rr-trow.sel{background:#8b5cf622;outline:1px solid #8b5cf6}
+.rr-trow-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px}
+.rr-trow-name{color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr-trow-count{color:var(--text-muted,#8b949e);font-variant-numeric:tabular-nums;flex-shrink:0}
+.rr-trow-track{height:6px;background:#1b2536;border-radius:3px;overflow:hidden;margin-top:5px}
+.rr-trow-track>i{display:block;height:100%;background:#3b82f6;border-radius:3px}
+.rr-trow.rr-new .rr-trow-name{color:#fbbf24}
+.rr-trow.rr-new .rr-trow-track>i{background:#f59e0b}
