@@ -2017,6 +2017,63 @@ def delete_mappings_bulk(profile: str, keys: list[str]) -> dict:
         }
 
 
+def add_mappings_bulk(profile: str, mappings: list[dict]) -> dict:
+    """Add multiple theme→folder entries in one transaction.
+
+    A single backup is created before the batch (only if at least one entry
+    is actually added); the lock is held for the whole operation. Invalid or
+    redundant entries are reported in `skipped` rather than aborting (so a
+    partial selection still proceeds). Existing mappings are never overwritten.
+
+    Each item of `mappings` is a dict ``{"theme": str, "folder": str}``.
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        mapping = _load_mapping(profile)
+        added: list[dict] = []
+        skipped: list[dict] = []
+        # Dedup by theme key (raw), keeping the first occurrence.
+        seen: set[str] = set()
+        for item in mappings or []:
+            raw_theme = (item.get("theme") or "") if isinstance(item, dict) else ""
+            raw_folder = (item.get("folder") or "") if isinstance(item, dict) else ""
+            if raw_theme in seen:
+                skipped.append({"theme": raw_theme, "reason": "duplicate_in_batch"})
+                continue
+            seen.add(raw_theme)
+            try:
+                theme = _validate_theme(raw_theme)
+                folder = _validate_folder(profile, raw_folder)
+            except TaxonomyError as exc:
+                skipped.append({"theme": raw_theme, "reason": str(exc)})
+                continue
+            if theme in mapping:
+                skipped.append({"theme": theme, "reason": "already_mapped"})
+                continue
+            mapping[theme] = folder
+            added.append({"theme": theme, "folder": folder})
+
+        if not added:
+            return {
+                "ok": True,
+                "n_added": 0,
+                "added": [],
+                "skipped": skipped,
+                "backup": None,
+            }
+        backup = _backup_mapping(profile)
+        _write_mapping(profile, mapping)
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "n_added": len(added),
+            "added": added,
+            "skipped": skipped,
+            "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+        }
+
+
 # ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────
 
 

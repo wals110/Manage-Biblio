@@ -1732,6 +1732,120 @@ class TestBulkDeleteMapping(TaxonomyTestBase):
             taxonomy.delete_mappings_bulk(self.profile_name, ["   "])
 
 
+class TestBulkAddMapping(TaxonomyTestBase):
+
+    def test_bulk_add_happy_path(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["n_added"], 2)
+        added_themes = {a["theme"] for a in r["added"]}
+        self.assertEqual(added_themes, {"thermodynamics", "geometry"})
+        self.assertEqual(r["skipped"], [])
+        self.assertIsNotNone(r["backup"])
+        # YAML actually updated, existing entries preserved
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(new_map["thermodynamics"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(new_map["geometry"], "01-SCIENCES/MATHEMATIQUES")
+        self.assertIn("physics", new_map)
+
+    def test_bulk_add_already_mapped_is_skipped_no_overwrite(self):
+        # 'physics' is already mapped to 01-SCIENCES/PHYSIQUE in the fixture.
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "physics", "folder": "02-INFORMATIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        skipped_themes = {s["theme"] for s in r["skipped"]}
+        self.assertIn("physics", skipped_themes)
+        reasons = {s["theme"]: s["reason"] for s in r["skipped"]}
+        self.assertEqual(reasons["physics"], "already_mapped")
+        # No overwrite of the existing mapping
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(new_map["physics"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(new_map["geometry"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_bulk_add_unknown_folder_is_skipped(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "thermodynamics", "folder": "99-DOES-NOT-EXIST"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        added_themes = {a["theme"] for a in r["added"]}
+        self.assertEqual(added_themes, {"geometry"})
+        skipped_themes = {s["theme"] for s in r["skipped"]}
+        self.assertEqual(skipped_themes, {"thermodynamics"})
+
+    def test_bulk_add_invalid_theme_is_skipped(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "   ", "folder": "01-SCIENCES/PHYSIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        self.assertEqual({a["theme"] for a in r["added"]}, {"geometry"})
+        self.assertEqual(len(r["skipped"]), 1)
+
+    def test_bulk_add_dedupes_keeping_first(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            {"theme": "geometry", "folder": "02-INFORMATIQUE"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        added = {a["theme"]: a["folder"] for a in r["added"]}
+        self.assertEqual(added["geometry"], "01-SCIENCES/MATHEMATIQUES")
+        # The duplicate is reported as skipped
+        self.assertEqual(len(r["skipped"]), 1)
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(new_map["geometry"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_bulk_add_empty_list_no_backup_no_write(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        r = taxonomy.add_mappings_bulk(self.profile_name, [])
+        self.assertEqual(r["n_added"], 0)
+        self.assertIsNone(r["backup"])
+        after = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        self.assertEqual(len(after), len(before))
+
+    def test_bulk_add_all_skipped_no_backup_no_write(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "physics", "folder": "02-INFORMATIQUE"},  # already mapped
+            {"theme": "x", "folder": "99-DOES-NOT-EXIST"},       # bad folder
+        ])
+        self.assertEqual(r["n_added"], 0)
+        self.assertIsNone(r["backup"])
+        after = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        self.assertEqual(len(after), len(before))
+
+    def test_bulk_add_creates_single_backup(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            {"theme": "optics", "folder": "01-SCIENCES/PHYSIQUE"},
+        ])
+        after = list(backup_dir.glob("*.yaml"))
+        # Exactly one new backup file regardless of how many entries were added.
+        self.assertEqual(len(after) - len(before), 1)
+
+    def test_bulk_add_respects_lock(self):
+        lock = self.profile_dir / ".cache" / "taxonomy.lock"
+        lock.write_text("locked by test")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.add_mappings_bulk(self.profile_name, [
+                {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+            ])
+        self.assertEqual(ctx.exception.status, 423)
+
+
 class TestDormantAndBulkEndpoints(TaxonomyTestBase):
 
     def setUp(self):
