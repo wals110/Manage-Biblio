@@ -38,6 +38,8 @@ import yaml
 from dashboard import data
 from lib import vision_cache
 from lib.classifier import classify_by_theme, classify_combined, load_keyword_classifier
+from lib.constants import MAPPER_MIN_CONFIDENCE
+from lib.llm_mapper import LLMMapper
 
 # Filter weak LLM signals before populating the themes universe.
 _MIN_CONFIDENCE = 0.5
@@ -2099,20 +2101,24 @@ def suggest_mappings(
     use_llm: bool = False,
     max_llm: int = 60,
 ) -> dict:
-    """Suggère un dossier cible pour chaque thème (passe déterministe seule).
+    """Suggère un dossier cible pour chaque thème (déterministe + LLM optionnel).
 
     Args:
         profile: nom du profil.
         themes: liste de noms de thèmes à mapper.
-        use_llm: accepté mais NON câblé en T3 (la passe LLM = Tâche 4).
-        max_llm: budget d'appels LLM, accepté mais inutilisé en T3.
+        use_llm: si True ET clé API présente, lance la passe LLM mapper
+            (parallélisée) sur les thèmes restés non résolus.
+        max_llm: borne de coût — au plus ``max_llm`` appels LLM. Les thèmes
+            non résolus au-delà de cette borne restent ``unresolved``.
 
     Returns:
         ``{"suggestions": [{theme, folder, confidence, source, reason}, ...],
-           "n_llm_calls": 0}``
+           "n_llm_calls": int}``
 
         - source="deterministic" : résolu par KeywordClassifier ou nom de dossier.
-        - source="unresolved"     : non résolu (la passe LLM de T4 remplira ces cas).
+        - source="llm"            : résolu par le LLM mapper (passe parallèle).
+        - source="unresolved"     : non résolu (déterministe + LLM échoués, ou
+                                     pas de clé API / borne LLM atteinte).
     """
     from dashboard.categories import _normalize_segment
 
@@ -2183,8 +2189,92 @@ def suggest_mappings(
             "reason": reason,
         })
 
-    # La passe LLM (use_llm) sera câblée en Tâche 4 — aucun appel ici.
-    return {"suggestions": suggestions, "n_llm_calls": 0}
+    # ── Passe LLM (Tâche 4) ──────────────────────────────────────────────
+    # Sur les thèmes restés unresolved, si use_llm ET clé API présente :
+    # appel LLM mapper EN PARALLÈLE, borné par max_llm. Lecture seule —
+    # aucun write de theme_mapping.yaml, pas de lock.
+    n_llm_calls = _run_llm_pass(
+        profile=profile,
+        suggestions=suggestions,
+        folders=folders,
+        sample_by_theme=sample_by_theme,
+        use_llm=use_llm,
+        max_llm=max_llm,
+    )
+    return {"suggestions": suggestions, "n_llm_calls": n_llm_calls}
+
+
+def _run_llm_pass(
+    profile: str,
+    suggestions: list[dict],
+    folders: list[str],
+    sample_by_theme: dict[str, str],
+    use_llm: bool,
+    max_llm: int,
+) -> int:
+    """Résout via LLM mapper les suggestions restées ``unresolved`` (in place).
+
+    No-op (retourne 0) si ``use_llm`` est faux ou si la clé API
+    ``SILICONFLOW_API_KEY`` est absente. Les appels sont parallélisés
+    (``ThreadPoolExecutor(max_workers=8)``) et bornés par ``max_llm`` : le
+    surplus reste ``unresolved`` avec ``reason="limite LLM atteinte"``.
+
+    Retourne le nombre d'appels LLM réellement effectués.
+    """
+    pending = [s for s in suggestions if s["source"] == "unresolved"]
+    if not use_llm or not pending:
+        return 0
+
+    api_key = os.environ.get("SILICONFLOW_API_KEY")
+    if not api_key:
+        return 0
+
+    # Au plus max_llm thèmes ; le surplus reste unresolved (borne de coût).
+    to_call = pending[: max(0, int(max_llm))]
+    overflow = pending[max(0, int(max_llm)):]
+    for s in overflow:
+        s["reason"] = "limite LLM atteinte"
+    if not to_call:
+        return 0
+
+    # UN mapper partagé — construction calquée sur commands/helpers.py :
+    # folders (tree.yaml) + endpoint/model (profile.yaml) + clé API.
+    cfg = _load_profile_yaml(profile)
+    llm_cfg = cfg.get("llm") or {}
+    endpoint = llm_cfg.get("endpoint") or (
+        "https://api.siliconflow.com/v1/chat/completions"
+    )
+    model = llm_cfg.get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    mapper = LLMMapper(
+        folders=folders,
+        api_key=api_key,
+        endpoint=endpoint,
+        model=model,
+        min_confidence=MAPPER_MIN_CONFIDENCE,
+    )
+
+    def _resolve(sug: dict) -> tuple[dict, str | None]:
+        theme = sug["theme"]
+        theme_norm = _normalize_theme(theme or "")
+        title = sample_by_theme.get(theme_norm.lower(), "")
+        try:
+            folder = mapper.resolve(theme, title=title)
+        except Exception:  # noqa: BLE001 — un thème ne doit pas casser le lot
+            folder = None
+        return sug, folder
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    folder_set = set(folders)
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for sug, folder in ex.map(_resolve, to_call):
+            if folder and folder in folder_set:
+                sug["folder"] = folder
+                sug["confidence"] = MAPPER_MIN_CONFIDENCE
+                sug["source"] = "llm"
+                sug["reason"] = "LLM mapper"
+
+    return len(to_call)
 
 
 # ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────

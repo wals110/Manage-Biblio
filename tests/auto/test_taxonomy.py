@@ -3051,18 +3051,96 @@ class TestSuggestMappings(TaxonomyTestBase):
         self.assertEqual(sug["confidence"], 0.0)
         self.assertEqual(sug["reason"], "")
 
-    def test_d_no_llm_calls_in_t3(self):
-        # Même avec use_llm=True, T3 ne câble pas la passe LLM.
-        out = taxonomy.suggest_mappings(
-            self.profile_name,
-            ["Quantum Field Theory", "Mathematiques", "Inconnu Total XYZ"],
-            use_llm=True,
-        )
+    def test_d_deterministic_still_works_with_use_llm(self):
+        # Avec use_llm=True, les thèmes résolus par le déterministe le restent.
+        # (sans clé API, la passe LLM est de toute façon un no-op : cf. test_g)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            out = taxonomy.suggest_mappings(
+                self.profile_name,
+                ["Quantum Field Theory", "Mathematiques", "Inconnu Total XYZ"],
+                use_llm=True,
+            )
         self.assertEqual(out["n_llm_calls"], 0)
         self.assertEqual(len(out["suggestions"]), 3)
-        # Le 3e reste unresolved (pas de LLM en T3).
+        # Les 2 premiers restent résolus par le déterministe.
+        self.assertEqual(out["suggestions"][0]["source"], "deterministic")
+        self.assertEqual(out["suggestions"][1]["source"], "deterministic")
+        # Le 3e reste unresolved (pas de clé → pas de LLM).
         self.assertEqual(out["suggestions"][2]["source"], "unresolved")
         self.assertIsNone(out["suggestions"][2]["folder"])
+
+    # ── Passe LLM (T4) — LLMMapper.resolve TOUJOURS mocké : zéro réseau ──
+
+    def test_e_unresolved_resolved_by_llm(self):
+        # Thème ambigu non résolu par le déterministe + use_llm=True +
+        # clé API présente → la passe LLM le résout (resolve mocké).
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve", return_value="02-INFORMATIQUE"
+        ) as m_resolve:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ["Mésopotamie Numérique Floue"], use_llm=True
+            )
+        sug = out["suggestions"][0]
+        self.assertEqual(sug["folder"], "02-INFORMATIQUE")
+        self.assertEqual(sug["source"], "llm")
+        self.assertGreaterEqual(out["n_llm_calls"], 1)
+        self.assertTrue(m_resolve.called)
+
+    def test_f_deterministic_skips_llm_call(self):
+        # Un thème résolu par le DÉTERMINISTE ne déclenche AUCUN appel LLM.
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve", return_value="02-INFORMATIQUE"
+        ) as m_resolve:
+            out = taxonomy.suggest_mappings(
+                self.profile_name,
+                ["Quantum Field Theory", "Mathematiques"],
+                use_llm=True,
+            )
+        # Tous déterministes → aucun appel LLM.
+        self.assertEqual(out["n_llm_calls"], 0)
+        self.assertFalse(m_resolve.called)
+        self.assertEqual(out["suggestions"][0]["source"], "deterministic")
+        self.assertEqual(out["suggestions"][1]["source"], "deterministic")
+
+    def test_g_no_api_key_means_no_llm(self):
+        # use_llm=True mais pas de clé API → aucun appel, reste unresolved.
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+            taxonomy.LLMMapper, "resolve", return_value="02-INFORMATIQUE"
+        ) as m_resolve:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ["Mésopotamie Numérique Floue"], use_llm=True
+            )
+        sug = out["suggestions"][0]
+        self.assertEqual(out["n_llm_calls"], 0)
+        self.assertFalse(m_resolve.called)
+        self.assertIsNone(sug["folder"])
+        self.assertEqual(sug["source"], "unresolved")
+
+    def test_h_max_llm_bounds_calls(self):
+        # Plus de thèmes ambigus que max_llm → seuls max_llm appels ;
+        # le surplus reste unresolved avec une raison explicite.
+        ambiguous = [f"Theme Ambigu Inconnu {i}" for i in range(5)]
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve", return_value="02-INFORMATIQUE"
+        ) as m_resolve:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ambiguous, use_llm=True, max_llm=2
+            )
+        # Exactement max_llm appels réels.
+        self.assertEqual(m_resolve.call_count, 2)
+        self.assertEqual(out["n_llm_calls"], 2)
+        resolved = [s for s in out["suggestions"] if s["source"] == "llm"]
+        unresolved = [s for s in out["suggestions"] if s["source"] == "unresolved"]
+        self.assertEqual(len(resolved), 2)
+        self.assertEqual(len(unresolved), 3)
+        # Le surplus porte une raison de borne LLM.
+        self.assertTrue(any("limite" in s["reason"].lower() for s in unresolved))
 
 
 if __name__ == "__main__":
