@@ -922,38 +922,54 @@
     function renderPhaseBReport(runId, status) {
         const rationaleMd = status.rationale_md || '';
         const profile = currentProfile();
-        // Vue 3 onglets dans la zone Rapport, lazy-load des contenus Diff +
-        // Impact au clic (les requêtes peuvent être lourdes sur 18k fichiers).
+        // Vue 3 onglets décisionnels : Verdict (défaut, chargé d'emblée),
+        // Arbre proposé et Plan complet en lazy-load au clic (les requêtes
+        // peuvent être lourdes sur 18k fichiers).
         reportEl.innerHTML =
             '<div class="tax-refonte-phaseb-tabs" role="tablist">'
-          + '  <button class="tax-refonte-phaseb-tab active" data-pane="rationale">📋 Rationale</button>'
-          + '  <button class="tax-refonte-phaseb-tab" data-pane="diff">🌳 Diff tree</button>'
-          + '  <button class="tax-refonte-phaseb-tab" data-pane="impact">📊 Impact reclassify</button>'
+          + '  <button class="tax-refonte-phaseb-tab active" data-pane="verdict">🚦 Verdict &amp; Risque</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="arbre">🌳 Arbre proposé</button>'
+          + '  <button class="tax-refonte-phaseb-tab" data-pane="plan">📋 Plan complet</button>'
           + '</div>'
-          + '<div class="tax-refonte-phaseb-pane active" data-pane="rationale">'
+          + '<div class="tax-refonte-phaseb-pane active" data-pane="verdict">'
+          + '  <div class="rr-verdict" id="rr-verdict"><p class="muted small">Chargement…</p></div>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="arbre">'
+          + '  <div class="rr-arbre" id="rr-arbre"></div>'
+          + '</div>'
+          + '<div class="tax-refonte-phaseb-pane" data-pane="plan">'
           + '  <div class="tax-refonte-md" id="tax-refonte-rationale-md"></div>'
-          + '</div>'
-          + '<div class="tax-refonte-phaseb-pane" data-pane="diff">'
-          + '  <p class="muted small">Chargement du diff…</p>'
-          + '</div>'
-          + '<div class="tax-refonte-phaseb-pane" data-pane="impact">'
-          + '  <p class="muted small">Chargement de la projection…</p>'
           + '</div>';
-        // Rationale rendu inline
-        const rationaleEl = document.getElementById('tax-refonte-rationale-md');
-        if (window.marked && rationaleMd) {
-            rationaleEl.innerHTML = window.marked.parse(rationaleMd);
-            enhancePhaseBRationale(rationaleEl);
-        } else {
-            rationaleEl.textContent = rationaleMd || '(rationale vide)';
-        }
-        currentReportMd = rationaleMd;  // Copy/download retourne le rationale
+        // Le rationale (markdown) reste la source du copy/download
+        currentReportMd = rationaleMd;
         updateActionButtons(!!rationaleMd);
+
+        // Rend le rationale markdown dans le pane "Plan complet".
+        let planRendered = false;
+        function renderPlan() {
+            if (planRendered) return;
+            planRendered = true;
+            const rationaleEl = document.getElementById('tax-refonte-rationale-md');
+            if (!rationaleEl) return;
+            if (window.marked && rationaleMd) {
+                rationaleEl.innerHTML = window.marked.parse(rationaleMd);
+                enhancePhaseBRationale(rationaleEl);
+            } else {
+                rationaleEl.textContent = rationaleMd || '(rationale vide)';
+            }
+        }
+
+        // Verdict = pane par défaut : chargé d'emblée (loadVerdict arrive en
+        // tâche 15 — guardé tant qu'il n'existe pas).
+        let verdictLoaded = false, arbreLoaded = false;
+        if (!verdictLoaded) {
+            verdictLoaded = true;
+            if (typeof loadVerdict === 'function') loadVerdict(runId, profile);
+        }
 
         // Bind tabs : lazy load au clic
         const tabs = reportEl.querySelectorAll('.tax-refonte-phaseb-tab');
         const panes = reportEl.querySelectorAll('.tax-refonte-phaseb-pane');
-        let diffLoaded = false, impactLoaded = false;
         tabs.forEach(t => {
             t.addEventListener('click', () => {
                 tabs.forEach(x => x.classList.remove('active'));
@@ -962,147 +978,174 @@
                 const name = t.dataset.pane;
                 const pane = reportEl.querySelector('.tax-refonte-phaseb-pane[data-pane="' + name + '"]');
                 pane.classList.add('active');
-                if (name === 'diff' && !diffLoaded) {
-                    diffLoaded = true;
-                    loadTreeDiff(runId, profile, pane);
-                } else if (name === 'impact' && !impactLoaded) {
-                    impactLoaded = true;
-                    loadSimulation(runId, profile, pane);
+                if (name === 'verdict' && !verdictLoaded) {
+                    verdictLoaded = true;
+                    if (typeof loadVerdict === 'function') loadVerdict(runId, profile);
+                } else if (name === 'arbre' && !arbreLoaded) {
+                    arbreLoaded = true;
+                    if (typeof loadProposedTree === 'function') loadProposedTree(runId, profile);
+                } else if (name === 'plan') {
+                    renderPlan();
                 }
             });
         });
     }
 
-    async function loadTreeDiff(runId, profile, pane) {
-        try {
-            const r = await fetch('/api/agent/refonte/proposition/' + runId
-                                  + '/tree-diff?profile=' + encodeURIComponent(profile));
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const d = await r.json();
-            renderTreeDiff(d, pane);
-        } catch (err) {
-            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
-                           + err.message + '</p>';
-        }
+    async function loadVerdict(runId, profile){
+      const el = document.getElementById('rr-verdict');
+      try {
+        const r = await fetch('/api/agent/refonte/proposition/'+runId+'/risk-matrix?profile='+encodeURIComponent(profile));
+        const d = await r.json();
+        renderVerdict(d, runId, profile);
+      } catch(e){ el.innerHTML = '<p class="muted small">Erreur de chargement.</p>'; }
     }
-
-    function renderTreeDiff(d, pane) {
-        const parts = [];
-        parts.push('<p class="muted small">'
-          + d.n_folders_before + ' dossiers → ' + d.n_folders_after + ' après refonte</p>');
-        if (d.added && d.added.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#22c55e;">+ Créés (' + d.added.length + ')</h4>');
-            for (const f of d.added) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-add">'
-                  + '+ ' + escapeHtml(f) + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (d.removed && d.removed.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#ef4444;">− Supprimés (' + d.removed.length + ')</h4>');
-            for (const f of d.removed) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-remove">'
-                  + '− ' + escapeHtml(f) + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (d.renamed && d.renamed.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#f59e0b;">↻ Renommés (' + d.renamed.length + ')</h4>');
-            for (const r of d.renamed) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-rename">'
-                  + escapeHtml(r.old) + ' → ' + escapeHtml(r.new)
-                  + (r.rationale ? '<div class="muted small">' + escapeHtml(r.rationale) + '</div>' : '')
-                  + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (d.fused && d.fused.length) {
-            parts.push('<div class="tax-refonte-diff-section">');
-            parts.push('<h4 style="color:#8b5cf6;">⇆ Fusions (' + d.fused.length + ')</h4>');
-            for (const f of d.fused) {
-                parts.push('<div class="tax-refonte-diff-item tax-refonte-diff-fusion">'
-                  + (f.sources || []).map(escapeHtml).join(' + ') + ' → ' + escapeHtml(f.target)
-                  + (f.rationale ? '<div class="muted small">' + escapeHtml(f.rationale) + '</div>' : '')
-                  + '</div>');
-            }
-            parts.push('</div>');
-        }
-        if (parts.length <= 1) {
-            parts.push('<p class="muted">Aucun changement structurel — uniquement des mappings ajoutés.</p>');
-        }
-        pane.innerHTML = parts.join('\n');
+    const RR_SRC = [
+      {k:'p1_theme',name:'P1 mapping',col:'#4ade80'},
+      {k:'p1_refined',name:'P1 affiné',col:'#22c55e'},
+      {k:'keyword',name:'keyword P2',col:'#fbbf24'},
+      {k:'fallback',name:'fallback P4',col:'#fb923c'},
+      {k:'failed',name:'FAILED',col:'#f87171'},
+    ];
+    const RR_BANDS = ['0-0.5','0.5-0.7','0.7-0.9','0.9-1.0'];
+    function rrCellClass(sc,band,n){
+      if(n===0) return 'rr-c0';
+      if(sc==='p1_theme'||sc==='p1_refined') return (band==='0.9-1.0'||band==='0.7-0.9')?'rr-cg':'rr-cy';
+      if(sc==='failed') return 'rr-cr';
+      if(sc==='fallback') return band==='0.9-1.0'?'rr-co':'rr-cy';
+      if(sc==='keyword') return band==='0-0.5'?'rr-cr':'rr-cy';
+      return 'rr-cy';
     }
-
-    async function loadSimulation(runId, profile, pane) {
-        try {
-            const r = await fetch('/api/agent/refonte/proposition/' + runId
-                                  + '/simulation?profile=' + encodeURIComponent(profile));
-            if (!r.ok) {
-                if (r.status === 404) {
-                    pane.innerHTML = '<p class="muted">Pas de simulation disponible pour ce run.</p>';
-                    return;
-                }
-                throw new Error('HTTP ' + r.status);
-            }
-            const d = await r.json();
-            renderSimulation(d, pane);
-        } catch (err) {
-            pane.innerHTML = '<p style="color:#ef4444;">Erreur de chargement : '
-                           + err.message + '</p>';
-        }
+    function renderVerdict(d, runId, profile){
+      const el = document.getElementById('rr-verdict');
+      const bud = {}; d.budget.forEach(b=>bud[b.source_class]=b.count);
+      const total = d.budget.reduce((s,b)=>s+b.count,0) || 1;
+      const cellMap = {}; d.matrix.forEach(c=>cellMap[c.source_class+'|'+c.band]=c.count);
+      let html = '<div class="rr-budget">';
+      RR_SRC.forEach(s=>{const n=bud[s.k]||0; if(n>0) html+='<div style="flex:'+n+';background:'+s.col+'" title="'+s.name+' '+n+'">'+(n/total>0.05?n.toLocaleString('fr'):'')+'</div>';});
+      html += '</div><div class="rr-doubt-kpi">⚠ '+(d.n_doubt||0).toLocaleString('fr')+' fichiers à revoir</div>';
+      html += '<div class="rr-mx"><div></div>'+RR_BANDS.map(b=>'<div class="rr-h">'+b+'</div>').join('');
+      RR_SRC.forEach(s=>{html+='<div class="rr-rh">'+s.name+'</div>';
+        RR_BANDS.forEach(b=>{const n=cellMap[s.k+'|'+b]||0;const cls=rrCellClass(s.k,b,n);
+          const clickable=(cls==='rr-cr'||cls==='rr-co'||cls==='rr-cy')&&n>0;
+          html+='<div class="rr-cell '+cls+'"'+(clickable?' data-sc="'+s.k+'" data-band="'+b+'"':'')+'>'+(n>0?n.toLocaleString('fr'):'·')+'</div>';});});
+      html += '</div><div class="rr-table-host" id="rr-table-host"></div>';
+      el.innerHTML = html;
+      el.querySelectorAll('.rr-cell[data-sc]').forEach(c=>c.onclick=()=>{
+        el.querySelectorAll('.rr-cell.sel').forEach(e=>e.classList.remove('sel')); c.classList.add('sel');
+        loadDoubt(runId, profile, c.dataset.sc, c.dataset.band);
+      });
     }
+    async function loadDoubt(runId, profile, sc, band){
+      const host = document.getElementById('rr-table-host');
+      host.innerHTML = '<p class="muted small">Chargement…</p>';
+      const r = await fetch('/api/agent/refonte/proposition/'+runId+'/doubt-files?profile='+encodeURIComponent(profile)+'&source_class='+encodeURIComponent(sc)+'&band='+encodeURIComponent(band)+'&page_size=50');
+      const d = await r.json();
+      let h = '<div class="rr-table-head">'+d.total+' fichier(s) · triés par risque ▼</div><table class="rr-ftab"><thead><tr><th>Fichier</th><th>Source</th><th>Déplacement</th><th>Conf.</th><th>Alerte</th><th>Triage</th></tr></thead><tbody>';
+      d.rows.forEach(x=>{
+        const gc = x.confidence>=0.7?'#4ade80':x.confidence>=0.5?'#fbbf24':'#f87171';
+        h += '<tr><td>'+x.rel_path+'</td><td><span class="rr-badge">'+x.source_class+'</span></td>'+
+          '<td class="rr-arrow">'+(x.current_folder||'_')+' → '+(x.proposed_folder||'(aucune)')+'</td>'+
+          '<td><span class="rr-gauge"><i style="width:'+Math.round(x.confidence*100)+'%;background:'+gc+'"></i></span></td>'+
+          '<td>'+(x.is_new_dest?'🆕':'')+(x.is_jump?'⇄':'')+'</td>'+
+          '<td><span class="rr-act" onclick="rrVerdict(this,1)">✓</span><span class="rr-act" onclick="rrVerdict(this,0)">✗</span></td></tr>';
+      });
+      h += '</tbody></table>';
+      host.innerHTML = h;
+    }
+    // triage éphémère (V1) : marque la ligne, AUCUNE persistance
+    function rrVerdict(elm, ok){const tr=elm.closest('tr');tr.style.opacity=0.4;tr.style.background=ok?'#14532d22':'#3a141422';}
 
-    function renderSimulation(d, pane) {
-        const s = d.summary || {};
-        const cards = [
-            { label: 'Fichiers', num: s.n_files || 0 },
-            { label: 'Déplacés', num: s.n_moving || 0 },
-            { label: 'Stables', num: s.n_stable || 0 },
-            { label: 'Non prédits', num: s.n_no_prediction || 0 },
-        ];
-        const cardsHtml = cards.map(c =>
-            '<div class="tax-refonte-stat-card">'
-          + '  <div class="num">' + c.num + '</div>'
-          + '  <div class="label">' + c.label + '</div>'
-          + '</div>'
-        ).join('');
-
-        let topDest = '';
-        if (s.top_destinations && s.top_destinations.length) {
-            topDest = '<h4 style="margin-top:14px;">Top dossiers cibles (entrants)</h4>'
-                    + '<table class="tax-refonte-impact-table">'
-                    + '<thead><tr><th>Dossier</th><th style="text-align:right;">N entrants</th></tr></thead>'
-                    + '<tbody>'
-                    + s.top_destinations.slice(0, 10).map(d =>
-                        '<tr><td><code style="font-size:11px;">' + escapeHtml(d.folder)
-                      + '</code></td><td style="text-align:right;">' + d.n_incoming + '</td></tr>'
-                    ).join('')
-                    + '</tbody></table>';
-        }
-
-        let movesTbl = '';
-        if (d.sample_moves && d.sample_moves.length) {
-            movesTbl = '<h4 style="margin-top:14px;">Échantillon de déplacements ('
-                     + d.sample_moves.length + ' sur ' + d.n_moves_total + ')</h4>'
-                     + '<table class="tax-refonte-impact-table">'
-                     + '<thead><tr><th>Fichier</th><th>De</th><th>Vers</th></tr></thead>'
-                     + '<tbody>'
-                     + d.sample_moves.slice(0, 30).map(m =>
-                        '<tr><td title="' + escapeHtml(m.rel_path) + '">'
-                      + escapeHtml(m.rel_path.split('/').pop()) + '</td>'
-                      + '<td><code style="font-size:10px;">' + escapeHtml(m.current_folder) + '</code></td>'
-                      + '<td><code style="font-size:10px;">' + escapeHtml(m.proposed_folder) + '</code></td></tr>'
-                     ).join('')
-                     + '</tbody></table>';
-        }
-
-        pane.innerHTML =
-            '<div class="tax-refonte-stat-cards">' + cardsHtml + '</div>'
-          + topDest
-          + movesTbl;
+    async function loadProposedTree(runId, profile){
+      const el = document.getElementById('rr-arbre');
+      try {
+        const r = await fetch('/api/agent/refonte/proposition/'+runId+'/proposed-tree?profile='+encodeURIComponent(profile));
+        const d = await r.json();
+        renderIcicle(d.tree, runId, profile);
+      } catch(e){ el.innerHTML = '<p class="muted small">Erreur de chargement.</p>'; }
+    }
+    function rrTreeRow(node, maxVal){
+      const w = Math.max(2, Math.round((node.n_incoming / Math.max(1, maxVal)) * 100));
+      return '<div class="rr-trow'+(node.is_creation?' rr-new':'')+'" data-folder="'+node.path+'" title="'+node.path+'">'+
+        '<div class="rr-trow-top"><span class="rr-trow-name">'+(node.is_creation?'🆕 ':'')+node.name+'</span>'+
+        '<span class="rr-trow-count">'+(node.n_incoming||0).toLocaleString('fr')+'</span></div>'+
+        '<div class="rr-trow-track"><i style="width:'+w+'%"></i></div></div>';
+    }
+    function rrCollectCreations(node, out){
+      if(node.is_creation && node.path) out.push(node);
+      (node.children||[]).forEach(c=>rrCollectCreations(c, out));
+      return out;
+    }
+    function renderIcicle(tree, runId, profile){
+      const el = document.getElementById('rr-arbre');
+      const sections = (tree.children||[]).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
+      const maxSec = Math.max(1, ...sections.map(s=>s.n_incoming));
+      let h = '<div class="rr-ic-legend">🆕 = dossier créé · barre = nb de fichiers entrants · clic = provenance</div>';
+      // Liste dédiée des dossiers créés (souvent profonds : invisibles dans
+      // la vue 2-niveaux). Triés par entrants ; les peu-remplis flaggés.
+      const created = rrCollectCreations(tree, []).sort((a,b)=>b.n_incoming-a.n_incoming);
+      if(created.length){
+        const maxC = Math.max(1, ...created.map(c=>c.n_incoming));
+        h += '<details class="rr-created" open><summary>🆕 '+created.length+' dossiers créés par la refonte <span class="muted small">(cliquer pour replier · ⚠ = se remplit peu)</span></summary><div class="rr-created-list">';
+        h += created.map(c=>{
+          const w = Math.max(2, Math.round((c.n_incoming/maxC)*100));
+          const low = c.n_incoming < 5;
+          return '<div class="rr-trow rr-new" data-folder="'+c.path+'" title="'+c.path+'">'+
+            '<div class="rr-trow-top"><span class="rr-trow-name">'+(low?'⚠ ':'')+c.path+'</span>'+
+            '<span class="rr-trow-count">'+(c.n_incoming||0).toLocaleString('fr')+'</span></div>'+
+            '<div class="rr-trow-track"><i style="width:'+w+'%"></i></div></div>';
+        }).join('');
+        h += '</div></details>';
+      }
+      h += '<div class="rr-tree"><div class="rr-tcol" id="rr-tcol-sec"><div class="rr-tcol-h">Sections</div>';
+      h += sections.map(s=>rrTreeRow(s, maxSec)).join('');
+      h += '</div><div class="rr-tcol" id="rr-tcol-sub"><div class="rr-tcol-h">Sous-dossiers</div>'+
+           '<span class="muted small" style="padding:8px;display:block">Clique une section.</span></div></div>';
+      h += '<div class="rr-prov" id="rr-prov"><span class="muted small">Clique un dossier pour voir d\'où viennent ses fichiers.</span></div>';
+      el.innerHTML = h;
+      // Navigateur drillable : `trail` = pile de noeuds de la section au
+      // dossier courant. On affiche le fil d'Ariane + les enfants du dernier.
+      let trail = [];
+      function renderSub(){
+        const sub = document.getElementById('rr-tcol-sub');
+        const node = trail[trail.length-1];
+        const ch = (node && node.children ? node.children : []).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
+        const maxCh = Math.max(1, ...ch.map(c=>c.n_incoming));
+        const crumb = trail.map((n,i)=>'<span class="rr-crumb" data-i="'+i+'">'+n.name+'</span>').join('<span class="rr-crumb-sep">›</span>');
+        sub.innerHTML = '<div class="rr-tcol-h rr-crumb-bar">'+crumb+'</div>'+
+          (ch.length ? ch.map(c=>{
+              const hasKids = (c.children||[]).length>0;
+              return rrTreeRow(c, maxCh).replace('class="rr-trow', 'class="rr-trow'+(hasKids?' rr-haskids':''));
+            }).join('')
+            : '<span class="muted small" style="padding:8px;display:block">Aucun sous-dossier (dossier feuille).</span>');
+        // clic sur un enfant : descendre s'il a des enfants, + provenance
+        sub.querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>{
+          const child = ch.find(c=>c.path===n.dataset.folder);
+          if(child && (child.children||[]).length>0){ trail.push(child); renderSub(); }
+          loadProvenance(runId, profile, n.dataset.folder, n);
+        });
+        // clic sur un segment du fil d'Ariane : remonter
+        sub.querySelectorAll('.rr-crumb').forEach(s=>s.onclick=()=>{
+          trail = trail.slice(0, parseInt(s.dataset.i,10)+1); renderSub();
+          loadProvenance(runId, profile, trail[trail.length-1].path, null);
+        });
+      }
+      function openSection(node){ trail = [node]; renderSub(); }
+      if(sections[0]) openSection(sections[0]);
+      document.getElementById('rr-tcol-sec').querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>{
+        const node=sections.find(s=>s.path===n.dataset.folder); openSection(node); loadProvenance(runId,profile,n.dataset.folder,n);
+      });
+      // clic sur un dossier créé → sa provenance
+      el.querySelectorAll('.rr-created-list .rr-trow').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
+    }
+    async function loadProvenance(runId, profile, folder, nodeEl){
+      document.querySelectorAll('.rr-trow.sel').forEach(e=>e.classList.remove('sel'));
+      if(nodeEl) nodeEl.classList.add('sel');
+      const r = await fetch('/api/agent/refonte/proposition/'+runId+'/folder-provenance?profile='+encodeURIComponent(profile)+'&folder='+encodeURIComponent(folder));
+      const d = await r.json();
+      const max = Math.max(1, ...d.origins.map(o=>o.count));
+      document.getElementById('rr-prov').innerHTML =
+        '<h4 class="rr-prov-h">D\'où viennent les fichiers de « '+folder+' »</h4>'+
+        (d.origins.length? d.origins.map(o=>'<div class="rr-flow"><span class="rr-flow-l">'+o.folder+'</span><span class="rr-flow-bar" style="width:'+Math.round(o.count/max*180)+'px"></span><span class="muted">'+o.count+'</span></div>').join('') : '<span class="muted small">Aucun fichier entrant.</span>');
     }
 
     function escapeHtml(s) {

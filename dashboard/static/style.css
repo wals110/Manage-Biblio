@@ -6655,3 +6655,69 @@ th {
 .dash-subtab.active:hover {
     color: white;
 }
+
+/* ── Restitution Phase B (outil de décision) ─────────────────────────── */
+.rr-budget{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--border);margin:6px 0}
+.rr-budget>div{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0b1220;cursor:default}
+.rr-doubt-kpi{color:#fbbf24;font-weight:700;margin:8px 0}
+.rr-mx{display:grid;grid-template-columns:150px repeat(4,1fr);gap:4px;max-width:680px;margin-top:8px}
+.rr-mx .rr-h{font-size:10px;color:var(--text-muted, #8b949e);text-align:center}
+.rr-rh{font-size:11px;display:flex;align-items:center}
+.rr-cell{border-radius:4px;padding:8px 2px;text-align:center;font-weight:700;font-size:12px;border:1px solid transparent}
+.rr-cell[data-sc]{cursor:pointer}
+.rr-cell[data-sc]:hover{border-color:#ffffff66}
+.rr-cell.sel{border-color:#fff}
+.rr-c0{background:#1e2a3d;color:#475569}
+.rr-cg{background:#14532d;color:#86efac}
+.rr-cy{background:#3b2f0c;color:#fbbf24}
+.rr-co{background:#3a230c;color:#fb923c}
+.rr-cr{background:#3a1414;color:#f87171}
+.rr-ftab{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.rr-ftab th{text-align:left;color:var(--text-muted, #8b949e);padding:5px 8px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase}
+.rr-ftab td{padding:6px 8px;border-bottom:1px solid #1b2536}
+.rr-table-head{margin-top:12px;color:var(--text-muted, #8b949e);font-size:11px}
+.rr-badge{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;background:#263349;color:#cbd5e1}
+.rr-arrow{font-family:monospace;font-size:11px;color:var(--text-muted, #8b949e)}
+.rr-gauge{display:inline-block;width:42px;height:6px;background:#1b2536;border-radius:3px;overflow:hidden;vertical-align:middle}
+.rr-gauge>i{display:block;height:100%}
+.rr-act{cursor:pointer;padding:0 3px;opacity:.7}
+.rr-act:hover{opacity:1}
+.rr-ic-legend{font-size:11px;color:var(--text-muted, #8b949e);margin-bottom:8px}
+.rr-icicle{display:flex;gap:4px;height:360px}
+.rr-ic-col{display:flex;flex-direction:column;gap:4px}
+.rr-ic-node{border-radius:5px;padding:6px 8px;font-size:11px;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:center;background:#1e3a5f;color:#bfdbfe;border:1px solid transparent}
+.rr-ic-node:hover{filter:brightness(1.18)}
+.rr-ic-node.sel{outline:2px solid #fff;outline-offset:-2px}
+.rr-ic-node small{opacity:.7;font-size:9.5px}
+.rr-ic-node.rr-new{background:#3a2a0c;color:#fbbf24;border-color:#f59e0b;box-shadow:0 0 8px #f59e0b55}
+.rr-prov{margin-top:14px;background:var(--bg-tertiary,#0b1220);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-height:60px}
+.rr-prov-h{margin:0 0 8px;font-size:12px}
+.rr-flow{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:5px}
+.rr-flow-l{width:230px}
+.rr-flow-bar{height:9px;border-radius:3px;background:#38bdf8}
+/* ── Arbre proposé : liste à barres (remplace l'icicle écrasé) ───────── */
+.rr-tree{display:flex;gap:14px;margin-top:4px}
+.rr-tcol{flex:1;max-height:440px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px}
+.rr-tcol-h{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#8b949e);font-weight:700;padding:4px 6px 8px;position:sticky;top:0;background:#0f172a;z-index:1}
+.rr-trow{padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px}
+.rr-trow:hover{background:#ffffff0d}
+.rr-trow.sel{background:#8b5cf622;outline:1px solid #8b5cf6}
+.rr-trow-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px}
+.rr-trow-name{color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr-trow-count{color:var(--text-muted,#8b949e);font-variant-numeric:tabular-nums;flex-shrink:0}
+.rr-trow-track{height:6px;background:#1b2536;border-radius:3px;overflow:hidden;margin-top:5px}
+.rr-trow-track>i{display:block;height:100%;background:#3b82f6;border-radius:3px}
+.rr-trow.rr-new .rr-trow-name{color:#fbbf24}
+.rr-trow.rr-new .rr-trow-track>i{background:#f59e0b}
+/* ── Arbre proposé : liste des dossiers créés ───────────────────────── */
+.rr-created{margin:4px 0 12px;border:1px solid #f59e0b55;border-radius:8px;background:#3a2a0c22}
+.rr-created>summary{cursor:pointer;padding:8px 12px;font-size:12px;font-weight:700;color:#fbbf24;list-style:none}
+.rr-created>summary::-webkit-details-marker{display:none}
+.rr-created-list{max-height:240px;overflow-y:auto;padding:4px 8px 8px}
+/* ── Arbre proposé : navigateur drillable (fil d'Ariane) ─────────────── */
+.rr-crumb-bar{display:flex;flex-wrap:wrap;align-items:center;gap:3px;text-transform:none;letter-spacing:0}
+.rr-crumb{cursor:pointer;color:#a78bfa}
+.rr-crumb:hover{text-decoration:underline}
+.rr-crumb:last-child{color:#cbd5e1;cursor:default;text-decoration:none}
+.rr-crumb-sep{color:var(--text-muted,#8b949e)}
+.rr-trow.rr-haskids .rr-trow-name::after{content:" ›";color:#a78bfa;font-weight:700}

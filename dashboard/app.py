@@ -2772,6 +2772,39 @@ async def api_agent_refonte_simulation(run_id: str, profile: str, sample_limit: 
     return JSONResponse(result)
 
 
+@app.get("/api/agent/refonte/proposition/{run_id}/risk-matrix")
+async def api_refonte_risk_matrix(run_id: str, profile: str):
+    """Matrice de risque (source_class × confidence_band) + budget + n_doubt."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_risk_matrix(profile, run_id))
+
+
+@app.get("/api/agent/refonte/proposition/{run_id}/proposed-tree")
+async def api_refonte_proposed_tree(run_id: str, profile: str):
+    """Arbre hiérarchique des dossiers proposés pour un run de proposition."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_proposed_tree(profile, run_id))
+
+
+@app.get("/api/agent/refonte/proposition/{run_id}/doubt-files")
+async def api_refonte_doubt_files(run_id: str, profile: str, page: int = 1,
+                                  page_size: int = 50,
+                                  source_class: str | None = None,
+                                  band: str | None = None):
+    """Zone de doute paginée/filtrée/triée pour un run de proposition."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_doubt_files(
+        profile, run_id, page=page, page_size=page_size,
+        source_class=source_class, band=band))
+
+
+@app.get("/api/agent/refonte/proposition/{run_id}/folder-provenance")
+async def api_refonte_folder_provenance(run_id: str, profile: str, folder: str):
+    """Top dossiers d'origine des fichiers entrants d'un dossier proposé."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(agent_refonte.get_folder_provenance(profile, run_id, folder))
+
+
 @app.post("/api/agent/refonte/proposition")
 async def api_agent_refonte_proposition_start(request: Request):
     """Démarre un run Phase B basé sur un diagnostic Phase A existant.
