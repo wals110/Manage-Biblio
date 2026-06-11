@@ -1932,6 +1932,42 @@ class TestDormantAndBulkEndpoints(TaxonomyTestBase):
         })
         self.assertEqual(r.status_code, 400)
 
+    def test_suggest_endpoint(self):
+        # "Mathematiques" matche le dernier segment du dossier
+        # 01-SCIENCES/MATHEMATIQUES → résolu par le déterministe, zéro LLM.
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "profile": self.profile_name,
+            "themes": ["Mathematiques"],
+            "use_llm": False,
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_llm_calls"], 0)
+        sug = body["suggestions"][0]
+        self.assertEqual(sug["source"], "deterministic")
+        self.assertEqual(sug["folder"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_suggest_endpoint_defaults_use_llm_false(self):
+        # use_llm absent du body → défaut False, aucun appel LLM.
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "profile": self.profile_name,
+            "themes": ["Mathematiques"],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_llm_calls"], 0)
+
+    def test_suggest_endpoint_requires_profile(self):
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "themes": ["Mathematiques"],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_suggest_endpoint_requires_themes(self):
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "profile": self.profile_name,
+        })
+        self.assertEqual(r.status_code, 400)
+
 
 class TestReclassifyDryrun(TaxonomyTestBase):
     """reclassify_dryrun() — project moves based on cached folder_index."""
