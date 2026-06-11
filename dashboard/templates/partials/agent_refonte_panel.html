@@ -1102,20 +1102,39 @@
            '<span class="muted small" style="padding:8px;display:block">Clique une section.</span></div></div>';
       h += '<div class="rr-prov" id="rr-prov"><span class="muted small">Clique un dossier pour voir d\'où viennent ses fichiers.</span></div>';
       el.innerHTML = h;
-      function showSub(node){
+      // Navigateur drillable : `trail` = pile de noeuds de la section au
+      // dossier courant. On affiche le fil d'Ariane + les enfants du dernier.
+      let trail = [];
+      function renderSub(){
         const sub = document.getElementById('rr-tcol-sub');
+        const node = trail[trail.length-1];
         const ch = (node && node.children ? node.children : []).slice().sort((a,b)=>b.n_incoming-a.n_incoming);
         const maxCh = Math.max(1, ...ch.map(c=>c.n_incoming));
-        sub.innerHTML = '<div class="rr-tcol-h">Sous-dossiers de '+(node?node.name:'')+'</div>'+
-          (ch.length ? ch.map(c=>rrTreeRow(c, maxCh)).join('')
-                     : '<span class="muted small" style="padding:8px;display:block">Aucun sous-dossier.</span>');
-        sub.querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
+        const crumb = trail.map((n,i)=>'<span class="rr-crumb" data-i="'+i+'">'+n.name+'</span>').join('<span class="rr-crumb-sep">›</span>');
+        sub.innerHTML = '<div class="rr-tcol-h rr-crumb-bar">'+crumb+'</div>'+
+          (ch.length ? ch.map(c=>{
+              const hasKids = (c.children||[]).length>0;
+              return rrTreeRow(c, maxCh).replace('class="rr-trow', 'class="rr-trow'+(hasKids?' rr-haskids':''));
+            }).join('')
+            : '<span class="muted small" style="padding:8px;display:block">Aucun sous-dossier (dossier feuille).</span>');
+        // clic sur un enfant : descendre s'il a des enfants, + provenance
+        sub.querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>{
+          const child = ch.find(c=>c.path===n.dataset.folder);
+          if(child && (child.children||[]).length>0){ trail.push(child); renderSub(); }
+          loadProvenance(runId, profile, n.dataset.folder, n);
+        });
+        // clic sur un segment du fil d'Ariane : remonter
+        sub.querySelectorAll('.rr-crumb').forEach(s=>s.onclick=()=>{
+          trail = trail.slice(0, parseInt(s.dataset.i,10)+1); renderSub();
+          loadProvenance(runId, profile, trail[trail.length-1].path, null);
+        });
       }
-      if(sections[0]) showSub(sections[0]);
+      function openSection(node){ trail = [node]; renderSub(); }
+      if(sections[0]) openSection(sections[0]);
       document.getElementById('rr-tcol-sec').querySelectorAll('.rr-trow').forEach(n=>n.onclick=()=>{
-        const node=sections.find(s=>s.path===n.dataset.folder); showSub(node); loadProvenance(runId,profile,n.dataset.folder,n);
+        const node=sections.find(s=>s.path===n.dataset.folder); openSection(node); loadProvenance(runId,profile,n.dataset.folder,n);
       });
-      // clic sur un dossier créé → sa provenance (sans changer de colonne)
+      // clic sur un dossier créé → sa provenance
       el.querySelectorAll('.rr-created-list .rr-trow').forEach(n=>n.onclick=()=>loadProvenance(runId,profile,n.dataset.folder,n));
     }
     async function loadProvenance(runId, profile, folder, nodeEl){
