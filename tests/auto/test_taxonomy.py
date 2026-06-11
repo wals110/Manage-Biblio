@@ -2992,5 +2992,78 @@ class TestFolderThemeBreakdownEndpoint(TaxonomyTestBase):
         self.assertIn("summary", body)
 
 
+# ─── Tâche 3 — suggest_mappings (passe déterministe) ─────────────────────
+
+
+class TestSuggestMappings(TaxonomyTestBase):
+    """Passe déterministe de suggest_mappings : KeywordClassifier (categories.yaml)
+    + matching nom de thème ↔ nom de dossier. Aucun appel LLM (T3)."""
+
+    def setUp(self):
+        super().setUp()
+        # Ajoute un categories.yaml pour que le KeywordClassifier matche.
+        (self.profile_dir / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "sciences": [
+                    {
+                        "chemin": "01-SCIENCES/PHYSIQUE",
+                        "priorite": 1,
+                        "mots_cles": ["quantum", "relativity", "thermodynamics"],
+                    },
+                ],
+            })
+        )
+        taxonomy.reset_cache()
+
+    def test_a_keyword_match_resolves_deterministic(self):
+        # Le thème contient un mot-clé de categories.yaml → folder résolu.
+        out = taxonomy.suggest_mappings(
+            self.profile_name, ["Quantum Field Theory"]
+        )
+        self.assertEqual(out["n_llm_calls"], 0)
+        sug = out["suggestions"][0]
+        self.assertEqual(sug["theme"], "Quantum Field Theory")
+        self.assertEqual(sug["folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(sug["source"], "deterministic")
+        self.assertIn("quantum", sug["reason"])
+        self.assertGreaterEqual(sug["confidence"], 0.0)
+        self.assertLessEqual(sug["confidence"], 1.0)
+
+    def test_b_folder_name_match_resolves_deterministic(self):
+        # Aucun mot-clé ne matche, mais le nom du thème == dernier segment
+        # d'un dossier (normalisé : "MATHEMATIQUES" → "mathematiques").
+        out = taxonomy.suggest_mappings(
+            self.profile_name, ["Mathematiques"]
+        )
+        sug = out["suggestions"][0]
+        self.assertEqual(sug["folder"], "01-SCIENCES/MATHEMATIQUES")
+        self.assertEqual(sug["source"], "deterministic")
+        self.assertEqual(sug["confidence"], 0.9)
+        self.assertIn("dossier", sug["reason"].lower())
+
+    def test_c_unknown_theme_is_unresolved(self):
+        out = taxonomy.suggest_mappings(
+            self.profile_name, ["Macramé Mésopotamien Obscur"]
+        )
+        sug = out["suggestions"][0]
+        self.assertIsNone(sug["folder"])
+        self.assertEqual(sug["source"], "unresolved")
+        self.assertEqual(sug["confidence"], 0.0)
+        self.assertEqual(sug["reason"], "")
+
+    def test_d_no_llm_calls_in_t3(self):
+        # Même avec use_llm=True, T3 ne câble pas la passe LLM.
+        out = taxonomy.suggest_mappings(
+            self.profile_name,
+            ["Quantum Field Theory", "Mathematiques", "Inconnu Total XYZ"],
+            use_llm=True,
+        )
+        self.assertEqual(out["n_llm_calls"], 0)
+        self.assertEqual(len(out["suggestions"]), 3)
+        # Le 3e reste unresolved (pas de LLM en T3).
+        self.assertEqual(out["suggestions"][2]["source"], "unresolved")
+        self.assertIsNone(out["suggestions"][2]["folder"])
+
+
 if __name__ == "__main__":
     unittest.main()

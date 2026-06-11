@@ -45,6 +45,10 @@ _MIN_CONFIDENCE = 0.5
 # File listing cache TTL (seconds)
 _FILES_CACHE_TTL = 300
 
+# Seuil de score brut du KeywordClassifier au-dessus duquel la passe
+# déterministe de suggest_mappings accepte une cible (cf. Tâche 3).
+SEUIL_DET = 0.6
+
 # Snapshot cache TTL — derived data is cheap but vision_cache parsing is
 # the slow part; the snapshot stays valid until a write invalidates it.
 _snapshot_cache: dict[str, dict] = {}
@@ -2072,6 +2076,115 @@ def add_mappings_bulk(profile: str, mappings: list[dict]) -> dict:
             "skipped": skipped,
             "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
         }
+
+
+# ─── Bulk mapping suggestions — passe déterministe (Tâche 3) ─────────────
+#
+# Pour un lot de thèmes (typiquement les orphelins), suggère un dossier
+# cible SANS appel LLM. Deux passes gratuites :
+#
+#   A. KeywordClassifier (categories.yaml) — le nom du thème (+ son 1er
+#      sample_title si dispo) est classé comme du texte. Si le meilleur
+#      score brut ≥ SEUIL_DET et que le chemin existe dans tree.yaml → résolu.
+#   B. Matching nom-de-thème ↔ nom-de-dossier — si le nom normalisé du thème
+#      == dernier segment normalisé d'un dossier du tree → résolu (conf 0.9).
+#
+# La passe LLM (use_llm) sera câblée en Tâche 4 : ici, un thème non résolu
+# ressort source="unresolved" même si use_llm=True. Lecture seule, pas de lock.
+
+
+def suggest_mappings(
+    profile: str,
+    themes: list[str],
+    use_llm: bool = False,
+    max_llm: int = 60,
+) -> dict:
+    """Suggère un dossier cible pour chaque thème (passe déterministe seule).
+
+    Args:
+        profile: nom du profil.
+        themes: liste de noms de thèmes à mapper.
+        use_llm: accepté mais NON câblé en T3 (la passe LLM = Tâche 4).
+        max_llm: budget d'appels LLM, accepté mais inutilisé en T3.
+
+    Returns:
+        ``{"suggestions": [{theme, folder, confidence, source, reason}, ...],
+           "n_llm_calls": 0}``
+
+        - source="deterministic" : résolu par KeywordClassifier ou nom de dossier.
+        - source="unresolved"     : non résolu (la passe LLM de T4 remplira ces cas).
+    """
+    from dashboard.categories import _normalize_segment
+
+    # tree.yaml — liste plate des dossiers valides + index par segment final.
+    folders = _load_tree(profile)
+    folder_set = set(folders)
+    # Dernier segment normalisé → chemin complet (dernier gagne, ordre trié).
+    last_seg_index: dict[str, str] = {}
+    for f in folders:
+        segs = [s for s in f.split("/") if s]
+        if segs:
+            last_seg_index[_normalize_segment(segs[-1])] = f
+
+    # KeywordClassifier depuis categories.yaml (peut être None si absent).
+    cat_path = _profile_dir(profile) / "categories.yaml"
+    classifier = (
+        load_keyword_classifier(str(cat_path)) if cat_path.exists() else None
+    )
+
+    # sample_titles par thème (enrichit le texte classifié, passe A).
+    mapping = _load_mapping(profile)
+    themes_llm, _stats = _aggregate_themes_llm(profile, mapping)
+    sample_by_theme: dict[str, str] = {}
+    for t in themes_llm:
+        titles = t.get("sample_titles") or []
+        if titles:
+            sample_by_theme[t["theme"].lower()] = titles[0]
+
+    suggestions: list[dict] = []
+    for theme in themes:
+        theme_norm = _normalize_theme(theme or "")
+        folder: str | None = None
+        confidence = 0.0
+        source = "unresolved"
+        reason = ""
+
+        # Texte classifié = thème (+ 1er sample_title si dispo).
+        text = theme_norm
+        sample = sample_by_theme.get(theme_norm.lower())
+        if sample:
+            text = f"{theme_norm} {sample}"
+
+        # ── Passe A — KeywordClassifier ──
+        if theme_norm and classifier is not None:
+            results = classifier.classify(text)
+            if results:
+                best_path, best_score, best_kw = results[0]
+                if best_score >= SEUIL_DET and best_path in folder_set:
+                    folder = best_path
+                    confidence = min(round(float(best_score), 3), 1.0)
+                    source = "deterministic"
+                    reason = f"mot-clé: {best_kw}"
+
+        # ── Passe B — matching nom de dossier (si A échoue) ──
+        if folder is None and theme_norm:
+            cand = last_seg_index.get(_normalize_segment(theme_norm))
+            if cand:
+                folder = cand
+                confidence = 0.9
+                source = "deterministic"
+                reason = "nom de dossier"
+
+        suggestions.append({
+            "theme": theme,
+            "folder": folder,
+            "confidence": confidence,
+            "source": source,
+            "reason": reason,
+        })
+
+    # La passe LLM (use_llm) sera câblée en Tâche 4 — aucun appel ici.
+    return {"suggestions": suggestions, "n_llm_calls": 0}
 
 
 # ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────
