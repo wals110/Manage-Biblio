@@ -2108,6 +2108,23 @@ async def taxonomy_mappings_bulk_delete_api(request: Request):
         return JSONResponse({"error": str(e)}, status_code=e.status)
 
 
+@app.post("/api/taxonomy/mappings/bulk-add")
+async def taxonomy_mappings_bulk_add_api(request: Request):
+    """Add multiple mappings in a single transaction (one backup)."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = body.get("profile")
+    mappings = body.get("mappings")
+    if not profile or not mappings:
+        return JSONResponse(
+            {"error": "profile + mappings requis"}, status_code=400,
+        )
+    try:
+        return JSONResponse(taxonomy.add_mappings_bulk(profile, mappings))
+    except taxonomy.TaxonomyError as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status)
+
+
 @app.post("/api/taxonomy/mapping")
 async def taxonomy_mapping_add_api(request: Request):
     from fastapi.responses import JSONResponse

@@ -1887,6 +1887,51 @@ class TestDormantAndBulkEndpoints(TaxonomyTestBase):
         })
         self.assertEqual(r.status_code, 400)
 
+    def test_bulk_add_endpoint(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "profile": self.profile_name,
+            "mappings": [
+                {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+                {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["n_added"], 2)
+        self.assertEqual(
+            {a["theme"] for a in body["added"]},
+            {"thermodynamics", "geometry"},
+        )
+
+    def test_bulk_add_endpoint_already_mapped_skipped(self):
+        # 'physics' is already mapped in the fixture → reported in skipped.
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "profile": self.profile_name,
+            "mappings": [
+                {"theme": "physics", "folder": "02-INFORMATIQUE"},
+                {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_added"], 1)
+        self.assertIn("physics", {s["theme"] for s in body["skipped"]})
+
+    def test_bulk_add_endpoint_requires_profile(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "mappings": [
+                {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            ],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_bulk_add_endpoint_requires_mappings(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "profile": self.profile_name,
+        })
+        self.assertEqual(r.status_code, 400)
+
 
 class TestReclassifyDryrun(TaxonomyTestBase):
     """reclassify_dryrun() — project moves based on cached folder_index."""
