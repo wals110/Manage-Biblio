@@ -327,6 +327,21 @@
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
     return body;
   }
+  async function postBulkAddMappings(mappings) {
+    // mappings = [{theme, folder}, …] avec theme dans sa casse d'origine.
+    const r = await fetch('/api/taxonomy/mappings/bulk-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, mappings }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err = new Error(body.error || ('HTTP ' + r.status));
+      err.status = r.status;       // 423 = lock (édition verrouillée)
+      throw err;
+    }
+    return body;
+  }
   async function fetchThemeFiles(theme, limit) {
     const url = `/api/taxonomy/theme/files?profile=${encodeURIComponent(state.profile)}`
               + `&theme=${encodeURIComponent(theme)}&limit=${limit || 50}`;
@@ -2830,13 +2845,13 @@
       title: 'Vider la sélection',
       onclick: e => { e.stopPropagation(); clearBulkLLMSelection(); renderLLMPanel(); },
     }, ['Effacer']));
-    // Placeholders des actions à venir (Tâches 7-8) : désactivés pour
-    // signaler l'emplacement sans casser l'UI.
+    // Action 1 (Tâche 7) : mapper toute la sélection vers UN dossier.
     host.appendChild(el('button', {
       class: 'tax-llm-bulk-btn tax-llm-bulk-action',
-      title: 'Action à venir (Tâche 7)',
-      disabled: true,
-    }, ['Mapper → dossier…']));
+      title: 'Choisir un dossier et y affecter tous les thèmes sélectionnés',
+      onclick: e => { e.stopPropagation(); openBulkMapPopover(e.currentTarget); },
+    }, ['Mapper la sélection → dossier…']));
+    // Placeholder de l'action à venir (Tâche 8) : désactivé.
     host.appendChild(el('button', {
       class: 'tax-llm-bulk-btn tax-llm-bulk-action',
       title: 'Action à venir (Tâche 8)',
@@ -2847,7 +2862,7 @@
   // ── "+ Mapper" popover with folder autocomplete ──────────────────────
 
   function openMapPopover(theme, anchorEl) {
-    state.popover = { open: true, theme, anchorEl };
+    state.popover = { open: true, theme, anchorEl, mode: 'single' };
     const pop = $('#tax-map-popover');
     const isEdit = theme.is_edit === true;
     pop.querySelector('.tax-map-popover-title').textContent =
@@ -2869,7 +2884,7 @@
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
   function closeMapPopover() {
-    state.popover = { open: false, theme: null, anchorEl: null };
+    state.popover = { open: false, theme: null, anchorEl: null, mode: 'single' };
     $('#tax-map-popover').style.display = 'none';
   }
   function renderPopoverSuggestions(query) {
@@ -2887,12 +2902,96 @@
   }
   async function confirmMapPopover() {
     const folder = $('#tax-map-popover-input').value.trim();
-    if (!folder || !state.popover.theme) return;
+    if (!folder) return;
+    // Mode « bulk » : mapper toute la sélection des thèmes LLM vers ce dossier.
+    if (state.popover.mode === 'bulk') {
+      closeMapPopover();
+      await confirmBulkMapToFolder(folder);
+      return;
+    }
+    if (!state.popover.theme) return;
     const theme = state.popover.theme.theme;
     const isEdit = state.popover.theme.is_edit === true;
     closeMapPopover();
     if (isEdit) await doUpdateMapping(theme, folder);
     else        await doAddMapping(theme, folder);
+  }
+
+  // ── Bulk « Mapper la sélection → dossier » (Tâche 7) ──────────────────
+  //
+  // Réutilise le popover/autocomplete #tax-map-popover en mode « bulk » :
+  // l'utilisateur choisit UN dossier cible, puis tous les thèmes cochés
+  // (state.bulkLLMSelection) y sont affectés via POST bulk-add (un backup,
+  // une transaction). Les thèmes sont stockés en minuscule dans la
+  // sélection — on récupère leur casse d'origine via state.snapshot.themes_llm
+  // pour envoyer le vrai nom au backend.
+
+  function openBulkMapPopover(anchorEl) {
+    const n = state.bulkLLMSelection.size;
+    if (n === 0) return;
+    state.popover = { open: true, theme: null, anchorEl, mode: 'bulk' };
+    const pop = $('#tax-map-popover');
+    pop.querySelector('.tax-map-popover-title').textContent =
+      'Mapper la sélection vers un dossier';
+    $('#tax-map-popover-theme').textContent =
+      `${n} thème${n > 1 ? 's' : ''} sélectionné${n > 1 ? 's' : ''}`;
+    $('#tax-map-popover-confirm').textContent = 'Mapper la sélection';
+    const input = $('#tax-map-popover-input');
+    input.value = '';
+    renderPopoverSuggestions('');
+    const rect = anchorEl.getBoundingClientRect();
+    pop.style.display = 'block';
+    const popW = 360;
+    pop.style.left = Math.min(window.innerWidth - popW - 12,
+                             Math.max(12, rect.left - popW + 30)) + 'px';
+    pop.style.top  = (rect.bottom + 8) + 'px';
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+  }
+
+  async function confirmBulkMapToFolder(folder) {
+    const selKeys = [...state.bulkLLMSelection];
+    if (!selKeys.length || !folder) return;
+    // Récupère le vrai nom (casse d'origine) de chaque thème via le snapshot.
+    const byLower = new Map();
+    for (const t of (state.snapshot.themes_llm || [])) {
+      byLower.set(t.theme.toLowerCase(), t);
+    }
+    const mappings = selKeys.map(k => {
+      const rec = byLower.get(k);
+      return { theme: rec ? rec.theme : k, folder };
+    });
+    await withBusy(`Mapping de ${mappings.length} thème(s) → ${folder}…`, async () => {
+      try {
+        const r = await postBulkAddMappings(mappings);
+        const added = r.added || [];
+        const skipped = r.skipped || [];
+        // M = somme des counts des thèmes effectivement ajoutés.
+        const addedLower = new Set(added.map(a => a.theme.toLowerCase()));
+        let files = 0;
+        for (const t of (state.snapshot.themes_llm || [])) {
+          if (addedLower.has(t.theme.toLowerCase())) files += (t.count || 0);
+        }
+        const nAdded = r.n_added != null ? r.n_added : added.length;
+        let msg = `✓ ${nAdded} thème${nAdded > 1 ? 's' : ''} mappé${nAdded > 1 ? 's' : ''} → ${folder}`
+                + ` · ${files} fichier${files > 1 ? 's' : ''} au prochain reclassify`;
+        if (skipped.length) {
+          const already = skipped.filter(s => s.reason === 'already_mapped').length;
+          msg += already === skipped.length
+            ? ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''} (déjà mappé${skipped.length > 1 ? 's' : ''})`
+            : ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''}`;
+        }
+        showToast(msg, nAdded > 0 ? 'success' : 'info');
+        clearBulkLLMSelection();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        if (e.status === 423) {
+          showToast('✗ Édition verrouillée (run en cours) — réessaie plus tard', 'error');
+        } else {
+          showToast('✗ ' + e.message, 'error');
+        }
+      }
+    });
   }
 
   // ── Drag-drop & central mapping handler ──────────────────────────────
