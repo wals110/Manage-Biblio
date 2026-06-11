@@ -81,6 +81,13 @@
     // les supprimer en un seul appel (POST /mappings/bulk-delete).
     bulkMappedSelection: { folderPath: null, keysLower: new Set() },
 
+    // Panneau LLM (colonne Thèmes LLM) — multi-sélection. Calque le patron
+    // bulkMappedSelection mais SANS scope folder : la sélection porte sur
+    // l'univers global des thèmes LLM, pas sur un dossier. Clés = thème en
+    // minuscule. Reset au re-render complet du snapshot (renderAll). Sert
+    // de socle aux actions bulk Mapper→dossier / Suggérer (Tâches 7-8).
+    bulkLLMSelection: new Set(),
+
     // Cache du breakdown 3-way (stable / incoming / outgoing) par path.
     // Permet à l'UI d'afficher ce qui va RESTER, ARRIVER, PARTIR au prochain
     // reclassify sans devoir lancer un dryrun. Lazily fetché à l'ouverture
@@ -2706,9 +2713,31 @@
       filtered = filtered.filter(t => t.theme.toLowerCase().includes(q));
     }
     sub.textContent = `${filtered.length}/${all.length} affichés`;
+    // Mémorise les thèmes actuellement visibles (après filtres recherche /
+    // orphelins) — sert au bouton « Tout sélectionner (filtrés) » de la
+    // toolbar bulk pour ne cocher QUE ce que l'utilisateur voit.
     const MAX = 300;
-    for (const t of filtered.slice(0, MAX)) {
+    const visible = filtered.slice(0, MAX);
+    state.bulkLLMVisible = visible.map(t => t.theme);
+    const bulkSet = state.bulkLLMSelection;
+    for (const t of visible) {
+      const keyL = t.theme.toLowerCase();
+      const cb = el('input', {
+        type: 'checkbox',
+        class: 'tax-llm-cb',
+        title: 'Sélectionner pour une action en lot',
+        // Le clic sur la checkbox ne doit PAS démarrer un drag ni cliquer la
+        // ligne : on stoppe la propagation. mousedown bloque l'amorce de drag.
+        onmousedown: e => { e.stopPropagation(); },
+        onclick: e => {
+          e.stopPropagation();
+          toggleBulkLLM(t.theme);
+          renderLLMPanel();
+        },
+      });
+      cb.checked = bulkSet.has(keyL);
       const mainLine = el('div', { class: 'tax-llm-item-main' }, [
+        cb,
         el('span', { class: 'tax-llm-name' }, [t.theme]),
         el('span', { class: 'tax-llm-count' }, [String(t.count)]),
         el('button', {
@@ -2727,7 +2756,8 @@
                        [t.mapped_to]),
       ]);
       const row = el('div', {
-        class: 'tax-llm-item' + (t.is_orphan ? ' orphan' : ''),
+        class: 'tax-llm-item' + (t.is_orphan ? ' orphan' : '')
+               + (bulkSet.has(keyL) ? ' bulk-selected' : ''),
         draggable: 'true',
         title: (t.sample_titles && t.sample_titles.length
                 ? 'Échantillon : ' + t.sample_titles.join(' / ') : ''),
@@ -2742,6 +2772,76 @@
       list.appendChild(el('div', { class: 'muted small', style: 'padding:8px;' },
         [`(${filtered.length - MAX} de plus — affine la recherche)`]));
     }
+    renderLLMBulkToolbar();
+  }
+
+  // ── Multi-sélection des thèmes LLM (colonne Thèmes LLM) ────────────────
+  //
+  // Calque le patron bulkMappedSelection des thèmes mappés. La toolbar
+  // n'apparaît que dès 1 thème coché. Les actions réelles (Mapper→dossier,
+  // Suggérer) sont posées par les Tâches 7-8 ; ici seulement « Tout
+  // sélectionner (filtrés) » + « Effacer ».
+
+  function toggleBulkLLM(theme) {
+    const k = theme.toLowerCase();
+    if (state.bulkLLMSelection.has(k)) state.bulkLLMSelection.delete(k);
+    else state.bulkLLMSelection.add(k);
+  }
+
+  function selectAllVisibleLLM() {
+    // Coche tous les thèmes actuellement VISIBLES (après filtre recherche /
+    // orphelins + cap MAX), pas l'univers entier.
+    for (const theme of (state.bulkLLMVisible || [])) {
+      state.bulkLLMSelection.add(theme.toLowerCase());
+    }
+  }
+
+  function clearBulkLLMSelection() {
+    state.bulkLLMSelection.clear();
+  }
+
+  function renderLLMBulkToolbar() {
+    const host = $('#tax-llm-bulk-toolbar');
+    if (!host) return;
+    host.innerHTML = '';
+    const n = state.bulkLLMSelection.size;
+    if (n === 0) {
+      host.style.display = 'none';
+      return;
+    }
+    host.style.display = 'flex';
+    const visible = state.bulkLLMVisible || [];
+    // « Tout sélectionner (filtrés) » désactivé si tous les visibles sont
+    // déjà cochés (rien de plus à ajouter).
+    const allVisibleSelected = visible.length > 0
+      && visible.every(t => state.bulkLLMSelection.has(t.toLowerCase()));
+    host.appendChild(el('span', { class: 'tax-llm-bulk-count' },
+      [`${n} sélectionné${n > 1 ? 's' : ''}`]));
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn',
+      title: 'Cocher tous les thèmes actuellement affichés (après filtres)',
+      disabled: allVisibleSelected,
+      onclick: e => { e.stopPropagation(); selectAllVisibleLLM(); renderLLMPanel(); },
+    }, [allVisibleSelected
+        ? '☑ Tous cochés'
+        : `☑ Tout sélectionner (${visible.length})`]));
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn',
+      title: 'Vider la sélection',
+      onclick: e => { e.stopPropagation(); clearBulkLLMSelection(); renderLLMPanel(); },
+    }, ['Effacer']));
+    // Placeholders des actions à venir (Tâches 7-8) : désactivés pour
+    // signaler l'emplacement sans casser l'UI.
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn tax-llm-bulk-action',
+      title: 'Action à venir (Tâche 7)',
+      disabled: true,
+    }, ['Mapper → dossier…']));
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn tax-llm-bulk-action',
+      title: 'Action à venir (Tâche 8)',
+      disabled: true,
+    }, ['💡 Suggérer']));
   }
 
   // ── "+ Mapper" popover with folder autocomplete ──────────────────────
@@ -3380,6 +3480,10 @@
     }
   }
   function renderAll() {
+    // Le snapshot change (mutation, reload) → la sélection bulk LLM peut
+    // référencer des thèmes disparus. On la reset pour rester cohérent
+    // (calque le reset per-profil de bulkMappedSelection).
+    state.bulkLLMSelection.clear();
     renderStats(); renderTree(); renderTreemap(); renderBreadcrumb();
     renderMappedPanel(); renderLLMPanel(); renderFileSection();
   }
