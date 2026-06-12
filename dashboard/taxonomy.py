@@ -47,10 +47,6 @@ _MIN_CONFIDENCE = 0.5
 # File listing cache TTL (seconds)
 _FILES_CACHE_TTL = 300
 
-# Seuil de score brut du KeywordClassifier au-dessus duquel la passe
-# déterministe de suggest_mappings accepte une cible (cf. Tâche 3).
-SEUIL_DET = 0.6
-
 # Snapshot cache TTL — derived data is cheap but vision_cache parsing is
 # the slow part; the snapshot stays valid until a write invalidates it.
 _snapshot_cache: dict[str, dict] = {}
@@ -2083,16 +2079,22 @@ def add_mappings_bulk(profile: str, mappings: list[dict]) -> dict:
 # ─── Bulk mapping suggestions — passe déterministe (Tâche 3) ─────────────
 #
 # Pour un lot de thèmes (typiquement les orphelins), suggère un dossier
-# cible SANS appel LLM. Deux passes gratuites :
+# cible. Le moteur a deux étages :
 #
-#   A. KeywordClassifier (categories.yaml) — le nom du thème (+ son 1er
-#      sample_title si dispo) est classé comme du texte. Si le meilleur
-#      score brut ≥ SEUIL_DET et que le chemin existe dans tree.yaml → résolu.
-#   B. Matching nom-de-thème ↔ nom-de-dossier — si le nom normalisé du thème
-#      == dernier segment normalisé d'un dossier du tree → résolu (conf 0.9).
+#   1. Passe déterministe — matching nom-de-thème ↔ nom-de-dossier FIABLE
+#      UNIQUEMENT : si le nom normalisé du thème == dernier segment normalisé
+#      d'un dossier du tree → résolu (conf 0.9, haute précision, faible
+#      couverture). Le KeywordClassifier a été RETIRÉ : sur vraies données il
+#      produisait des suggestions confiantes mais FAUSSES (ex. "Colloid
+#      Science" → Maths/Géométrie via le mot-clé "surface").
+#   2. Passe LLM BATCHÉE (use_llm) — un appel groupé (chunké) via
+#      ``LLMMapper.resolve_batch`` au lieu de N appels ``resolve``. Plus
+#      rapide, plus économique, meilleure qualité. Bornée par ``max_llm``.
 #
-# La passe LLM (use_llm) sera câblée en Tâche 4 : ici, un thème non résolu
-# ressort source="unresolved" même si use_llm=True. Lecture seule, pas de lock.
+# Lecture seule : aucun write de theme_mapping.yaml, pas de lock.
+
+# Taille de chunk de resolve_batch (doit refléter le défaut de la méthode).
+_LLM_BATCH_CHUNK_SIZE = 40
 
 
 def suggest_mappings(
@@ -2101,30 +2103,29 @@ def suggest_mappings(
     use_llm: bool = False,
     max_llm: int = 60,
 ) -> dict:
-    """Suggère un dossier cible pour chaque thème (déterministe + LLM optionnel).
+    """Suggère un dossier cible pour chaque thème (déterministe + LLM batché).
 
     Args:
         profile: nom du profil.
         themes: liste de noms de thèmes à mapper.
         use_llm: si True ET clé API présente, lance la passe LLM mapper
-            (parallélisée) sur les thèmes restés non résolus.
-        max_llm: borne de coût — au plus ``max_llm`` appels LLM. Les thèmes
-            non résolus au-delà de cette borne restent ``unresolved``.
+            BATCHÉE (``resolve_batch``) sur les thèmes restés non résolus.
+        max_llm: borne de coût — au plus ``max_llm`` thèmes sont envoyés au
+            batch. Les thèmes au-delà de cette borne restent ``unresolved``.
 
     Returns:
         ``{"suggestions": [{theme, folder, confidence, source, reason}, ...],
            "n_llm_calls": int}``
 
-        - source="deterministic" : résolu par KeywordClassifier ou nom de dossier.
-        - source="llm"            : résolu par le LLM mapper (passe parallèle).
-        - source="unresolved"     : non résolu (déterministe + LLM échoués, ou
-                                     pas de clé API / borne LLM atteinte).
+        - source="deterministic" : nom du thème == nom d'un dossier du tree.
+        - source="llm"            : résolu par le LLM mapper (passe batchée).
+        - source="unresolved"     : non résolu (déterministe + batch échoués,
+                                     ou pas de clé API / borne LLM atteinte).
     """
     from dashboard.categories import _normalize_segment
 
     # tree.yaml — liste plate des dossiers valides + index par segment final.
     folders = _load_tree(profile)
-    folder_set = set(folders)
     # Dernier segment normalisé → chemin complet (dernier gagne, ordre trié).
     last_seg_index: dict[str, str] = {}
     for f in folders:
@@ -2132,13 +2133,7 @@ def suggest_mappings(
         if segs:
             last_seg_index[_normalize_segment(segs[-1])] = f
 
-    # KeywordClassifier depuis categories.yaml (peut être None si absent).
-    cat_path = _profile_dir(profile) / "categories.yaml"
-    classifier = (
-        load_keyword_classifier(str(cat_path)) if cat_path.exists() else None
-    )
-
-    # sample_titles par thème (enrichit le texte classifié, passe A).
+    # sample_titles par thème (passés comme indice de contexte au batch LLM).
     mapping = _load_mapping(profile)
     themes_llm, _stats = _aggregate_themes_llm(profile, mapping)
     sample_by_theme: dict[str, str] = {}
@@ -2155,25 +2150,8 @@ def suggest_mappings(
         source = "unresolved"
         reason = ""
 
-        # Texte classifié = thème (+ 1er sample_title si dispo).
-        text = theme_norm
-        sample = sample_by_theme.get(theme_norm.lower())
-        if sample:
-            text = f"{theme_norm} {sample}"
-
-        # ── Passe A — KeywordClassifier ──
-        if theme_norm and classifier is not None:
-            results = classifier.classify(text)
-            if results:
-                best_path, best_score, best_kw = results[0]
-                if best_score >= SEUIL_DET and best_path in folder_set:
-                    folder = best_path
-                    confidence = min(round(float(best_score), 3), 1.0)
-                    source = "deterministic"
-                    reason = f"mot-clé: {best_kw}"
-
-        # ── Passe B — matching nom de dossier (si A échoue) ──
-        if folder is None and theme_norm:
+        # ── Passe déterministe — matching nom de dossier FIABLE ──
+        if theme_norm:
             cand = last_seg_index.get(_normalize_segment(theme_norm))
             if cand:
                 folder = cand
@@ -2189,10 +2167,9 @@ def suggest_mappings(
             "reason": reason,
         })
 
-    # ── Passe LLM (Tâche 4) ──────────────────────────────────────────────
-    # Sur les thèmes restés unresolved, si use_llm ET clé API présente :
-    # appel LLM mapper EN PARALLÈLE, borné par max_llm. Lecture seule —
-    # aucun write de theme_mapping.yaml, pas de lock.
+    # ── Passe LLM batchée ─────────────────────────────────────────────────
+    # Sur les thèmes restés unresolved, si use_llm ET clé API présente : UN
+    # appel groupé (chunké) à resolve_batch, borné par max_llm. Lecture seule.
     n_llm_calls = _run_llm_pass(
         profile=profile,
         suggestions=suggestions,
@@ -2212,15 +2189,21 @@ def _run_llm_pass(
     use_llm: bool,
     max_llm: int,
 ) -> int:
-    """Résout via LLM mapper les suggestions restées ``unresolved`` (in place).
+    """Résout via ``LLMMapper.resolve_batch`` les suggestions restées
+    ``unresolved`` (in place), en UN appel groupé chunké.
 
     No-op (retourne 0) si ``use_llm`` est faux ou si la clé API
-    ``SILICONFLOW_API_KEY`` est absente. Les appels sont parallélisés
-    (``ThreadPoolExecutor(max_workers=8)``) et bornés par ``max_llm`` : le
-    surplus reste ``unresolved`` avec ``reason="limite LLM atteinte"``.
+    ``SILICONFLOW_API_KEY`` est absente. Au plus ``max_llm`` thèmes sont
+    envoyés au batch ; le surplus reste ``unresolved`` avec
+    ``reason="limite LLM atteinte"``.
 
-    Retourne le nombre d'appels LLM réellement effectués.
+    Retourne le nombre d'appels LLM réels — c.-à-d. le nombre de chunks
+    ``ceil(len(themes_envoyés) / _LLM_BATCH_CHUNK_SIZE)`` (resolve_batch
+    chunke en interne ; on n'a pas accès au compteur interne sans modifier sa
+    signature publique, donc on recalcule le nombre de chunks ici).
     """
+    import math
+
     pending = [s for s in suggestions if s["source"] == "unresolved"]
     if not use_llm or not pending:
         return 0
@@ -2253,28 +2236,32 @@ def _run_llm_pass(
         min_confidence=MAPPER_MIN_CONFIDENCE,
     )
 
-    def _resolve(sug: dict) -> tuple[dict, str | None]:
-        theme = sug["theme"]
-        theme_norm = _normalize_theme(theme or "")
-        title = sample_by_theme.get(theme_norm.lower(), "")
-        try:
-            folder = mapper.resolve(theme, title=title)
-        except Exception:  # noqa: BLE001 — un thème ne doit pas casser le lot
-            folder = None
-        return sug, folder
+    # Thèmes envoyés au batch + indices de contexte (sample_titles).
+    batch_themes = [s["theme"] for s in to_call]
+    titles: dict[str, str] = {}
+    for theme in batch_themes:
+        sample = sample_by_theme.get(_normalize_theme(theme or "").lower())
+        if sample:
+            titles[theme] = sample
 
-    from concurrent.futures import ThreadPoolExecutor
+    try:
+        resolved = mapper.resolve_batch(
+            batch_themes, titles=titles, chunk_size=_LLM_BATCH_CHUNK_SIZE,
+        )
+    except Exception:  # noqa: BLE001 — un échec batch ne casse pas la réponse
+        resolved = {}
 
     folder_set = set(folders)
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        for sug, folder in ex.map(_resolve, to_call):
-            if folder and folder in folder_set:
-                sug["folder"] = folder
-                sug["confidence"] = MAPPER_MIN_CONFIDENCE
-                sug["source"] = "llm"
-                sug["reason"] = "LLM mapper"
+    for sug in to_call:
+        hit = resolved.get(sug["theme"]) if isinstance(resolved, dict) else None
+        if hit and hit.get("folder") in folder_set:
+            sug["folder"] = hit["folder"]
+            sug["confidence"] = round(float(hit.get("confidence") or 0.0), 3)
+            sug["source"] = "llm"
+            sug["reason"] = "LLM (batch)"
 
-    return len(to_call)
+    # n_llm_calls = nombre de chunks réellement déclenchés par resolve_batch.
+    return math.ceil(len(to_call) / _LLM_BATCH_CHUNK_SIZE)
 
 
 # ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────
