@@ -353,6 +353,52 @@ class TestExecuteMoves(ApplyTestBase):
         self.assertEqual(progress["status"], "error")
         self.assertIn("boom", progress["error"])
 
+    def test_run_moves_rejects_traversal_in_projection(self):
+        """CSV corrompu (proposed_folder hors target) → abort AVANT tout move."""
+        csv_path = self.run_dir / "simulation" / "reclassify-projection.csv"
+        csv_path.write_text(
+            "rel_path,current_folder,proposed_folder,changed,source,top_theme,confidence,score\n"
+            "A/sure.pdf,A,../../escape,True,LLM (theme),X,0.95,0.9\n"
+            "A/ref.pdf,A,B/Ref,True,LLM (theme→refined),X,0.8,0.8\n",
+            encoding="utf-8")
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara._run_moves("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 400)
+        # Abort pré-vol : AUCUN fichier déplacé, pas d'évasion
+        self.assertFalse((self.root / "escape").exists())
+        self.assertTrue((self.target / "A" / "sure.pdf").exists())
+        self.assertTrue((self.target / "A" / "ref.pdf").exists())
+
+    def test_start_execute_double_spawn_uses_lock(self):
+        """Deux appels concurrents à start_execute ne doivent pas tous deux
+        passer la garde — le deuxième doit trouver le lock posé par le premier."""
+        spawned: list[str] = []
+
+        def fake_spawn(target, args, name):
+            # Enregistre l'appel sans lancer de vrai thread
+            spawned.append(name)
+
+        with mock.patch.object(ara, "_spawn", side_effect=fake_spawn):
+            # Premier appel : réussit, pose le lock
+            ara.start_execute("default", self.RUN_ID)
+            self.assertEqual(len(spawned), 1)
+            # Le lock est maintenant posé ; le deuxième appel doit être bloqué
+            with self.assertRaises(ara.ApplyError) as ctx:
+                ara.start_execute("default", self.RUN_ID)
+            self.assertEqual(ctx.exception.status, 423)
+            self.assertEqual(len(spawned), 1)  # pas de deuxième spawn
+
+    def test_run_moves_progress_separates_failed_and_skipped(self):
+        """Les payloads de progression exposent n_failed et n_skipped séparément."""
+        # stale → skipped, rien de failed
+        (self.target / "A" / "sure.pdf").unlink()
+        ara._run_moves("default", self.RUN_ID)
+        progress = ara._read_progress("default", self.RUN_ID)
+        self.assertIn("n_failed", progress)
+        self.assertIn("n_skipped", progress)
+        self.assertEqual(progress["n_failed"], 0)
+        self.assertEqual(progress["n_skipped"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

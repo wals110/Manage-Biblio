@@ -332,10 +332,23 @@ def _run_moves(profile: str, run_id: str) -> dict[str, Any]:
     Pour chaque move de la projection figée : garde de fraîcheur →
     garde de collision → os.rename (atomique, même volume) → journal.
     Échec individuel = skip + rapport, jamais d'abort.
+
+    Crash mid-batch : un fichier peut avoir été déplacé sans être encore
+    journalisé (ordre move→journal, trou d'1 record max par crash).
+    L'undo_batch ne le couvrira pas — recouper le rapport CSV avec le
+    journal en cas de crash avéré. state.executed reste False, donc un
+    re-lancement re-skippe les moves déjà faits (garde de fraîcheur).
     """
     target = _target_path(profile)
     selection = select_move_rows(_run_dir(profile, run_id))
     moves = selection["moves"]
+
+    # Pré-vol : la projection vient d'artefacts générés (LLM) — refuse
+    # toute évasion du target AVANT le moindre move (CSV corrompu = abort).
+    for m in moves:
+        _safe_target_subdir(target, m["rel_path"])
+        _safe_target_subdir(target, m["proposed_folder"])
+
     batch_id = move_journal.generate_batch_id()
     profile_dir = _profile_dir(profile)
 
@@ -347,7 +360,8 @@ def _run_moves(profile: str, run_id: str) -> dict[str, Any]:
     n_total = len(moves)
     _write_progress(profile, run_id, {
         "op": "execute", "status": "running",
-        "n_done": 0, "n_total": n_total, "n_failed": 0, "error": None,
+        "n_done": 0, "n_total": n_total, "n_failed": 0, "n_skipped": 0,
+        "error": None,
     })
 
     for i, m in enumerate(moves, start=1):
@@ -381,7 +395,7 @@ def _run_moves(profile: str, run_id: str) -> dict[str, Any]:
             _write_progress(profile, run_id, {
                 "op": "execute", "status": "running",
                 "n_done": i, "n_total": n_total,
-                "n_failed": n_failed + n_skipped, "error": None,
+                "n_failed": n_failed, "n_skipped": n_skipped, "error": None,
             })
 
     # Rapport CSV horodaté
@@ -406,7 +420,7 @@ def _run_moves(profile: str, run_id: str) -> dict[str, Any]:
     _write_progress(profile, run_id, {
         "op": "execute", "status": "done",
         "n_done": n_total, "n_total": n_total,
-        "n_failed": n_failed + n_skipped, "error": None,
+        "n_failed": n_failed, "n_skipped": n_skipped, "error": None,
         "report": report_path.name,
     })
     return {"n_moved": n_moved, "n_failed": n_failed,
@@ -430,26 +444,34 @@ def _execute_job(profile: str, run_id: str) -> None:
 
 
 def start_execute(profile: str, run_id: str) -> dict[str, Any]:
-    """Valide le gating, pose le lock sentinel, lance le thread."""
-    _assert_run_phase_b_done(profile, run_id)
-    _assert_no_op_in_progress(profile, run_id)
-    state = read_state(profile, run_id)
-    if not state["adopted"]:
-        raise ApplyError("adopte d'abord la structure (étape ①)", 409)
-    if state["executed"]:
-        raise ApplyError("déplacements déjà exécutés pour ce run", 409)
-    try:
-        taxonomy._check_lock_free(profile)
-    except taxonomy.TaxonomyError as exc:
-        raise ApplyError(str(exc), 423) from exc
-    _target_path(profile)  # SSD monté ?
-    n_total = select_move_rows(_run_dir(profile, run_id))["n_moves"]
+    """Valide le gating, pose le lock sentinel, lance le thread.
 
-    lock = taxonomy._lock_file(profile)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text("refonte-apply\n", encoding="utf-8")
-    _spawn(_execute_job, (profile, run_id), f"refonte-apply-{run_id[:8]}")
-    return {"ok": True, "run_id": run_id, "n_total": n_total}
+    Tout le corps est sous taxonomy._locks[profile] pour éviter la race
+    check-then-write : deux POST concurrents ne peuvent pas tous deux
+    passer _check_lock_free avant l'écriture du sentinel.
+    Le thread lui-même (_execute_job) ne tient PAS ce mutex — protégé
+    par le sentinel fichier.
+    """
+    with taxonomy._locks[profile]:
+        _assert_run_phase_b_done(profile, run_id)
+        _assert_no_op_in_progress(profile, run_id)
+        state = read_state(profile, run_id)
+        if not state["adopted"]:
+            raise ApplyError("adopte d'abord la structure (étape ①)", 409)
+        if state["executed"]:
+            raise ApplyError("déplacements déjà exécutés pour ce run", 409)
+        try:
+            taxonomy._check_lock_free(profile)
+        except taxonomy.TaxonomyError as exc:
+            raise ApplyError(str(exc), 423) from exc
+        _target_path(profile)  # SSD monté ?
+        n_total = select_move_rows(_run_dir(profile, run_id))["n_moves"]
+
+        lock = taxonomy._lock_file(profile)
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("refonte-apply\n", encoding="utf-8")
+        _spawn(_execute_job, (profile, run_id), f"refonte-apply-{run_id[:8]}")
+        return {"ok": True, "run_id": run_id, "n_total": n_total}
 
 
 def restore_config(profile: str, run_id: str) -> dict[str, Any]:
