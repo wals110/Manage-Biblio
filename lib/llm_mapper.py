@@ -82,6 +82,30 @@ Réponds UNIQUEMENT avec un objet JSON :
 {{"folder": "chemin/exact/du/dossier", "confidence": 0.85, "reason": "explication courte"}}
 """
 
+# ── Prompt batch pour le LLM Mapper (N thèmes en 1 appel) ──
+BATCH_MAPPER_PROMPT_TEMPLATE = """Tu es un bibliothécaire expert chargé de classer des livres PDF.
+
+DOSSIERS DISPONIBLES (liste exhaustive) :
+{folders_list}
+
+THÈMES À CLASSER ({n} au total) :
+{themes_list}
+
+TÂCHE : Pour CHAQUE thème ci-dessus, choisis le dossier LE PLUS PRÉCIS (le plus profond dans l'arborescence).
+
+RÈGLES STRICTES :
+1. TOUJOURS préférer un sous-dossier spécifique à un dossier parent.
+   Exemple : "01-SCIENCES/PHYSIQUE/05-Relativite-Quantique" plutôt que "01-SCIENCES/PHYSIQUE"
+2. Le "folder" DOIT être une copie EXACTE d'un dossier listé ci-dessus.
+3. Le "theme" DOIT être recopié EXACTEMENT tel qu'il apparaît ci-dessus.
+4. Si aucun dossier ne convient pour un thème, mets "folder": "{no_folder_marker}".
+5. "confidence" entre 0.0 et 1.0 — mets > 0.8 seulement si le match est évident.
+6. Renvoie UNE entrée par thème (ni plus, ni moins).
+
+Réponds UNIQUEMENT avec un TABLEAU JSON, une entrée par thème :
+[{{"theme": "<le thème exact>", "folder": "chemin/exact/du/dossier", "confidence": 0.85}}, ...]
+"""
+
 # ── Prompt vision pour le LLM Mapper (escalade) ──
 MAPPER_VISION_PROMPT = """Tu es un bibliothécaire expert. Regarde cette couverture de livre PDF.
 
@@ -199,6 +223,101 @@ class LLMMapper:
         # Tout a échoué → suggérer un nouveau dossier
         self._suggest_new_folder(theme, title, filename)
         return None
+
+    def resolve_batch(self, themes, titles=None, chunk_size=40):
+        # type: (list[str], dict[str, str] | None, int) -> dict[str, dict]
+        """Résout plusieurs thèmes vers des dossiers en UN appel LLM par chunk.
+
+        Bien plus économique que `resolve` appelé en boucle : la liste des
+        dossiers (souvent volumineuse) n'est envoyée qu'une fois par chunk.
+
+        Args:
+            themes: Liste de noms de thèmes à résoudre.
+            titles: Dict optionnel `theme -> titre d'exemple` (indice de contexte).
+            chunk_size: Nombre max de thèmes par appel LLM (borne la taille
+                        du prompt et de la réponse).
+
+        Returns:
+            Dict `{ theme_d_origine : {"folder": <chemin>, "confidence": <float>} }`
+            ne contenant QUE les thèmes résolus avec un dossier valide et une
+            confiance suffisante. Les autres sont simplement absents.
+        """
+        resolved = {}  # type: dict[str, dict]
+        if not themes:
+            return resolved
+
+        titles = titles or {}
+        threshold = self.min_confidence if self.min_confidence is not None else 0.6
+
+        for start in range(0, len(themes), max(1, chunk_size)):
+            chunk = themes[start:start + max(1, chunk_size)]
+            # Map insensible à la casse vers la casse d'origine du thème.
+            by_lower = {t.lower(): t for t in chunk}
+
+            try:
+                entries = self._call_batch(chunk, titles)
+            except Exception as e:  # noqa: BLE001 — robustesse par chunk
+                if self.verbose:
+                    log.warning("  ⚠ Mapper batch: chunk inparsable ({})".format(e))
+                continue
+
+            if not entries:
+                continue
+
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                raw_theme = entry.get('theme', '')
+                if not isinstance(raw_theme, str):
+                    continue
+                origin = by_lower.get(raw_theme.lower())
+                if origin is None or origin in resolved:
+                    continue
+
+                folder = entry.get('folder', '')
+                if folder == NO_FOLDER_MARKER or folder == UNSORTED_FOLDER:
+                    continue
+                validated = self._validate_folder(folder) if isinstance(folder, str) else None
+                if not validated:
+                    continue
+
+                try:
+                    confidence = float(entry.get('confidence', 0.0))
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                if confidence < threshold:
+                    continue
+
+                resolved[origin] = {'folder': validated, 'confidence': confidence}
+
+        return resolved
+
+    def _call_batch(self, chunk, titles):
+        # type: (list[str], dict[str, str]) -> list | None
+        """Construit le prompt batch, appelle le LLM et parse le tableau JSON."""
+        lines = []
+        for i, theme in enumerate(chunk, 1):
+            hint = titles.get(theme, '')
+            if hint:
+                lines.append('{}. "{}" (ex. titre : "{}")'.format(
+                    i, sanitize_for_prompt(theme), sanitize_for_prompt(hint)))
+            else:
+                lines.append('{}. "{}"'.format(i, sanitize_for_prompt(theme)))
+        themes_list = "\n".join(lines)
+
+        prompt = BATCH_MAPPER_PROMPT_TEMPLATE.format(
+            folders_list=self._folders_text,
+            themes_list=themes_list,
+            n=len(chunk),
+            no_folder_marker=NO_FOLDER_MARKER,
+        )
+
+        self.calls += 1
+        max_tokens = min(4000, 80 * len(chunk))
+        content = self._call_llm(prompt, max_tokens=max_tokens, parse=False)
+        if not content:
+            return None
+        return self._extract_json_array(content)
 
     def _process_mapper_result(self, result, theme):
         # type: (dict | None, str) -> str | None
@@ -334,17 +453,30 @@ class LLMMapper:
                 return None
         return self._client
 
-    def _call_llm(self, prompt):
-        # type: (str) -> dict | None
-        """Appel LLM générique via le client unifié, retourne le JSON parsé."""
+    def _call_llm(self, prompt, max_tokens=LLM_MAX_TOKENS, parse=True):
+        # type: (str, int, bool) -> dict | str | None
+        """Appel LLM générique via le client unifié.
+
+        Args:
+            prompt: Le prompt à envoyer.
+            max_tokens: Plafond de tokens en sortie.
+            parse: Si True (défaut), parse la réponse en objet JSON (dict) et
+                   la retourne. Si False, retourne le contenu texte brut
+                   (utilisé par resolve_batch pour parser un tableau JSON).
+
+        Returns:
+            dict (parse=True), str brut (parse=False), ou None en cas d'échec.
+        """
         client = self._get_client()
         if not client:
             return None
 
-        content = client.call(prompt=prompt, max_tokens=LLM_MAX_TOKENS)
+        content = client.call(prompt=prompt, max_tokens=max_tokens)
         if content is None:
             return None
 
+        if not parse:
+            return content
         return self._parse_response(content)
 
     def _validate_folder(self, folder):
@@ -384,6 +516,35 @@ class LLMMapper:
             return json.loads(content[start:end + 1])
         except (json.JSONDecodeError, ValueError):
             return None
+
+    def _extract_json_array(self, content):
+        # type: (str) -> list | None
+        """Extrait un tableau JSON d'une réponse LLM, avec tolérance.
+
+        Gère les fences markdown ```json ... ``` et le texte parasite avant/après
+        le tableau. Retourne la liste parsée ou None si rien d'exploitable.
+        """
+        if content is None:
+            return None
+
+        # Retirer les fences markdown ```json ... ```
+        if '```' in content:
+            stripped = content
+            for fence in ('```json', '```JSON', '```'):
+                stripped = stripped.replace(fence, '')
+            content = stripped
+
+        start = content.find('[')
+        end = content.rfind(']')
+        if start == -1 or end == -1 or end < start:
+            return None
+
+        try:
+            data = json.loads(content[start:end + 1])
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+        return data if isinstance(data, list) else None
 
     def save_learned(self, theme_mapping_path):
         # type: (str) -> int
