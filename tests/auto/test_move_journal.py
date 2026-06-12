@@ -72,6 +72,13 @@ class TestUndoRecord(JournalTestBase):
         with self.assertRaises(FileNotFoundError):
             mj.undo_record(self.tmpdir, rec)
 
+    def test_undo_untagged_record_uses_plain_undo_tag(self):
+        old = self.tmpdir / "A" / "f.pdf"
+        new = self._make_file("B/f.pdf")
+        rec = {"old": str(old), "new": str(new), "batch": "", "ts": "t"}
+        mj.undo_record(self.tmpdir, rec)
+        self.assertEqual(mj.read_journal(self.tmpdir)[-1]["batch"], "undo")
+
     def test_undo_raises_on_collision_at_old(self):
         old = self._make_file("A/f.pdf")
         new = self._make_file("B/f.pdf")

@@ -22,8 +22,10 @@ def _journal_path(profile_dir: Path) -> Path:
 
 
 def generate_batch_id() -> str:
-    """Identifiant de batch unique (uuid4 hex)."""
-    return uuid.uuid4().hex
+    """Identifiant de batch unique, triable chronologiquement
+    (même format que rename_journal : timestamp + suffixe aléatoire)."""
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"{ts}-{uuid.uuid4().hex[:6]}"
 
 
 def append_move(
@@ -84,7 +86,8 @@ def undo_record(profile_dir: Path, record: dict) -> dict:
         raise FileExistsError(f"collision at original path: {old}")
     os.makedirs(os.path.dirname(old), exist_ok=True)
     os.rename(new, old)
-    inverse_batch = "undo-" + (record.get("batch") or "")
+    original_batch = record.get("batch") or ""
+    inverse_batch = ("undo-" + original_batch) if original_batch else "undo"
     return append_move(profile_dir, old_abs=new, new_abs=old, batch_id=inverse_batch)
 
 
