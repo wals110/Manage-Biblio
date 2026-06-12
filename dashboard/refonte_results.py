@@ -265,6 +265,40 @@ def load_creations(run_dir: Path | str) -> set[str]:
     return {c.get("path", "") for c in (data.get("creations") or []) if c.get("path")}
 
 
+def select_move_rows(run_dir: Path | str) -> dict:
+    """Partitionne la projection en moves exécutables / doute / stables.
+
+    Décision actée (spec Apply/Execute) : on ne déplace QUE les fichiers
+    `changed` ET hors zone de doute (`_is_doubt`) — c.-à-d. P1/P1-raffiné
+    avec confiance ≥ 0.7. Le reste reste en place pour revue manuelle.
+
+    Returns:
+        {"moves": [enriched_row...], "n_moves": int,
+         "n_doubt_excluded": int, "n_stable": int}
+    """
+    rows = read_projection_rows(run_dir)
+    creations = load_creations(run_dir)
+    moves: list[dict] = []
+    n_doubt = 0
+    n_stable = 0
+    for row in rows:
+        changed = str(row.get("changed", "")).strip().lower() in ("true", "1")
+        enriched = enrich_row(row, creations)
+        if not changed or not enriched["proposed_folder"]:
+            n_stable += 1
+            continue
+        if _is_doubt(enriched):
+            n_doubt += 1
+            continue
+        moves.append(enriched)
+    return {
+        "moves": moves,
+        "n_moves": len(moves),
+        "n_doubt_excluded": n_doubt,
+        "n_stable": n_stable,
+    }
+
+
 def load_proposed_folders(run_dir: Path | str) -> list[str]:
     """Liste plate des dossiers de tree-proposed.yaml (clé 'folders')."""
     p = Path(run_dir) / "proposed" / "tree-proposed.yaml"
