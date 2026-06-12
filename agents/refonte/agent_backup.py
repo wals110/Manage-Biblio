@@ -29,7 +29,7 @@ MAX_BACKUPS_DEFAULT = 50
 # Fichiers de production à snapshotter. Si un fichier est absent au moment
 # du backup, on l'omet silencieusement — le restore le créera/n'écrasera
 # que ceux présents dans le snapshot.
-PROD_FILES = ("tree.yaml", "theme_mapping.yaml")
+PROD_FILES = ("tree.yaml", "theme_mapping.yaml", "categories.yaml")
 
 
 class BackupError(Exception):
