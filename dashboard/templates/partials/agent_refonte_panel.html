@@ -937,9 +937,12 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({profile: currentProfile(), run_id: runId}),
         });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-        return d;
+        if (!r.ok) {
+            let msg = 'HTTP ' + r.status;
+            try { msg = (await r.json()).error || msg; } catch (e) { /* non-JSON */ }
+            throw new Error(msg);
+        }
+        return r.json();
     }
 
     function applyStepHtml(p) {
@@ -998,11 +1001,15 @@
                     + 'Un backup de la config actuelle sera créé (restaurable).',
                 confirmLabel: 'Adopter', variant: 'primary'});
             if (!ok) return;
+            adoptBtn.disabled = true;
             try {
                 const d = await applyPost('adopt', runId);
                 showToast('✓ Structure adoptée (backup ' + d.backup + ')', 'success');
                 renderApplyBlock(runId);
-            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+            } catch (e) {
+                adoptBtn.disabled = false;
+                showToast('✗ ' + e.message, 'error');
+            }
         });
 
         const restoreBtn = document.getElementById('rr-apply-restore');
@@ -1014,11 +1021,15 @@
                     + 'seront supprimés (les non-vides sont préservés).',
                 confirmLabel: 'Restaurer', variant: 'danger'});
             if (!ok) return;
+            restoreBtn.disabled = true;
             try {
                 await applyPost('restore-config', runId);
                 showToast('✓ Config restaurée', 'success');
                 renderApplyBlock(runId);
-            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+            } catch (e) {
+                restoreBtn.disabled = false;
+                showToast('✗ ' + e.message, 'error');
+            }
         });
 
         const execBtn = document.getElementById('rr-apply-execute');
@@ -1033,33 +1044,41 @@
                     + 'les fichiers ne sont pas re-déplacés à la main.',
                 confirmLabel: 'Exécuter', variant: 'danger'});
             if (!ok) return;
+            execBtn.disabled = true;
             try {
                 await applyPost('execute', runId);
                 showToast('▶ Déplacements lancés', 'info');
                 startApplyPoll(runId);
-            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+            } catch (e) {
+                execBtn.disabled = false;
+                showToast('✗ ' + e.message, 'error');
+            }
         });
 
         const undoBtn = document.getElementById('rr-apply-undo');
         if (undoBtn) undoBtn.addEventListener('click', async () => {
             const ok = await showConfirm({
-                title: 'Annuler les ' + st_nMoved(p) + ' déplacement(s) ?',
+                title: 'Annuler les ' + stateNMoved(p) + ' déplacement(s) ?',
                 body: 'Chaque fichier sera re-déplacé vers son emplacement '
                     + 'd\'origine via le journal. Échecs individuels rapportés.',
                 confirmLabel: 'Annuler les déplacements', variant: 'danger'});
             if (!ok) return;
+            undoBtn.disabled = true;
             try {
                 await applyPost('undo-moves', runId);
                 showToast('↩ Annulation lancée', 'info');
                 startApplyPoll(runId);
-            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+            } catch (e) {
+                undoBtn.disabled = false;
+                showToast('✗ ' + e.message, 'error');
+            }
         });
 
         // Reprise auto du poll si une op tourne déjà (reload de page)
         startApplyPollIfRunning(runId);
     }
 
-    function st_nMoved(p) {
+    function stateNMoved(p) {
         return (p.state && p.state.n_moved) || 0;
     }
 
@@ -1614,6 +1633,7 @@
                 if (switchingRun) {
                     renderReport('');
                     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                    stopApplyPoll();
                 }
                 currentRunId = r.run_id;
                 currentRunPhase = r.phase || 'A';
@@ -1763,6 +1783,7 @@
 
     function resetOnProfileChange() {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        stopApplyPoll();
         startBtn.disabled = false;
         setStatus('Sélectionne un run à gauche ou lance un nouveau diagnostic.');
         renderReport('');
