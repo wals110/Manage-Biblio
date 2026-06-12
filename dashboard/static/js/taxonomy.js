@@ -3062,13 +3062,14 @@
     const modal = $('#tax-suggest-modal');
     const body = $('#tax-suggest-body');
     body.innerHTML = '<div class="muted">Suggestion en cours…</div>';
-    $('#tax-suggest-llm').style.display = 'none';
     $('#tax-suggest-apply').disabled = true;
     $('#tax-suggest-apply').textContent = 'Appliquer (0)';
     modal.style.display = 'flex';
-    await withBusy('Suggestion des dossiers (déterministe)…', async () => {
+    await withBusy('Suggestion des dossiers (LLM, 1 appel groupé)…', async () => {
       try {
-        const r = await postSuggestMappings(themes, false);
+        // use_llm=true : le déterministe fiable tourne d'abord côté backend
+        // (matchs de nom exacts, gratuits), puis le LLM batché résout le reste.
+        const r = await postSuggestMappings(themes, true);
         state.suggestReview = (r.suggestions || []).map(s => ({
           theme: s.theme,
           folder: s.folder || '',
@@ -3103,7 +3104,6 @@
       updateSuggestApplyBtn();
       return;
     }
-    const nUnres = rows.filter(r => r.source === 'unresolved').length;
     body.appendChild(el('div', { class: 'muted small', style: 'padding:0 0 10px;' }, [
       `${rows.length} thème(s) · `,
       'coche ceux à appliquer, corrige le dossier si besoin. ',
@@ -3112,10 +3112,6 @@
     const list = el('div', { class: 'tax-suggest-list' });
     rows.forEach((row, i) => list.appendChild(renderSuggestRow(row, i)));
     body.appendChild(list);
-    // Bouton « compléter via LLM » visible seulement s'il reste des non-résolus.
-    const llmBtn = $('#tax-suggest-llm');
-    llmBtn.style.display = nUnres > 0 ? '' : 'none';
-    if (nUnres > 0) llmBtn.textContent = `Compléter les ${nUnres} non-résolu(s) avec le LLM`;
     updateSuggestApplyBtn();
   }
 
@@ -3242,45 +3238,6 @@
   }
 
   // Relance suggest avec use_llm=true sur les seuls thèmes restés unresolved.
-  async function completeSuggestWithLLM() {
-    const rows = state.suggestReview || [];
-    const pending = rows.filter(r => r.source === 'unresolved');
-    if (!pending.length) return;
-    const themes = pending.map(r => r.theme);
-    await withBusy(`Résolution LLM de ${themes.length} thème(s)…`, async () => {
-      try {
-        const r = await postSuggestMappings(themes, true);
-        const byTheme = new Map();
-        for (const s of (r.suggestions || [])) byTheme.set(s.theme, s);
-        for (const row of rows) {
-          const s = byTheme.get(row.theme);
-          if (!s) continue;
-          row.folder = s.folder || '';
-          row.confidence = s.confidence || 0;
-          row.source = s.source || 'unresolved';
-          row.reason = s.reason || '';
-          // Coche les nouveaux résolus ; les toujours-non-résolus restent
-          // décochés.
-          row.accepted = s.source !== 'unresolved' && !!s.folder;
-        }
-        const nResolved = pending.filter(p => {
-          const s = byTheme.get(p.theme);
-          return s && s.source !== 'unresolved' && s.folder;
-        }).length;
-        renderSuggestReview();
-        showToast(
-          `✓ ${nResolved}/${pending.length} résolu(s) via LLM (${r.n_llm_calls || 0} appel(s))`,
-          nResolved > 0 ? 'success' : 'info');
-      } catch (e) {
-        if (e.status === 423) {
-          showToast('✗ Édition verrouillée (run en cours) — réessaie plus tard', 'error');
-        } else {
-          showToast('✗ ' + e.message, 'error');
-        }
-      }
-    });
-  }
-
   async function applySuggestReview() {
     const rows = state.suggestReview || [];
     const mappings = rows
@@ -3954,7 +3911,6 @@
     $('#tax-history-close').addEventListener('click', closeHistoryModal);
     // Suggest + map review modal (Tâche 8)
     $('#tax-suggest-cancel').addEventListener('click', closeSuggestReview);
-    $('#tax-suggest-llm').addEventListener('click', completeSuggestWithLLM);
     $('#tax-suggest-apply').addEventListener('click', applySuggestReview);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
