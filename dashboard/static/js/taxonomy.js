@@ -3440,18 +3440,25 @@
     });
   }
 
-  // Wrap any write op: preview → conditional modal → action.
-  // Returns true if op should proceed.
+  // Wrap any write op: preview → confirmation → action.
+  // Règle unique et prévisible : on confirme TOUJOURS (unitaire comme lot),
+  // avec l'aperçu d'impact riche. Si l'aperçu échoue, on confirme quand même
+  // (jamais d'écriture muette). Returns true if op should proceed.
   async function previewAndConfirm(action, theme, folder) {
     let preview;
     try {
       preview = await withBusy('Analyse de l’impact…',
                                () => fetchPreview(action, theme, folder));
     } catch (e) {
-      console.warn('preview failed, proceeding without confirm:', e);
-      return true;
+      console.warn('preview failed, confirmation simple:', e);
+      const label = action === 'add' ? 'Ajouter' : action === 'update' ? 'Rediriger' : 'Supprimer';
+      return await showConfirm({
+        title: `${label} le mapping « ${theme} » ?`,
+        body: folder ? `→ ${folder}` : '',
+        confirmLabel: 'Confirmer',
+        cancelLabel: 'Annuler',
+      });
     }
-    if (!_needsConfirm(preview)) return true;
     return await showImpactModal(action, theme, folder, preview);
   }
 
