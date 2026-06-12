@@ -12,8 +12,11 @@ Rollbacks : restore_config (snapshot agent_backup) / start_undo_moves
 
 from __future__ import annotations
 
+import csv
 import json
+import os
 import shutil
+import threading
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +25,7 @@ from typing import Any
 from agents.refonte import agent_backup
 from dashboard import data, taxonomy
 from dashboard.refonte_results import select_move_rows
+from lib import move_journal
 
 # ─── Erreur transport (status HTTP porté par l'exception) ────────────────
 
@@ -284,6 +288,168 @@ def adopt_structure(profile: str, run_id: str) -> dict[str, Any]:
             "promoted": promoted,
             "created_dirs": created,
         }
+
+
+# ─── Couche B — exécution des déplacements ───────────────────────────────
+
+_PROGRESS_EVERY = 50
+
+
+def _spawn(target, args, name: str) -> None:
+    """Lance ``target`` dans un thread daemon. Indirection volontaire :
+    les tests HTTP patchent ``_spawn`` pour exécuter en synchrone (patcher
+    ``threading.Thread`` casserait le portal anyio du TestClient)."""
+    thread = threading.Thread(target=target, args=args, daemon=True, name=name)
+    thread.start()
+
+
+def _logs_dir() -> Path:
+    d = data.get_project_root() / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _prune_empty_dirs(target: Path, rel_folders: set[str]) -> None:
+    """Supprime les dossiers sources devenus vides, en remontant —
+    jamais le target lui-même."""
+    target = target.resolve()
+    for rel in sorted(rel_folders, key=lambda p: p.count("/"), reverse=True):
+        d = (target / rel).resolve()
+        while d != target and d.is_relative_to(target):
+            try:
+                if d.is_dir() and not any(d.iterdir()):
+                    d.rmdir()
+                else:
+                    break
+            except OSError:
+                break
+            d = d.parent
+
+
+def _run_moves(profile: str, run_id: str) -> dict[str, Any]:
+    """Boucle de déplacement (synchrone — appelée par le thread).
+
+    Pour chaque move de la projection figée : garde de fraîcheur →
+    garde de collision → os.rename (atomique, même volume) → journal.
+    Échec individuel = skip + rapport, jamais d'abort.
+    """
+    target = _target_path(profile)
+    selection = select_move_rows(_run_dir(profile, run_id))
+    moves = selection["moves"]
+    batch_id = move_journal.generate_batch_id()
+    profile_dir = _profile_dir(profile)
+
+    n_moved = 0
+    n_failed = 0
+    n_skipped = 0
+    report_rows: list[dict[str, str]] = []
+    source_folders: set[str] = set()
+    n_total = len(moves)
+    _write_progress(profile, run_id, {
+        "op": "execute", "status": "running",
+        "n_done": 0, "n_total": n_total, "n_failed": 0, "error": None,
+    })
+
+    for i, m in enumerate(moves, start=1):
+        rel = m["rel_path"]
+        old = target / rel
+        new = target / m["proposed_folder"] / os.path.basename(rel)
+        status = ""
+        detail = ""
+        if not old.exists():
+            status, n_skipped = "stale", n_skipped + 1
+            detail = "source absente (déplacée depuis la simulation)"
+        elif new.exists():
+            status, n_skipped = "collision", n_skipped + 1
+            detail = "destination occupée — jamais d'écrasement"
+        else:
+            try:
+                new.parent.mkdir(parents=True, exist_ok=True)
+                os.rename(old, new)
+                move_journal.append_move(
+                    profile_dir, str(old), str(new), batch_id=batch_id)
+                status, n_moved = "moved", n_moved + 1
+                source_folders.add(os.path.dirname(rel))
+            except OSError as exc:
+                status, n_failed = "error", n_failed + 1
+                detail = str(exc)
+        report_rows.append({
+            "rel_path": rel, "old": str(old), "new": str(new),
+            "status": status, "detail": detail,
+        })
+        if i % _PROGRESS_EVERY == 0:
+            _write_progress(profile, run_id, {
+                "op": "execute", "status": "running",
+                "n_done": i, "n_total": n_total,
+                "n_failed": n_failed + n_skipped, "error": None,
+            })
+
+    # Rapport CSV horodaté
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    report_path = _logs_dir() / f"rapport_apply_{ts}.csv"
+    with report_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["rel_path", "old", "new", "status", "detail"])
+        writer.writeheader()
+        writer.writerows(report_rows)
+
+    _prune_empty_dirs(target, source_folders)
+    write_state(profile, run_id, {
+        "executed": True,
+        "executed_at": datetime.now(UTC).isoformat(),
+        "move_batch_id": batch_id,
+        "n_moved": n_moved,
+        "n_failed": n_failed,
+        "n_skipped": n_skipped,
+        "rolled_back_moves": False,
+    })
+    _write_progress(profile, run_id, {
+        "op": "execute", "status": "done",
+        "n_done": n_total, "n_total": n_total,
+        "n_failed": n_failed + n_skipped, "error": None,
+        "report": report_path.name,
+    })
+    return {"n_moved": n_moved, "n_failed": n_failed,
+            "n_skipped": n_skipped, "report": report_path.name,
+            "batch_id": batch_id}
+
+
+def _execute_job(profile: str, run_id: str) -> None:
+    """Wrapper thread : exécute, capture les erreurs, libère TOUJOURS
+    le lock et invalide les caches."""
+    try:
+        _run_moves(profile, run_id)
+    except Exception as exc:  # noqa: BLE001
+        _write_progress(profile, run_id, {
+            "op": "execute", "status": "error",
+            "n_done": 0, "n_total": 0, "n_failed": 0, "error": str(exc),
+        })
+    finally:
+        taxonomy._lock_file(profile).unlink(missing_ok=True)
+        taxonomy.reset_cache(profile)
+
+
+def start_execute(profile: str, run_id: str) -> dict[str, Any]:
+    """Valide le gating, pose le lock sentinel, lance le thread."""
+    _assert_run_phase_b_done(profile, run_id)
+    _assert_no_op_in_progress(profile, run_id)
+    state = read_state(profile, run_id)
+    if not state["adopted"]:
+        raise ApplyError("adopte d'abord la structure (étape ①)", 409)
+    if state["executed"]:
+        raise ApplyError("déplacements déjà exécutés pour ce run", 409)
+    try:
+        taxonomy._check_lock_free(profile)
+    except taxonomy.TaxonomyError as exc:
+        raise ApplyError(str(exc), 423) from exc
+    _target_path(profile)  # SSD monté ?
+    n_total = select_move_rows(_run_dir(profile, run_id))["n_moves"]
+
+    lock = taxonomy._lock_file(profile)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("refonte-apply\n", encoding="utf-8")
+    _spawn(_execute_job, (profile, run_id), f"refonte-apply-{run_id[:8]}")
+    return {"ok": True, "run_id": run_id, "n_total": n_total}
 
 
 def restore_config(profile: str, run_id: str) -> dict[str, Any]:
