@@ -171,6 +171,7 @@
                 <input id="tax-llm-search" type="text" placeholder="🔍 rechercher…" class="filter-select" style="flex:1;">
                 <label><input type="checkbox" id="tax-llm-orph-only"> orphelins</label>
             </div>
+            <div id="tax-llm-bulk-toolbar" class="tax-llm-bulk-toolbar" style="display:none;"></div>
             <div id="tax-llm-list" class="tax-llm-list"></div>
         </div>
     </section>
@@ -564,6 +565,18 @@
         <div class="tax-modal-body" id="tax-reclassify-body"></div>
         <div class="tax-modal-actions">
             <button id="tax-reclassify-close" class="btn-secondary">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Suggest + map review modal (Tâche 8) -->
+<div id="tax-suggest-modal" class="tax-modal-backdrop" style="display:none;">
+    <div class="tax-modal" style="width:820px; max-width:96vw;">
+        <div class="tax-modal-title">💡 Suggérer + Mapper — revue des suggestions</div>
+        <div class="tax-modal-body" id="tax-suggest-body"></div>
+        <div class="tax-modal-actions">
+            <button id="tax-suggest-cancel" class="btn-secondary">Annuler</button>
+            <button id="tax-suggest-apply" class="btn-primary" disabled>Appliquer (0)</button>
         </div>
     </div>
 </div>

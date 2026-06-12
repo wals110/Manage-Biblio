@@ -38,6 +38,8 @@ import yaml
 from dashboard import data
 from lib import vision_cache
 from lib.classifier import classify_by_theme, classify_combined, load_keyword_classifier
+from lib.constants import MAPPER_MIN_CONFIDENCE
+from lib.llm_mapper import LLMMapper
 
 # Filter weak LLM signals before populating the themes universe.
 _MIN_CONFIDENCE = 0.5
@@ -2015,6 +2017,251 @@ def delete_mappings_bulk(profile: str, keys: list[str]) -> dict:
             "n_deleted": len(deleted),
             "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
         }
+
+
+def add_mappings_bulk(profile: str, mappings: list[dict]) -> dict:
+    """Add multiple theme→folder entries in one transaction.
+
+    A single backup is created before the batch (only if at least one entry
+    is actually added); the lock is held for the whole operation. Invalid or
+    redundant entries are reported in `skipped` rather than aborting (so a
+    partial selection still proceeds). Existing mappings are never overwritten.
+
+    Each item of `mappings` is a dict ``{"theme": str, "folder": str}``.
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        mapping = _load_mapping(profile)
+        added: list[dict] = []
+        skipped: list[dict] = []
+        # Dedup by theme key (raw), keeping the first occurrence.
+        seen: set[str] = set()
+        for item in mappings or []:
+            raw_theme = (item.get("theme") or "") if isinstance(item, dict) else ""
+            raw_folder = (item.get("folder") or "") if isinstance(item, dict) else ""
+            if raw_theme in seen:
+                skipped.append({"theme": raw_theme, "reason": "duplicate_in_batch"})
+                continue
+            seen.add(raw_theme)
+            try:
+                theme = _validate_theme(raw_theme)
+                folder = _validate_folder(profile, raw_folder)
+            except TaxonomyError as exc:
+                skipped.append({"theme": raw_theme, "reason": str(exc)})
+                continue
+            if theme in mapping:
+                skipped.append({"theme": theme, "reason": "already_mapped"})
+                continue
+            mapping[theme] = folder
+            added.append({"theme": theme, "folder": folder})
+
+        if not added:
+            return {
+                "ok": True,
+                "n_added": 0,
+                "added": [],
+                "skipped": skipped,
+                "backup": None,
+            }
+        backup = _backup_mapping(profile)
+        _write_mapping(profile, mapping)
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "n_added": len(added),
+            "added": added,
+            "skipped": skipped,
+            "backup": str(backup.relative_to(data.get_project_root())) if backup else None,
+        }
+
+
+# ─── Bulk mapping suggestions — passe déterministe (Tâche 3) ─────────────
+#
+# Pour un lot de thèmes (typiquement les orphelins), suggère un dossier
+# cible. Le moteur a deux étages :
+#
+#   1. Passe déterministe — matching nom-de-thème ↔ nom-de-dossier FIABLE
+#      UNIQUEMENT : si le nom normalisé du thème == dernier segment normalisé
+#      d'un dossier du tree → résolu (conf 0.9, haute précision, faible
+#      couverture). Le KeywordClassifier a été RETIRÉ : sur vraies données il
+#      produisait des suggestions confiantes mais FAUSSES (ex. "Colloid
+#      Science" → Maths/Géométrie via le mot-clé "surface").
+#   2. Passe LLM BATCHÉE (use_llm) — un appel groupé (chunké) via
+#      ``LLMMapper.resolve_batch`` au lieu de N appels ``resolve``. Plus
+#      rapide, plus économique, meilleure qualité. Bornée par ``max_llm``.
+#
+# Lecture seule : aucun write de theme_mapping.yaml, pas de lock.
+
+# Taille de chunk de resolve_batch (doit refléter le défaut de la méthode).
+_LLM_BATCH_CHUNK_SIZE = 40
+
+
+def suggest_mappings(
+    profile: str,
+    themes: list[str],
+    use_llm: bool = False,
+    max_llm: int = 60,
+) -> dict:
+    """Suggère un dossier cible pour chaque thème (déterministe + LLM batché).
+
+    Args:
+        profile: nom du profil.
+        themes: liste de noms de thèmes à mapper.
+        use_llm: si True ET clé API présente, lance la passe LLM mapper
+            BATCHÉE (``resolve_batch``) sur les thèmes restés non résolus.
+        max_llm: borne de coût — au plus ``max_llm`` thèmes sont envoyés au
+            batch. Les thèmes au-delà de cette borne restent ``unresolved``.
+
+    Returns:
+        ``{"suggestions": [{theme, folder, confidence, source, reason}, ...],
+           "n_llm_calls": int}``
+
+        - source="deterministic" : nom du thème == nom d'un dossier du tree.
+        - source="llm"            : résolu par le LLM mapper (passe batchée).
+        - source="unresolved"     : non résolu (déterministe + batch échoués,
+                                     ou pas de clé API / borne LLM atteinte).
+    """
+    from dashboard.categories import _normalize_segment
+
+    # tree.yaml — liste plate des dossiers valides + index par segment final.
+    folders = _load_tree(profile)
+    # Dernier segment normalisé → chemin complet (dernier gagne, ordre trié).
+    last_seg_index: dict[str, str] = {}
+    for f in folders:
+        segs = [s for s in f.split("/") if s]
+        if segs:
+            last_seg_index[_normalize_segment(segs[-1])] = f
+
+    # sample_titles par thème (passés comme indice de contexte au batch LLM).
+    mapping = _load_mapping(profile)
+    themes_llm, _stats = _aggregate_themes_llm(profile, mapping)
+    sample_by_theme: dict[str, str] = {}
+    for t in themes_llm:
+        titles = t.get("sample_titles") or []
+        if titles:
+            sample_by_theme[t["theme"].lower()] = titles[0]
+
+    suggestions: list[dict] = []
+    for theme in themes:
+        theme_norm = _normalize_theme(theme or "")
+        folder: str | None = None
+        confidence = 0.0
+        source = "unresolved"
+        reason = ""
+
+        # ── Passe déterministe — matching nom de dossier FIABLE ──
+        if theme_norm:
+            cand = last_seg_index.get(_normalize_segment(theme_norm))
+            if cand:
+                folder = cand
+                confidence = 0.9
+                source = "deterministic"
+                reason = "nom de dossier"
+
+        suggestions.append({
+            "theme": theme,
+            "folder": folder,
+            "confidence": confidence,
+            "source": source,
+            "reason": reason,
+        })
+
+    # ── Passe LLM batchée ─────────────────────────────────────────────────
+    # Sur les thèmes restés unresolved, si use_llm ET clé API présente : UN
+    # appel groupé (chunké) à resolve_batch, borné par max_llm. Lecture seule.
+    n_llm_calls = _run_llm_pass(
+        profile=profile,
+        suggestions=suggestions,
+        folders=folders,
+        sample_by_theme=sample_by_theme,
+        use_llm=use_llm,
+        max_llm=max_llm,
+    )
+    return {"suggestions": suggestions, "n_llm_calls": n_llm_calls}
+
+
+def _run_llm_pass(
+    profile: str,
+    suggestions: list[dict],
+    folders: list[str],
+    sample_by_theme: dict[str, str],
+    use_llm: bool,
+    max_llm: int,
+) -> int:
+    """Résout via ``LLMMapper.resolve_batch`` les suggestions restées
+    ``unresolved`` (in place), en UN appel groupé chunké.
+
+    No-op (retourne 0) si ``use_llm`` est faux ou si la clé API
+    ``SILICONFLOW_API_KEY`` est absente. Au plus ``max_llm`` thèmes sont
+    envoyés au batch ; le surplus reste ``unresolved`` avec
+    ``reason="limite LLM atteinte"``.
+
+    Retourne le nombre d'appels LLM réels — c.-à-d. le nombre de chunks
+    ``ceil(len(themes_envoyés) / _LLM_BATCH_CHUNK_SIZE)`` (resolve_batch
+    chunke en interne ; on n'a pas accès au compteur interne sans modifier sa
+    signature publique, donc on recalcule le nombre de chunks ici).
+    """
+    import math
+
+    pending = [s for s in suggestions if s["source"] == "unresolved"]
+    if not use_llm or not pending:
+        return 0
+
+    api_key = os.environ.get("SILICONFLOW_API_KEY")
+    if not api_key:
+        return 0
+
+    # Au plus max_llm thèmes ; le surplus reste unresolved (borne de coût).
+    to_call = pending[: max(0, int(max_llm))]
+    overflow = pending[max(0, int(max_llm)):]
+    for s in overflow:
+        s["reason"] = "limite LLM atteinte"
+    if not to_call:
+        return 0
+
+    # UN mapper partagé — construction calquée sur commands/helpers.py :
+    # folders (tree.yaml) + endpoint/model (profile.yaml) + clé API.
+    cfg = _load_profile_yaml(profile)
+    llm_cfg = cfg.get("llm") or {}
+    endpoint = llm_cfg.get("endpoint") or (
+        "https://api.siliconflow.com/v1/chat/completions"
+    )
+    model = llm_cfg.get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    mapper = LLMMapper(
+        folders=folders,
+        api_key=api_key,
+        endpoint=endpoint,
+        model=model,
+        min_confidence=MAPPER_MIN_CONFIDENCE,
+    )
+
+    # Thèmes envoyés au batch + indices de contexte (sample_titles).
+    batch_themes = [s["theme"] for s in to_call]
+    titles: dict[str, str] = {}
+    for theme in batch_themes:
+        sample = sample_by_theme.get(_normalize_theme(theme or "").lower())
+        if sample:
+            titles[theme] = sample
+
+    try:
+        resolved = mapper.resolve_batch(
+            batch_themes, titles=titles, chunk_size=_LLM_BATCH_CHUNK_SIZE,
+        )
+    except Exception:  # noqa: BLE001 — un échec batch ne casse pas la réponse
+        resolved = {}
+
+    folder_set = set(folders)
+    for sug in to_call:
+        hit = resolved.get(sug["theme"]) if isinstance(resolved, dict) else None
+        if hit and hit.get("folder") in folder_set:
+            sug["folder"] = hit["folder"]
+            sug["confidence"] = round(float(hit.get("confidence") or 0.0), 3)
+            sug["source"] = "llm"
+            sug["reason"] = "LLM (batch)"
+
+    # n_llm_calls = nombre de chunks réellement déclenchés par resolve_batch.
+    return math.ceil(len(to_call) / _LLM_BATCH_CHUNK_SIZE)
 
 
 # ─── Tree editing (Phase 3 Étape A — create folder only) ─────────────────

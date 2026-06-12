@@ -1732,6 +1732,120 @@ class TestBulkDeleteMapping(TaxonomyTestBase):
             taxonomy.delete_mappings_bulk(self.profile_name, ["   "])
 
 
+class TestBulkAddMapping(TaxonomyTestBase):
+
+    def test_bulk_add_happy_path(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["n_added"], 2)
+        added_themes = {a["theme"] for a in r["added"]}
+        self.assertEqual(added_themes, {"thermodynamics", "geometry"})
+        self.assertEqual(r["skipped"], [])
+        self.assertIsNotNone(r["backup"])
+        # YAML actually updated, existing entries preserved
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(new_map["thermodynamics"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(new_map["geometry"], "01-SCIENCES/MATHEMATIQUES")
+        self.assertIn("physics", new_map)
+
+    def test_bulk_add_already_mapped_is_skipped_no_overwrite(self):
+        # 'physics' is already mapped to 01-SCIENCES/PHYSIQUE in the fixture.
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "physics", "folder": "02-INFORMATIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        skipped_themes = {s["theme"] for s in r["skipped"]}
+        self.assertIn("physics", skipped_themes)
+        reasons = {s["theme"]: s["reason"] for s in r["skipped"]}
+        self.assertEqual(reasons["physics"], "already_mapped")
+        # No overwrite of the existing mapping
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(new_map["physics"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(new_map["geometry"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_bulk_add_unknown_folder_is_skipped(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "thermodynamics", "folder": "99-DOES-NOT-EXIST"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        added_themes = {a["theme"] for a in r["added"]}
+        self.assertEqual(added_themes, {"geometry"})
+        skipped_themes = {s["theme"] for s in r["skipped"]}
+        self.assertEqual(skipped_themes, {"thermodynamics"})
+
+    def test_bulk_add_invalid_theme_is_skipped(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "   ", "folder": "01-SCIENCES/PHYSIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        self.assertEqual({a["theme"] for a in r["added"]}, {"geometry"})
+        self.assertEqual(len(r["skipped"]), 1)
+
+    def test_bulk_add_dedupes_keeping_first(self):
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            {"theme": "geometry", "folder": "02-INFORMATIQUE"},
+        ])
+        self.assertEqual(r["n_added"], 1)
+        added = {a["theme"]: a["folder"] for a in r["added"]}
+        self.assertEqual(added["geometry"], "01-SCIENCES/MATHEMATIQUES")
+        # The duplicate is reported as skipped
+        self.assertEqual(len(r["skipped"]), 1)
+        new_map = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(new_map["geometry"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_bulk_add_empty_list_no_backup_no_write(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        r = taxonomy.add_mappings_bulk(self.profile_name, [])
+        self.assertEqual(r["n_added"], 0)
+        self.assertIsNone(r["backup"])
+        after = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        self.assertEqual(len(after), len(before))
+
+    def test_bulk_add_all_skipped_no_backup_no_write(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        r = taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "physics", "folder": "02-INFORMATIQUE"},  # already mapped
+            {"theme": "x", "folder": "99-DOES-NOT-EXIST"},       # bad folder
+        ])
+        self.assertEqual(r["n_added"], 0)
+        self.assertIsNone(r["backup"])
+        after = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        self.assertEqual(len(after), len(before))
+
+    def test_bulk_add_creates_single_backup(self):
+        backup_dir = self.profile_dir / ".cache" / "taxonomy-backups"
+        before = list(backup_dir.glob("*.yaml")) if backup_dir.exists() else []
+        taxonomy.add_mappings_bulk(self.profile_name, [
+            {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+            {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            {"theme": "optics", "folder": "01-SCIENCES/PHYSIQUE"},
+        ])
+        after = list(backup_dir.glob("*.yaml"))
+        # Exactly one new backup file regardless of how many entries were added.
+        self.assertEqual(len(after) - len(before), 1)
+
+    def test_bulk_add_respects_lock(self):
+        lock = self.profile_dir / ".cache" / "taxonomy.lock"
+        lock.write_text("locked by test")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.add_mappings_bulk(self.profile_name, [
+                {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+            ])
+        self.assertEqual(ctx.exception.status, 423)
+
+
 class TestDormantAndBulkEndpoints(TaxonomyTestBase):
 
     def setUp(self):
@@ -1770,6 +1884,87 @@ class TestDormantAndBulkEndpoints(TaxonomyTestBase):
         r = self.client.post("/api/taxonomy/mappings/bulk-delete", json={
             "profile": self.profile_name,
             "keys": [],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_bulk_add_endpoint(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "profile": self.profile_name,
+            "mappings": [
+                {"theme": "thermodynamics", "folder": "01-SCIENCES/PHYSIQUE"},
+                {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["n_added"], 2)
+        self.assertEqual(
+            {a["theme"] for a in body["added"]},
+            {"thermodynamics", "geometry"},
+        )
+
+    def test_bulk_add_endpoint_already_mapped_skipped(self):
+        # 'physics' is already mapped in the fixture → reported in skipped.
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "profile": self.profile_name,
+            "mappings": [
+                {"theme": "physics", "folder": "02-INFORMATIQUE"},
+                {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_added"], 1)
+        self.assertIn("physics", {s["theme"] for s in body["skipped"]})
+
+    def test_bulk_add_endpoint_requires_profile(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "mappings": [
+                {"theme": "geometry", "folder": "01-SCIENCES/MATHEMATIQUES"},
+            ],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_bulk_add_endpoint_requires_mappings(self):
+        r = self.client.post("/api/taxonomy/mappings/bulk-add", json={
+            "profile": self.profile_name,
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_suggest_endpoint(self):
+        # "Mathematiques" matche le dernier segment du dossier
+        # 01-SCIENCES/MATHEMATIQUES → résolu par le déterministe, zéro LLM.
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "profile": self.profile_name,
+            "themes": ["Mathematiques"],
+            "use_llm": False,
+        })
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["n_llm_calls"], 0)
+        sug = body["suggestions"][0]
+        self.assertEqual(sug["source"], "deterministic")
+        self.assertEqual(sug["folder"], "01-SCIENCES/MATHEMATIQUES")
+
+    def test_suggest_endpoint_defaults_use_llm_false(self):
+        # use_llm absent du body → défaut False, aucun appel LLM.
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "profile": self.profile_name,
+            "themes": ["Mathematiques"],
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_llm_calls"], 0)
+
+    def test_suggest_endpoint_requires_profile(self):
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "themes": ["Mathematiques"],
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_suggest_endpoint_requires_themes(self):
+        r = self.client.post("/api/taxonomy/mappings/suggest", json={
+            "profile": self.profile_name,
         })
         self.assertEqual(r.status_code, 400)
 
@@ -2831,6 +3026,209 @@ class TestFolderThemeBreakdownEndpoint(TaxonomyTestBase):
         self.assertIn("incoming", body)
         self.assertIn("outgoing", body)
         self.assertIn("summary", body)
+
+
+# ─── Tâche 3 — suggest_mappings (passe déterministe) ─────────────────────
+
+
+class TestSuggestMappings(TaxonomyTestBase):
+    """Moteur de suggest_mappings : passe déterministe = matching FIABLE
+    nom de thème ↔ nom de dossier UNIQUEMENT (plus de KeywordClassifier),
+    puis passe LLM BATCHÉE via ``LLMMapper.resolve_batch`` (un appel groupé,
+    jamais ``resolve`` mono). Aucun appel réseau réel : resolve_batch mocké."""
+
+    def setUp(self):
+        super().setUp()
+        # Un categories.yaml est présent dans le profil mais NE DOIT PLUS
+        # influencer suggest_mappings : le KeywordClassifier a été retiré.
+        (self.profile_dir / "categories.yaml").write_text(
+            yaml.safe_dump({
+                "sciences": [
+                    {
+                        "chemin": "01-SCIENCES/PHYSIQUE",
+                        "priorite": 1,
+                        "mots_cles": ["quantum", "relativity", "thermodynamics"],
+                    },
+                ],
+            })
+        )
+        taxonomy.reset_cache()
+
+    def test_a_folder_name_match_resolves_deterministic(self):
+        # Le nom du thème == dernier segment d'un dossier (normalisé :
+        # "MATHEMATIQUES" → "mathematiques") → résolu en déterministe.
+        out = taxonomy.suggest_mappings(
+            self.profile_name, ["Mathematiques"]
+        )
+        self.assertEqual(out["n_llm_calls"], 0)
+        sug = out["suggestions"][0]
+        self.assertEqual(sug["folder"], "01-SCIENCES/MATHEMATIQUES")
+        self.assertEqual(sug["source"], "deterministic")
+        self.assertEqual(sug["confidence"], 0.9)
+        self.assertIn("dossier", sug["reason"].lower())
+
+    def test_b_keyword_only_match_is_not_resolved(self):
+        # "Quantum Field Theory" matchait l'ancien KeywordClassifier (mot-clé
+        # "quantum") mais ne correspond à AUCUN nom de dossier → désormais
+        # NON résolu par le déterministe (sans LLM → unresolved).
+        out = taxonomy.suggest_mappings(
+            self.profile_name, ["Quantum Field Theory"]
+        )
+        self.assertEqual(out["n_llm_calls"], 0)
+        sug = out["suggestions"][0]
+        self.assertIsNone(sug["folder"])
+        self.assertEqual(sug["source"], "unresolved")
+
+    def test_c_unknown_theme_is_unresolved(self):
+        out = taxonomy.suggest_mappings(
+            self.profile_name, ["Macramé Mésopotamien Obscur"]
+        )
+        sug = out["suggestions"][0]
+        self.assertIsNone(sug["folder"])
+        self.assertEqual(sug["source"], "unresolved")
+        self.assertEqual(sug["confidence"], 0.0)
+        self.assertEqual(sug["reason"], "")
+
+    def test_d_deterministic_still_works_with_use_llm(self):
+        # Avec use_llm=True mais sans clé API, le déterministe (nom de dossier)
+        # tient toujours et la passe LLM est un no-op (cf. test_g).
+        with mock.patch.dict(os.environ, {}, clear=True):
+            out = taxonomy.suggest_mappings(
+                self.profile_name,
+                ["Mathematiques", "Inconnu Total XYZ"],
+                use_llm=True,
+            )
+        self.assertEqual(out["n_llm_calls"], 0)
+        self.assertEqual(len(out["suggestions"]), 2)
+        # Le 1er reste résolu par le déterministe (nom de dossier).
+        self.assertEqual(out["suggestions"][0]["source"], "deterministic")
+        # Le 2e reste unresolved (pas de clé → pas de LLM).
+        self.assertEqual(out["suggestions"][1]["source"], "unresolved")
+        self.assertIsNone(out["suggestions"][1]["folder"])
+
+    # ── Passe LLM batchée — resolve_batch TOUJOURS mocké : zéro réseau ──
+
+    def test_e_unresolved_resolved_by_llm_batch(self):
+        # Thème ambigu non résolu par le déterministe + use_llm=True +
+        # clé API présente → la passe LLM BATCHÉE le résout. resolve (mono)
+        # n'est JAMAIS appelé.
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve_batch",
+            return_value={
+                "Colloid Science": {"folder": "01-SCIENCES/PHYSIQUE",
+                                    "confidence": 0.9},
+            },
+        ) as m_batch, mock.patch.object(
+            taxonomy.LLMMapper, "resolve"
+        ) as m_resolve:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ["Colloid Science"], use_llm=True
+            )
+        sug = out["suggestions"][0]
+        self.assertEqual(sug["folder"], "01-SCIENCES/PHYSIQUE")
+        self.assertEqual(sug["source"], "llm")
+        self.assertEqual(sug["confidence"], 0.9)
+        self.assertIn("batch", sug["reason"].lower())
+        self.assertEqual(out["n_llm_calls"], 1)
+        self.assertTrue(m_batch.called)
+        # resolve mono N'EST PAS appelé : on batche.
+        self.assertFalse(m_resolve.called)
+
+    def test_f_deterministic_skips_llm_call(self):
+        # Un thème résolu par le DÉTERMINISTE ne déclenche AUCUN appel LLM
+        # (ni batch ni mono).
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve_batch", return_value={}
+        ) as m_batch, mock.patch.object(
+            taxonomy.LLMMapper, "resolve"
+        ) as m_resolve:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ["Mathematiques"], use_llm=True,
+            )
+        self.assertEqual(out["n_llm_calls"], 0)
+        self.assertFalse(m_batch.called)
+        self.assertFalse(m_resolve.called)
+        self.assertEqual(out["suggestions"][0]["source"], "deterministic")
+
+    def test_g_no_api_key_means_no_llm(self):
+        # use_llm=True mais pas de clé API → aucun appel batch, reste unresolved.
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+            taxonomy.LLMMapper, "resolve_batch",
+            return_value={"X": {"folder": "02-INFORMATIQUE", "confidence": 0.9}},
+        ) as m_batch:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ["Mésopotamie Numérique Floue"], use_llm=True
+            )
+        sug = out["suggestions"][0]
+        self.assertEqual(out["n_llm_calls"], 0)
+        self.assertFalse(m_batch.called)
+        self.assertIsNone(sug["folder"])
+        self.assertEqual(sug["source"], "unresolved")
+
+    def test_h_batch_unresolved_stays_unresolved(self):
+        # Le batch ne résout PAS un thème → il reste unresolved.
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve_batch", return_value={}
+        ) as m_batch:
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ["Thème Que Le LLM Ignore"], use_llm=True
+            )
+        sug = out["suggestions"][0]
+        self.assertTrue(m_batch.called)
+        self.assertEqual(out["n_llm_calls"], 1)
+        self.assertIsNone(sug["folder"])
+        self.assertEqual(sug["source"], "unresolved")
+
+    def test_i_max_llm_bounds_themes_sent_to_batch(self):
+        # Plus de thèmes ambigus que max_llm → seuls max_llm thèmes partent au
+        # batch ; le surplus reste unresolved avec une raison explicite.
+        ambiguous = [f"Theme Ambigu Inconnu {i}" for i in range(5)]
+        captured: dict = {}
+
+        def _fake_batch(self_mapper, themes, titles=None, chunk_size=40):
+            captured["themes"] = list(themes)
+            # Résout tous les thèmes reçus.
+            return {t: {"folder": "02-INFORMATIQUE", "confidence": 0.85}
+                    for t in themes}
+
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve_batch", autospec=True,
+            side_effect=_fake_batch,
+        ):
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ambiguous, use_llm=True, max_llm=2
+            )
+        # Seuls max_llm thèmes envoyés au batch.
+        self.assertEqual(len(captured["themes"]), 2)
+        self.assertEqual(out["n_llm_calls"], 1)
+        resolved = [s for s in out["suggestions"] if s["source"] == "llm"]
+        unresolved = [s for s in out["suggestions"] if s["source"] == "unresolved"]
+        self.assertEqual(len(resolved), 2)
+        self.assertEqual(len(unresolved), 3)
+        # Le surplus porte une raison de borne LLM.
+        self.assertTrue(any("limite" in s["reason"].lower() for s in unresolved))
+
+    def test_j_n_llm_calls_counts_chunks(self):
+        # n_llm_calls = nombre de chunks ceil(len(themes_envoyés)/40).
+        # 45 thèmes ambigus envoyés au batch → 2 chunks.
+        ambiguous = [f"Ambigu Distinct {i}" for i in range(45)]
+        with mock.patch.dict(
+            os.environ, {"SILICONFLOW_API_KEY": "sk-test"}, clear=True
+        ), mock.patch.object(
+            taxonomy.LLMMapper, "resolve_batch", return_value={},
+        ):
+            out = taxonomy.suggest_mappings(
+                self.profile_name, ambiguous, use_llm=True, max_llm=60
+            )
+        self.assertEqual(out["n_llm_calls"], 2)
 
 
 if __name__ == "__main__":

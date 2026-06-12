@@ -102,6 +102,9 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **Toggle Lissé/Réel** : sqrt + floor 8% par défaut pour gérer les disparités extrêmes (Autres 4500 vs autres 5), bascule en linéaire fidèle aux proportions
 - **Highlight sélection** : quand un fichier est sélectionné, le rectangle de son dossier parent est mis en évidence dans le treemap
 - **Ajout mapping** : **drag-drop** thème LLM → dossier (arbre ou treemap) OU bouton **"+ Mapper"** au hover avec popover autocomplete sur les dossiers
+- **Affectation en lot** (colonne Thèmes LLM) : checkboxes de multi-sélection + toolbar avec 2 actions :
+  - **Mapper la sélection → dossier** : choisir un dossier (autocomplete) → tous les thèmes cochés y sont affectés via `POST /api/taxonomy/mappings/bulk-add` (`add_mappings_bulk` : backup unique, skip rapporté des déjà-mappés, lock 423)
+  - **💡 Suggérer + Mapper** : `POST /api/taxonomy/mappings/suggest` (`suggest_mappings`) → moteur : (1) passe **déterministe fiable** = matching exact nom de thème ↔ dernier segment de dossier (haute précision, le KeywordClassifier a été retiré car imprécis — il matchait des mots-clés incidents, ex. « Colloid Science » → Géométrie via « surface »), (2) passe **LLM batché** = `LLMMapper.resolve_batch` (N thèmes en 1 appel chunké de 40, borné `max_llm`, no-op sans clé API) pour les ambigus → panneau de revue (badge source déterministe/LLM/non-résolu, confiance, dossier éditable inline, non-résolus décochés) → Appliquer les acceptés en bulk-add
 - **Toast d'impact** : `✓ "X" → /Y · N fichiers au prochain reclassify` (N pris dans `themes_llm[theme].count`)
 - **Backup auto** : avant chaque write, `theme_mapping.yaml` copié dans `profiles/<p>/.cache/taxonomy-backups/theme_mapping-YYYYMMDD-HHMMSS.yaml` (rotation 20)
 - **Lock concurrence** : `.taxonomy.lock` bloque les writes pendant un baseline_run ou autre tâche externe
@@ -112,7 +115,7 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 
 - **63 tests** dans [../tests/auto/test_dashboard.py](../tests/auto/test_dashboard.py) (routes + data.py + hubs + redirects 301)
 - **70 tests** dans [../tests/auto/test_overview.py](../tests/auto/test_overview.py) (16 cards + 2 builders + cache TTL + 3 macros)
-- **182 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete)
+- **207 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride)
 - **103 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection)
 - **9 tests** dans [../tests/auto/test_viewer_copy.py](../tests/auto/test_viewer_copy.py) (copy + clear destination, path traversal, refus de `default`)
 - **20 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)

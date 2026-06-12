@@ -81,6 +81,21 @@
     // les supprimer en un seul appel (POST /mappings/bulk-delete).
     bulkMappedSelection: { folderPath: null, keysLower: new Set() },
 
+    // Panneau LLM (colonne Thèmes LLM) — multi-sélection. Calque le patron
+    // bulkMappedSelection mais SANS scope folder : la sélection porte sur
+    // l'univers global des thèmes LLM, pas sur un dossier. Clés = thème en
+    // minuscule. Reset au re-render complet du snapshot (renderAll). Sert
+    // de socle aux actions bulk Mapper→dossier / Suggérer (Tâches 7-8).
+    bulkLLMSelection: new Set(),
+
+    // Panneau de revue « Suggérer + Mapper » (Tâche 8). Liste éditable des
+    // suggestions renvoyées par l'endpoint suggest. Chaque item :
+    //   { theme, folder, confidence, source, reason, accepted }
+    // L'user peut cocher/décocher (accepted), corriger le folder inline, et
+    // relancer une passe LLM sur les seuls non-résolus. Lecture seule jusqu'au
+    // clic « Appliquer » qui POST en bulk-add. null = panneau fermé.
+    suggestReview: null,
+
     // Cache du breakdown 3-way (stable / incoming / outgoing) par path.
     // Permet à l'UI d'afficher ce qui va RESTER, ARRIVER, PARTIR au prochain
     // reclassify sans devoir lancer un dryrun. Lazily fetché à l'ouverture
@@ -318,6 +333,36 @@
     });
     const body = await r.json();
     if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+    return body;
+  }
+  async function postBulkAddMappings(mappings) {
+    // mappings = [{theme, folder}, …] avec theme dans sa casse d'origine.
+    const r = await fetch('/api/taxonomy/mappings/bulk-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, mappings }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err = new Error(body.error || ('HTTP ' + r.status));
+      err.status = r.status;       // 423 = lock (édition verrouillée)
+      throw err;
+    }
+    return body;
+  }
+  async function postSuggestMappings(themes, useLlm) {
+    // themes = noms dans leur casse d'origine. Lecture seule (pas de lock).
+    const r = await fetch('/api/taxonomy/mappings/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, themes, use_llm: !!useLlm }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err = new Error(body.error || ('HTTP ' + r.status));
+      err.status = r.status;
+      throw err;
+    }
     return body;
   }
   async function fetchThemeFiles(theme, limit) {
@@ -2706,9 +2751,31 @@
       filtered = filtered.filter(t => t.theme.toLowerCase().includes(q));
     }
     sub.textContent = `${filtered.length}/${all.length} affichés`;
+    // Mémorise les thèmes actuellement visibles (après filtres recherche /
+    // orphelins) — sert au bouton « Tout sélectionner (filtrés) » de la
+    // toolbar bulk pour ne cocher QUE ce que l'utilisateur voit.
     const MAX = 300;
-    for (const t of filtered.slice(0, MAX)) {
+    const visible = filtered.slice(0, MAX);
+    state.bulkLLMVisible = visible.map(t => t.theme);
+    const bulkSet = state.bulkLLMSelection;
+    for (const t of visible) {
+      const keyL = t.theme.toLowerCase();
+      const cb = el('input', {
+        type: 'checkbox',
+        class: 'tax-llm-cb',
+        title: 'Sélectionner pour une action en lot',
+        // Le clic sur la checkbox ne doit PAS démarrer un drag ni cliquer la
+        // ligne : on stoppe la propagation. mousedown bloque l'amorce de drag.
+        onmousedown: e => { e.stopPropagation(); },
+        onclick: e => {
+          e.stopPropagation();
+          toggleBulkLLM(t.theme);
+          renderLLMPanel();
+        },
+      });
+      cb.checked = bulkSet.has(keyL);
       const mainLine = el('div', { class: 'tax-llm-item-main' }, [
+        cb,
         el('span', { class: 'tax-llm-name' }, [t.theme]),
         el('span', { class: 'tax-llm-count' }, [String(t.count)]),
         el('button', {
@@ -2727,7 +2794,8 @@
                        [t.mapped_to]),
       ]);
       const row = el('div', {
-        class: 'tax-llm-item' + (t.is_orphan ? ' orphan' : ''),
+        class: 'tax-llm-item' + (t.is_orphan ? ' orphan' : '')
+               + (bulkSet.has(keyL) ? ' bulk-selected' : ''),
         draggable: 'true',
         title: (t.sample_titles && t.sample_titles.length
                 ? 'Échantillon : ' + t.sample_titles.join(' / ') : ''),
@@ -2742,12 +2810,83 @@
       list.appendChild(el('div', { class: 'muted small', style: 'padding:8px;' },
         [`(${filtered.length - MAX} de plus — affine la recherche)`]));
     }
+    renderLLMBulkToolbar();
+  }
+
+  // ── Multi-sélection des thèmes LLM (colonne Thèmes LLM) ────────────────
+  //
+  // Calque le patron bulkMappedSelection des thèmes mappés. La toolbar
+  // n'apparaît que dès 1 thème coché. Les actions réelles (Mapper→dossier,
+  // Suggérer) sont posées par les Tâches 7-8 ; ici seulement « Tout
+  // sélectionner (filtrés) » + « Effacer ».
+
+  function toggleBulkLLM(theme) {
+    const k = theme.toLowerCase();
+    if (state.bulkLLMSelection.has(k)) state.bulkLLMSelection.delete(k);
+    else state.bulkLLMSelection.add(k);
+  }
+
+  function selectAllVisibleLLM() {
+    // Coche tous les thèmes actuellement VISIBLES (après filtre recherche /
+    // orphelins + cap MAX), pas l'univers entier.
+    for (const theme of (state.bulkLLMVisible || [])) {
+      state.bulkLLMSelection.add(theme.toLowerCase());
+    }
+  }
+
+  function clearBulkLLMSelection() {
+    state.bulkLLMSelection.clear();
+  }
+
+  function renderLLMBulkToolbar() {
+    const host = $('#tax-llm-bulk-toolbar');
+    if (!host) return;
+    host.innerHTML = '';
+    const n = state.bulkLLMSelection.size;
+    if (n === 0) {
+      host.style.display = 'none';
+      return;
+    }
+    host.style.display = 'flex';
+    const visible = state.bulkLLMVisible || [];
+    // « Tout sélectionner (filtrés) » désactivé si tous les visibles sont
+    // déjà cochés (rien de plus à ajouter).
+    const allVisibleSelected = visible.length > 0
+      && visible.every(t => state.bulkLLMSelection.has(t.toLowerCase()));
+    host.appendChild(el('span', { class: 'tax-llm-bulk-count' },
+      [`${n} sélectionné${n > 1 ? 's' : ''}`]));
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn',
+      title: 'Cocher tous les thèmes actuellement affichés (après filtres)',
+      disabled: allVisibleSelected,
+      onclick: e => { e.stopPropagation(); selectAllVisibleLLM(); renderLLMPanel(); },
+    }, [allVisibleSelected
+        ? '☑ Tous cochés'
+        : `☑ Tout sélectionner (${visible.length})`]));
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn',
+      title: 'Vider la sélection',
+      onclick: e => { e.stopPropagation(); clearBulkLLMSelection(); renderLLMPanel(); },
+    }, ['Effacer']));
+    // Action 1 (Tâche 7) : mapper toute la sélection vers UN dossier.
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn tax-llm-bulk-action',
+      title: 'Choisir un dossier et y affecter tous les thèmes sélectionnés',
+      onclick: e => { e.stopPropagation(); openBulkMapPopover(e.currentTarget); },
+    }, ['Mapper la sélection → dossier…']));
+    // Action 2 (Tâche 8) : suggère un dossier par thème (déterministe →
+    // LLM optionnel), ouvre un panneau de revue accept/édition.
+    host.appendChild(el('button', {
+      class: 'tax-llm-bulk-btn tax-llm-bulk-action',
+      title: 'Suggérer un dossier par thème puis réviser avant d\'appliquer',
+      onclick: e => { e.stopPropagation(); openSuggestReview(); },
+    }, ['💡 Suggérer + Mapper']));
   }
 
   // ── "+ Mapper" popover with folder autocomplete ──────────────────────
 
   function openMapPopover(theme, anchorEl) {
-    state.popover = { open: true, theme, anchorEl };
+    state.popover = { open: true, theme, anchorEl, mode: 'single' };
     const pop = $('#tax-map-popover');
     const isEdit = theme.is_edit === true;
     pop.querySelector('.tax-map-popover-title').textContent =
@@ -2769,7 +2908,7 @@
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
   function closeMapPopover() {
-    state.popover = { open: false, theme: null, anchorEl: null };
+    state.popover = { open: false, theme: null, anchorEl: null, mode: 'single' };
     $('#tax-map-popover').style.display = 'none';
   }
   function renderPopoverSuggestions(query) {
@@ -2787,12 +2926,354 @@
   }
   async function confirmMapPopover() {
     const folder = $('#tax-map-popover-input').value.trim();
-    if (!folder || !state.popover.theme) return;
+    if (!folder) return;
+    // Mode « bulk » : mapper toute la sélection des thèmes LLM vers ce dossier.
+    if (state.popover.mode === 'bulk') {
+      closeMapPopover();
+      await confirmBulkMapToFolder(folder);
+      return;
+    }
+    if (!state.popover.theme) return;
     const theme = state.popover.theme.theme;
     const isEdit = state.popover.theme.is_edit === true;
     closeMapPopover();
     if (isEdit) await doUpdateMapping(theme, folder);
     else        await doAddMapping(theme, folder);
+  }
+
+  // ── Bulk « Mapper la sélection → dossier » (Tâche 7) ──────────────────
+  //
+  // Réutilise le popover/autocomplete #tax-map-popover en mode « bulk » :
+  // l'utilisateur choisit UN dossier cible, puis tous les thèmes cochés
+  // (state.bulkLLMSelection) y sont affectés via POST bulk-add (un backup,
+  // une transaction). Les thèmes sont stockés en minuscule dans la
+  // sélection — on récupère leur casse d'origine via state.snapshot.themes_llm
+  // pour envoyer le vrai nom au backend.
+
+  function openBulkMapPopover(anchorEl) {
+    const n = state.bulkLLMSelection.size;
+    if (n === 0) return;
+    state.popover = { open: true, theme: null, anchorEl, mode: 'bulk' };
+    const pop = $('#tax-map-popover');
+    pop.querySelector('.tax-map-popover-title').textContent =
+      'Mapper la sélection vers un dossier';
+    $('#tax-map-popover-theme').textContent =
+      `${n} thème${n > 1 ? 's' : ''} sélectionné${n > 1 ? 's' : ''}`;
+    $('#tax-map-popover-confirm').textContent = 'Mapper la sélection';
+    const input = $('#tax-map-popover-input');
+    input.value = '';
+    renderPopoverSuggestions('');
+    const rect = anchorEl.getBoundingClientRect();
+    pop.style.display = 'block';
+    const popW = 360;
+    pop.style.left = Math.min(window.innerWidth - popW - 12,
+                             Math.max(12, rect.left - popW + 30)) + 'px';
+    pop.style.top  = (rect.bottom + 8) + 'px';
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+  }
+
+  async function confirmBulkMapToFolder(folder) {
+    const selKeys = [...state.bulkLLMSelection];
+    if (!selKeys.length || !folder) return;
+    // Récupère le vrai nom (casse d'origine) de chaque thème via le snapshot.
+    const byLower = new Map();
+    for (const t of (state.snapshot.themes_llm || [])) {
+      byLower.set(t.theme.toLowerCase(), t);
+    }
+    const mappings = selKeys.map(k => {
+      const rec = byLower.get(k);
+      return { theme: rec ? rec.theme : k, folder };
+    });
+    // Confirmation (symétrie avec le flux unitaire previewAndConfirm) : un
+    // mapping EN LOT est plus impactant qu'un seul, on confirme toujours, avec
+    // l'estimation de fichiers (somme des counts des thèmes sélectionnés).
+    let estFiles = 0;
+    for (const k of selKeys) { const rec = byLower.get(k); if (rec) estFiles += (rec.count || 0); }
+    const n = mappings.length;
+    const ok = await showConfirm({
+      title: `Mapper ${n} thème${n > 1 ? 's' : ''} → ${folder} ?`,
+      body: `Ces ${n} thème${n > 1 ? 's' : ''} totalisent ≈ ${estFiles} fichier${estFiles > 1 ? 's' : ''} qui seraient reclassés au prochain reclassify. Les thèmes déjà mappés seront ignorés.`,
+      confirmLabel: 'Mapper la sélection',
+      cancelLabel: 'Annuler',
+    });
+    if (!ok) return;
+    await withBusy(`Mapping de ${mappings.length} thème(s) → ${folder}…`, async () => {
+      try {
+        const r = await postBulkAddMappings(mappings);
+        const added = r.added || [];
+        const skipped = r.skipped || [];
+        // M = somme des counts des thèmes effectivement ajoutés.
+        const addedLower = new Set(added.map(a => a.theme.toLowerCase()));
+        let files = 0;
+        for (const t of (state.snapshot.themes_llm || [])) {
+          if (addedLower.has(t.theme.toLowerCase())) files += (t.count || 0);
+        }
+        const nAdded = r.n_added != null ? r.n_added : added.length;
+        let msg = `✓ ${nAdded} thème${nAdded > 1 ? 's' : ''} mappé${nAdded > 1 ? 's' : ''} → ${folder}`
+                + ` · ${files} fichier${files > 1 ? 's' : ''} au prochain reclassify`;
+        if (skipped.length) {
+          const already = skipped.filter(s => s.reason === 'already_mapped').length;
+          msg += already === skipped.length
+            ? ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''} (déjà mappé${skipped.length > 1 ? 's' : ''})`
+            : ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''}`;
+        }
+        showToast(msg, nAdded > 0 ? 'success' : 'info');
+        clearBulkLLMSelection();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        if (e.status === 423) {
+          showToast('✗ Édition verrouillée (run en cours) — réessaie plus tard', 'error');
+        } else {
+          showToast('✗ ' + e.message, 'error');
+        }
+      }
+    });
+  }
+
+  // ── Bulk « Suggérer + Mapper » (Tâche 8) ─────────────────────────────
+  //
+  // Calque le patron casse-d'origine / toast / refresh / lock de la Tâche 7,
+  // mais en deux temps : on demande d'abord à l'endpoint suggest un dossier
+  // par thème (passe déterministe gratuite), on affiche un panneau de revue
+  // éditable, et on n'applique en bulk-add QUE les suggestions cochées avec
+  // un dossier non vide. Un bouton complète à la demande les non-résolus
+  // via le LLM (use_llm=true sur ce sous-ensemble uniquement).
+
+  const SUGGEST_SOURCE_META = {
+    deterministic: { label: 'déterministe', cls: 'tax-suggest-src-det' },
+    llm:           { label: 'LLM',          cls: 'tax-suggest-src-llm' },
+    unresolved:    { label: 'non résolu',   cls: 'tax-suggest-src-unres' },
+  };
+
+  // Résout la casse d'origine des thèmes de bulkLLMSelection (minuscule)
+  // via le snapshot. Retourne la liste des vrais noms.
+  function selectedThemeNames() {
+    const byLower = new Map();
+    for (const t of (state.snapshot.themes_llm || [])) {
+      byLower.set(t.theme.toLowerCase(), t.theme);
+    }
+    return [...state.bulkLLMSelection].map(k => byLower.get(k) || k);
+  }
+
+  async function openSuggestReview() {
+    const themes = selectedThemeNames();
+    if (!themes.length) return;
+    const modal = $('#tax-suggest-modal');
+    const body = $('#tax-suggest-body');
+    body.innerHTML = '<div class="muted">Suggestion en cours…</div>';
+    $('#tax-suggest-apply').disabled = true;
+    $('#tax-suggest-apply').textContent = 'Appliquer (0)';
+    modal.style.display = 'flex';
+    await withBusy('Suggestion des dossiers (LLM, 1 appel groupé)…', async () => {
+      try {
+        // use_llm=true : le déterministe fiable tourne d'abord côté backend
+        // (matchs de nom exacts, gratuits), puis le LLM batché résout le reste.
+        const r = await postSuggestMappings(themes, true);
+        state.suggestReview = (r.suggestions || []).map(s => ({
+          theme: s.theme,
+          folder: s.folder || '',
+          confidence: s.confidence || 0,
+          source: s.source || 'unresolved',
+          reason: s.reason || '',
+          // Non-résolus décochés par défaut ; le reste coché.
+          accepted: s.source !== 'unresolved',
+        }));
+        renderSuggestReview();
+      } catch (e) {
+        body.innerHTML = '<div class="error">✗ ' + escapeHtml(e.message) + '</div>';
+      }
+    });
+  }
+
+  function closeSuggestReview() {
+    $('#tax-suggest-modal').style.display = 'none';
+    state.suggestReview = null;
+    // Ferme tout autocomplete inline encore ouvert.
+    const open = $('#tax-suggest-inline-pop');
+    if (open) open.remove();
+  }
+
+  function renderSuggestReview() {
+    const body = $('#tax-suggest-body');
+    body.innerHTML = '';
+    const rows = state.suggestReview || [];
+    if (!rows.length) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' },
+        ['Aucune suggestion à réviser.']));
+      updateSuggestApplyBtn();
+      return;
+    }
+    body.appendChild(el('div', { class: 'muted small', style: 'padding:0 0 10px;' }, [
+      `${rows.length} thème(s) · `,
+      'coche ceux à appliquer, corrige le dossier si besoin. ',
+      'Les non-résolus sont décochés par défaut.',
+    ]));
+    const list = el('div', { class: 'tax-suggest-list' });
+    rows.forEach((row, i) => list.appendChild(renderSuggestRow(row, i)));
+    body.appendChild(list);
+    updateSuggestApplyBtn();
+  }
+
+  function renderSuggestRow(row, i) {
+    const meta = SUGGEST_SOURCE_META[row.source] || SUGGEST_SOURCE_META.unresolved;
+    const cb = el('input', { type: 'checkbox', class: 'tax-suggest-cb' });
+    cb.checked = !!row.accepted;
+    cb.addEventListener('change', () => {
+      row.accepted = cb.checked;
+      rowEl.classList.toggle('accepted', cb.checked);
+      updateSuggestApplyBtn();
+    });
+    // Champ dossier éditable : clic → ouvre l'autocomplete inline.
+    const folderField = el('span', {
+      class: 'tax-suggest-folder' + (row.folder ? '' : ' empty'),
+      title: 'Cliquer pour corriger le dossier',
+      onclick: e => { e.stopPropagation(); openSuggestInlinePopover(row, i, e.currentTarget); },
+    }, [row.folder || '(choisir un dossier…)']);
+    const conf = Math.round((row.confidence || 0) * 100);
+    const rowEl = el('div', {
+      class: 'tax-suggest-row' + (row.accepted ? ' accepted' : ''),
+    }, [
+      el('label', { class: 'tax-suggest-cell-cb' }, [cb]),
+      el('div', { class: 'tax-suggest-cell-main' }, [
+        el('div', { class: 'tax-suggest-theme' }, [row.theme]),
+        el('div', { class: 'tax-suggest-meta' }, [
+          el('span', { class: 'tax-suggest-src ' + meta.cls }, [meta.label]),
+          el('span', {
+            class: 'tax-suggest-conf',
+            title: row.reason || '',
+          }, [
+            el('span', { class: 'tax-suggest-conf-bar' }, [
+              el('span', {
+                class: 'tax-suggest-conf-fill',
+                style: `width:${conf}%;`,
+              }),
+            ]),
+            el('span', { class: 'tax-suggest-conf-pct' }, [conf + '%']),
+          ]),
+          row.reason
+            ? el('span', { class: 'tax-suggest-reason muted small' }, [row.reason])
+            : null,
+        ]),
+      ]),
+      el('div', { class: 'tax-suggest-cell-folder' }, [
+        el('span', { class: 'tax-suggest-arrow muted' }, ['→']),
+        folderField,
+      ]),
+    ]);
+    return rowEl;
+  }
+
+  // Autocomplete inline de dossier dans une ligne de revue — réutilise la
+  // source state.snapshot.folders comme renderPopoverSuggestions.
+  function openSuggestInlinePopover(row, i, anchorEl) {
+    const existing = $('#tax-suggest-inline-pop');
+    if (existing) existing.remove();
+    const folders = state.snapshot.folders || [];
+    const pop = el('div', { class: 'tax-map-popover tax-suggest-inline-pop', id: 'tax-suggest-inline-pop' });
+    const input = el('input', {
+      type: 'text', class: 'tax-suggest-inline-input',
+      placeholder: 'Filtrer les dossiers…',
+    });
+    input.value = row.folder || '';
+    const sug = el('div', { class: 'tax-map-popover-suggestions' });
+    function renderInline(q) {
+      const ql = (q || '').toLowerCase();
+      const matches = folders.filter(f => !ql || f.toLowerCase().includes(ql)).slice(0, 8);
+      sug.innerHTML = '';
+      for (const f of matches) {
+        sug.appendChild(el('div', {
+          class: 'tax-map-suggestion',
+          onclick: () => { commitFolder(f); },
+        }, [f]));
+      }
+      if (!matches.length) {
+        sug.appendChild(el('div', { class: 'muted small' }, ['Aucun dossier ne correspond']));
+      }
+    }
+    function commitFolder(f) {
+      row.folder = f;
+      // Choisir un dossier ré-active automatiquement la ligne.
+      row.accepted = true;
+      pop.remove();
+      renderSuggestReview();
+    }
+    input.addEventListener('input', e => renderInline(e.target.value));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); pop.remove(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (v) commitFolder(v);
+      }
+    });
+    pop.appendChild(input);
+    pop.appendChild(sug);
+    renderInline(input.value);
+    document.body.appendChild(pop);
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = 320;
+    pop.style.display = 'block';
+    pop.style.position = 'fixed';
+    pop.style.zIndex = '4100';
+    pop.style.left = Math.min(window.innerWidth - popW - 12, Math.max(12, rect.left)) + 'px';
+    pop.style.top = (rect.bottom + 6) + 'px';
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+    // Ferme au clic extérieur.
+    function onDoc(ev) {
+      if (!pop.contains(ev.target) && ev.target !== anchorEl) {
+        pop.remove();
+        document.removeEventListener('mousedown', onDoc, true);
+      }
+    }
+    setTimeout(() => document.addEventListener('mousedown', onDoc, true), 0);
+  }
+
+  function updateSuggestApplyBtn() {
+    const btn = $('#tax-suggest-apply');
+    const rows = state.suggestReview || [];
+    const n = rows.filter(r => r.accepted && r.folder).length;
+    btn.textContent = `Appliquer les ${n} accepté${n > 1 ? 's' : ''}`;
+    btn.disabled = (n === 0);
+  }
+
+  // Relance suggest avec use_llm=true sur les seuls thèmes restés unresolved.
+  async function applySuggestReview() {
+    const rows = state.suggestReview || [];
+    const mappings = rows
+      .filter(r => r.accepted && r.folder)
+      .map(r => ({ theme: r.theme, folder: r.folder }));
+    if (!mappings.length) return;
+    await withBusy(`Application de ${mappings.length} mapping(s)…`, async () => {
+      try {
+        const r = await postBulkAddMappings(mappings);
+        const added = r.added || [];
+        const skipped = r.skipped || [];
+        // M = somme des counts des thèmes effectivement ajoutés.
+        const addedLower = new Set(added.map(a => a.theme.toLowerCase()));
+        let files = 0;
+        for (const t of (state.snapshot.themes_llm || [])) {
+          if (addedLower.has(t.theme.toLowerCase())) files += (t.count || 0);
+        }
+        const nAdded = r.n_added != null ? r.n_added : added.length;
+        let msg = `✓ ${nAdded} mappé${nAdded > 1 ? 's' : ''}`
+                + ` · ${files} fichier${files > 1 ? 's' : ''} au prochain reclassify`;
+        if (skipped.length) {
+          msg += ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''}`;
+        }
+        showToast(msg, nAdded > 0 ? 'success' : 'info');
+        closeSuggestReview();
+        clearBulkLLMSelection();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        if (e.status === 423) {
+          showToast('✗ Édition verrouillée (run en cours) — réessaie plus tard', 'error');
+        } else {
+          showToast('✗ ' + e.message, 'error');
+        }
+      }
+    });
   }
 
   // ── Drag-drop & central mapping handler ──────────────────────────────
@@ -2916,18 +3397,25 @@
     });
   }
 
-  // Wrap any write op: preview → conditional modal → action.
-  // Returns true if op should proceed.
+  // Wrap any write op: preview → confirmation → action.
+  // Règle unique et prévisible : on confirme TOUJOURS (unitaire comme lot),
+  // avec l'aperçu d'impact riche. Si l'aperçu échoue, on confirme quand même
+  // (jamais d'écriture muette). Returns true if op should proceed.
   async function previewAndConfirm(action, theme, folder) {
     let preview;
     try {
       preview = await withBusy('Analyse de l’impact…',
                                () => fetchPreview(action, theme, folder));
     } catch (e) {
-      console.warn('preview failed, proceeding without confirm:', e);
-      return true;
+      console.warn('preview failed, confirmation simple:', e);
+      const label = action === 'add' ? 'Ajouter' : action === 'update' ? 'Rediriger' : 'Supprimer';
+      return await showConfirm({
+        title: `${label} le mapping « ${theme} » ?`,
+        body: folder ? `→ ${folder}` : '',
+        confirmLabel: 'Confirmer',
+        cancelLabel: 'Annuler',
+      });
     }
-    if (!_needsConfirm(preview)) return true;
     return await showImpactModal(action, theme, folder, preview);
   }
 
@@ -3380,6 +3868,10 @@
     }
   }
   function renderAll() {
+    // Le snapshot change (mutation, reload) → la sélection bulk LLM peut
+    // référencer des thèmes disparus. On la reset pour rester cohérent
+    // (calque le reset per-profil de bulkMappedSelection).
+    state.bulkLLMSelection.clear();
     renderStats(); renderTree(); renderTreemap(); renderBreadcrumb();
     renderMappedPanel(); renderLLMPanel(); renderFileSection();
   }
@@ -3417,6 +3909,9 @@
     $('#tax-reclassify-close').addEventListener('click', closeReclassifyModal);
     $('#tax-history').addEventListener('click', openHistoryModal);
     $('#tax-history-close').addEventListener('click', closeHistoryModal);
+    // Suggest + map review modal (Tâche 8)
+    $('#tax-suggest-cancel').addEventListener('click', closeSuggestReview);
+    $('#tax-suggest-apply').addEventListener('click', applySuggestReview);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
     });

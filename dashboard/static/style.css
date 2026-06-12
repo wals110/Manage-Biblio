@@ -4905,6 +4905,137 @@ th {
     text-align: center;
 }
 
+/* Suggest + map review panel (Tâche 8) */
+.tax-suggest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.tax-suggest-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.015);
+}
+.tax-suggest-row.accepted {
+    background: rgba(63, 185, 80, 0.07);
+    border-color: rgba(63, 185, 80, 0.28);
+}
+.tax-suggest-cell-cb { display: flex; align-items: center; }
+.tax-suggest-cb { margin: 0; cursor: pointer; }
+.tax-suggest-cell-main { flex: 1; min-width: 0; }
+.tax-suggest-theme {
+    color: var(--text, #c9d1d9);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tax-suggest-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 3px;
+    flex-wrap: wrap;
+}
+.tax-suggest-src {
+    font-size: 10.5px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+}
+.tax-suggest-src-det {
+    color: #3fb950;
+    background: rgba(63, 185, 80, 0.12);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+.tax-suggest-src-llm {
+    color: #a371f7;
+    background: rgba(163, 113, 247, 0.12);
+    border: 1px solid rgba(163, 113, 247, 0.3);
+}
+.tax-suggest-src-unres {
+    color: #8b949e;
+    background: rgba(139, 148, 158, 0.12);
+    border: 1px solid rgba(139, 148, 158, 0.3);
+}
+.tax-suggest-conf {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.tax-suggest-conf-bar {
+    display: inline-block;
+    width: 44px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+.tax-suggest-conf-fill {
+    display: block;
+    height: 100%;
+    background: var(--blue, #58a6ff);
+    border-radius: 3px;
+}
+.tax-suggest-conf-pct {
+    font-size: 10.5px;
+    color: var(--text-muted, #8b949e);
+}
+.tax-suggest-reason {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+.tax-suggest-cell-folder {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    max-width: 42%;
+}
+.tax-suggest-arrow { flex-shrink: 0; }
+.tax-suggest-folder {
+    font-size: 11.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--blue, #58a6ff);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px dashed rgba(88, 166, 255, 0.35);
+    background: rgba(88, 166, 255, 0.06);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+}
+.tax-suggest-folder:hover { background: rgba(88, 166, 255, 0.14); }
+.tax-suggest-folder.empty {
+    color: var(--text-muted, #8b949e);
+    border-color: rgba(255, 145, 67, 0.4);
+    background: rgba(255, 145, 67, 0.06);
+    font-style: italic;
+}
+.tax-suggest-inline-pop { width: 320px; }
+.tax-suggest-inline-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: var(--bg, #0d1117);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 4px;
+    color: var(--text, #c9d1d9);
+    font-size: 12px;
+}
+
 /* Audit modal — tabs (Dormants / Conflits / Doublons) */
 .tax-audit-tabs {
     display: flex;
@@ -5667,6 +5798,57 @@ th {
     background: rgba(248, 81, 73, 0.3);
     border-color: var(--red, #f85149);
     color: #ffb3ad;
+}
+
+/* ── Multi-sélection colonne Thèmes LLM ─────────────────────────────────
+   Calque le style de la toolbar bulk des thèmes mappés, en bleu (cohérent
+   avec la bordure gauche bleue des items LLM mappés) plutôt qu'en rouge. */
+.tax-llm-cb {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--blue, #58a6ff);
+}
+.tax-llm-item.bulk-selected {
+    background: rgba(88, 166, 255, 0.10);
+}
+.tax-llm-bulk-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    margin: 4px;
+    background: rgba(88, 166, 255, 0.08);
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    border-radius: 5px;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+.tax-llm-bulk-count {
+    color: var(--text, #c9d1d9);
+    font-weight: 600;
+    margin-right: auto;
+}
+.tax-llm-bulk-btn {
+    padding: 3px 8px;
+    font-size: 11.5px;
+    border: 1px solid var(--border, #30363d);
+    background: var(--bg-secondary, transparent);
+    color: var(--text, #c9d1d9);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.tax-llm-bulk-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.06);
+    border-color: var(--border-light, #3a3a3a);
+}
+.tax-llm-bulk-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 
 /* Badge d'aide ⓘ à côté du titre "Routage" */
