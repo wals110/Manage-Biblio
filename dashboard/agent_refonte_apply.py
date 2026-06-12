@@ -13,10 +13,13 @@ Rollbacks : restore_config (snapshot agent_backup) / start_undo_moves
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from agents.refonte import agent_backup
 from dashboard import data, taxonomy
 from dashboard.refonte_results import select_move_rows
 
@@ -196,3 +199,133 @@ def build_preview(profile: str, run_id: str) -> dict[str, Any]:
         "n_deletions": len(changes.get("deletions") or []),
         "n_mappings_added": len(changes.get("mappings_added") or []),
     }
+
+
+# ─── Couche A — adoption de la structure ─────────────────────────────────
+
+# (source dans proposed/, destination dans le profil)
+_PROMOTED_FILES = (
+    ("tree-proposed.yaml", "tree.yaml"),
+    ("theme_mapping-proposed.yaml", "theme_mapping.yaml"),
+    ("categories-proposed.yaml", "categories.yaml"),  # optionnel
+)
+_REQUIRED_PROPOSED = ("tree-proposed.yaml", "theme_mapping-proposed.yaml")
+
+
+def adopt_structure(profile: str, run_id: str) -> dict[str, Any]:
+    """Couche A : snapshot config → promotion des YAML proposés →
+    mkdir des créations → reset_cache. Synchrone, sous lock."""
+    with taxonomy._locks[profile]:
+        _assert_run_phase_b_done(profile, run_id)
+        try:
+            taxonomy._check_lock_free(profile)
+        except taxonomy.TaxonomyError as exc:
+            raise ApplyError(str(exc), 423) from exc
+        state = read_state(profile, run_id)
+        if state["adopted"]:
+            raise ApplyError("structure déjà adoptée pour ce run", 409)
+        other = _find_other_adopted(profile, run_id)
+        if other:
+            raise ApplyError(
+                f"un autre run est déjà adopté ({other}) — restaure sa "
+                "config d'abord", 409)
+        target = _target_path(profile)
+        proposed_dir = _run_dir(profile, run_id) / "proposed"
+        for fname in _REQUIRED_PROPOSED:
+            if not (proposed_dir / fname).exists():
+                raise ApplyError(f"artefact manquant : proposed/{fname}", 500)
+        changes = _load_changes(profile, run_id)
+
+        # 1. Snapshot (tree + mapping + categories, rotation 50)
+        backup_name = agent_backup.create_backup(
+            profile, batch_id=f"apply-{run_id}")
+
+        # 2. Promotion des YAML proposés
+        promoted: list[str] = []
+        for src_name, dst_name in _PROMOTED_FILES:
+            src = proposed_dir / src_name
+            if not src.exists():
+                continue  # categories-proposed.yaml est optionnel
+            shutil.copy2(src, _profile_dir(profile) / dst_name)
+            promoted.append(dst_name)
+
+        # 3. Création physique des nouveaux dossiers
+        created: list[str] = []
+        for creation in changes.get("creations") or []:
+            rel = (creation.get("path") or "").strip("/")
+            if not rel:
+                continue
+            (target / rel).mkdir(parents=True, exist_ok=True)
+            created.append(rel)
+
+        # 4. État + caches
+        taxonomy.reset_cache(profile)
+        write_state(profile, run_id, {
+            "adopted": True,
+            "adopted_at": datetime.now(UTC).isoformat(),
+            "config_backup": backup_name,
+            "rolled_back_config": False,
+        })
+        return {
+            "ok": True,
+            "backup": backup_name,
+            "promoted": promoted,
+            "created_dirs": created,
+        }
+
+
+def restore_config(profile: str, run_id: str) -> dict[str, Any]:
+    """Rollback A : restore du snapshot + suppression des dossiers créés
+    SEULEMENT s'ils sont vides (jamais de suppression de contenu)."""
+    with taxonomy._locks[profile]:
+        state = read_state(profile, run_id)
+        if not state["adopted"]:
+            raise ApplyError("structure non adoptée pour ce run", 409)
+        if state["executed"] and not state["rolled_back_moves"]:
+            raise ApplyError(
+                "déplacements exécutés — annule-les d'abord "
+                "(undo-moves) avant de restaurer la config", 409)
+        try:
+            taxonomy._check_lock_free(profile)
+        except taxonomy.TaxonomyError as exc:
+            raise ApplyError(str(exc), 423) from exc
+        backup_name = state.get("config_backup")
+        if not backup_name:
+            raise ApplyError("aucun backup enregistré pour ce run", 500)
+        try:
+            restored = agent_backup.restore_backup(profile, backup_name)
+        except agent_backup.BackupError as exc:
+            raise ApplyError(str(exc), 500) from exc
+
+        # Dossiers créés à l'adoption : rmdir si vides (enfants d'abord)
+        target = _target_path(profile)
+        changes = _load_changes(profile, run_id)
+        creation_paths = sorted(
+            ((c.get("path") or "").strip("/")
+             for c in changes.get("creations") or []),
+            key=lambda p: p.count("/"), reverse=True)
+        removed: list[str] = []
+        kept: list[str] = []
+        for rel in creation_paths:
+            if not rel:
+                continue
+            d = target / rel
+            if not d.is_dir():
+                continue
+            if any(d.iterdir()):
+                kept.append(rel)
+            else:
+                d.rmdir()
+                removed.append(rel)
+
+        taxonomy.reset_cache(profile)
+        write_state(profile, run_id, {
+            "adopted": False,
+            "rolled_back_config": True,
+        })
+        return {
+            "ok": True,
+            "restored": restored.get("restored", []),
+            "removed_dirs": removed,
+            "kept_nonempty": kept,
+        }

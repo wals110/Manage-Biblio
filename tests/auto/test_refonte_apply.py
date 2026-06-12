@@ -128,6 +128,115 @@ class TestStateAndPreview(ApplyTestBase):
             ara._assert_run_phase_b_done("default", self.RUN_ID)
         self.assertEqual(ctx.exception.status, 409)
 
+    def test_assert_no_op_in_progress_blocks_when_running(self):
+        ara._write_progress("default", self.RUN_ID, {"op": "execute",
+                                                     "status": "running"})
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara._assert_no_op_in_progress("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 409)
+        # done → ne bloque plus
+        ara._write_progress("default", self.RUN_ID, {"op": "execute",
+                                                     "status": "done"})
+        ara._assert_no_op_in_progress("default", self.RUN_ID)  # no raise
+
+
+class TestAdoptStructure(ApplyTestBase):
+    def test_adopt_promotes_yaml_and_creates_dirs(self):
+        result = ara.adopt_structure("default", self.RUN_ID)
+        self.assertTrue(result["ok"])
+        # tree.yaml promu
+        tree = yaml.safe_load((self.profile_dir / "tree.yaml").read_text())
+        self.assertIn("B/Dest", tree["folders"])
+        # mapping promu
+        mapping = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(mapping["old theme"], "B/Dest")
+        self.assertEqual(mapping["new theme"], "B/Ref")
+        # dossiers physiques créés
+        self.assertTrue((self.target / "B" / "Dest").is_dir())
+        self.assertTrue((self.target / "B" / "Ref").is_dir())
+        # état + backup
+        st = ara.read_state("default", self.RUN_ID)
+        self.assertTrue(st["adopted"])
+        self.assertIsNotNone(st["config_backup"])
+        backup_dir = (self.profile_dir / ".cache" / "taxonomy-backups"
+                      / st["config_backup"])
+        self.assertTrue((backup_dir / "tree.yaml").exists())
+
+    def test_adopt_promotes_categories_when_present(self):
+        (self.run_dir / "proposed" / "categories-proposed.yaml").write_text(
+            yaml.safe_dump({"informatique": [{"folder": "B/Dest"}]}),
+            encoding="utf-8")
+        ara.adopt_structure("default", self.RUN_ID)
+        self.assertTrue((self.profile_dir / "categories.yaml").exists())
+
+    def test_adopt_without_categories_proposed_is_fine(self):
+        ara.adopt_structure("default", self.RUN_ID)
+        self.assertFalse((self.profile_dir / "categories.yaml").exists())
+
+    def test_adopt_twice_raises_409(self):
+        ara.adopt_structure("default", self.RUN_ID)
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.adopt_structure("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_adopt_blocked_by_other_adopted_run(self):
+        other = self.profile_dir / ".cache" / "refonte" / "run-other" / "apply"
+        other.mkdir(parents=True)
+        (other / "state.json").write_text(
+            json.dumps({"adopted": True}), encoding="utf-8")
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.adopt_structure("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_adopt_blocked_by_lock(self):
+        lock = self.profile_dir / ".cache" / "taxonomy.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("busy")
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.adopt_structure("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 423)
+
+    def test_adopt_missing_target_raises_500(self):
+        shutil.rmtree(self.target)
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.adopt_structure("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 500)
+
+
+class TestRestoreConfig(ApplyTestBase):
+    def test_restore_brings_back_yaml_and_removes_empty_created_dirs(self):
+        ara.adopt_structure("default", self.RUN_ID)
+        result = ara.restore_config("default", self.RUN_ID)
+        self.assertTrue(result["ok"])
+        mapping = yaml.safe_load(
+            (self.profile_dir / "theme_mapping.yaml").read_text())
+        self.assertEqual(mapping, {"old theme": "A"})
+        self.assertFalse((self.target / "B" / "Dest").exists())
+        st = ara.read_state("default", self.RUN_ID)
+        self.assertFalse(st["adopted"])
+        self.assertTrue(st["rolled_back_config"])
+
+    def test_restore_preserves_nonempty_created_dirs(self):
+        ara.adopt_structure("default", self.RUN_ID)
+        keeper = self.target / "B" / "Dest" / "manual.pdf"
+        keeper.write_bytes(b"%PDF-1.4 x")
+        result = ara.restore_config("default", self.RUN_ID)
+        self.assertTrue((self.target / "B" / "Dest").is_dir())
+        self.assertIn("B/Dest", result["kept_nonempty"])
+
+    def test_restore_not_adopted_raises_409(self):
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.restore_config("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_restore_blocked_after_execute(self):
+        ara.adopt_structure("default", self.RUN_ID)
+        ara.write_state("default", self.RUN_ID, {"executed": True})
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.restore_config("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 409)
+
 
 if __name__ == "__main__":
     unittest.main()
