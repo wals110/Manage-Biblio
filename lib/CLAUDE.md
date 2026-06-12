@@ -31,6 +31,11 @@ LLM Vision (thème, titre) → 1. Theme Mapping (355+ entrées, gratuit)
 - **[rename_template.py](rename_template.py)** — Parser + renderer du template `{title}{ - author}` (blocs optionnels, sanitization NFKC + chars FS-safe, troncature word-boundary, fallback)
 - **[rename_journal.py](rename_journal.py)** — JSONL append-only `profile/.cache/rename-journal.jsonl`. Helpers : `append_rename`, `list_renames`, `list_batches`, `undo_record` (avec guard case-insensitive APFS via `samefile()`), `undo_batch` (groupé par `batch_id` partagé)
 - Les undos sont eux-mêmes journalisés sous `batch: "undo-<batch_id>"` → audit trail complet, append-only par construction
+- **[move_journal.py](move_journal.py)** — même patron que rename_journal
+  pour les MOVES inter-dossiers (refonte Apply/Execute) : JSONL
+  `profile/.cache/move-journal.jsonl`, `append_move`, `undo_record`,
+  `undo_batch` (échecs individuels skippés + rapportés, undos journalisés
+  `undo-<batch_id>`)
 - L'overrides utilisateur `rename-overrides.json` est keyé par cache_key MD5 (head bytes du fichier) → **survit aux renames**
 - Cf. [dashboard/rename.py](../dashboard/rename.py) pour le wrapper FastAPI (audit + commit + cache patch ciblé)
 
