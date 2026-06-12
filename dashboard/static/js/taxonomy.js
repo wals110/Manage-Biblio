@@ -2984,6 +2984,19 @@
       const rec = byLower.get(k);
       return { theme: rec ? rec.theme : k, folder };
     });
+    // Confirmation (symétrie avec le flux unitaire previewAndConfirm) : un
+    // mapping EN LOT est plus impactant qu'un seul, on confirme toujours, avec
+    // l'estimation de fichiers (somme des counts des thèmes sélectionnés).
+    let estFiles = 0;
+    for (const k of selKeys) { const rec = byLower.get(k); if (rec) estFiles += (rec.count || 0); }
+    const n = mappings.length;
+    const ok = await showConfirm({
+      title: `Mapper ${n} thème${n > 1 ? 's' : ''} → ${folder} ?`,
+      body: `Ces ${n} thème${n > 1 ? 's' : ''} totalisent ≈ ${estFiles} fichier${estFiles > 1 ? 's' : ''} qui seraient reclassés au prochain reclassify. Les thèmes déjà mappés seront ignorés.`,
+      confirmLabel: 'Mapper la sélection',
+      cancelLabel: 'Annuler',
+    });
+    if (!ok) return;
     await withBusy(`Mapping de ${mappings.length} thème(s) → ${folder}…`, async () => {
       try {
         const r = await postBulkAddMappings(mappings);
