@@ -88,6 +88,14 @@
     // de socle aux actions bulk Mapper→dossier / Suggérer (Tâches 7-8).
     bulkLLMSelection: new Set(),
 
+    // Panneau de revue « Suggérer + Mapper » (Tâche 8). Liste éditable des
+    // suggestions renvoyées par l'endpoint suggest. Chaque item :
+    //   { theme, folder, confidence, source, reason, accepted }
+    // L'user peut cocher/décocher (accepted), corriger le folder inline, et
+    // relancer une passe LLM sur les seuls non-résolus. Lecture seule jusqu'au
+    // clic « Appliquer » qui POST en bulk-add. null = panneau fermé.
+    suggestReview: null,
+
     // Cache du breakdown 3-way (stable / incoming / outgoing) par path.
     // Permet à l'UI d'afficher ce qui va RESTER, ARRIVER, PARTIR au prochain
     // reclassify sans devoir lancer un dryrun. Lazily fetché à l'ouverture
@@ -338,6 +346,21 @@
     if (!r.ok) {
       const err = new Error(body.error || ('HTTP ' + r.status));
       err.status = r.status;       // 423 = lock (édition verrouillée)
+      throw err;
+    }
+    return body;
+  }
+  async function postSuggestMappings(themes, useLlm) {
+    // themes = noms dans leur casse d'origine. Lecture seule (pas de lock).
+    const r = await fetch('/api/taxonomy/mappings/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile, themes, use_llm: !!useLlm }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err = new Error(body.error || ('HTTP ' + r.status));
+      err.status = r.status;
       throw err;
     }
     return body;
@@ -2851,12 +2874,13 @@
       title: 'Choisir un dossier et y affecter tous les thèmes sélectionnés',
       onclick: e => { e.stopPropagation(); openBulkMapPopover(e.currentTarget); },
     }, ['Mapper la sélection → dossier…']));
-    // Placeholder de l'action à venir (Tâche 8) : désactivé.
+    // Action 2 (Tâche 8) : suggère un dossier par thème (déterministe →
+    // LLM optionnel), ouvre un panneau de revue accept/édition.
     host.appendChild(el('button', {
       class: 'tax-llm-bulk-btn tax-llm-bulk-action',
-      title: 'Action à venir (Tâche 8)',
-      disabled: true,
-    }, ['💡 Suggérer']));
+      title: 'Suggérer un dossier par thème puis réviser avant d\'appliquer',
+      onclick: e => { e.stopPropagation(); openSuggestReview(); },
+    }, ['💡 Suggérer + Mapper']));
   }
 
   // ── "+ Mapper" popover with folder autocomplete ──────────────────────
@@ -2981,6 +3005,294 @@
             : ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''}`;
         }
         showToast(msg, nAdded > 0 ? 'success' : 'info');
+        clearBulkLLMSelection();
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        if (e.status === 423) {
+          showToast('✗ Édition verrouillée (run en cours) — réessaie plus tard', 'error');
+        } else {
+          showToast('✗ ' + e.message, 'error');
+        }
+      }
+    });
+  }
+
+  // ── Bulk « Suggérer + Mapper » (Tâche 8) ─────────────────────────────
+  //
+  // Calque le patron casse-d'origine / toast / refresh / lock de la Tâche 7,
+  // mais en deux temps : on demande d'abord à l'endpoint suggest un dossier
+  // par thème (passe déterministe gratuite), on affiche un panneau de revue
+  // éditable, et on n'applique en bulk-add QUE les suggestions cochées avec
+  // un dossier non vide. Un bouton complète à la demande les non-résolus
+  // via le LLM (use_llm=true sur ce sous-ensemble uniquement).
+
+  const SUGGEST_SOURCE_META = {
+    deterministic: { label: 'déterministe', cls: 'tax-suggest-src-det' },
+    llm:           { label: 'LLM',          cls: 'tax-suggest-src-llm' },
+    unresolved:    { label: 'non résolu',   cls: 'tax-suggest-src-unres' },
+  };
+
+  // Résout la casse d'origine des thèmes de bulkLLMSelection (minuscule)
+  // via le snapshot. Retourne la liste des vrais noms.
+  function selectedThemeNames() {
+    const byLower = new Map();
+    for (const t of (state.snapshot.themes_llm || [])) {
+      byLower.set(t.theme.toLowerCase(), t.theme);
+    }
+    return [...state.bulkLLMSelection].map(k => byLower.get(k) || k);
+  }
+
+  async function openSuggestReview() {
+    const themes = selectedThemeNames();
+    if (!themes.length) return;
+    const modal = $('#tax-suggest-modal');
+    const body = $('#tax-suggest-body');
+    body.innerHTML = '<div class="muted">Suggestion en cours…</div>';
+    $('#tax-suggest-llm').style.display = 'none';
+    $('#tax-suggest-apply').disabled = true;
+    $('#tax-suggest-apply').textContent = 'Appliquer (0)';
+    modal.style.display = 'flex';
+    await withBusy('Suggestion des dossiers (déterministe)…', async () => {
+      try {
+        const r = await postSuggestMappings(themes, false);
+        state.suggestReview = (r.suggestions || []).map(s => ({
+          theme: s.theme,
+          folder: s.folder || '',
+          confidence: s.confidence || 0,
+          source: s.source || 'unresolved',
+          reason: s.reason || '',
+          // Non-résolus décochés par défaut ; le reste coché.
+          accepted: s.source !== 'unresolved',
+        }));
+        renderSuggestReview();
+      } catch (e) {
+        body.innerHTML = '<div class="error">✗ ' + escapeHtml(e.message) + '</div>';
+      }
+    });
+  }
+
+  function closeSuggestReview() {
+    $('#tax-suggest-modal').style.display = 'none';
+    state.suggestReview = null;
+    // Ferme tout autocomplete inline encore ouvert.
+    const open = $('#tax-suggest-inline-pop');
+    if (open) open.remove();
+  }
+
+  function renderSuggestReview() {
+    const body = $('#tax-suggest-body');
+    body.innerHTML = '';
+    const rows = state.suggestReview || [];
+    if (!rows.length) {
+      body.appendChild(el('div', { class: 'tax-audit-empty muted' },
+        ['Aucune suggestion à réviser.']));
+      updateSuggestApplyBtn();
+      return;
+    }
+    const nUnres = rows.filter(r => r.source === 'unresolved').length;
+    body.appendChild(el('div', { class: 'muted small', style: 'padding:0 0 10px;' }, [
+      `${rows.length} thème(s) · `,
+      'coche ceux à appliquer, corrige le dossier si besoin. ',
+      'Les non-résolus sont décochés par défaut.',
+    ]));
+    const list = el('div', { class: 'tax-suggest-list' });
+    rows.forEach((row, i) => list.appendChild(renderSuggestRow(row, i)));
+    body.appendChild(list);
+    // Bouton « compléter via LLM » visible seulement s'il reste des non-résolus.
+    const llmBtn = $('#tax-suggest-llm');
+    llmBtn.style.display = nUnres > 0 ? '' : 'none';
+    if (nUnres > 0) llmBtn.textContent = `Compléter les ${nUnres} non-résolu(s) avec le LLM`;
+    updateSuggestApplyBtn();
+  }
+
+  function renderSuggestRow(row, i) {
+    const meta = SUGGEST_SOURCE_META[row.source] || SUGGEST_SOURCE_META.unresolved;
+    const cb = el('input', { type: 'checkbox', class: 'tax-suggest-cb' });
+    cb.checked = !!row.accepted;
+    cb.addEventListener('change', () => {
+      row.accepted = cb.checked;
+      rowEl.classList.toggle('accepted', cb.checked);
+      updateSuggestApplyBtn();
+    });
+    // Champ dossier éditable : clic → ouvre l'autocomplete inline.
+    const folderField = el('span', {
+      class: 'tax-suggest-folder' + (row.folder ? '' : ' empty'),
+      title: 'Cliquer pour corriger le dossier',
+      onclick: e => { e.stopPropagation(); openSuggestInlinePopover(row, i, e.currentTarget); },
+    }, [row.folder || '(choisir un dossier…)']);
+    const conf = Math.round((row.confidence || 0) * 100);
+    const rowEl = el('div', {
+      class: 'tax-suggest-row' + (row.accepted ? ' accepted' : ''),
+    }, [
+      el('label', { class: 'tax-suggest-cell-cb' }, [cb]),
+      el('div', { class: 'tax-suggest-cell-main' }, [
+        el('div', { class: 'tax-suggest-theme' }, [row.theme]),
+        el('div', { class: 'tax-suggest-meta' }, [
+          el('span', { class: 'tax-suggest-src ' + meta.cls }, [meta.label]),
+          el('span', {
+            class: 'tax-suggest-conf',
+            title: row.reason || '',
+          }, [
+            el('span', { class: 'tax-suggest-conf-bar' }, [
+              el('span', {
+                class: 'tax-suggest-conf-fill',
+                style: `width:${conf}%;`,
+              }),
+            ]),
+            el('span', { class: 'tax-suggest-conf-pct' }, [conf + '%']),
+          ]),
+          row.reason
+            ? el('span', { class: 'tax-suggest-reason muted small' }, [row.reason])
+            : null,
+        ]),
+      ]),
+      el('div', { class: 'tax-suggest-cell-folder' }, [
+        el('span', { class: 'tax-suggest-arrow muted' }, ['→']),
+        folderField,
+      ]),
+    ]);
+    return rowEl;
+  }
+
+  // Autocomplete inline de dossier dans une ligne de revue — réutilise la
+  // source state.snapshot.folders comme renderPopoverSuggestions.
+  function openSuggestInlinePopover(row, i, anchorEl) {
+    const existing = $('#tax-suggest-inline-pop');
+    if (existing) existing.remove();
+    const folders = state.snapshot.folders || [];
+    const pop = el('div', { class: 'tax-map-popover tax-suggest-inline-pop', id: 'tax-suggest-inline-pop' });
+    const input = el('input', {
+      type: 'text', class: 'tax-suggest-inline-input',
+      placeholder: 'Filtrer les dossiers…',
+    });
+    input.value = row.folder || '';
+    const sug = el('div', { class: 'tax-map-popover-suggestions' });
+    function renderInline(q) {
+      const ql = (q || '').toLowerCase();
+      const matches = folders.filter(f => !ql || f.toLowerCase().includes(ql)).slice(0, 8);
+      sug.innerHTML = '';
+      for (const f of matches) {
+        sug.appendChild(el('div', {
+          class: 'tax-map-suggestion',
+          onclick: () => { commitFolder(f); },
+        }, [f]));
+      }
+      if (!matches.length) {
+        sug.appendChild(el('div', { class: 'muted small' }, ['Aucun dossier ne correspond']));
+      }
+    }
+    function commitFolder(f) {
+      row.folder = f;
+      // Choisir un dossier ré-active automatiquement la ligne.
+      row.accepted = true;
+      pop.remove();
+      renderSuggestReview();
+    }
+    input.addEventListener('input', e => renderInline(e.target.value));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); pop.remove(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (v) commitFolder(v);
+      }
+    });
+    pop.appendChild(input);
+    pop.appendChild(sug);
+    renderInline(input.value);
+    document.body.appendChild(pop);
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = 320;
+    pop.style.display = 'block';
+    pop.style.position = 'fixed';
+    pop.style.zIndex = '4100';
+    pop.style.left = Math.min(window.innerWidth - popW - 12, Math.max(12, rect.left)) + 'px';
+    pop.style.top = (rect.bottom + 6) + 'px';
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+    // Ferme au clic extérieur.
+    function onDoc(ev) {
+      if (!pop.contains(ev.target) && ev.target !== anchorEl) {
+        pop.remove();
+        document.removeEventListener('mousedown', onDoc, true);
+      }
+    }
+    setTimeout(() => document.addEventListener('mousedown', onDoc, true), 0);
+  }
+
+  function updateSuggestApplyBtn() {
+    const btn = $('#tax-suggest-apply');
+    const rows = state.suggestReview || [];
+    const n = rows.filter(r => r.accepted && r.folder).length;
+    btn.textContent = `Appliquer les ${n} accepté${n > 1 ? 's' : ''}`;
+    btn.disabled = (n === 0);
+  }
+
+  // Relance suggest avec use_llm=true sur les seuls thèmes restés unresolved.
+  async function completeSuggestWithLLM() {
+    const rows = state.suggestReview || [];
+    const pending = rows.filter(r => r.source === 'unresolved');
+    if (!pending.length) return;
+    const themes = pending.map(r => r.theme);
+    await withBusy(`Résolution LLM de ${themes.length} thème(s)…`, async () => {
+      try {
+        const r = await postSuggestMappings(themes, true);
+        const byTheme = new Map();
+        for (const s of (r.suggestions || [])) byTheme.set(s.theme, s);
+        for (const row of rows) {
+          const s = byTheme.get(row.theme);
+          if (!s) continue;
+          row.folder = s.folder || '';
+          row.confidence = s.confidence || 0;
+          row.source = s.source || 'unresolved';
+          row.reason = s.reason || '';
+          // Coche les nouveaux résolus ; les toujours-non-résolus restent
+          // décochés.
+          row.accepted = s.source !== 'unresolved' && !!s.folder;
+        }
+        const nResolved = pending.filter(p => {
+          const s = byTheme.get(p.theme);
+          return s && s.source !== 'unresolved' && s.folder;
+        }).length;
+        renderSuggestReview();
+        showToast(
+          `✓ ${nResolved}/${pending.length} résolu(s) via LLM (${r.n_llm_calls || 0} appel(s))`,
+          nResolved > 0 ? 'success' : 'info');
+      } catch (e) {
+        if (e.status === 423) {
+          showToast('✗ Édition verrouillée (run en cours) — réessaie plus tard', 'error');
+        } else {
+          showToast('✗ ' + e.message, 'error');
+        }
+      }
+    });
+  }
+
+  async function applySuggestReview() {
+    const rows = state.suggestReview || [];
+    const mappings = rows
+      .filter(r => r.accepted && r.folder)
+      .map(r => ({ theme: r.theme, folder: r.folder }));
+    if (!mappings.length) return;
+    await withBusy(`Application de ${mappings.length} mapping(s)…`, async () => {
+      try {
+        const r = await postBulkAddMappings(mappings);
+        const added = r.added || [];
+        const skipped = r.skipped || [];
+        // M = somme des counts des thèmes effectivement ajoutés.
+        const addedLower = new Set(added.map(a => a.theme.toLowerCase()));
+        let files = 0;
+        for (const t of (state.snapshot.themes_llm || [])) {
+          if (addedLower.has(t.theme.toLowerCase())) files += (t.count || 0);
+        }
+        const nAdded = r.n_added != null ? r.n_added : added.length;
+        let msg = `✓ ${nAdded} mappé${nAdded > 1 ? 's' : ''}`
+                + ` · ${files} fichier${files > 1 ? 's' : ''} au prochain reclassify`;
+        if (skipped.length) {
+          msg += ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''}`;
+        }
+        showToast(msg, nAdded > 0 ? 'success' : 'info');
+        closeSuggestReview();
         clearBulkLLMSelection();
         state.snapshot = await fetchSnapshot();
         renderAll();
@@ -3620,6 +3932,10 @@
     $('#tax-reclassify-close').addEventListener('click', closeReclassifyModal);
     $('#tax-history').addEventListener('click', openHistoryModal);
     $('#tax-history-close').addEventListener('click', closeHistoryModal);
+    // Suggest + map review modal (Tâche 8)
+    $('#tax-suggest-cancel').addEventListener('click', closeSuggestReview);
+    $('#tax-suggest-llm').addEventListener('click', completeSuggestWithLLM);
+    $('#tax-suggest-apply').addEventListener('click', applySuggestReview);
     $('#tax-llm-search').addEventListener('input', e => {
       state.search = e.target.value.trim().toLowerCase(); renderLLMPanel();
     });
