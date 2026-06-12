@@ -11,12 +11,14 @@ from pathlib import Path
 from unittest import mock
 
 import yaml
+from fastapi.testclient import TestClient
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
 from dashboard import agent_refonte_apply as ara  # noqa: E402
 from dashboard import taxonomy  # noqa: E402
+from dashboard.app import app  # noqa: E402
 
 
 class ApplyTestBase(unittest.TestCase):
@@ -456,6 +458,79 @@ class TestUndoMoves(ApplyTestBase):
         with self.assertRaises(ara.ApplyError) as ctx:
             ara._run_undo_moves("default", self.RUN_ID)  # re-undo direct → 409
         self.assertEqual(ctx.exception.status, 409)
+
+
+class TestApplyEndpoints(ApplyTestBase):
+    def setUp(self):
+        super().setUp()
+        (self.root / "logs").mkdir(exist_ok=True)
+        self.client = TestClient(app)
+
+    def test_preview_endpoint(self):
+        r = self.client.get(
+            f"/api/agent/refonte/apply/{self.RUN_ID}/preview?profile=default")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertEqual(d["n_moves"], 2)
+        self.assertFalse(d["state"]["adopted"])
+
+    def test_preview_404(self):
+        r = self.client.get(
+            "/api/agent/refonte/apply/nope/preview?profile=default")
+        self.assertEqual(r.status_code, 404)
+
+    def test_adopt_endpoint_then_409_on_repeat(self):
+        r = self.client.post("/api/agent/refonte/apply/adopt",
+                             json={"profile": "default", "run_id": self.RUN_ID})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        r2 = self.client.post("/api/agent/refonte/apply/adopt",
+                              json={"profile": "default", "run_id": self.RUN_ID})
+        self.assertEqual(r2.status_code, 409)
+
+    def test_adopt_missing_fields_400(self):
+        r = self.client.post("/api/agent/refonte/apply/adopt",
+                             json={"profile": "default"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_execute_endpoint_requires_adoption(self):
+        r = self.client.post("/api/agent/refonte/apply/execute",
+                             json={"profile": "default", "run_id": self.RUN_ID})
+        self.assertEqual(r.status_code, 409)
+
+    def test_full_flow_via_http(self):
+        self.client.post("/api/agent/refonte/apply/adopt",
+                         json={"profile": "default", "run_id": self.RUN_ID})
+        # Exécution SYNCHRONE pour le test : on courtcircuite _spawn
+        # (ne JAMAIS patcher threading.Thread — le TestClient en dépend)
+        sync_spawn = lambda target, args, name: target(*args)  # noqa: E731
+        with mock.patch.object(ara, "_spawn", sync_spawn):
+            r = self.client.post(
+                "/api/agent/refonte/apply/execute",
+                json={"profile": "default", "run_id": self.RUN_ID})
+        self.assertEqual(r.status_code, 200)
+        s = self.client.get(
+            f"/api/agent/refonte/apply/{self.RUN_ID}/status?profile=default")
+        self.assertEqual(s.status_code, 200)
+        d = s.json()
+        self.assertTrue(d["state"]["executed"])
+        self.assertEqual(d["progress"]["status"], "done")
+        # Undo (synchrone aussi)
+        with mock.patch.object(ara, "_spawn", sync_spawn):
+            u = self.client.post(
+                "/api/agent/refonte/apply/undo-moves",
+                json={"profile": "default", "run_id": self.RUN_ID})
+        self.assertEqual(u.status_code, 200)
+        # Restore config
+        rc = self.client.post(
+            "/api/agent/refonte/apply/restore-config",
+            json={"profile": "default", "run_id": self.RUN_ID})
+        self.assertEqual(rc.status_code, 200)
+
+    def test_status_404(self):
+        r = self.client.get(
+            "/api/agent/refonte/apply/nope/status?profile=default")
+        self.assertEqual(r.status_code, 404)
 
 
 if __name__ == "__main__":
