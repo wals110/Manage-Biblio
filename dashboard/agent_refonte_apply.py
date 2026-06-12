@@ -436,7 +436,7 @@ def _execute_job(profile: str, run_id: str) -> None:
     except Exception as exc:  # noqa: BLE001
         _write_progress(profile, run_id, {
             "op": "execute", "status": "error",
-            "n_done": 0, "n_total": 0, "n_failed": 0, "error": str(exc),
+            "n_done": 0, "n_total": 0, "n_failed": 0, "n_skipped": 0, "error": str(exc),
         })
     finally:
         taxonomy._lock_file(profile).unlink(missing_ok=True)
@@ -480,6 +480,8 @@ def start_execute(profile: str, run_id: str) -> dict[str, Any]:
 def _run_undo_moves(profile: str, run_id: str) -> dict[str, Any]:
     """Reverse le batch de moves de ce run (synchrone — thread)."""
     state = read_state(profile, run_id)
+    if not state.get("executed"):
+        raise ApplyError("aucun déplacement à annuler pour ce run", 409)
     batch_id = state.get("move_batch_id")
     if not batch_id:
         raise ApplyError("aucun batch de moves enregistré", 409)

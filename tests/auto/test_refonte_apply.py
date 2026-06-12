@@ -433,6 +433,30 @@ class TestUndoMoves(ApplyTestBase):
             ara.start_undo_moves("default", self.RUN_ID)
         self.assertEqual(ctx.exception.status, 409)
 
+    def test_undo_job_releases_lock_even_on_error(self):
+        lock = self.profile_dir / ".cache" / "taxonomy.lock"
+        lock.write_text("refonte-apply-undo")
+        with mock.patch.object(ara, "_run_undo_moves",
+                               side_effect=RuntimeError("crash")):
+            ara._undo_job("default", self.RUN_ID)
+        self.assertFalse(lock.exists())
+        progress = ara._read_progress("default", self.RUN_ID)
+        self.assertEqual(progress["status"], "error")
+        self.assertIn("crash", progress["error"])
+
+    def test_start_undo_blocked_by_lock(self):
+        lock = self.profile_dir / ".cache" / "taxonomy.lock"
+        lock.write_text("busy")
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.start_undo_moves("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 423)
+
+    def test_run_undo_moves_rejects_when_not_executed(self):
+        ara._run_undo_moves("default", self.RUN_ID)  # premier undo OK
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara._run_undo_moves("default", self.RUN_ID)  # re-undo direct → 409
+        self.assertEqual(ctx.exception.status, 409)
+
 
 if __name__ == "__main__":
     unittest.main()
