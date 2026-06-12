@@ -1,7 +1,7 @@
 """Backup automatique des YAML de production avant chaque mutation
 de l'agent Refonte Phase C.
 
-Approche : full snapshot de `tree.yaml` + `theme_mapping.yaml` dans
+Approche : full snapshot de `tree.yaml` + `theme_mapping.yaml` + `categories.yaml` dans
 `profiles/<p>/.cache/taxonomy-backups/agent-<batch_id>-<ts>/`. Pas de
 diff incrémental — la simplicité prime sur la compacité (~quelques KB
 par snapshot, négligeable).
