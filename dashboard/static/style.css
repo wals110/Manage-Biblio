@@ -6903,3 +6903,26 @@ th {
 .rr-crumb:last-child{color:#cbd5e1;cursor:default;text-decoration:none}
 .rr-crumb-sep{color:var(--text-muted,#8b949e)}
 .rr-trow.rr-haskids .rr-trow-name::after{content:" ›";color:#a78bfa;font-weight:700}
+
+/* ── Refonte Apply/Execute ─────────────────────────────────────────── */
+.rr-apply {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    background: var(--bg-tertiary, #0b1220);
+}
+.rr-apply-title { font-weight: 600; margin-bottom: 8px; }
+.rr-apply-step { padding: 6px 0 6px 4px; }
+.rr-apply-step.rr-apply-disabled { opacity: 0.45; pointer-events: none; }
+.rr-apply-num { font-weight: 700; margin-right: 4px; }
+.rr-apply-ok { color: #4caf50; font-weight: 600; margin-left: 6px; }
+.rr-apply-btn { margin-left: 10px; }
+.rr-apply-danger { color: #e57373; }
+.rr-apply-bar {
+    height: 8px; border-radius: 4px; overflow: hidden;
+    background: rgba(255, 255, 255, 0.08); margin-top: 8px;
+}
+.rr-apply-fill {
+    height: 100%; background: #4caf50; transition: width 0.4s ease;
+}

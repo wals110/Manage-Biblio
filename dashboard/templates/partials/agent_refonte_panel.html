@@ -917,6 +917,202 @@
         return section;
     }
 
+    // ─── Application de la refonte (Apply/Execute) ───────────────────
+    let applyPollTimer = null;
+
+    function stopApplyPoll() {
+        if (applyPollTimer) { clearInterval(applyPollTimer); applyPollTimer = null; }
+    }
+
+    async function fetchApplyPreview(runId) {
+        const r = await fetch('/api/agent/refonte/apply/' + runId
+            + '/preview?profile=' + encodeURIComponent(currentProfile()));
+        if (!r.ok) throw new Error((await r.json()).error || r.status);
+        return r.json();
+    }
+
+    async function applyPost(path, runId) {
+        const r = await fetch('/api/agent/refonte/apply/' + path, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({profile: currentProfile(), run_id: runId}),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        return d;
+    }
+
+    function applyStepHtml(p) {
+        const st = p.state || {};
+        let html = '<div class="rr-apply-title">⚙️ Application de la refonte</div>';
+        // ── Étape ①
+        html += '<div class="rr-apply-step">';
+        html += '<span class="rr-apply-num">①</span> Adopter la structure ';
+        if (st.adopted) {
+            html += '<span class="rr-apply-ok">✓ adoptée</span>';
+        } else {
+            html += '<button class="btn-secondary rr-apply-btn" id="rr-apply-adopt">Adopter…</button>';
+        }
+        html += '<div class="muted small">' + p.n_creations + ' création(s) · '
+              + p.n_renames + ' rename(s) · ' + p.n_fusions + ' fusion(s) · '
+              + p.n_mappings_added + ' mapping(s)</div>';
+        if (st.adopted && !st.executed) {
+            html += '<button class="btn-secondary rr-apply-btn rr-apply-danger" id="rr-apply-restore">↩ Restaurer la config</button>';
+        }
+        html += '</div>';
+        // ── Étape ②
+        html += '<div class="rr-apply-step' + (st.adopted ? '' : ' rr-apply-disabled') + '">';
+        html += '<span class="rr-apply-num">②</span> Exécuter les déplacements ';
+        if (st.executed) {
+            html += '<span class="rr-apply-ok">✓ ' + st.n_moved + ' déplacé(s)'
+                  + (st.n_skipped ? ' · ' + st.n_skipped + ' skippé(s)' : '')
+                  + (st.n_failed ? ' · ' + st.n_failed + ' échec(s)' : '') + '</span>';
+            html += '<button class="btn-secondary rr-apply-btn rr-apply-danger" id="rr-apply-undo">↩ Annuler les déplacements</button>';
+        } else if (st.adopted) {
+            html += '<button class="btn-primary rr-apply-btn" id="rr-apply-execute">▶ Exécuter…</button>';
+        }
+        html += '<div class="muted small">' + p.n_moves + ' à déplacer · '
+              + p.n_doubt_excluded + ' exclus (à vérifier) · '
+              + p.n_stable + ' stables</div>';
+        html += '<div id="rr-apply-progress"></div>';
+        html += '</div>';
+        return html;
+    }
+
+    async function renderApplyBlock(runId) {
+        const host = document.getElementById('rr-apply');
+        if (!host) return;
+        stopApplyPoll();
+        let p;
+        try { p = await fetchApplyPreview(runId); }
+        catch (e) { host.innerHTML = ''; return; }
+        host.innerHTML = applyStepHtml(p);
+
+        const adoptBtn = document.getElementById('rr-apply-adopt');
+        if (adoptBtn) adoptBtn.addEventListener('click', async () => {
+            const ok = await showConfirm({
+                title: 'Adopter la structure proposée ?',
+                body: p.n_creations + ' dossier(s) créé(s), ' + p.n_renames
+                    + ' renommage(s), ' + p.n_fusions + ' fusion(s), '
+                    + p.n_mappings_added + ' mapping(s) ajouté(s).\n'
+                    + 'Un backup de la config actuelle sera créé (restaurable).',
+                confirmLabel: 'Adopter', variant: 'primary'});
+            if (!ok) return;
+            try {
+                const d = await applyPost('adopt', runId);
+                showToast('✓ Structure adoptée (backup ' + d.backup + ')', 'success');
+                renderApplyBlock(runId);
+            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+        });
+
+        const restoreBtn = document.getElementById('rr-apply-restore');
+        if (restoreBtn) restoreBtn.addEventListener('click', async () => {
+            const ok = await showConfirm({
+                title: 'Restaurer la config d\'avant adoption ?',
+                body: 'tree.yaml / theme_mapping.yaml / categories.yaml seront '
+                    + 'restaurés depuis le backup. Les dossiers créés vides '
+                    + 'seront supprimés (les non-vides sont préservés).',
+                confirmLabel: 'Restaurer', variant: 'danger'});
+            if (!ok) return;
+            try {
+                await applyPost('restore-config', runId);
+                showToast('✓ Config restaurée', 'success');
+                renderApplyBlock(runId);
+            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+        });
+
+        const execBtn = document.getElementById('rr-apply-execute');
+        if (execBtn) execBtn.addEventListener('click', async () => {
+            const dests = (p.top_destinations || []).slice(0, 5)
+                .map(d => d.folder + ' (' + d.n + ')').join(', ');
+            const ok = await showConfirm({
+                title: 'Exécuter ' + p.n_moves + ' déplacement(s) ?',
+                body: p.n_doubt_excluded + ' fichier(s) « à vérifier » resteront '
+                    + 'en place. Top destinations : ' + dests + '.\n'
+                    + 'Chaque déplacement est journalisé — annulable tant que '
+                    + 'les fichiers ne sont pas re-déplacés à la main.',
+                confirmLabel: 'Exécuter', variant: 'danger'});
+            if (!ok) return;
+            try {
+                await applyPost('execute', runId);
+                showToast('▶ Déplacements lancés', 'info');
+                startApplyPoll(runId);
+            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+        });
+
+        const undoBtn = document.getElementById('rr-apply-undo');
+        if (undoBtn) undoBtn.addEventListener('click', async () => {
+            const ok = await showConfirm({
+                title: 'Annuler les ' + st_nMoved(p) + ' déplacement(s) ?',
+                body: 'Chaque fichier sera re-déplacé vers son emplacement '
+                    + 'd\'origine via le journal. Échecs individuels rapportés.',
+                confirmLabel: 'Annuler les déplacements', variant: 'danger'});
+            if (!ok) return;
+            try {
+                await applyPost('undo-moves', runId);
+                showToast('↩ Annulation lancée', 'info');
+                startApplyPoll(runId);
+            } catch (e) { showToast('✗ ' + e.message, 'error'); }
+        });
+
+        // Reprise auto du poll si une op tourne déjà (reload de page)
+        startApplyPollIfRunning(runId);
+    }
+
+    function st_nMoved(p) {
+        return (p.state && p.state.n_moved) || 0;
+    }
+
+    async function startApplyPollIfRunning(runId) {
+        try {
+            const r = await fetch('/api/agent/refonte/apply/' + runId
+                + '/status?profile=' + encodeURIComponent(currentProfile()));
+            if (!r.ok) return;
+            const d = await r.json();
+            if (d.progress && d.progress.status === 'running') startApplyPoll(runId);
+        } catch (e) { /* silencieux */ }
+    }
+
+    function startApplyPoll(runId) {
+        stopApplyPoll();
+        const tick = async () => {
+            let d;
+            try {
+                const r = await fetch('/api/agent/refonte/apply/' + runId
+                    + '/status?profile=' + encodeURIComponent(currentProfile()));
+                d = await r.json();
+            } catch (e) { return; }
+            const prog = d.progress;
+            const host = document.getElementById('rr-apply-progress');
+            if (!prog) return;
+            if (prog.status === 'running') {
+                const pct = prog.n_total
+                    ? Math.round(100 * prog.n_done / prog.n_total) : 0;
+                const issues = [];
+                if (prog.n_skipped) issues.push(prog.n_skipped + ' skip(s)');
+                if (prog.n_failed) issues.push(prog.n_failed + ' échec(s)');
+                if (host) host.innerHTML =
+                    '<div class="rr-apply-bar"><div class="rr-apply-fill" style="width:'
+                    + pct + '%"></div></div><div class="muted small">'
+                    + prog.n_done + '/' + prog.n_total
+                    + (issues.length ? ' · ' + issues.join(' · ') : '')
+                    + '</div>';
+            } else {
+                stopApplyPoll();
+                if (prog.status === 'done') {
+                    showToast('✓ Opération terminée'
+                        + (prog.report ? ' — rapport logs/' + prog.report : ''),
+                        'success');
+                } else if (prog.status === 'error') {
+                    showToast('✗ ' + (prog.error || 'erreur'), 'error');
+                }
+                renderApplyBlock(runId);
+            }
+        };
+        tick();
+        applyPollTimer = setInterval(tick, 2000);
+    }
+
     // ─── Rendu Phase B (multi-onglets Rationale / Diff / Impact) ─────────
 
     function renderPhaseBReport(runId, status) {
@@ -940,6 +1136,10 @@
           + '<div class="tax-refonte-phaseb-pane" data-pane="plan">'
           + '  <div class="tax-refonte-md" id="tax-refonte-rationale-md"></div>'
           + '</div>';
+        // Bloc Application (Apply/Execute) au-dessus des onglets
+        reportEl.insertAdjacentHTML('afterbegin',
+            '<div class="rr-apply" id="rr-apply"></div>');
+        renderApplyBlock(runId);
         // Le rationale (markdown) reste la source du copy/download
         currentReportMd = rationaleMd;
         updateActionButtons(!!rationaleMd);
