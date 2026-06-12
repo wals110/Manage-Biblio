@@ -203,6 +203,17 @@ class TestAdoptStructure(ApplyTestBase):
             ara.adopt_structure("default", self.RUN_ID)
         self.assertEqual(ctx.exception.status, 500)
 
+    def test_adopt_rejects_traversal_creation_path(self):
+        """Un path de création contenant ../ ne doit jamais s'échapper du target."""
+        changes_path = self.run_dir / "proposed" / "changes.json"
+        changes = json.loads(changes_path.read_text(encoding="utf-8"))
+        changes["creations"].append({"path": "../../escape", "rationale": "x"})
+        changes_path.write_text(json.dumps(changes), encoding="utf-8")
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.adopt_structure("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 400)
+        self.assertFalse((self.root / "escape").exists())
+
 
 class TestRestoreConfig(ApplyTestBase):
     def test_restore_brings_back_yaml_and_removes_empty_created_dirs(self):
@@ -236,6 +247,14 @@ class TestRestoreConfig(ApplyTestBase):
         with self.assertRaises(ara.ApplyError) as ctx:
             ara.restore_config("default", self.RUN_ID)
         self.assertEqual(ctx.exception.status, 409)
+
+    def test_restore_allowed_after_undo_moves(self):
+        """Chemin légitime : executed puis rolled_back_moves → restore OK."""
+        ara.adopt_structure("default", self.RUN_ID)
+        ara.write_state("default", self.RUN_ID,
+                        {"executed": True, "rolled_back_moves": True})
+        result = ara.restore_config("default", self.RUN_ID)
+        self.assertTrue(result["ok"])
 
 
 if __name__ == "__main__":

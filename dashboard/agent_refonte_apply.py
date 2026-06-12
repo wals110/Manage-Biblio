@@ -163,6 +163,18 @@ def _target_path(profile: str) -> Path:
     return target
 
 
+def _safe_target_subdir(target: Path, rel: str) -> Path:
+    """Résout ``rel`` sous le target et refuse toute évasion (../…) —
+    même garde que taxonomy._is_safe_under_target."""
+    d = (target / rel).resolve()
+    try:
+        d.relative_to(target.resolve())
+    except ValueError as exc:
+        raise ApplyError(
+            f"chemin hors du target : {rel!r}", 400) from exc
+    return d
+
+
 def _load_changes(profile: str, run_id: str) -> dict[str, Any]:
     path = _run_dir(profile, run_id) / "proposed" / "changes.json"
     if not path.exists():
@@ -255,7 +267,7 @@ def adopt_structure(profile: str, run_id: str) -> dict[str, Any]:
             rel = (creation.get("path") or "").strip("/")
             if not rel:
                 continue
-            (target / rel).mkdir(parents=True, exist_ok=True)
+            _safe_target_subdir(target, rel).mkdir(parents=True, exist_ok=True)
             created.append(rel)
 
         # 4. État + caches
@@ -309,7 +321,7 @@ def restore_config(profile: str, run_id: str) -> dict[str, Any]:
         for rel in creation_paths:
             if not rel:
                 continue
-            d = target / rel
+            d = _safe_target_subdir(target, rel)
             if not d.is_dir():
                 continue
             if any(d.iterdir()):
