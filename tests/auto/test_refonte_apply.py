@@ -130,6 +130,12 @@ class TestStateAndPreview(ApplyTestBase):
             ara._assert_run_phase_b_done("default", self.RUN_ID)
         self.assertEqual(ctx.exception.status, 409)
 
+    def test_run_id_with_traversal_rejected_400(self):
+        for bad in ("..", "a/b", "x\\y", "", ".", "a" * 80):
+            with self.assertRaises(ara.ApplyError) as ctx:
+                ara.build_preview("default", bad)
+            self.assertEqual(ctx.exception.status, 400, msg=f"run_id={bad!r}")
+
     def test_assert_no_op_in_progress_blocks_when_running(self):
         ara._write_progress("default", self.RUN_ID, {"op": "execute",
                                                      "status": "running"})
@@ -487,6 +493,11 @@ class TestApplyEndpoints(ApplyTestBase):
         r2 = self.client.post("/api/agent/refonte/apply/adopt",
                               json={"profile": "default", "run_id": self.RUN_ID})
         self.assertEqual(r2.status_code, 409)
+
+    def test_adopt_traversal_run_id_400(self):
+        r = self.client.post("/api/agent/refonte/apply/adopt",
+                             json={"profile": "default", "run_id": ".."})
+        self.assertEqual(r.status_code, 400)
 
     def test_adopt_missing_fields_400(self):
         r = self.client.post("/api/agent/refonte/apply/adopt",

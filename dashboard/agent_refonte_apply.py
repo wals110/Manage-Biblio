@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import shutil
 import threading
 from collections import Counter
@@ -34,6 +35,18 @@ class ApplyError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+# ─── Validation run_id ───────────────────────────────────────────────────
+
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
+
+
+def _validate_run_id(run_id: str) -> None:
+    """Garde anti-traversal : le run_id sert à construire des chemins.
+    uuid4 et identifiants de test passent ; '..', '/', '\\' non."""
+    if not _RUN_ID_RE.match(run_id or ""):
+        raise ApplyError(f"run_id invalide : {run_id!r}", 400)
 
 
 # ─── Chemins & état ──────────────────────────────────────────────────────
@@ -107,6 +120,7 @@ def _read_progress(profile: str, run_id: str) -> dict[str, Any] | None:
 
 def get_apply_status(profile: str, run_id: str) -> dict[str, Any]:
     """state.json + status.json fusionnés (payload de polling)."""
+    _validate_run_id(run_id)
     if not _run_dir(profile, run_id).is_dir():
         raise ApplyError(f"run not found: {run_id}", 404)
     return {
@@ -194,6 +208,7 @@ def _load_changes(profile: str, run_id: str) -> dict[str, Any]:
 
 def build_preview(profile: str, run_id: str) -> dict[str, Any]:
     """Compteurs pour les modals de confirmation (lecture seule)."""
+    _validate_run_id(run_id)
     if not _run_dir(profile, run_id).is_dir():
         raise ApplyError(f"run not found: {run_id}", 404)
     changes = _load_changes(profile, run_id)
@@ -231,6 +246,7 @@ _REQUIRED_PROPOSED = ("tree-proposed.yaml", "theme_mapping-proposed.yaml")
 def adopt_structure(profile: str, run_id: str) -> dict[str, Any]:
     """Couche A : snapshot config → promotion des YAML proposés →
     mkdir des créations → reset_cache. Synchrone, sous lock."""
+    _validate_run_id(run_id)
     with taxonomy._locks[profile]:
         _assert_run_phase_b_done(profile, run_id)
         try:
@@ -452,6 +468,7 @@ def start_execute(profile: str, run_id: str) -> dict[str, Any]:
     Le thread lui-même (_execute_job) ne tient PAS ce mutex — protégé
     par le sentinel fichier.
     """
+    _validate_run_id(run_id)
     with taxonomy._locks[profile]:
         _assert_run_phase_b_done(profile, run_id)
         _assert_no_op_in_progress(profile, run_id)
@@ -520,6 +537,7 @@ def _undo_job(profile: str, run_id: str) -> None:
 
 def start_undo_moves(profile: str, run_id: str) -> dict[str, Any]:
     """Valide le gating, pose le lock, lance le thread d'annulation."""
+    _validate_run_id(run_id)
     with taxonomy._locks[profile]:
         _assert_no_op_in_progress(profile, run_id)
         state = read_state(profile, run_id)
@@ -541,6 +559,7 @@ def start_undo_moves(profile: str, run_id: str) -> dict[str, Any]:
 def restore_config(profile: str, run_id: str) -> dict[str, Any]:
     """Rollback A : restore du snapshot + suppression des dossiers créés
     SEULEMENT s'ils sont vides (jamais de suppression de contenu)."""
+    _validate_run_id(run_id)
     with taxonomy._locks[profile]:
         state = read_state(profile, run_id)
         if not state["adopted"]:
