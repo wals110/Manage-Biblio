@@ -474,6 +474,68 @@ def start_execute(profile: str, run_id: str) -> dict[str, Any]:
         return {"ok": True, "run_id": run_id, "n_total": n_total}
 
 
+# ─── Couche B — annulation des déplacements ──────────────────────────────
+
+
+def _run_undo_moves(profile: str, run_id: str) -> dict[str, Any]:
+    """Reverse le batch de moves de ce run (synchrone — thread)."""
+    state = read_state(profile, run_id)
+    batch_id = state.get("move_batch_id")
+    if not batch_id:
+        raise ApplyError("aucun batch de moves enregistré", 409)
+    _write_progress(profile, run_id, {
+        "op": "undo", "status": "running",
+        "n_done": 0, "n_total": state.get("n_moved", 0),
+        "n_failed": 0, "n_skipped": 0, "error": None,
+    })
+    result = move_journal.undo_batch(_profile_dir(profile), batch_id)
+    write_state(profile, run_id, {
+        "executed": False,
+        "rolled_back_moves": True,
+    })
+    _write_progress(profile, run_id, {
+        "op": "undo", "status": "done",
+        "n_done": result["n_undone"],
+        "n_total": result["n_undone"] + result["n_failed"],
+        "n_failed": result["n_failed"], "n_skipped": 0, "error": None,
+    })
+    return result
+
+
+def _undo_job(profile: str, run_id: str) -> None:
+    try:
+        _run_undo_moves(profile, run_id)
+    except Exception as exc:  # noqa: BLE001
+        _write_progress(profile, run_id, {
+            "op": "undo", "status": "error",
+            "n_done": 0, "n_total": 0, "n_failed": 0, "n_skipped": 0,
+            "error": str(exc),
+        })
+    finally:
+        taxonomy._lock_file(profile).unlink(missing_ok=True)
+        taxonomy.reset_cache(profile)
+
+
+def start_undo_moves(profile: str, run_id: str) -> dict[str, Any]:
+    """Valide le gating, pose le lock, lance le thread d'annulation."""
+    with taxonomy._locks[profile]:
+        _assert_no_op_in_progress(profile, run_id)
+        state = read_state(profile, run_id)
+        if not state["executed"]:
+            raise ApplyError("aucun déplacement à annuler pour ce run", 409)
+        try:
+            taxonomy._check_lock_free(profile)
+        except taxonomy.TaxonomyError as exc:
+            raise ApplyError(str(exc), 423) from exc
+        _target_path(profile)
+        lock = taxonomy._lock_file(profile)
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("refonte-apply-undo\n", encoding="utf-8")
+        _spawn(_undo_job, (profile, run_id), f"refonte-undo-{run_id[:8]}")
+        return {"ok": True, "run_id": run_id,
+                "n_total": state.get("n_moved", 0)}
+
+
 def restore_config(profile: str, run_id: str) -> dict[str, Any]:
     """Rollback A : restore du snapshot + suppression des dossiers créés
     SEULEMENT s'ils sont vides (jamais de suppression de contenu)."""

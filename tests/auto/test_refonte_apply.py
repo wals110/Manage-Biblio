@@ -400,5 +400,39 @@ class TestExecuteMoves(ApplyTestBase):
         self.assertEqual(progress["n_skipped"], 1)
 
 
+class TestUndoMoves(ApplyTestBase):
+    def setUp(self):
+        super().setUp()
+        ara.adopt_structure("default", self.RUN_ID)
+        (self.root / "logs").mkdir(exist_ok=True)
+        ara._run_moves("default", self.RUN_ID)
+
+    def test_undo_restores_files_and_state(self):
+        result = ara._run_undo_moves("default", self.RUN_ID)
+        self.assertEqual(result["n_undone"], 2)
+        self.assertTrue((self.target / "A" / "sure.pdf").exists())
+        self.assertFalse((self.target / "B" / "Dest" / "sure.pdf").exists())
+        st = ara.read_state("default", self.RUN_ID)
+        self.assertFalse(st["executed"])
+        self.assertTrue(st["rolled_back_moves"])
+
+    def test_undo_then_restore_config_allowed(self):
+        ara._run_undo_moves("default", self.RUN_ID)
+        result = ara.restore_config("default", self.RUN_ID)
+        self.assertTrue(result["ok"])
+
+    def test_undo_skips_individual_failures(self):
+        (self.target / "B" / "Dest" / "sure.pdf").unlink()  # disparu
+        result = ara._run_undo_moves("default", self.RUN_ID)
+        self.assertEqual(result["n_undone"], 1)
+        self.assertEqual(result["n_failed"], 1)
+
+    def test_start_undo_gating_not_executed(self):
+        ara._run_undo_moves("default", self.RUN_ID)
+        with self.assertRaises(ara.ApplyError) as ctx:
+            ara.start_undo_moves("default", self.RUN_ID)
+        self.assertEqual(ctx.exception.status, 409)
+
+
 if __name__ == "__main__":
     unittest.main()
