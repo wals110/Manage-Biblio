@@ -29,7 +29,9 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   `profiles/<p>/.cache/refonte/<run_id>/apply/{state,status}.json`.
 - Gating : ① avant ② ; restore-config bloqué tant que les moves ne sont
   pas annulés ; un seul run adopté à la fois ; lock `.cache/taxonomy.lock`
-  posé pendant les moves (writes mappings bloqués) ; garde anti-traversal
+  posé pendant les moves (writes mappings/tree → 423 ; categories.yaml et
+  renames ne sont pas fencés — les moves concernés finissent en skip stale,
+  rapportés) ; garde anti-traversal
   (`_safe_target_subdir`, validation `run_id`).
 - Routes : `GET …/apply/{run_id}/preview|status`,
   `POST …/apply/adopt|restore-config|execute|undo-moves`.

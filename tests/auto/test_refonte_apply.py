@@ -544,5 +544,34 @@ class TestApplyEndpoints(ApplyTestBase):
         self.assertEqual(r.status_code, 404)
 
 
+class TestDeleteRunGuard(ApplyTestBase):
+    """delete_run doit refuser un run dont l'apply est en cours ou non annulé."""
+
+    # UUID valide pour passer _UUID_RE de delete_run
+    RUN_ID = "12345678-1234-4123-8123-123456789abc"
+
+    def test_delete_run_refuses_adopted_run(self):
+        from dashboard import agent_refonte
+        ara.adopt_structure("default", self.RUN_ID)
+        with self.assertRaises(agent_refonte.RunBusyError):
+            agent_refonte.delete_run("default", self.RUN_ID)
+        self.assertTrue(self.run_dir.is_dir())  # rien supprimé
+
+    def test_delete_run_refuses_apply_op_in_progress(self):
+        from dashboard import agent_refonte
+        ara._write_progress("default", self.RUN_ID,
+                            {"op": "execute", "status": "running"})
+        with self.assertRaises(agent_refonte.RunBusyError):
+            agent_refonte.delete_run("default", self.RUN_ID)
+
+    def test_delete_run_ok_after_full_rollback(self):
+        from dashboard import agent_refonte
+        ara.adopt_structure("default", self.RUN_ID)
+        ara.restore_config("default", self.RUN_ID)
+        result = agent_refonte.delete_run("default", self.RUN_ID)
+        self.assertEqual(result, {"profile": "default", "run_id": self.RUN_ID})
+        self.assertFalse(self.run_dir.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()
