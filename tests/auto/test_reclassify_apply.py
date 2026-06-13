@@ -181,6 +181,21 @@ class TestGlobalApplyEndpoints(GlobalApplyBase):
         r = self.client.post("/api/taxonomy/reclassify/apply/execute", json={})
         self.assertEqual(r.status_code, 400)
 
+    def test_preview_endpoint_with_keyword(self):
+        (self.prof / "categories.yaml").write_text(
+            yaml.safe_dump(
+                {"sci": [{"chemin": "B/KW", "priorite": 5, "mots_cles": ["zzz"]}]}),
+            encoding="utf-8")
+        taxonomy.reset_cache()
+        no_kw = self.client.get(
+            "/api/taxonomy/reclassify/apply/preview?profile=default&keyword=false").json()
+        with_kw = self.client.get(
+            "/api/taxonomy/reclassify/apply/preview?profile=default&keyword=true").json()
+        # b.pdf (theme "zzz") routé par mot-clé "zzz" → P2, inclus seulement avec keyword=true
+        self.assertEqual(no_kw["n_p2"], 0)
+        self.assertEqual(with_kw["n_p2"], 1)
+        self.assertTrue(with_kw["n_moves"] >= with_kw["n_p1"] + 1)
+
 
 if __name__ == "__main__":
     unittest.main()

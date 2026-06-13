@@ -2041,7 +2041,7 @@ def _rca_error(exc: reclassify_apply.ApplyError):
 async def api_reclassify_apply_preview(profile: str, keyword: bool = False):
     from fastapi.responses import JSONResponse
     try:
-        return JSONResponse(reclassify_apply.build_preview(profile, keyword))
+        return JSONResponse(reclassify_apply.build_preview(profile, include_keyword=keyword))
     except reclassify_apply.ApplyError as exc:
         return _rca_error(exc)
 
