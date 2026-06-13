@@ -15,7 +15,15 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import agent_refonte, agent_refonte_apply, baseline, data, dedupli, taxonomy
+from dashboard import (
+    agent_refonte,
+    agent_refonte_apply,
+    baseline,
+    data,
+    dedupli,
+    reclassify_apply,
+    taxonomy,
+)
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -2022,6 +2030,58 @@ async def taxonomy_reclassify_dryrun_api(profile: str, sample: int = 50):
     from fastapi.responses import JSONResponse
     sample = max(0, min(sample, 500))
     return JSONResponse(taxonomy.reclassify_dryrun(profile, sample_size=sample))
+
+
+def _rca_error(exc: reclassify_apply.ApplyError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.get("/api/taxonomy/reclassify/apply/preview")
+async def api_reclassify_apply_preview(profile: str, keyword: bool = False):
+    from fastapi.responses import JSONResponse
+    try:
+        return JSONResponse(reclassify_apply.build_preview(profile, keyword))
+    except reclassify_apply.ApplyError as exc:
+        return _rca_error(exc)
+
+
+@app.get("/api/taxonomy/reclassify/apply/pending")
+async def api_reclassify_apply_pending(profile: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"pending": reclassify_apply.is_pending(profile)})
+
+
+@app.get("/api/taxonomy/reclassify/apply/status")
+async def api_reclassify_apply_status(profile: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(reclassify_apply.get_status(profile))
+
+
+@app.post("/api/taxonomy/reclassify/apply/execute")
+async def api_reclassify_apply_execute(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(reclassify_apply.start_execute(profile))
+    except reclassify_apply.ApplyError as exc:
+        return _rca_error(exc)
+
+
+@app.post("/api/taxonomy/reclassify/apply/undo")
+async def api_reclassify_apply_undo(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(reclassify_apply.start_undo(profile))
+    except reclassify_apply.ApplyError as exc:
+        return _rca_error(exc)
 
 
 @app.get("/api/taxonomy/backups")

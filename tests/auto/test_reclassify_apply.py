@@ -15,8 +15,11 @@ import yaml
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
+from fastapi.testclient import TestClient  # noqa: E402
+
 from dashboard import reclassify_apply as rca  # noqa: E402
 from dashboard import taxonomy  # noqa: E402
+from dashboard.app import app  # noqa: E402
 
 
 class GlobalApplyBase(unittest.TestCase):
@@ -137,6 +140,46 @@ class TestUndoGlobal(GlobalApplyBase):
         with self.assertRaises(rca.ApplyError) as ctx:
             rca._run_undo_global("default")
         self.assertEqual(ctx.exception.status, 409)
+
+
+class TestGlobalApplyEndpoints(GlobalApplyBase):
+    def setUp(self):
+        super().setUp()
+        (self.root / "logs").mkdir(exist_ok=True)
+        self.client = TestClient(app)
+
+    def test_preview_endpoint(self):
+        r = self.client.get("/api/taxonomy/reclassify/apply/preview?profile=default")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_moves"], 1)
+
+    def test_pending_endpoint(self):
+        r = self.client.get("/api/taxonomy/reclassify/apply/pending?profile=default")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["pending"])
+
+    def test_execute_requires_preview_409(self):
+        r = self.client.post("/api/taxonomy/reclassify/apply/execute",
+                             json={"profile": "default"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_full_flow(self):
+        self.client.get("/api/taxonomy/reclassify/apply/preview?profile=default")
+        sync = lambda target, args, name: target(*args)  # noqa: E731
+        with mock.patch.object(rca.apply_engine, "spawn", sync):
+            r = self.client.post("/api/taxonomy/reclassify/apply/execute",
+                                 json={"profile": "default"})
+        self.assertEqual(r.status_code, 200)
+        s = self.client.get("/api/taxonomy/reclassify/apply/status?profile=default")
+        self.assertTrue(s.json()["state"]["executed"])
+        with mock.patch.object(rca.apply_engine, "spawn", sync):
+            u = self.client.post("/api/taxonomy/reclassify/apply/undo",
+                                 json={"profile": "default"})
+        self.assertEqual(u.status_code, 200)
+
+    def test_execute_missing_profile_400(self):
+        r = self.client.post("/api/taxonomy/reclassify/apply/execute", json={})
+        self.assertEqual(r.status_code, 400)
 
 
 if __name__ == "__main__":
