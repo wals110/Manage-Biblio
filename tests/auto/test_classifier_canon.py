@@ -30,6 +30,17 @@ class TestCanonInClassifyByTheme(unittest.TestCase):
             classify_by_theme("deep learning", self.mapping),
             "02-INFO/IA/Deep-Learning")  # exact match insensible casse, inchangé
 
+    def test_canon_rewrites_a_directly_mappable_theme(self):
+        # "Machine Learning" est mappable, mais la canon le réécrit vers
+        # "Deep Learning" → la canon s'applique AVANT le match, donc route
+        # vers la cible de Deep Learning (pas celle de Machine Learning).
+        mapping = {"Machine Learning": "02-INFO/ML",
+                   "Deep Learning": "02-INFO/IA/Deep-Learning"}
+        canon = {"Machine Learning": "Deep Learning"}
+        self.assertEqual(
+            classify_by_theme("Machine Learning", mapping, canon_table=canon),
+            "02-INFO/IA/Deep-Learning")
+
 
 class TestCanonInClassifyCombined(unittest.TestCase):
     def test_combined_threads_canon_to_p1(self):

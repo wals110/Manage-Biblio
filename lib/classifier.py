@@ -37,6 +37,7 @@ from collections.abc import Callable
 
 from lib.constants import CONFIDENCE_THRESHOLD, KEYWORD_DEFAULT_SCORE, MAPPER_PENALTY
 from lib.logger import get_logger
+from lib.theme_canon import canonicalize
 
 log = get_logger()
 
@@ -78,7 +79,6 @@ def classify_by_theme(
 
     # Canonicalisation (Dédupli) : ramène les variantes orthographiques au
     # thème canonique AVANT le matching. Fallback identité si pas de table.
-    from lib.theme_canon import canonicalize
     theme = canonicalize(theme, canon_table)
 
     # Strip parenthetical / bracketed clarifications from the theme
