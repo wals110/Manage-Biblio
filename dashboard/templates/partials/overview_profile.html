@@ -74,3 +74,18 @@
                          empty="Aucune mutation enregistrée.") }}
   </div>
 </div>
+
+{# ── Rangée 4 : état de synchro bibliothèque ↔ config ── #}
+<div class="dash-card dash-sync{{ ' dash-sync-pending' if s.sync.pending else '' }}">
+  <div class="dash-sync-row">
+    <div>
+      <h3>🔄 Bibliothèque</h3>
+      <div class="muted">
+        {% if s.sync.pending %}Config modifiée depuis le dernier apply — un
+          reclassify rapprocherait les fichiers de la taxonomie.
+        {% else %}À jour avec la config actuelle.{% endif %}
+      </div>
+    </div>
+    <a class="btn-secondary" href="/taxonomy?profile={{ current_profile }}">Synchroniser</a>
+  </div>
+</div>

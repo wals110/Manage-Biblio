@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from dashboard import data
+from dashboard import data, reclassify_apply
 
 # ─── Cache ────────────────────────────────────────────────────────
 _CACHE_TTL_SECONDS = 30
@@ -546,6 +546,7 @@ def build_profile_snapshot(profile: str, force: bool = False) -> dict:
         "top_themes": card_top_themes(profile),
         "top_folders": card_top_folders(profile),
         "recent_activity": card_recent_activity(profile),
+        "sync": {"pending": reclassify_apply.is_pending(profile)},
     }
     with _cache_lock:
         _overview_cache[profile] = (time.time(), snap)
