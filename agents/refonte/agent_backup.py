@@ -1,7 +1,7 @@
 """Backup automatique des YAML de production avant chaque mutation
 de l'agent Refonte Phase C.
 
-Approche : full snapshot de `tree.yaml` + `theme_mapping.yaml` dans
+Approche : full snapshot de `tree.yaml` + `theme_mapping.yaml` + `categories.yaml` dans
 `profiles/<p>/.cache/taxonomy-backups/agent-<batch_id>-<ts>/`. Pas de
 diff incrémental — la simplicité prime sur la compacité (~quelques KB
 par snapshot, négligeable).
@@ -29,7 +29,7 @@ MAX_BACKUPS_DEFAULT = 50
 # Fichiers de production à snapshotter. Si un fichier est absent au moment
 # du backup, on l'omet silencieusement — le restore le créera/n'écrasera
 # que ceux présents dans le snapshot.
-PROD_FILES = ("tree.yaml", "theme_mapping.yaml")
+PROD_FILES = ("tree.yaml", "theme_mapping.yaml", "categories.yaml")
 
 
 class BackupError(Exception):

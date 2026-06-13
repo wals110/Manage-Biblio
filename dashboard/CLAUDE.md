@@ -15,8 +15,28 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **Module Taxonomie** : [taxonomy.py](taxonomy.py) — agrégation `tree.yaml + theme_mapping.yaml + vision_cache.json` + écritures sécurisées + cascade rename → categories
 - **Module Catégories** : [categories.py](categories.py) — KeywordClassifier YAML, suggest_target_path pour orphelins
 - **Module Dédupli** : [dedupli.py](dedupli.py) — canonisation des thèmes long-tail (utilise `lib/theme_canon.py`)
-- **Modules Agent Refonte** : [agent_refonte.py](agent_refonte.py) (Phases A + B) + [agent_refonte_phase_c.py](agent_refonte_phase_c.py) (Phase C dialog/mutations — **UI désactivée** depuis 2026-06-07 via `PHASE_C_UI_ENABLED = False`, code conservé pour réactivation future) — délègue à `agents/refonte/`
+- **Modules Agent Refonte** : [agent_refonte.py](agent_refonte.py) (Phases A + B) + [agent_refonte_phase_c.py](agent_refonte_phase_c.py) (Phase C dialog/mutations — **UI désactivée** depuis 2026-06-07 via `PHASE_C_UI_ENABLED = False`, code conservé pour réactivation future) + [agent_refonte_apply.py](agent_refonte_apply.py) (Apply/Execute — voir ci-dessous) — délègue à `agents/refonte/`
 - **Module Baseline** : [baseline.py](baseline.py) — validation manuelle des désaccords prédiction Klodo vs placement actuel
+
+### Apply/Execute (application d'une refonte Phase B)
+
+- **`agent_refonte_apply.py`** — adoption de la config proposée (promotion
+  des YAML `proposed/` vers la prod, snapshot `agent_backup`, mkdir des
+  créations) puis exécution des déplacements physiques (projection figée,
+  exclusion zone de doute via `select_move_rows`, journal
+  `lib/move_journal.py`, skip stale/collision/error + rapport CSV dans
+  `logs/rapport_apply_*.csv`). État par run dans
+  `profiles/<p>/.cache/refonte/<run_id>/apply/{state,status}.json`.
+- Gating : ① avant ② ; restore-config bloqué tant que les moves ne sont
+  pas annulés ; un seul run adopté à la fois ; lock `.cache/taxonomy.lock`
+  posé pendant les moves (writes mappings/tree → 423 ; categories.yaml et
+  renames ne sont pas fencés — les moves concernés finissent en skip stale,
+  rapportés) ; garde anti-traversal
+  (`_safe_target_subdir`, validation `run_id`).
+- Routes : `GET …/apply/{run_id}/preview|status`,
+  `POST …/apply/adopt|restore-config|execute|undo-moves`.
+- UI : bloc « Application » (stepper 2 étapes) au-dessus des onglets
+  Verdict/Arbre/Plan d'un run Phase B done.
 - **Backend tests fonctionnels** : DuckDB via [../tests/functional/db.py](../tests/functional/db.py) — tables `runs`, `series_results`, `check_results`, `manual_validations`
 - **Templates** : 10 templates principaux + ~12 partials (`partials/tests_*.html`, `partials/baseline_*.html`, `partials/overview_*.html`)
 - **Macros réutilisables** dans `templates/macros/widgets.html` : `kpi_card`, `kpi_card_big`, `status_badge`, `run_banner`, `pagination`, `filter_bar`, `data_table`, `mini_bar`, `activity_timeline`, `subtabs_header`
@@ -115,7 +135,8 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 
 - **63 tests** dans [../tests/auto/test_dashboard.py](../tests/auto/test_dashboard.py) (routes + data.py + hubs + redirects 301)
 - **70 tests** dans [../tests/auto/test_overview.py](../tests/auto/test_overview.py) (16 cards + 2 builders + cache TTL + 3 macros)
-- **207 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride)
+- **209 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride)
 - **103 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection)
 - **9 tests** dans [../tests/auto/test_viewer_copy.py](../tests/auto/test_viewer_copy.py) (copy + clear destination, path traversal, refus de `default`)
-- **20 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
+- **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
+- **48 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)

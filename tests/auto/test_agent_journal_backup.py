@@ -266,6 +266,27 @@ class TestAgentBackupCreateRestore(_AgentC0Base):
         with self.assertRaises(agent_backup.BackupError):
             agent_backup.restore_backup("p", "agent-ghost-00000000-000000")
 
+    def test_backup_includes_categories_yaml(self):
+        """categories.yaml est snapshoté quand il existe (couche A en dépend)."""
+        self._seed_prod_yamls()
+        prof = self._profile_root()
+        (prof / "categories.yaml").write_text("informatique:\n- folder: X\n", encoding="utf-8")
+        name = agent_backup.create_backup("p", batch_id="b-cat-1")
+        backup_dir = prof / ".cache" / "taxonomy-backups" / name
+        self.assertTrue((backup_dir / "categories.yaml").exists())
+
+    def test_restore_tolerates_snapshot_without_categories(self):
+        """Anciens snapshots sans categories.yaml : restore ne casse pas."""
+        self._seed_prod_yamls()
+        name = agent_backup.create_backup("p", batch_id="b-cat-2")
+        backup_dir = self._profile_root() / ".cache" / "taxonomy-backups" / name
+        # Simule un ancien snapshot : pas de categories.yaml dedans
+        cat = backup_dir / "categories.yaml"
+        if cat.exists():
+            cat.unlink()
+        result = agent_backup.restore_backup("p", name)
+        self.assertNotIn("categories.yaml", result["restored"])
+
 
 class TestAgentBackupList(_AgentC0Base):
     def test_list_backups_sorted_recent_first(self):

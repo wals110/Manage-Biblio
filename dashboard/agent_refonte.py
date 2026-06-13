@@ -383,6 +383,29 @@ def delete_run(profile: str, run_id: str) -> dict[str, Any]:
             f"run {run_id} is still {status.get('status')}, "
             "wait for it to finish or be reaped (5 min)"
         )
+    # Garde Apply/Execute : un run adopté (ou exécuté non annulé) porte le
+    # seul chemin de rollback (config_backup / move_batch_id) — refuser.
+    apply_state_path = target / "apply" / "state.json"
+    if apply_state_path.exists():
+        try:
+            apply_state = json.loads(apply_state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            apply_state = {}
+        if apply_state.get("adopted") or (
+            apply_state.get("executed")
+            and not apply_state.get("rolled_back_moves")
+        ):
+            raise RunBusyError(
+                "run adopté/exécuté — restaure la config ou annule les "
+                "déplacements avant de le supprimer")
+    apply_progress_path = target / "apply" / "status.json"
+    if apply_progress_path.exists():
+        try:
+            prog = json.loads(apply_progress_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prog = {}
+        if prog.get("status") == "running":
+            raise RunBusyError("opération apply en cours sur ce run")
     shutil.rmtree(target)
     return {"profile": profile, "run_id": run_id}
 

@@ -239,6 +239,7 @@ def _find(node, name):
     return None
 
 
+import dashboard.refonte_results as refonte_results  # noqa: E402
 from dashboard.refonte_results import (  # noqa: E402
     load_creations,
     load_proposed_folders,
@@ -285,6 +286,60 @@ class TestReaders(unittest.TestCase):
         self.assertEqual(read_projection_rows(empty), [])
         self.assertEqual(load_creations(empty), set())
         self.assertEqual(load_proposed_folders(empty), [])
+
+
+class TestSelectMoveRows(unittest.TestCase):
+    """select_move_rows : changed + non-doute uniquement."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="klodo-selmoves-"))
+        (self.tmp / "simulation").mkdir(parents=True)
+        (self.tmp / "proposed").mkdir(parents=True)
+        (self.tmp / "simulation" / "reclassify-projection.csv").write_text(
+            "rel_path,current_folder,proposed_folder,changed,source,top_theme,confidence,score\n"
+            # P1 sûr + changed → INCLUS
+            "A/sure.pdf,A,B/Dest,True,LLM (theme),X,0.95,0.9\n"
+            # P1 raffiné sûr + changed → INCLUS
+            "A/ref.pdf,A,B/Ref,True,LLM (theme→refined),X,0.8,0.8\n"
+            # P1 mais confiance < 0.7 → DOUTE (exclu)
+            "A/lowconf.pdf,A,B/Low,True,LLM (theme),X,0.5,0.5\n"
+            # Keyword → DOUTE (exclu)
+            "A/kw.pdf,A,B/Kw,True,Keyword,X,0.9,0.9\n"
+            # changed=False → STABLE
+            "A/stay.pdf,A,A,False,LLM (theme),X,0.95,0.9\n"
+            # FAILED sans destination → STABLE (pas de move possible)
+            "A/fail.pdf,A,,False,FAILED,,0.0,0.0\n",
+            encoding="utf-8")
+        (self.tmp / "proposed" / "changes.json").write_text(
+            json.dumps({"creations": [{"path": "B/Dest", "rationale": "x"}]}),
+            encoding="utf-8")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_partitions_moves_doubt_stable(self):
+        r = refonte_results.select_move_rows(self.tmp)
+        self.assertEqual(r["n_moves"], 2)
+        self.assertEqual(r["n_doubt_excluded"], 2)
+        self.assertEqual(r["n_stable"], 2)
+        rels = {m["rel_path"] for m in r["moves"]}
+        self.assertEqual(rels, {"A/sure.pdf", "A/ref.pdf"})
+
+    def test_moves_are_enriched_rows(self):
+        r = refonte_results.select_move_rows(self.tmp)
+        m = next(x for x in r["moves"] if x["rel_path"] == "A/sure.pdf")
+        self.assertEqual(m["proposed_folder"], "B/Dest")
+        self.assertEqual(m["source_class"], "p1_theme")
+        self.assertIsInstance(m["confidence"], float)
+
+    def test_empty_run_dir(self):
+        empty = Path(tempfile.mkdtemp(prefix="klodo-selmoves-empty-"))
+        try:
+            r = refonte_results.select_move_rows(empty)
+            self.assertEqual(r, {"moves": [], "n_moves": 0,
+                                 "n_doubt_excluded": 0, "n_stable": 0})
+        finally:
+            shutil.rmtree(empty, ignore_errors=True)
 
 
 if __name__ == "__main__":

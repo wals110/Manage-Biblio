@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from dashboard import agent_refonte, baseline, data, dedupli, taxonomy
+from dashboard import agent_refonte, agent_refonte_apply, baseline, data, dedupli, taxonomy
 
 # Ensure functional test db module is importable
 _func_dir = str(data.get_project_root() / "tests" / "functional")
@@ -2833,6 +2833,102 @@ async def api_refonte_doubt_files(run_id: str, profile: str, page: int = 1,
     return JSONResponse(agent_refonte.get_doubt_files(
         profile, run_id, page=page, page_size=page_size,
         source_class=source_class, band=band))
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Agent Refonte — Apply / Execute (adoption + déplacements)
+# ════════════════════════════════════════════════════════════════════════
+
+
+def _apply_error_response(exc: agent_refonte_apply.ApplyError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.get("/api/agent/refonte/apply/{run_id}/preview")
+async def api_refonte_apply_preview(run_id: str, profile: str):
+    """Compteurs pour les modals de confirmation (lecture seule)."""
+    from fastapi.responses import JSONResponse
+    try:
+        return JSONResponse(agent_refonte_apply.build_preview(profile, run_id))
+    except agent_refonte_apply.ApplyError as exc:
+        return _apply_error_response(exc)
+
+
+@app.get("/api/agent/refonte/apply/{run_id}/status")
+async def api_refonte_apply_status(run_id: str, profile: str):
+    """state.json + status.json fusionnés (polling)."""
+    from fastapi.responses import JSONResponse
+    try:
+        return JSONResponse(
+            agent_refonte_apply.get_apply_status(profile, run_id))
+    except agent_refonte_apply.ApplyError as exc:
+        return _apply_error_response(exc)
+
+
+async def _apply_post_body(request: Request) -> tuple[str, str] | None:
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    run_id = (body.get("run_id") or "").strip()
+    if not profile or not run_id:
+        return None
+    return profile, run_id
+
+
+@app.post("/api/agent/refonte/apply/adopt")
+async def api_refonte_apply_adopt(request: Request):
+    """Couche A : promotion de la config proposée (backup + mkdir)."""
+    from fastapi.responses import JSONResponse
+    parsed = await _apply_post_body(request)
+    if parsed is None:
+        return JSONResponse({"error": "profile et run_id requis"},
+                            status_code=400)
+    try:
+        return JSONResponse(agent_refonte_apply.adopt_structure(*parsed))
+    except agent_refonte_apply.ApplyError as exc:
+        return _apply_error_response(exc)
+
+
+@app.post("/api/agent/refonte/apply/restore-config")
+async def api_refonte_apply_restore(request: Request):
+    """Rollback couche A : restore du snapshot config."""
+    from fastapi.responses import JSONResponse
+    parsed = await _apply_post_body(request)
+    if parsed is None:
+        return JSONResponse({"error": "profile et run_id requis"},
+                            status_code=400)
+    try:
+        return JSONResponse(agent_refonte_apply.restore_config(*parsed))
+    except agent_refonte_apply.ApplyError as exc:
+        return _apply_error_response(exc)
+
+
+@app.post("/api/agent/refonte/apply/execute")
+async def api_refonte_apply_execute(request: Request):
+    """Couche B : lance le thread de déplacements (poll status ensuite)."""
+    from fastapi.responses import JSONResponse
+    parsed = await _apply_post_body(request)
+    if parsed is None:
+        return JSONResponse({"error": "profile et run_id requis"},
+                            status_code=400)
+    try:
+        return JSONResponse(agent_refonte_apply.start_execute(*parsed))
+    except agent_refonte_apply.ApplyError as exc:
+        return _apply_error_response(exc)
+
+
+@app.post("/api/agent/refonte/apply/undo-moves")
+async def api_refonte_apply_undo(request: Request):
+    """Rollback couche B : annule le batch de moves (thread + poll)."""
+    from fastapi.responses import JSONResponse
+    parsed = await _apply_post_body(request)
+    if parsed is None:
+        return JSONResponse({"error": "profile et run_id requis"},
+                            status_code=400)
+    try:
+        return JSONResponse(agent_refonte_apply.start_undo_moves(*parsed))
+    except agent_refonte_apply.ApplyError as exc:
+        return _apply_error_response(exc)
 
 
 @app.get("/api/agent/refonte/proposition/{run_id}/folder-provenance")
