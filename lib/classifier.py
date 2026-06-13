@@ -44,6 +44,7 @@ log = get_logger()
 def classify_by_theme(
     theme: str,
     theme_mapping: dict[str, str],
+    canon_table: dict[str, str] | None = None,
 ) -> str | None:
     """
     Map a theme string to a BIBLIO_V2 path using the provided theme mapping.
@@ -74,6 +75,11 @@ def classify_by_theme(
     """
     if not theme or not theme_mapping:
         return None
+
+    # Canonicalisation (Dédupli) : ramène les variantes orthographiques au
+    # thème canonique AVANT le matching. Fallback identité si pas de table.
+    from lib.theme_canon import canonicalize
+    theme = canonicalize(theme, canon_table)
 
     # Strip parenthetical / bracketed clarifications from the theme
     # before matching. The vision LLM (prompt v2) sometimes returns
@@ -350,6 +356,7 @@ def classify_combined(
     classifier: object | None = None,
     llm_mapper: object | None = None,
     pdf_path: str | None = None,
+    canon_table: dict[str, str] | None = None,
 ) -> tuple[str | None, float, str]:
     """
     Combine LLM Vision theme classification, keyword classification,
@@ -407,7 +414,7 @@ def classify_combined(
         best_specific: tuple[str, str] | None = None  # (path, theme_used)
         best_generic: tuple[str, str] | None = None
         for cand_theme, _cand_conf in candidates:
-            path = classify_by_theme(cand_theme, theme_mapping)
+            path = classify_by_theme(cand_theme, theme_mapping, canon_table=canon_table)
             if not path:
                 continue
             refined = _refine_to_subfolder(
@@ -478,7 +485,7 @@ def classify_combined(
 
     # Priorité 4 : LLM theme avec confiance basse
     if theme:
-        path = classify_by_theme(theme, theme_mapping)
+        path = classify_by_theme(theme, theme_mapping, canon_table=canon_table)
         if path:
             return (path, confidence, "LLM (fallback)")
 
