@@ -867,6 +867,89 @@ def theme_files(profile: str, theme: str, limit: int = 50) -> dict:
 # paid) is NOT simulated — those files are reported as no_prediction.
 
 
+def _scan_and_classify(profile: str, *, include_step2: bool) -> list[dict]:
+    """Scan full read-only de la bibliothèque + classement par fichier
+    (P1+P2, pas de LLM Mapper). Applique la canonicalisation (Dédupli).
+    Retourne la liste brute des résultats par fichier."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from lib.classifier import classify_combined, load_keyword_classifier
+    from lib.theme_canon import load_canon_table
+
+    target = _profile_target_path(profile)
+    if target is None or not target.exists():
+        return []
+
+    mapping = _load_mapping(profile)
+    canon_table = load_canon_table(profile)
+
+    classifier = None
+    if include_step2:
+        cat_path = _profile_dir(profile) / "categories.yaml"
+        if cat_path.exists():
+            classifier = load_keyword_classifier(str(cat_path))
+
+    cache_path = _vision_cache_path(profile)
+    cache: dict = {}
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cache = {}
+    if not isinstance(cache, dict):
+        cache = {}
+
+    cfg = _load_profile_yaml(profile)
+    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
+    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    target_str = str(target)
+    file_list: list[tuple[str, str, str]] = []
+    for root, dirs, files in os.walk(target_str):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if f.startswith(".") or not f.lower().endswith(_FILE_EXTS):
+                continue
+            abs_path = os.path.join(root, f)
+            try:
+                rel = os.path.relpath(abs_path, target_str).replace("\\", "/")
+            except ValueError:
+                continue
+            file_list.append((abs_path, rel, f))
+
+    def _process(item: tuple[str, str, str]) -> dict:
+        abs_path, rel, filename = item
+        i = rel.rfind("/")
+        current_folder = rel[:i] if i >= 0 else ""
+        key = vision_cache.compute_cache_key(abs_path, model=model, n_pages=n_pages)
+        result = vision_cache.lookup(cache, key) if key else None
+        if not isinstance(result, dict):
+            result = {}
+        top_theme = ""
+        top_conf = 0.0
+        themes_arr = result.get("themes")
+        if isinstance(themes_arr, list) and themes_arr:
+            best = max((t for t in themes_arr if isinstance(t, dict)),
+                       key=lambda t: float(t.get("confidence") or 0.0), default=None)
+            if best is not None:
+                top_theme = str(best.get("theme") or "")
+                top_conf = float(best.get("confidence") or 0.0)
+        elif result.get("theme"):
+            top_theme = str(result.get("theme") or "")
+            top_conf = float(result.get("confidence") or 0.0)
+        dest, score, source = classify_combined(
+            result, filename, mapping,
+            classifier=classifier, llm_mapper=None, pdf_path=abs_path,
+            canon_table=canon_table)
+        return {"rel_path": rel, "current_folder": current_folder,
+                "predicted_folder": dest, "source": source,
+                "score": float(score) if score else 0.0,
+                "top_theme": top_theme, "top_confidence": round(top_conf, 3)}
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return list(ex.map(_process, file_list))
+
+
 def reclassify_dryrun(
     profile: str,
     sample_size: int = 50,
@@ -900,99 +983,10 @@ def reclassify_dryrun(
           "limits": {step2_included, no_llm_mapper, no_execute},
         }
     """
-    from concurrent.futures import ThreadPoolExecutor
-
-    from lib.classifier import classify_combined, load_keyword_classifier
-
     target = _profile_target_path(profile)
     if target is None or not target.exists():
         return _empty_dryrun(include_step2)
-
-    mapping = _load_mapping(profile)
-
-    classifier = None
-    if include_step2:
-        cat_path = _profile_dir(profile) / "categories.yaml"
-        if cat_path.exists():
-            classifier = load_keyword_classifier(str(cat_path))
-
-    cache_path = _vision_cache_path(profile)
-    cache: dict = {}
-    if cache_path.exists():
-        try:
-            cache = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            cache = {}
-    if not isinstance(cache, dict):
-        cache = {}
-
-    cfg = _load_profile_yaml(profile)
-    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
-    n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
-
-    # Enumerate every candidate file
-    target_str = str(target)
-    file_list: list[tuple[str, str, str]] = []  # (abs, rel, basename)
-    for root, dirs, files in os.walk(target_str):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        for f in files:
-            if f.startswith(".") or not f.lower().endswith(_FILE_EXTS):
-                continue
-            abs_path = os.path.join(root, f)
-            try:
-                rel = os.path.relpath(abs_path, target_str).replace("\\", "/")
-            except ValueError:
-                continue
-            file_list.append((abs_path, rel, f))
-
-    def _process(item: tuple[str, str, str]) -> dict:
-        abs_path, rel, filename = item
-        i = rel.rfind("/")
-        current_folder = rel[:i] if i >= 0 else ""
-        # Lookup vision_cache
-        key = vision_cache.compute_cache_key(
-            abs_path, model=model, n_pages=n_pages)
-        result = vision_cache.lookup(cache, key) if key else None
-        if not isinstance(result, dict):
-            result = {}
-        # Extract top theme + score for display
-        top_theme = ""
-        top_conf = 0.0
-        themes_arr = result.get("themes")
-        if isinstance(themes_arr, list) and themes_arr:
-            best = max(
-                (t for t in themes_arr if isinstance(t, dict)),
-                key=lambda t: float(t.get("confidence") or 0.0),
-                default=None,
-            )
-            if best is not None:
-                top_theme = str(best.get("theme") or "")
-                top_conf = float(best.get("confidence") or 0.0)
-        elif result.get("theme"):
-            top_theme = str(result.get("theme") or "")
-            top_conf = float(result.get("confidence") or 0.0)
-        # Run the actual pipeline (step 1 + optional step 2; no LLM mapper)
-        dest, score, source = classify_combined(
-            result, filename, mapping,
-            classifier=classifier,
-            llm_mapper=None,
-            pdf_path=abs_path,
-        )
-        return {
-            "rel_path": rel,
-            "current_folder": current_folder,
-            "predicted_folder": dest,
-            "source": source,
-            "score": float(score) if score else 0.0,
-            "top_theme": top_theme,
-            "top_confidence": round(top_conf, 3),
-        }
-
-    # Parallel walk (8 workers — same as _build_indexes)
-    processed: list[dict] = []
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        for r in ex.map(_process, file_list):
-            processed.append(r)
+    processed = _scan_and_classify(profile, include_step2=include_step2)
 
     # Aggregate
     n_in_lib = len(processed)
@@ -1071,11 +1065,43 @@ def reclassify_dryrun(
         "by_destination": dests_out,
         "sample_moves": moves,
         "limits": {
-            "step2_included": include_step2 and classifier is not None,
+            "step2_included": (
+                include_step2
+                and (_profile_dir(profile) / "categories.yaml").exists()
+            ),
             "no_llm_mapper": True,
             "no_execute": True,
         },
     }
+
+
+def build_reclassify_projection(profile: str, include_keyword: bool) -> list[dict]:
+    """Liste COMPLÈTE des moves de la config live (P1 + P2 optionnel).
+
+    Un move = fichier `changed` (current != predicted, predicted non vide)
+    et hors no-prediction. ``signal`` = 'p1' (theme_mapping) ou 'p2'
+    (mot-clé). P2 inclus seulement si ``include_keyword``. Déterministe
+    (pas de LLM Mapper). Réutilise _scan_and_classify (canon appliqué).
+    """
+    processed = _scan_and_classify(profile, include_step2=include_keyword)
+    moves: list[dict] = []
+    for r in processed:
+        dest = r["predicted_folder"]
+        if not dest or dest == r["current_folder"]:
+            continue
+        signal = "p2" if str(r["source"]).startswith("Keyword") else "p1"
+        if signal == "p2" and not include_keyword:
+            continue
+        moves.append({
+            "rel_path": r["rel_path"],
+            "current_folder": r["current_folder"],
+            "proposed_folder": dest,
+            "source": r["source"],
+            "top_theme": r["top_theme"],
+            "confidence": r["top_confidence"],
+            "signal": signal,
+        })
+    return moves
 
 
 def _empty_dryrun(include_step2: bool) -> dict:
