@@ -709,8 +709,14 @@
         });
         if (!ok) return;
         applyBtn.disabled = true;
+        const kwApply = document.getElementById('rca-kw');
+        if (kwApply) kwApply.disabled = true;
         try { await applyPost('execute'); startApplyPoll(host, keyword); }
-        catch (e) { applyBtn.disabled = false; showToast('✗ ' + e.message, 'error'); }
+        catch (e) {
+          applyBtn.disabled = false;
+          if (kwApply) kwApply.disabled = false;
+          showToast('✗ ' + e.message, 'error');
+        }
       });
       const undoBtn = document.getElementById('rca-undo');
       if (undoBtn) undoBtn.addEventListener('click', async () => {
@@ -721,8 +727,14 @@
         });
         if (!ok) return;
         undoBtn.disabled = true;
+        const kwUndo = document.getElementById('rca-kw');
+        if (kwUndo) kwUndo.disabled = true;
         try { await applyPost('undo'); startApplyPoll(host, keyword); }
-        catch (e) { undoBtn.disabled = false; showToast('✗ ' + e.message, 'error'); }
+        catch (e) {
+          undoBtn.disabled = false;
+          if (kwUndo) kwUndo.disabled = false;
+          showToast('✗ ' + e.message, 'error');
+        }
       });
     }).catch(() => { host.innerHTML = ''; });
   }
