@@ -227,7 +227,8 @@ def _run_undo_global(profile: str) -> dict[str, Any]:
                     "n_done": 0, "n_total": state.get("n_moved", 0),
                     "n_failed": 0, "n_skipped": 0, "error": None})
     result = move_journal.undo_batch(_profile_dir(profile), batch_id)
-    write_state(profile, {"executed": False, "rolled_back_moves": True})
+    write_state(profile, {"executed": False, "rolled_back_moves": True,
+                          "last_applied": None})
     _write_progress(profile, {"op": "undo", "status": "done",
                     "n_done": result["n_undone"],
                     "n_total": result["n_undone"] + result["n_failed"],

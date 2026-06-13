@@ -141,6 +141,15 @@ class TestUndoGlobal(GlobalApplyBase):
             rca._run_undo_global("default")
         self.assertEqual(ctx.exception.status, 409)
 
+    def test_undo_resets_pending(self):
+        rca.build_preview("default", include_keyword=False)
+        rca._run_moves_global("default")
+        self.assertFalse(rca.is_pending("default"))  # appliqué → à jour
+        rca._run_undo_global("default")
+        # après undo : fichiers revenus à l'état pré-apply → de nouveau « en attente »
+        self.assertTrue(rca.is_pending("default"))
+        self.assertIsNone(rca.read_state("default")["last_applied"])
+
 
 class TestGlobalApplyEndpoints(GlobalApplyBase):
     def setUp(self):
