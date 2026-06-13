@@ -103,7 +103,13 @@ def _config_hash(profile: str) -> str:
 
 
 def is_pending(profile: str) -> bool:
-    """True si la config a changé depuis le dernier apply (instantané)."""
+    """True si la CONFIG a changé depuis le dernier apply (instantané).
+
+    Couvre theme_mapping/categories/tree/theme-canon uniquement — PAS
+    vision_cache ni profile.yaml (model/pages). C'est un signal « as-tu
+    édité ta config », pas « un reclassify déplacerait-il quelque chose »
+    (ce compteur coûteux reste calculé à la demande dans le preview).
+    """
     last = read_state(profile).get("last_applied") or {}
     return last.get("config_hash") != _config_hash(profile)
 
@@ -154,7 +160,7 @@ def _run_moves_global(profile: str) -> dict[str, Any]:
     result = apply_engine.execute_move_batch(
         target, moves, _profile_dir(profile),
         on_progress=lambda p: _write_progress(profile, {**p, "op": "execute"}))
-    write_state(profile, {
+    state_update = {
         "executed": True,
         "executed_at": datetime.now(UTC).isoformat(),
         "move_batch_id": result["batch_id"],
@@ -162,9 +168,15 @@ def _run_moves_global(profile: str) -> dict[str, Any]:
         "n_failed": result["n_failed"],
         "n_skipped": result["n_skipped"],
         "rolled_back_moves": False,
-        "last_applied": {"ts": datetime.now(UTC).isoformat(),
-                         "config_hash": _config_hash(profile)},
-    })
+    }
+    # last_applied (→ pending=false) seulement si AUCUN échec I/O réel :
+    # un échec garde le badge « config modifiée » pour signaler le travail
+    # restant. Les skips stale/collision sont tolérés.
+    if result["n_failed"] == 0:
+        state_update["last_applied"] = {
+            "ts": datetime.now(UTC).isoformat(),
+            "config_hash": _config_hash(profile)}
+    write_state(profile, state_update)
     _write_progress(profile, {
         "op": "execute", "status": "done",
         "n_done": result["n_total"], "n_total": result["n_total"],

@@ -110,6 +110,17 @@ class TestPreviewAndExecute(GlobalApplyBase):
             rca.start_execute("default")
         self.assertEqual(ctx.exception.status, 423)
 
+    def test_partial_failure_keeps_pending(self):
+        rca.build_preview("default", include_keyword=False)
+        # Force un échec : patcher execute_move_batch pour renvoyer n_failed=1
+        fake = {"n_moved": 0, "n_failed": 1, "n_skipped": 0, "n_total": 1,
+                "report": "rapport_apply_x.csv", "batch_id": "b1"}
+        with mock.patch.object(rca.apply_engine, "execute_move_batch", return_value=fake):
+            rca._run_moves_global("default")
+        st = rca.read_state("default")
+        self.assertIsNone(st["last_applied"])   # pas marqué → toujours pending
+        self.assertTrue(rca.is_pending("default"))
+
 
 class TestUndoGlobal(GlobalApplyBase):
     def test_undo_restores(self):
