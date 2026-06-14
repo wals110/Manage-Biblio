@@ -3311,11 +3311,19 @@ class TestSnapshotReflectsDisk(unittest.TestCase):
         self.assertTrue(nodes["01-SCIENCES/ASTRO"]["in_config"])
         self.assertTrue(nodes["01-SCIENCES/ASTRO"]["on_disk"])
 
-    def test_folders_list_is_union(self):
+    def test_folders_list_is_config_only(self):
+        # snap["folders"] = cibles de mapping VALIDES = config (tree.yaml) seule.
         snap = taxonomy.get_snapshot("default", force_reload=True)
-        # union config + disque + parents implicites
+        self.assertEqual(set(snap["folders"]), {"01-SCIENCES/ASTRO", "09-FANTOME"})
+        # 02-INFO (disque, hors config) n'est PAS une cible mappable
+        self.assertNotIn("02-INFO", snap["folders"])
+
+    def test_tree_shows_union_even_if_not_mappable(self):
+        # mais l'ARBRE affiché contient bien les dossiers disque + parents implicites
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
         for f in ("01-SCIENCES", "01-SCIENCES/ASTRO", "02-INFO", "09-FANTOME"):
-            self.assertIn(f, snap["folders"])
+            self.assertIn(f, nodes)
 
 
 if __name__ == "__main__":

@@ -128,7 +128,8 @@ def _tree_hierarchy(folders: list[str], counts: dict[str, int],
                     meta: dict[str, dict] | None = None) -> dict:
     """Build a nested {name, path, file_count, in_config, on_disk, children}
     tree from a flat list. ``meta[path] = {"in_config": bool, "on_disk": bool}``
-    ; absent → both default True (rétro-compat).
+    ; si meta est omis ou un path absent → in_config/on_disk défaut True
+    (nœud considéré pleinement présent).
 
     The 'file_count' is the count of files directly inside that folder
     (not aggregated from descendants — the treemap aggregates itself).
@@ -472,13 +473,16 @@ def _scan_disk(target: Path) -> tuple[set[str], dict[str, int]]:
     if not target.exists():
         return disk_folders, counts
     target_str = str(target)
-    for root, dirs, files in os.walk(target_str):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        rel = os.path.relpath(root, target_str).replace("\\", "/")
-        folder_key = "" if rel == "." else rel
-        if folder_key:
-            disk_folders.add(folder_key)
-        counts[folder_key] = sum(1 for f in files if not f.startswith("."))
+    try:
+        for root, dirs, files in os.walk(target_str):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            rel = os.path.relpath(root, target_str).replace("\\", "/")
+            folder_key = "" if rel == "." else rel
+            if folder_key:
+                disk_folders.add(folder_key)
+            counts[folder_key] = sum(1 for f in files if not f.startswith("."))
+    except OSError:
+        pass
     return disk_folders, counts
 
 
@@ -527,10 +531,10 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
         parts = f.split("/")
         for i in range(1, len(parts) + 1):
             union.add("/".join(parts[:i]))
-    folders = sorted(union)
+    union_folders = sorted(union)
     meta = {f: {"in_config": f in config_set, "on_disk": f in disk_folders}
-            for f in folders}
-    tree = _tree_hierarchy(folders, counts, meta)
+            for f in union_folders}
+    tree = _tree_hierarchy(union_folders, counts, meta)
     themes_llm, themes_stats = _aggregate_themes_llm(profile, mapping)
     mapping_by_folder = _mapping_reverse(mapping)
 
@@ -584,12 +588,12 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
     snap = {
         "profile": profile,
         "tree": tree,
-        "folders": folders,
+        "folders": sorted(config_folders),   # cibles de mapping valides = config seule
         "mapping_by_folder": mapping_by_folder,
         "themes_llm": themes_llm,
         "stats": {
             **themes_stats,
-            "tree_nodes": len(folders),
+            "tree_nodes": len(union_folders),  # nœuds affichés = union config + disque
             "total_files": int(sum(counts.values())),
             "target_exists": bool(target and target.exists()),
             "backup_count": backup_count,
