@@ -40,6 +40,7 @@ re-Vision).
 | Source de l'analyse | **Vision sur tout le corpus** (pas d'échantillon) + **dry-run complet** |
 | Sorties proposées | **3 YAMLs** : `tree.yaml` + `theme_mapping.yaml` (P1) + `categories.yaml` (P2, mots-clés **ancrés sur le contenu** via `categories_llm`) |
 | Reverse-engineering d'une pré-orga existante | **Détecté + signalé** seulement ; la proposition reste pilotée par le contenu. Reverse complet = v2 (YAGNI) |
+| Forme de l'arbre (cas dossier plat / sans pré-orga) | **Contenu + conventions** : les *sections* viennent des thèmes réels, la *forme* suit des conventions imposées (cf. § Forme de l'arbre). **Pas** de bibliothèque de templates |
 
 ## Les 3 étapes
 
@@ -64,8 +65,11 @@ le **go/no-go** avant de dépenser. Aucune écriture, aucun appel LLM.
 3. **Clusterise tous les thèmes** : réutilise `lib.theme_canon` (`extract_themes_from_vision_cache`
    + clustering syntactic/sémantique) sur le cache complet.
 4. **Propose la hiérarchie (1 appel LLM — nouveau)** : à partir des clusters (avec compteurs + titres
-   d'exemple), le LLM propose une **arborescence ≤ 2 niveaux** + l'assignation de chaque cluster à un
-   dossier → génère `tree.yaml` + `theme_mapping.yaml` (chaque thème observé → son dossier).
+   d'exemple), le LLM propose une arborescence + l'assignation de chaque cluster à un dossier → génère
+   `tree.yaml` + `theme_mapping.yaml` (chaque thème observé → son dossier). Les **sections viennent du
+   contenu** (les clusters), mais la **forme suit des conventions imposées** (cf. § Forme de l'arbre
+   proposé) — c'est ce qui garde un arbre cohérent même quand le dossier source est **plat** (aucune
+   structure à reverse-engineer).
 5. **Propose les mots-clés** : réutilise `agents/refonte/categories_llm.propose_keywords_for_new_folders`
    en lui passant les dossiers proposés comme « creations » + des **titres d'exemple réels par
    dossier** (issus de la Vision) → `categories.yaml` ancré sur le contenu.
@@ -81,6 +85,29 @@ L'utilisateur raffine avec ce qui existe déjà : éditeur d'arbre (créer/renom
 les dossiers hors-config (#178), mappings en lot (#175), **« Voir ce qui bougerait »** (le dry-run de
 couverture en direct). Quand la couverture convient, **Apply global** (#177) déplace réellement les
 fichiers. **« Finaliser »** retire le flag brouillon (ou implicite après le 1ᵉʳ apply réussi).
+
+## Forme de l'arbre proposé (conventions)
+
+Quand le dossier source est **plat** (que des fichiers sur un seul niveau, aucune pré-organisation),
+l'arborescence ne peut venir d'aucune structure existante : elle est dérivée du **contenu** (les
+thèmes Vision → clusters). Pour éviter qu'un arbre généré soit arbitraire et incohérent d'un
+onboarding à l'autre, le LLM propose les **sections** depuis les clusters réels mais **dans une forme
+contrainte**. Conventions imposées (intégrées au prompt + validées après génération) :
+
+- **Profondeur ≤ 2 niveaux** pour le 1ᵉʳ jet (sections + sous-dossiers). Le raffinage / l'agent Refonte
+  ajoutent de la profondeur ensuite — on ne sur-spécialise pas dès le départ.
+- **Sections de 1ᵉʳ niveau** : préfixe numéroté + nom en MAJUSCULES (ex. `01-SCIENCES`,
+  `02-INFORMATIQUE`) — convention BIBLIO_V2.
+- **Sous-dossiers** : nom en TitleCase (ex. `Astronomie`), préfixe numéroté optionnel.
+- **Bucket résiduel** : `_A-TRIER` (le `fallback` du profil) pour les thèmes non clusterisables — c'est
+  lui qui mesure la part « Autres » du dry-run.
+- **`_INBOX`** réservé (jamais une section de classement).
+- **Noms FS-safe** : respectent `_FOLDER_NAME_RE` de `taxonomy.py` (lettres/chiffres/espaces/-_.&()).
+
+**Pas de bibliothèque de templates** : la forme est garantie par les conventions, le fond par le
+contenu. Un template fixe (type BIBLIO_V2) ne conviendrait qu'à un corpus académique ; les conventions
+s'appliquent à n'importe quel corpus (cuisine, droit, fiction…) tout en restant reconnaissables. Le
+prompt peut citer 1-2 exemples de la forme attendue (few-shot) sans imposer les sections.
 
 ## Architecture
 
@@ -192,6 +219,8 @@ Wrapper dashboard : `dashboard/agent_onboarding.py` (thread daemon + `status.jso
 - **Reverse-engineering complet** d'une arbo pré-existante (détecté + signalé seulement ; v2).
 - **Chat conversationnel** (UI atomique actée).
 - **Échantillonnage** comme base de proposition (analyse complète actée).
+- **Bibliothèque de templates de taxonomie** (la forme est garantie par les conventions, cf. § Forme
+  de l'arbre — un template fixe est trop rigide pour un corpus arbitraire).
 - **Multi-profils en parallèle** (un onboarding = un profil).
 - **Éditeur UI de `categories.yaml`** (chantier *taxonomie followup* séparé ; premier jet LLM
   suffit ici, raffinage YAML manuel en attendant).
