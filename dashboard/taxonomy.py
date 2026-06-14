@@ -124,12 +124,16 @@ def _load_tree(profile: str) -> list[str]:
     return sorted({str(f).strip() for f in folders if f})
 
 
-def _tree_hierarchy(folders: list[str], counts: dict[str, int]) -> dict:
-    """Build a nested {name, path, file_count, children} tree from a flat list.
+def _tree_hierarchy(folders: list[str], counts: dict[str, int],
+                    meta: dict[str, dict] | None = None) -> dict:
+    """Build a nested {name, path, file_count, in_config, on_disk, children}
+    tree from a flat list. ``meta[path] = {"in_config": bool, "on_disk": bool}``
+    ; absent → both default True (rétro-compat).
 
     The 'file_count' is the count of files directly inside that folder
     (not aggregated from descendants — the treemap aggregates itself).
     """
+    meta = meta or {}
     folder_set = set(folders)
 
     def children_of(prefix: str) -> list[str]:
@@ -147,10 +151,13 @@ def _tree_hierarchy(folders: list[str], counts: dict[str, int]) -> dict:
 
     def build(path: str) -> dict:
         children = [build(c) for c in children_of(path)]
+        m = meta.get(path, {})
         return {
             "name": path.split("/")[-1] if path else "racine",
             "path": path,
             "file_count": int(counts.get(path, 0)),
+            "in_config": bool(m.get("in_config", True)),
+            "on_disk": bool(m.get("on_disk", True)),
             "children": children,
         }
 
@@ -455,6 +462,26 @@ def _scan_folder_counts(target: Path, folders: list[str]) -> dict[str, int]:
     return counts
 
 
+def _scan_disk(target: Path) -> tuple[set[str], dict[str, int]]:
+    """Scan physique du target en UNE passe : retourne (ensemble des dossiers
+    réels relatifs, compteurs de fichiers directs par dossier). Exclut les
+    dossiers cachés (.cache, etc.). La clé "" = racine du target.
+    """
+    disk_folders: set[str] = set()
+    counts: dict[str, int] = {}
+    if not target.exists():
+        return disk_folders, counts
+    target_str = str(target)
+    for root, dirs, files in os.walk(target_str):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        rel = os.path.relpath(root, target_str).replace("\\", "/")
+        folder_key = "" if rel == "." else rel
+        if folder_key:
+            disk_folders.add(folder_key)
+        counts[folder_key] = sum(1 for f in files if not f.startswith("."))
+    return disk_folders, counts
+
+
 # ─── Snapshot ─────────────────────────────────────────────────────────────
 
 
@@ -487,11 +514,23 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
         if not force_reload and profile in _snapshot_cache:
             return _snapshot_cache[profile]
 
-    folders = _load_tree(profile)
+    config_folders = _load_tree(profile)          # liste tree.yaml (config)
     mapping = _load_mapping(profile)
     target = _profile_target_path(profile)
-    counts = _scan_folder_counts(target, folders) if target else {}
-    tree = _tree_hierarchy(folders, counts)
+    disk_folders, counts = _scan_disk(target) if target else (set(), {})
+
+    config_set = set(config_folders)
+    # Union config + disque, puis auto-complétion des parents implicites :
+    # pour "a/b/c" on s'assure que "a" et "a/b" existent comme nœuds.
+    union: set[str] = set()
+    for f in config_set | disk_folders:
+        parts = f.split("/")
+        for i in range(1, len(parts) + 1):
+            union.add("/".join(parts[:i]))
+    folders = sorted(union)
+    meta = {f: {"in_config": f in config_set, "on_disk": f in disk_folders}
+            for f in folders}
+    tree = _tree_hierarchy(folders, counts, meta)
     themes_llm, themes_stats = _aggregate_themes_llm(profile, mapping)
     mapping_by_folder = _mapping_reverse(mapping)
 
@@ -536,7 +575,9 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
         except yaml.YAMLError:
             baseline_tree = {}
         baseline_folders = set(baseline_tree.get("folders", []) or [])
-        current_set = set(folders)
+        # Le diff "touched" porte sur ce que tu as édité dans tree.yaml
+        # (config seule), pas sur les dossiers découverts sur disque.
+        current_set = set(config_folders)
         for f in current_set ^ baseline_folders:   # symmetric diff
             touched_folders.add(f)
 

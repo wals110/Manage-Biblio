@@ -3231,5 +3231,92 @@ class TestSuggestMappings(TaxonomyTestBase):
         self.assertEqual(out["n_llm_calls"], 2)
 
 
+# ─── Snapshot reflète le disque (union config + disque + parents implicites) ─
+
+
+class TestSnapshotReflectsDisk(unittest.TestCase):
+    """get_snapshot doit refléter le disque : union config + disque +
+    parents implicites, avec flags in_config/on_disk par dossier."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-disktree-")
+        self.root = Path(self.tmp)
+        self.prof = self.root / "profiles" / "default"
+        self.target = self.root / "BIBLIO"
+        self.prof.mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(
+            yaml.safe_dump({"target": str(self.target)}), encoding="utf-8")
+        # tree.yaml LEAF-ONLY : déclare un enfant sans son parent + un dossier non créé
+        (self.prof / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": ["01-SCIENCES/ASTRO", "09-FANTOME"]}),
+            encoding="utf-8")
+        # Disque réel : 01-SCIENCES/ASTRO existe + un dossier hors-config 02-INFO
+        for rel in ("01-SCIENCES/ASTRO", "02-INFO"):
+            (self.target / rel).mkdir(parents=True, exist_ok=True)
+        (self.target / "01-SCIENCES" / "ASTRO" / "x.pdf").write_bytes(b"%PDF-1.4 x")
+        (self.target / "02-INFO" / "y.pdf").write_bytes(b"%PDF-1.4 y")
+        # dossier caché à exclure
+        (self.target / ".cache").mkdir(exist_ok=True)
+        self.patch = mock.patch("dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+        taxonomy.reset_cache()
+
+    def tearDown(self):
+        self.patch.stop()
+        taxonomy.reset_cache()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _flatten(self, node, acc):
+        acc[node["path"]] = node
+        for c in node.get("children", []):
+            self._flatten(c, acc)
+        return acc
+
+    def test_scan_disk_discovers_and_counts(self):
+        disk_folders, counts = taxonomy._scan_disk(self.target)
+        self.assertIn("01-SCIENCES", disk_folders)
+        self.assertIn("01-SCIENCES/ASTRO", disk_folders)
+        self.assertIn("02-INFO", disk_folders)
+        self.assertNotIn(".cache", disk_folders)          # caché exclu
+        self.assertEqual(counts["01-SCIENCES/ASTRO"], 1)
+        self.assertEqual(counts["02-INFO"], 1)
+
+    def test_implicit_parent_appears(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        # 01-SCIENCES n'est PAS déclaré dans tree.yaml mais existe (parent implicite + sur disque)
+        self.assertIn("01-SCIENCES", nodes)
+        self.assertTrue(nodes["01-SCIENCES"]["on_disk"])
+        self.assertFalse(nodes["01-SCIENCES"]["in_config"])
+
+    def test_hors_config_folder_shown_flagged(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        # 02-INFO : sur disque, absent de tree.yaml → hors config
+        self.assertIn("02-INFO", nodes)
+        self.assertTrue(nodes["02-INFO"]["on_disk"])
+        self.assertFalse(nodes["02-INFO"]["in_config"])
+
+    def test_declared_not_created_flagged(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        # 09-FANTOME : dans tree.yaml, pas sur disque → in_config, pas on_disk
+        self.assertIn("09-FANTOME", nodes)
+        self.assertTrue(nodes["09-FANTOME"]["in_config"])
+        self.assertFalse(nodes["09-FANTOME"]["on_disk"])
+
+    def test_normal_folder_both_true(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        self.assertTrue(nodes["01-SCIENCES/ASTRO"]["in_config"])
+        self.assertTrue(nodes["01-SCIENCES/ASTRO"]["on_disk"])
+
+    def test_folders_list_is_union(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        # union config + disque + parents implicites
+        for f in ("01-SCIENCES", "01-SCIENCES/ASTRO", "02-INFO", "09-FANTOME"):
+            self.assertIn(f, snap["folders"])
+
+
 if __name__ == "__main__":
     unittest.main()
