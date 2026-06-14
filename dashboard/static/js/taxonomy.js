@@ -214,15 +214,23 @@
   // changement de profil (utilise state.profile, même source que le reste).
   async function refreshOnboardingBanner() {
     const banner = $('#tax-onboarding-banner');
-    if (!banner) return;
-    banner.style.display = 'none';
+    // Le badge sidebar (base.html) se cale aussi sur le profil actif : sur la
+    // page Taxonomie le profil change sans navigation, donc on le re-synchronise
+    // ici à chaque changement (sinon il refléterait le profil de l'URL initiale).
+    const badge = document.getElementById('onb-draft-badge');
+    if (banner) banner.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+    if (!banner && !badge) return;
     if (!state.profile) return;
     try {
       const r = await fetch('/api/agent/onboarding/is-draft?profile='
         + encodeURIComponent(state.profile));
       if (!r.ok) return;
       const d = await r.json();
-      if (d && d.draft) banner.style.display = '';
+      if (d && d.draft) {
+        if (banner) banner.style.display = '';
+        if (badge) badge.style.display = '';
+      }
     } catch (e) { /* silencieux — pas de bandeau si erreur */ }
   }
   async function finalizeOnboarding() {
