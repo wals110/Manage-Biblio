@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from dashboard import (
+    agent_onboarding,
     agent_refonte,
     agent_refonte_apply,
     baseline,
@@ -3037,3 +3038,54 @@ async def api_agent_refonte_proposition_start(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=400)
     except FileNotFoundError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Agent Onboarding — scan / start / status / finalize
+# ════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/api/agent/onboarding/scan")
+async def api_onboarding_scan(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    inbox = (body.get("inbox_path") or "").strip()
+    if not inbox:
+        return JSONResponse({"error": "inbox_path requis"}, status_code=400)
+    import os
+    if not os.path.isdir(inbox):
+        return JSONResponse({"error": "répertoire introuvable"}, status_code=400)
+    return JSONResponse(agent_onboarding.scan(inbox))
+
+
+@app.post("/api/agent/onboarding/start")
+async def api_onboarding_start(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    name = (body.get("profile_name") or "").strip()
+    inbox = (body.get("inbox_path") or "").strip()
+    if not name or not inbox:
+        return JSONResponse({"error": "profile_name et inbox_path requis"}, status_code=400)
+    try:
+        return JSONResponse(agent_onboarding.start_onboarding(name, inbox))
+    except FileExistsError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.get("/api/agent/onboarding/status")
+async def api_onboarding_status(profile: str, run_id: str):
+    from fastapi.responses import JSONResponse
+    st = agent_onboarding.get_status(profile, run_id)
+    if st is None:
+        return JSONResponse({"error": "run introuvable"}, status_code=404)
+    return JSONResponse(st)
+
+
+@app.post("/api/agent/onboarding/finalize")
+async def api_onboarding_finalize(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    return JSONResponse(agent_onboarding.finalize(profile))

@@ -358,5 +358,51 @@ class TestAgentOnboardingWrapper(unittest.TestCase):
         self.assertFalse(cfg["onboarding_draft"])
 
 
+class TestOnboardingEndpoints(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-ep-")
+        self.root = Path(self.tmp)
+        self.target = self.root / "RAW"
+        (self.target / "a.pdf").parent.mkdir(parents=True, exist_ok=True)
+        (self.target / "a.pdf").write_bytes(b"%PDF-1.4 a")
+        mock.patch("dashboard.data.get_project_root", return_value=self.root).start()
+        mock.patch("lib.profile.get_project_root", return_value=self.root).start()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        mock.patch.stopall()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_scan_endpoint(self):
+        r = self.client.post("/api/agent/onboarding/scan", json={"inbox_path": str(self.target)})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_files"], 1)
+
+    def test_start_status_finalize_flow(self):
+        from dashboard import agent_onboarding as ao
+
+        def sync(fn, args, name):
+            return fn(*args)
+
+        with mock.patch.object(ao, "_spawn", sync), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        return_value={"coverage": 75.0, "stats": {"n_in_lib": 4}}):
+            s = self.client.post("/api/agent/onboarding/start",
+                json={"profile_name": "perso", "inbox_path": str(self.target)})
+        self.assertEqual(s.status_code, 200)
+        run_id = s.json()["run_id"]
+        st = self.client.get(f"/api/agent/onboarding/status?profile=perso&run_id={run_id}")
+        self.assertEqual(st.json()["status"], "done")
+        f = self.client.post("/api/agent/onboarding/finalize", json={"profile": "perso"})
+        self.assertEqual(f.status_code, 200)
+
+    def test_start_missing_fields_400(self):
+        r = self.client.post("/api/agent/onboarding/start", json={"profile_name": "x"})
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()
