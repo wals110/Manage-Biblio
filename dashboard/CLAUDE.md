@@ -4,7 +4,7 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 
 ## Architecture
 
-- **Nav-bar 7 onglets** : Overview · Tests · Curation · Baseline · Taxonomie · Logs · Admin (refactor UX juin 2026 : 12 → 7)
+- **Nav-bar 7 onglets** : Overview · Tests · Curation · Baseline · Taxonomie · Logs · Admin (refactor UX juin 2026 : 12 → 7) + entrée séparée « ➕ Nouveau profil » → `/onboarding` (assistant d'onboarding)
 - **2 hubs avec sub-tabs server-rendered** (`?view=X`) :
   - `/tests?view=` → exec | rapports | comparer | metriques | historique
   - `/baseline?view=` → disagreements | suggestions
@@ -58,6 +58,33 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   preview→appliquer→progression→annuler + carte « Bibliothèque » dans Overview.
 - Fencing : `categories.py` vérifie désormais `.cache/taxonomy.lock` (423 pendant
   un apply).
+
+### Agent Onboarding (bootstrap d'un profil depuis un répertoire brut)
+
+- **`agents/onboarding/`** (pipeline, PAS un agent ReAct/LangGraph) :
+  `scan.py` (scan + estimation coût, read-only), `taxonomy_llm.py` (1 appel LLM
+  « propose une hiérarchie depuis les clusters » — sections issues du contenu,
+  forme imposée par conventions : ≤ 2 niveaux, 1er niveau MAJUSCULES, bucket
+  résiduel `_A-TRIER`, `_INBOX` réservé), `proposition.py` (orchestration :
+  `run_vision` Vision full-corpus reprenable → `cluster_corpus` via
+  `lib/theme_canon` → `propose_taxonomy` → `propose_categories` via
+  `agents/refonte/categories_llm` → `write_proposal` : écrit les 3 YAMLs après
+  backup + dry-run de couverture via `reclassify_dryrun`).
+- **`agent_onboarding.py`** : wrapper thread+poll (scan synchrone,
+  `start_onboarding` crée le profil **brouillon** + lance l'analyse en thread
+  daemon, `get_status`, `finalize`). État par run dans
+  `profiles/<p>/.cache/onboarding/<run_id>/status.json`. Noms de profil/run_id
+  validés anti-traversal (`_is_safe_segment`).
+- Profil **brouillon** : flag `onboarding_draft: true` dans `profile.yaml`
+  (`lib/profile.create_draft_profile` / `set_onboarding_draft`) → badge sidebar,
+  bandeau Taxonomie/Mappings et bouton **Finaliser** (retire le flag).
+- Routes : `POST …/onboarding/{scan,start,finalize}`, `GET …/onboarding/status`,
+  `GET …/onboarding/is-draft`. Page assistant `/onboarding` (stepper 3 étapes :
+  scan/estimation → progression Vision → couverture) + entrée nav
+  « ➕ Nouveau profil ». L'étape « Raffinage & application » = handoff vers
+  l'onglet Mappings + Apply global existants (aucun code neuf).
+- Réutilise : `lib.vision`, `vision_cache`, `theme_canon`, `categories_llm`,
+  `reclassify_dryrun`, `init_profile`.
 
 - **Backend tests fonctionnels** : DuckDB via [../tests/functional/db.py](../tests/functional/db.py) — tables `runs`, `series_results`, `check_results`, `manual_validations`
 - **Templates** : 10 templates principaux + ~12 partials (`partials/tests_*.html`, `partials/baseline_*.html`, `partials/overview_*.html`)
@@ -181,3 +208,4 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
 - **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
 - **16 tests** dans [../tests/auto/test_reclassify_apply.py](../tests/auto/test_reclassify_apply.py) (preview, execute, undo, pending, status, hash config, fencing 423)
+- **23 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile, scan/estimate, run_vision reprenable, cluster_corpus, propose_taxonomy, propose_categories, write_proposal + dry-run, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)
