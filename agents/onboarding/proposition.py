@@ -151,11 +151,15 @@ def write_proposal(profile: str, tree_folders: list[str], theme_mapping: dict[st
     dry-run de couverture. Retourne {coverage, stats, by_destination}.
     """
     from agents.refonte import agent_backup
+    from agents.refonte.agent_backup import BackupError
     from dashboard import taxonomy
     pdir = _profile_dir(profile)
     try:
         agent_backup.create_backup(profile, batch_id=f"onboarding-{profile}")
-    except Exception:  # noqa: BLE001 — pas de YAML à snapshoter au tout 1er run
+    except BackupError:
+        # Seul cas toléré : rien à snapshoter (profil sans YAML de prod). Toute
+        # autre erreur (permissions, disque, collision) remonte — on n'écrase
+        # pas les 3 YAMLs sans backup préalable.
         pass
     _atomic_yaml(pdir / "tree.yaml", {"folders": sorted(set(tree_folders))})
     _atomic_yaml(pdir / "theme_mapping.yaml", dict(theme_mapping))
@@ -170,9 +174,8 @@ def write_proposal(profile: str, tree_folders: list[str], theme_mapping: dict[st
 
 
 def _atomic_yaml(path: Path, payload: dict) -> None:
-    import yaml as _y
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(_y.safe_dump(payload, allow_unicode=True, sort_keys=False),
+    tmp.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
                    encoding="utf-8")
     tmp.replace(path)
 
