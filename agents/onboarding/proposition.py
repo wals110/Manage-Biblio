@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,7 @@ from lib.theme_canon import extract_themes_from_vision_cache
 from lib.theme_normalizer import cluster_themes
 from lib.vision import DEFAULT_MODEL, analyze_cover
 
+log = logging.getLogger(__name__)
 _EXTS = (".pdf", ".epub")
 
 
@@ -106,6 +108,11 @@ def cluster_corpus(profile: str) -> list[dict]:
 def propose_categories(tree_folders: list[str]) -> dict:
     """Génère categories.yaml (P2) pour les dossiers feuilles via categories_llm,
     ancré sur le contenu. Retourne la structure {groupe: [entries]}.
+
+    Une « feuille » = dossier de sous-niveau (contient '/'), hors résiduel
+    (`_A-TRIER`, `_INBOX`). Les sections de 1er niveau sans sous-dossier
+    n'obtiennent pas d'entrée P2 (routage géré par P1 theme_mapping ; fallback
+    `autres` sinon) — acceptable au bootstrap, l'utilisateur affine ensuite.
     """
     # Dossiers feuilles (≥ 1 '/' = sous-dossier), hors résiduel/_INBOX
     leaves = [f for f in tree_folders
@@ -122,12 +129,16 @@ def propose_categories(tree_folders: list[str]) -> dict:
         entries = propose_keywords_for_new_folders(
             llm=get_agent_llm(), creations=creations,
             existing_groupes=[], groupe_inference=groupe_inference, sample_entries={})
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — frontière LLM
+        log.warning("propose_categories: étape LLM échouée — categories vides: %s", exc)
         entries = []
     cats: dict[str, list[dict]] = {}
     for e in entries:
         g = e.get("groupe") or "autres"
+        chemin = e.get("chemin")
+        if not chemin:
+            continue
         cats.setdefault(g, []).append(
-            {"chemin": e["chemin"], "priorite": e.get("priorite", 5),
+            {"chemin": chemin, "priorite": e.get("priorite", 5),
              "mots_cles": list(e.get("mots_cles", []))})
     return cats
