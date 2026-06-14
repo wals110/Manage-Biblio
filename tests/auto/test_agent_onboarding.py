@@ -80,6 +80,8 @@ class TestScanEstimate(unittest.TestCase):
         r = scan.scan_directory(str(self.d))
         self.assertTrue(r["has_subfolders"])
         self.assertEqual(set(r["top_folders"]), {"Prog", "Sci"})
+        self.assertEqual(r["n_files"], 3)
+        self.assertEqual(r["by_format"]["pdf"], 3)
 
     def test_estimate_cost(self):
         from agents.onboarding import scan
@@ -87,6 +89,7 @@ class TestScanEstimate(unittest.TestCase):
         self.assertEqual(e["n_calls"], 1000)
         self.assertAlmostEqual(e["usd"], 0.34, places=2)
         self.assertIn("eta_min", e)
+        self.assertEqual(e["n_pages"], 2)
 
 
 if __name__ == "__main__":

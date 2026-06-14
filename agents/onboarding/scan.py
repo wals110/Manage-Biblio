@@ -8,7 +8,11 @@ _EXTS = (".pdf", ".epub")
 
 
 def scan_directory(path: str) -> dict:
-    """Compte les fichiers classables + formats + détecte une pré-organisation."""
+    """Compte les fichiers classables + formats + détecte une pré-organisation.
+
+    Si `path` n'existe pas, os.walk ne produit rien → retour à zéros (la
+    validation d'existence est faite par la couche endpoint).
+    """
     n_files = 0
     by_format: dict[str, int] = {}
     top_folders: set[str] = set()
@@ -36,10 +40,15 @@ def scan_directory(path: str) -> dict:
 
 def estimate_cost(n_files: int, cost_per_call: float, n_pages: int = 2,
                   sec_per_call: float = 1.1) -> dict:
-    """Estimation Vision : 1 appel/fichier. Coût + durée approximatifs."""
+    """Estimation Vision : 1 appel/fichier (indépendant du nb de pages).
+
+    `n_pages` n'affecte pas le coût (facturation par appel) mais est repris
+    dans le retour pour l'affichage UI.
+    """
     n_calls = n_files
     return {
         "n_calls": n_calls,
+        "n_pages": n_pages,
         "usd": round(n_calls * cost_per_call, 2),
         "eta_min": round(n_calls * sec_per_call / 60, 1),
     }
