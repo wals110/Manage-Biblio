@@ -272,5 +272,45 @@ class TestProposeCategories(unittest.TestCase):
         self.assertNotIn("_A-TRIER", paths)
 
 
+class TestBuildProposal(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-prop-")
+        self.root = Path(self.tmp)
+        self.target = self.root / "RAW"
+        (self.target / "a.pdf").parent.mkdir(parents=True, exist_ok=True)
+        (self.target / "a.pdf").write_bytes(b"%PDF-1.4 a")
+        self.prof = self.root / "profiles" / "perso"
+        (self.prof / ".cache").mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(yaml.safe_dump({
+            "target": str(self.target), "fallback": "_A-TRIER",
+            "llm": {"model": "M"}, "defaults": {"pages": 2}}), encoding="utf-8")
+        (self.prof / "tree.yaml").write_text(yaml.safe_dump({"folders": []}), encoding="utf-8")
+        (self.prof / "theme_mapping.yaml").write_text("{}", encoding="utf-8")
+        (self.prof / "categories.yaml").write_text("{}", encoding="utf-8")
+        for m in ("lib.profile", "agents.onboarding.proposition",
+                  "dashboard.data", "lib.theme_canon", "dashboard.taxonomy"):
+            try:
+                mock.patch(f"{m}.get_project_root", return_value=self.root).start()
+            except Exception:
+                pass
+
+    def tearDown(self):
+        mock.patch.stopall()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_write_proposal_writes_3_yamls_and_coverage(self):
+        from agents.onboarding import proposition
+        tree = ["02-INFO", "02-INFO/DL", "_A-TRIER"]
+        mapping = {"Deep Learning": "02-INFO/DL"}
+        cats = {"autres": [{"chemin": "02-INFO/DL", "priorite": 5, "mots_cles": ["dl"]}]}
+        cov = proposition.write_proposal("perso", tree, mapping, cats)
+        wrote = yaml.safe_load((self.prof / "tree.yaml").read_text())
+        self.assertIn("02-INFO/DL", wrote["folders"])
+        self.assertEqual(yaml.safe_load((self.prof / "theme_mapping.yaml").read_text()),
+                         {"Deep Learning": "02-INFO/DL"})
+        self.assertIn("coverage", cov)
+        self.assertIn("stats", cov)
+
+
 if __name__ == "__main__":
     unittest.main()

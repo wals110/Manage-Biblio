@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from agents.llm import get_agent_llm
+from agents.onboarding.taxonomy_llm import propose_taxonomy
 from agents.refonte.categories_llm import propose_keywords_for_new_folders
 from agents.refonte.proposition_tools import _groupe_from_path_prefix
 from lib import profile as _profilelib
@@ -142,3 +143,45 @@ def propose_categories(tree_folders: list[str]) -> dict:
             {"chemin": chemin, "priorite": e.get("priorite", 5),
              "mots_cles": list(e.get("mots_cles", []))})
     return cats
+
+
+def write_proposal(profile: str, tree_folders: list[str], theme_mapping: dict[str, str],
+                   categories: dict) -> dict:
+    """Écrit les 3 YAMLs proposés dans le profil (après backup) puis lance le
+    dry-run de couverture. Retourne {coverage, stats, by_destination}.
+    """
+    from agents.refonte import agent_backup
+    from dashboard import taxonomy
+    pdir = _profile_dir(profile)
+    try:
+        agent_backup.create_backup(profile, batch_id=f"onboarding-{profile}")
+    except Exception:  # noqa: BLE001 — pas de YAML à snapshoter au tout 1er run
+        pass
+    _atomic_yaml(pdir / "tree.yaml", {"folders": sorted(set(tree_folders))})
+    _atomic_yaml(pdir / "theme_mapping.yaml", dict(theme_mapping))
+    _atomic_yaml(pdir / "categories.yaml", dict(categories))
+    taxonomy.reset_cache(profile)
+    dry = taxonomy.reclassify_dryrun(profile)
+    stats = dry.get("stats", {})
+    n_lib = max(1, int(stats.get("n_in_lib", 0)))
+    coverage = round(100 * int(stats.get("n_with_prediction", 0)) / n_lib, 1)
+    return {"coverage": coverage, "stats": stats,
+            "by_destination": dry.get("by_destination", [])}
+
+
+def _atomic_yaml(path: Path, payload: dict) -> None:
+    import yaml as _y
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(_y.safe_dump(payload, allow_unicode=True, sort_keys=False),
+                   encoding="utf-8")
+    tmp.replace(path)
+
+
+def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dict:
+    """Pipeline complet « Analyse & proposition » : vision → cluster → propose →
+    categories → write 3 YAMLs → dry-run. Retourne le rapport de couverture."""
+    run_vision(profile, on_progress)
+    clusters = cluster_corpus(profile)
+    tree, mapping = propose_taxonomy(get_agent_llm(), clusters)
+    cats = propose_categories(tree)
+    return write_proposal(profile, tree, mapping, cats)
