@@ -156,12 +156,20 @@
 (function () {
     const $ = (id) => document.getElementById(id);
     const fr = (n) => Number(n || 0).toLocaleString('fr-FR');
+    const esc = (s) => String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     let scanData = null;       // résultat du dernier scan
     let inboxPath = '';        // répertoire validé par le scan
     let profileName = '';      // nom du profil créé
     let runId = '';            // run_id de l'analyse
     let pollTimer = null;
+    let pollFails = 0;         // budget d'erreurs consécutives du poll
+
+    // FIX 2 : on arrête le poll si l'utilisateur quitte la page.
+    window.addEventListener('beforeunload', () => {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    });
 
     function setStep(n) {
         [1, 2, 3].forEach((i) => {
@@ -211,13 +219,13 @@
     function renderEstimate(d) {
         const fmt = d.by_format || {};
         const parts = Object.keys(fmt).sort()
-            .map((k) => fr(fmt[k]) + ' ' + k.replace(/^\./, '').toUpperCase());
+            .map((k) => fr(fmt[k]) + ' ' + esc(k.replace(/^\./, '').toUpperCase()));
         const est = d.estimate || {};
         $('onb-estimate').innerHTML =
             '📁 <b>' + fr(d.n_files) + ' fichiers</b> détectés'
             + (parts.length ? ' (' + parts.join(' · ') + ')' : '')
-            + ' · estimation Vision LLM ≈ <b>$' + (est.usd != null ? est.usd : '?') + '</b>'
-            + ' · ~' + (est.eta_min != null ? est.eta_min : '?') + ' min';
+            + ' · estimation Vision LLM ≈ <b>$' + (est.usd != null ? esc(est.usd) : '?') + '</b>'
+            + ' · ~' + (est.eta_min != null ? esc(est.eta_min) : '?') + ' min';
     }
 
     // ── Étape 1 → 2 : start + poll ──────────────────────────────────────
@@ -250,6 +258,8 @@
     });
 
     function startPoll() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        pollFails = 0;
         showErr('onb-poll-error', '');
         const tick = async () => {
             let d;
@@ -259,8 +269,16 @@
                     + encodeURIComponent(runId));
                 d = await r.json();
                 if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                if (!d || !d.status) throw new Error('statut injoignable');
+                pollFails = 0; // statut valide reçu — on réarme le budget
             } catch (e) {
-                return; // transitoire — on réessaie au prochain tick
+                pollFails++;
+                if (pollFails >= 5) {
+                    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                    showErr('onb-poll-error',
+                        'Suivi interrompu : ' + (e.message || 'statut injoignable'));
+                }
+                return; // sinon transitoire, on retente
             }
             if (d.status === 'running' || d.status === 'pending') {
                 const total = d.n_total || 0;
