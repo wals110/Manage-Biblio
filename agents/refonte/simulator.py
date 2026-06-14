@@ -69,6 +69,7 @@ def simulate_reclassify(
         FileNotFoundError: si proposal_dir ou son theme_mapping-proposed.yaml manque.
     """
     from lib.classifier import classify_combined, load_keyword_classifier
+    from lib.theme_canon import load_canon_table
 
     proposal_dir = Path(proposal_dir)
     mapping_path = proposal_dir / "theme_mapping-proposed.yaml"
@@ -112,6 +113,10 @@ def simulate_reclassify(
     cfg = tax._load_profile_yaml(profile)
     model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-32B-Instruct"
     n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
+
+    # Table de canonicalisation (Dédupli) — orthogonale au mapping proposé,
+    # chargée une seule fois et partagée par tous les workers.
+    canon_table = load_canon_table(profile)
 
     # Enumeration des fichiers
     target_str = str(target)
@@ -162,6 +167,7 @@ def simulate_reclassify(
             classifier=classifier,
             llm_mapper=None,
             pdf_path=abs_path,
+            canon_table=canon_table,
         )
         return {
             "rel_path": rel,

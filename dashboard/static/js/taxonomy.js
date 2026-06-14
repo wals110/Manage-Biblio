@@ -527,6 +527,7 @@
   }
 
   function closeReclassifyModal() {
+    stopApplyPoll();
     $('#tax-reclassify-modal').style.display = 'none';
   }
 
@@ -651,6 +652,120 @@
     });
   }
 
+  // ── Apply global (reclassify) ────────────────────────────────────────
+  // Greffe l'application réelle des déplacements sur la modale dry-run.
+  // - case « inclure P2 » → re-fetch du preview
+  // - bouton Appliquer + confirmation danger + barre de progression (poll 2s)
+  // - bouton Annuler le dernier apply (undo)
+
+  async function fetchApplyPreview(keyword) {
+    const r = await fetch('/api/taxonomy/reclassify/apply/preview?profile='
+      + encodeURIComponent(state.profile) + '&keyword=' + (keyword ? 'true' : 'false'));
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    return r.json();
+  }
+  async function applyPost(path) {
+    const r = await fetch('/api/taxonomy/reclassify/apply/' + path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+  let applyPollTimer = null;
+  function stopApplyPoll() {
+    if (applyPollTimer) { clearInterval(applyPollTimer); applyPollTimer = null; }
+  }
+  function renderApplyControls(host, keyword) {
+    host.innerHTML = '<div class="muted small">Chargement…</div>';
+    fetchApplyPreview(keyword).then(p => {
+      const st = p.state || {};
+      let html = '<div class="rca-apply-bar-host">';
+      html += '<label><input type="checkbox" id="rca-kw"' + (keyword ? ' checked' : '')
+            + '> inclure les matchs par mot-clé (P2, faux positifs possibles)</label>';
+      html += '<div class="muted small">' + p.n_moves + ' à déplacer ('
+            + p.n_p1 + ' P1' + (keyword ? ' · ' + p.n_p2 + ' P2' : '') + ')</div>';
+      if (st.executed) {
+        html += '<button class="btn-secondary rca-danger" id="rca-undo">↩ Annuler le dernier apply</button>';
+      } else {
+        html += '<button class="btn-primary" id="rca-apply"'
+              + (p.n_moves ? '' : ' disabled') + '>Appliquer (' + p.n_moves + ')</button>';
+      }
+      html += '<div id="rca-progress"></div></div>';
+      host.innerHTML = html;
+      document.getElementById('rca-kw').addEventListener('change', e =>
+        renderApplyControls(host, e.target.checked));
+      const applyBtn = document.getElementById('rca-apply');
+      if (applyBtn) applyBtn.addEventListener('click', async () => {
+        const dests = (p.top_destinations || []).slice(0, 5)
+          .map(d => d.folder + ' (' + d.n + ')').join(', ');
+        const ok = await showConfirm({
+          title: 'Appliquer ' + p.n_moves + ' déplacement(s) ?',
+          body: p.n_p1 + ' P1' + (keyword ? ' + ' + p.n_p2 + ' P2' : '')
+              + '. Top destinations : ' + dests
+              + '.\nAnnulable via le journal.',
+          confirmLabel: 'Appliquer', variant: 'danger',
+        });
+        if (!ok) return;
+        applyBtn.disabled = true;
+        const kwApply = document.getElementById('rca-kw');
+        if (kwApply) kwApply.disabled = true;
+        try { await applyPost('execute'); startApplyPoll(host, keyword); }
+        catch (e) {
+          applyBtn.disabled = false;
+          if (kwApply) kwApply.disabled = false;
+          showToast('✗ ' + e.message, 'error');
+        }
+      });
+      const undoBtn = document.getElementById('rca-undo');
+      if (undoBtn) undoBtn.addEventListener('click', async () => {
+        const ok = await showConfirm({
+          title: 'Annuler le dernier apply ?',
+          body: 'Re-déplace les fichiers vers leur emplacement d\'origine.',
+          confirmLabel: 'Annuler', variant: 'danger',
+        });
+        if (!ok) return;
+        undoBtn.disabled = true;
+        const kwUndo = document.getElementById('rca-kw');
+        if (kwUndo) kwUndo.disabled = true;
+        try { await applyPost('undo'); startApplyPoll(host, keyword); }
+        catch (e) {
+          undoBtn.disabled = false;
+          if (kwUndo) kwUndo.disabled = false;
+          showToast('✗ ' + e.message, 'error');
+        }
+      });
+    }).catch(() => { host.innerHTML = ''; });
+  }
+  function startApplyPoll(host, keyword) {
+    stopApplyPoll();
+    const tick = async () => {
+      let d;
+      try {
+        const r = await fetch('/api/taxonomy/reclassify/apply/status?profile='
+          + encodeURIComponent(state.profile));
+        d = await r.json();
+      } catch (e) { return; }
+      const prog = d.progress; const pe = document.getElementById('rca-progress');
+      if (!prog) return;
+      if (prog.status === 'running') {
+        const pct = prog.n_total ? Math.round(100 * prog.n_done / prog.n_total) : 0;
+        if (pe) pe.innerHTML = '<div class="rca-bar"><div class="rca-fill" style="width:'
+          + pct + '%"></div></div><div class="muted small">' + prog.n_done + '/' + prog.n_total
+          + (prog.n_skipped ? ' · ' + prog.n_skipped + ' skip(s)' : '')
+          + (prog.n_failed ? ' · ' + prog.n_failed + ' échec(s)' : '') + '</div>';
+      } else {
+        stopApplyPoll();
+        if (prog.status === 'done') showToast('✓ Apply terminé'
+          + (prog.report ? ' — logs/' + prog.report : ''), 'success');
+        else if (prog.status === 'error') showToast('✗ ' + (prog.error || 'erreur'), 'error');
+        renderApplyControls(host, keyword);
+      }
+    };
+    tick(); applyPollTimer = setInterval(tick, 2000);
+  }
+
   function renderReclassifyBody(data) {
     const body = $('#tax-reclassify-body');
     body.innerHTML = '';
@@ -766,6 +881,11 @@
       body.appendChild(el('div', { class: 'tax-reclassify-empty muted' },
         ['✅ Aucun déplacement projeté — tout est déjà bien placé selon l\'étape 1.']));
     }
+
+    // Apply global controls (case P2 + bouton Appliquer/Annuler + progression)
+    const rcaHost = el('div', { id: 'rca-apply-controls', class: 'rca-apply-controls' });
+    body.appendChild(rcaHost);
+    renderApplyControls(rcaHost, false);
   }
 
   // ── Audit modal — dormant mappings ───────────────────────────────────

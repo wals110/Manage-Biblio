@@ -123,6 +123,15 @@ def _profile_dir(profile: str) -> Path:
     return data.get_project_root() / "profiles" / profile
 
 
+def _check_lock_free(profile: str) -> None:
+    """Refuse une écriture si le sentinel .cache/taxonomy.lock est présent
+    (apply/baseline en cours). Même fichier que taxonomy._lock_file."""
+    lock = _profile_dir(profile) / ".cache" / "taxonomy.lock"
+    if lock.exists():
+        raise CategoriesError(
+            "modifications verrouillées (apply/run en cours ?)", 423)
+
+
 def _categories_path(profile: str) -> Path:
     return _profile_dir(profile) / "categories.yaml"
 
@@ -393,6 +402,7 @@ def add_entry(
         cleaned_kw.append(kk)
 
     with _locks[profile]:
+        _check_lock_free(profile)
         payload = _load_mutable(profile)
         entries = payload.get(group)
         if entries is None:
@@ -445,6 +455,7 @@ def update_entry(
         new_priorite = _validate_priority(new_priorite)
 
     with _locks[profile]:
+        _check_lock_free(profile)
         payload = _load_mutable(profile)
         located = _find_entry(payload, group, chemin)
         if located is None:
@@ -496,6 +507,7 @@ def delete_entry(profile: str, group: str, chemin: str) -> dict:
     chemin = _validate_path(chemin)
 
     with _locks[profile]:
+        _check_lock_free(profile)
         payload = _load_mutable(profile)
         located = _find_entry(payload, group, chemin)
         if located is None:
