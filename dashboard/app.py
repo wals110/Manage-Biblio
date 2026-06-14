@@ -3106,3 +3106,17 @@ async def api_onboarding_finalize(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=400)
     except FileNotFoundError:
         return JSONResponse({"error": "profil introuvable"}, status_code=404)
+
+
+@app.get("/api/agent/onboarding/is-draft")
+async def api_onboarding_is_draft(profile: str):
+    from fastapi.responses import JSONResponse
+
+    from dashboard.agent_onboarding import _is_safe_segment
+    if not _is_safe_segment(profile):
+        return JSONResponse({"draft": False})
+    try:
+        from lib.profile import Profile
+        return JSONResponse({"draft": bool(Profile(profile).onboarding_draft)})
+    except Exception:  # noqa: BLE001 — profil absent/illisible → pas brouillon
+        return JSONResponse({"draft": False})

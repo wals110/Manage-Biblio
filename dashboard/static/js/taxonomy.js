@@ -208,6 +208,44 @@
     if (!r.ok) throw new Error('breakdown HTTP ' + r.status);
     return r.json();
   }
+  // ── Onboarding draft banner ─────────────────────────────────────────
+  // Affiche le bandeau « profil en cours d'onboarding » dans la vue Mappings
+  // quand le profil actif porte le flag onboarding_draft. Re-vérifié à chaque
+  // changement de profil (utilise state.profile, même source que le reste).
+  async function refreshOnboardingBanner() {
+    const banner = $('#tax-onboarding-banner');
+    if (!banner) return;
+    banner.style.display = 'none';
+    if (!state.profile) return;
+    try {
+      const r = await fetch('/api/agent/onboarding/is-draft?profile='
+        + encodeURIComponent(state.profile));
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d && d.draft) banner.style.display = '';
+    } catch (e) { /* silencieux — pas de bandeau si erreur */ }
+  }
+  async function finalizeOnboarding() {
+    const btn = $('#onb-finalize-btn');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/agent/onboarding/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile: state.profile }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || ('HTTP ' + r.status));
+      }
+      location.reload();
+    } catch (e) {
+      btn.disabled = false;
+      showToast('Échec de la finalisation : ' + e.message, 'error');
+    }
+  }
+
   async function fetchFileMetadata(path) {
     const url = `/api/taxonomy/file/metadata?profile=${encodeURIComponent(state.profile)}` +
                 `&path=${encodeURIComponent(path)}`;
@@ -4067,8 +4105,13 @@
       state.selectedMappedTheme = null;   // spotlight is per-profile
       state.treeBulkSelected.clear();     // bulk selection is per-profile
       renderTreeBulkbar();
+      refreshOnboardingBanner();          // draft state is per-profile
       await loadAndRender();
     }));
+    // Onboarding draft banner (Finaliser)
+    const finalizeBtn = $('#onb-finalize-btn');
+    if (finalizeBtn) finalizeBtn.addEventListener('click', finalizeOnboarding);
+    refreshOnboardingBanner();
     // Tree bulk delete bar
     const treeBulkDelete = $('#tax-tree-bulkbar-delete');
     if (treeBulkDelete) treeBulkDelete.addEventListener('click', _deleteTreeBulk);
