@@ -1297,6 +1297,21 @@
     row.appendChild(el('span', { class: 'tax-tree-name', onclick: () => selectFolder(node.path) },
       [isRoot ? 'racine' : node.name]));
 
+    // Badge d'état config↔disque (Fix A/B). Jamais sur la racine.
+    if (!isRoot) {
+      if (node.on_disk === false && node.in_config) {
+        row.appendChild(el('span', {
+          class: 'tax-tree-badge tax-badge-ghost',
+          title: 'Déclaré dans tree.yaml mais absent du disque',
+        }, ['non créé']));
+      } else if (node.in_config === false && node.on_disk) {
+        row.appendChild(el('span', {
+          class: 'tax-tree-badge tax-badge-orphan',
+          title: 'Présent sur le disque mais hors de tree.yaml — non mappable tant qu\'il n\'est pas adopté',
+        }, ['hors config']));
+      }
+    }
+
     // Fixed-width slot for the touched dot — kept empty when no dot so
     // every row's count badge sits at the same X-coord.
     const dotSlot = el('span', { class: 'tax-touched-slot' });
@@ -1325,6 +1340,15 @@
 
     // Actions grouped — fixed area, hidden until hover, right-aligned end.
     const actions = el('span', { class: 'tax-tree-actions' });
+    // « Adopter » — uniquement pour les dossiers hors config (sur disque mais
+    // absents de tree.yaml). Placé en premier : action la plus pertinente ici.
+    if (!isRoot && node.in_config === false && node.on_disk) {
+      actions.appendChild(el('button', {
+        class: 'tax-tree-add-btn tax-tree-adopt-btn',
+        title: 'Adopter ce dossier dans tree.yaml (le rendre mappable)',
+        onclick: e => { e.stopPropagation(); adoptFolder(node.path); },
+      }, ['adopter']));
+    }
     actions.appendChild(el('button', {
       class: 'tax-tree-add-btn',
       title: 'Créer un sous-dossier',
@@ -3657,6 +3681,37 @@
     state.filesByPath = new Map();
     state.snapshot = await fetchSnapshot();
     renderAll();
+  }
+
+  // ── Adopt folder (hors config → tree.yaml) ──────────────────────────
+  // Ajoute un dossier présent sur le disque mais absent de tree.yaml (+ ses
+  // parents manquants) à la config, le rendant cible de mapping valide.
+  async function adoptFolder(path) {
+    const ok = await showConfirm({
+      title: 'Adopter « ' + path + ' » ?',
+      body: 'Le dossier (et ses parents manquants) sera ajouté à tree.yaml. '
+          + 'Il deviendra une cible de mapping valide. Annulable via l\'historique des backups tree.',
+      confirmLabel: 'Adopter',
+      variant: 'primary',
+    });
+    if (!ok) return;
+    await withBusy(`Adoption « ${path} »…`, async () => {
+      try {
+        const r = await fetch('/api/taxonomy/folder/adopt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: state.profile, path: path }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        showToast('✓ ' + (d.added ? d.added.length : 0) + ' dossier(s) adopté(s)', 'success');
+        // Recharge le snapshot + re-render (même pattern que create/delete/move).
+        state.snapshot = await fetchSnapshot();
+        renderAll();
+      } catch (e) {
+        showToast('✗ ' + e.message, 'error');
+      }
+    });
   }
 
   // ── Move folder popover ──────────────────────────────────────────────

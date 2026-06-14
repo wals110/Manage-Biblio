@@ -6926,3 +6926,41 @@ th {
 .rr-apply-fill {
     height: 100%; background: #4caf50; transition: width 0.4s ease;
 }
+
+/* ── Badges d'état dossier (config↔disque, Fix A/B) ─────────────────── */
+/* Aligné sur .tax-tree-spotlight-badge : flex-shrink:0 car la row est flex. */
+.tax-tree-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+/* Hors config : présent sur disque, absent de tree.yaml (à adopter). */
+.tax-badge-orphan {
+    background: rgba(224, 168, 0, 0.18);
+    color: #e0a800;
+    border: 1px solid rgba(224, 168, 0, 0.4);
+}
+/* Déclaré non créé : dans tree.yaml mais absent du disque. */
+.tax-badge-ghost {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--muted, #9aa4b2);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+/* Bouton « adopter » : texte (pas icône) → largeur auto sinon écrasé par le
+   width:18px fixe de .tax-tree-add-btn. Teinte orange = action hors-config. */
+.tax-tree-adopt-btn {
+    width: auto !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+    color: #e0a800 !important;
+}
+.tax-tree-adopt-btn:hover {
+    background: rgba(224, 168, 0, 0.18) !important;
+    color: #e0a800 !important;
+    border-color: rgba(224, 168, 0, 0.6) !important;
+}
