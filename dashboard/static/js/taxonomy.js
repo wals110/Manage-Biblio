@@ -1340,8 +1340,7 @@
 
     // Actions grouped — fixed area, hidden until hover, right-aligned end.
     const actions = el('span', { class: 'tax-tree-actions' });
-    // « Adopter » — uniquement pour les dossiers hors config (sur disque mais
-    // absents de tree.yaml). Placé en premier : action la plus pertinente ici.
+    // « Adopter » d'abord sur les nœuds hors-config (seul geste possible).
     if (!isRoot && node.in_config === false && node.on_disk) {
       actions.appendChild(el('button', {
         class: 'tax-tree-add-btn tax-tree-adopt-btn',
@@ -1349,12 +1348,16 @@
         onclick: e => { e.stopPropagation(); adoptFolder(node.path); },
       }, ['adopter']));
     }
-    actions.appendChild(el('button', {
-      class: 'tax-tree-add-btn',
-      title: 'Créer un sous-dossier',
-      onclick: e => { e.stopPropagation(); openCreateFolderPopover(node.path, e.currentTarget); },
-    }, ['+']));
-    if (!isRoot) {
+    // Les actions de mutation tree.yaml n'ont de sens que sur des dossiers
+    // déjà dans la config (un hors-config doit d'abord être adopté).
+    if (isRoot || node.in_config !== false) {
+      actions.appendChild(el('button', {
+        class: 'tax-tree-add-btn',
+        title: 'Créer un sous-dossier',
+        onclick: e => { e.stopPropagation(); openCreateFolderPopover(node.path, e.currentTarget); },
+      }, ['+']));
+    }
+    if (!isRoot && node.in_config !== false) {
       actions.appendChild(el('button', {
         class: 'tax-tree-add-btn tax-tree-rename-btn',
         title: 'Renommer ce dossier',
