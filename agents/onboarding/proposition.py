@@ -10,7 +10,7 @@ import yaml
 
 from lib import profile as _profilelib
 from lib import vision_cache
-from lib.vision import analyze_cover
+from lib.vision import DEFAULT_MODEL, analyze_cover
 
 _EXTS = (".pdf", ".epub")
 
@@ -28,23 +28,21 @@ def _load_profile_cfg(profile: str) -> dict:
 
 def run_vision(profile: str, on_progress: Callable[[int, int], None]) -> dict:
     """Vision LLM sur TOUT le corpus du profil → peuple vision_cache.json.
-    Reprenable : skippe les fichiers déjà en cache. Sauvegarde incrémentale.
+
+    Reprenable : skippe les fichiers déjà en cache. Sauvegarde incrémentale
+    (toutes les 25 analyses + une finale). `on_progress(done, total)` reçoit
+    le nombre de fichiers VISITÉS (pas seulement analysés) — la progression
+    reflète le débit réel, pas le travail Vision. Retourne {n_total, n_analyzed}.
     """
     cfg = _load_profile_cfg(profile)
     target = Path(str(cfg.get("target") or ""))
-    model = (cfg.get("llm") or {}).get("model") or "Qwen/Qwen3-VL-8B-Instruct"
+    model = (cfg.get("llm") or {}).get("model") or DEFAULT_MODEL
     endpoint = (cfg.get("llm") or {}).get("endpoint") or ""
     n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)
     api_key = os.environ.get("SILICONFLOW_API_KEY", "")
 
     cache_path = _profile_dir(profile) / ".cache" / "vision_cache.json"
-    cache: dict = {}
-    if cache_path.exists():
-        import json
-        try:
-            cache = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            cache = {}
+    cache = vision_cache.load_cache(cache_path)
 
     files: list[str] = []
     for root, dirs, fs in os.walk(str(target)):
@@ -67,6 +65,8 @@ def run_vision(profile: str, on_progress: Callable[[int, int], None]) -> dict:
             model=model,
             n_pages=n_pages,
         )
+        # Un résultat None (PDF illisible / LLM en échec) n'est jamais mis en
+        # cache : il sera re-tenté au prochain run reprenable.
         if key and isinstance(result, dict):
             vision_cache.store(cache, key, result, model)
             n_analyzed += 1
