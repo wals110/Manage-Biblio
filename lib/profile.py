@@ -383,7 +383,13 @@ def create_draft_profile(name: str, target: str) -> "Profile":
 
 
 def set_onboarding_draft(name: str, value: bool) -> None:
-    """Écrit/retire le flag onboarding_draft dans profile.yaml (préserve le reste)."""
+    """Écrit/retire le flag onboarding_draft dans profile.yaml.
+
+    Préserve les clés/valeurs et leur ordre (sort_keys=False) ; les
+    commentaires YAML ne sont PAS conservés (round-trip safe_load/safe_dump).
+    Sans impact dans le flux onboarding (profile.yaml généré par init_profile
+    n'a pas de commentaires).
+    """
     path = get_project_root() / PROFILES_DIR / name / "profile.yaml"
     cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     cfg["onboarding_draft"] = bool(value)
