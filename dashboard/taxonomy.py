@@ -124,12 +124,17 @@ def _load_tree(profile: str) -> list[str]:
     return sorted({str(f).strip() for f in folders if f})
 
 
-def _tree_hierarchy(folders: list[str], counts: dict[str, int]) -> dict:
-    """Build a nested {name, path, file_count, children} tree from a flat list.
+def _tree_hierarchy(folders: list[str], counts: dict[str, int],
+                    meta: dict[str, dict] | None = None) -> dict:
+    """Build a nested {name, path, file_count, in_config, on_disk, children}
+    tree from a flat list. ``meta[path] = {"in_config": bool, "on_disk": bool}``
+    ; si meta est omis ou un path absent → in_config/on_disk défaut True
+    (nœud considéré pleinement présent).
 
     The 'file_count' is the count of files directly inside that folder
     (not aggregated from descendants — the treemap aggregates itself).
     """
+    meta = meta or {}
     folder_set = set(folders)
 
     def children_of(prefix: str) -> list[str]:
@@ -147,10 +152,13 @@ def _tree_hierarchy(folders: list[str], counts: dict[str, int]) -> dict:
 
     def build(path: str) -> dict:
         children = [build(c) for c in children_of(path)]
+        m = meta.get(path, {})
         return {
             "name": path.split("/")[-1] if path else "racine",
             "path": path,
             "file_count": int(counts.get(path, 0)),
+            "in_config": bool(m.get("in_config", True)),
+            "on_disk": bool(m.get("on_disk", True)),
             "children": children,
         }
 
@@ -455,6 +463,29 @@ def _scan_folder_counts(target: Path, folders: list[str]) -> dict[str, int]:
     return counts
 
 
+def _scan_disk(target: Path) -> tuple[set[str], dict[str, int]]:
+    """Scan physique du target en UNE passe : retourne (ensemble des dossiers
+    réels relatifs, compteurs de fichiers directs par dossier). Exclut les
+    dossiers cachés (.cache, etc.). La clé "" = racine du target.
+    """
+    disk_folders: set[str] = set()
+    counts: dict[str, int] = {}
+    if not target.exists():
+        return disk_folders, counts
+    target_str = str(target)
+    try:
+        for root, dirs, files in os.walk(target_str):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            rel = os.path.relpath(root, target_str).replace("\\", "/")
+            folder_key = "" if rel == "." else rel
+            if folder_key:
+                disk_folders.add(folder_key)
+            counts[folder_key] = sum(1 for f in files if not f.startswith("."))
+    except OSError:
+        pass
+    return disk_folders, counts
+
+
 # ─── Snapshot ─────────────────────────────────────────────────────────────
 
 
@@ -487,11 +518,23 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
         if not force_reload and profile in _snapshot_cache:
             return _snapshot_cache[profile]
 
-    folders = _load_tree(profile)
+    config_folders = _load_tree(profile)          # liste tree.yaml (config)
     mapping = _load_mapping(profile)
     target = _profile_target_path(profile)
-    counts = _scan_folder_counts(target, folders) if target else {}
-    tree = _tree_hierarchy(folders, counts)
+    disk_folders, counts = _scan_disk(target) if target else (set(), {})
+
+    config_set = set(config_folders)
+    # Union config + disque, puis auto-complétion des parents implicites :
+    # pour "a/b/c" on s'assure que "a" et "a/b" existent comme nœuds.
+    union: set[str] = set()
+    for f in config_set | disk_folders:
+        parts = f.split("/")
+        for i in range(1, len(parts) + 1):
+            union.add("/".join(parts[:i]))
+    union_folders = sorted(union)
+    meta = {f: {"in_config": f in config_set, "on_disk": f in disk_folders}
+            for f in union_folders}
+    tree = _tree_hierarchy(union_folders, counts, meta)
     themes_llm, themes_stats = _aggregate_themes_llm(profile, mapping)
     mapping_by_folder = _mapping_reverse(mapping)
 
@@ -536,19 +579,21 @@ def get_snapshot(profile: str, force_reload: bool = False) -> dict:
         except yaml.YAMLError:
             baseline_tree = {}
         baseline_folders = set(baseline_tree.get("folders", []) or [])
-        current_set = set(folders)
+        # Le diff "touched" porte sur ce que tu as édité dans tree.yaml
+        # (config seule), pas sur les dossiers découverts sur disque.
+        current_set = set(config_folders)
         for f in current_set ^ baseline_folders:   # symmetric diff
             touched_folders.add(f)
 
     snap = {
         "profile": profile,
         "tree": tree,
-        "folders": folders,
+        "folders": sorted(config_folders),   # cibles de mapping valides = config seule
         "mapping_by_folder": mapping_by_folder,
         "themes_llm": themes_llm,
         "stats": {
             **themes_stats,
-            "tree_nodes": len(folders),
+            "tree_nodes": len(union_folders),  # nœuds affichés = union config + disque
             "total_files": int(sum(counts.values())),
             "target_exists": bool(target and target.exists()),
             "backup_count": backup_count,
@@ -2406,6 +2451,68 @@ def create_folder(profile: str, parent: str, name: str) -> dict:
             "ok": True,
             "path": new_path,
             "fs_path": str(fs_path),
+            "backup": (
+                str(backup.relative_to(data.get_project_root()))
+                if backup else None
+            ),
+        }
+
+
+def adopt_folder(profile: str, path: str) -> dict:
+    """Ajoute à tree.yaml un dossier existant sur le disque mais hors config
+    (+ ses parents implicites non encore déclarés), pour le rendre cible de
+    mapping valide. Sous lock + backup. NE crée PAS de dossier (il existe
+    déjà) et NE valide PAS le nom au regex (le dossier est déjà sur le FS).
+
+    Erreurs : 400 (chemin vide / hors target / pas de target), 404 (absent du
+    disque), 409 (déjà dans tree.yaml), 423 (lock présent).
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        rel = (path or "").strip().strip("/")
+        if not rel:
+            raise TaxonomyError("chemin de dossier vide", 400)
+        # Refuse les segments de navigation : le rel est stocké TEL QUEL dans
+        # tree.yaml, donc "a/b/../c" ou "a//b" écriraient des entrées corrompues.
+        segments = rel.split("/")
+        if any(seg in ("", ".", "..") for seg in segments):
+            raise TaxonomyError(
+                "chemin de dossier invalide (segments vides, '.' ou '..' interdits)",
+                400)
+        target = _profile_target_path(profile)
+        if target is None:
+            raise TaxonomyError("profil sans target configuré", 400)
+        # Garde anti-évasion (défense en profondeur) : le dossier doit rester
+        # sous le target. Attrape les chemins absolus et tout ce qui aurait
+        # glissé au-delà du check par segments ci-dessus.
+        fs = (target / rel).resolve()
+        try:
+            fs.relative_to(target.resolve())
+        except ValueError as exc:
+            raise TaxonomyError("chemin hors du target", 400) from exc
+        if not fs.is_dir():
+            raise TaxonomyError(
+                f"le dossier n'existe pas sur le disque : {rel}", 404)
+        folders = _load_tree(profile)
+        folder_set = set(folders)
+        # Le dossier lui-même est déjà une cible de mapping valide → 409.
+        if rel in folder_set:
+            raise TaxonomyError(
+                f"le dossier '{rel}' est déjà dans tree.yaml", 409)
+        # Le dossier + ses parents implicites pas encore déclarés.
+        to_add: list[str] = []
+        parts = rel.split("/")
+        for i in range(1, len(parts) + 1):
+            p = "/".join(parts[:i])
+            if p not in folder_set:
+                to_add.append(p)
+        backup = _backup_tree(profile)
+        _write_tree(profile, folders + to_add)
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "added": sorted(to_add),
             "backup": (
                 str(backup.relative_to(data.get_project_root()))
                 if backup else None

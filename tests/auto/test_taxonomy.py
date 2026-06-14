@@ -3231,6 +3231,213 @@ class TestSuggestMappings(TaxonomyTestBase):
         self.assertEqual(out["n_llm_calls"], 2)
 
 
+# ─── Snapshot reflète le disque (union config + disque + parents implicites) ─
+
+
+class TestSnapshotReflectsDisk(unittest.TestCase):
+    """get_snapshot doit refléter le disque : union config + disque +
+    parents implicites, avec flags in_config/on_disk par dossier."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-disktree-")
+        self.root = Path(self.tmp)
+        self.prof = self.root / "profiles" / "default"
+        self.target = self.root / "BIBLIO"
+        self.prof.mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(
+            yaml.safe_dump({"target": str(self.target)}), encoding="utf-8")
+        # tree.yaml LEAF-ONLY : déclare un enfant sans son parent + un dossier non créé
+        (self.prof / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": ["01-SCIENCES/ASTRO", "09-FANTOME"]}),
+            encoding="utf-8")
+        # Disque réel : 01-SCIENCES/ASTRO existe + un dossier hors-config 02-INFO
+        for rel in ("01-SCIENCES/ASTRO", "02-INFO"):
+            (self.target / rel).mkdir(parents=True, exist_ok=True)
+        (self.target / "01-SCIENCES" / "ASTRO" / "x.pdf").write_bytes(b"%PDF-1.4 x")
+        (self.target / "02-INFO" / "y.pdf").write_bytes(b"%PDF-1.4 y")
+        # dossier caché à exclure
+        (self.target / ".cache").mkdir(exist_ok=True)
+        self.patch = mock.patch("dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+        taxonomy.reset_cache()
+
+    def tearDown(self):
+        self.patch.stop()
+        taxonomy.reset_cache()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _flatten(self, node, acc):
+        acc[node["path"]] = node
+        for c in node.get("children", []):
+            self._flatten(c, acc)
+        return acc
+
+    def test_scan_disk_discovers_and_counts(self):
+        disk_folders, counts = taxonomy._scan_disk(self.target)
+        self.assertIn("01-SCIENCES", disk_folders)
+        self.assertIn("01-SCIENCES/ASTRO", disk_folders)
+        self.assertIn("02-INFO", disk_folders)
+        self.assertNotIn(".cache", disk_folders)          # caché exclu
+        self.assertEqual(counts["01-SCIENCES/ASTRO"], 1)
+        self.assertEqual(counts["02-INFO"], 1)
+
+    def test_implicit_parent_appears(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        # 01-SCIENCES n'est PAS déclaré dans tree.yaml mais existe (parent implicite + sur disque)
+        self.assertIn("01-SCIENCES", nodes)
+        self.assertTrue(nodes["01-SCIENCES"]["on_disk"])
+        self.assertFalse(nodes["01-SCIENCES"]["in_config"])
+
+    def test_hors_config_folder_shown_flagged(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        # 02-INFO : sur disque, absent de tree.yaml → hors config
+        self.assertIn("02-INFO", nodes)
+        self.assertTrue(nodes["02-INFO"]["on_disk"])
+        self.assertFalse(nodes["02-INFO"]["in_config"])
+
+    def test_declared_not_created_flagged(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        # 09-FANTOME : dans tree.yaml, pas sur disque → in_config, pas on_disk
+        self.assertIn("09-FANTOME", nodes)
+        self.assertTrue(nodes["09-FANTOME"]["in_config"])
+        self.assertFalse(nodes["09-FANTOME"]["on_disk"])
+
+    def test_normal_folder_both_true(self):
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        self.assertTrue(nodes["01-SCIENCES/ASTRO"]["in_config"])
+        self.assertTrue(nodes["01-SCIENCES/ASTRO"]["on_disk"])
+
+    def test_folders_list_is_config_only(self):
+        # snap["folders"] = cibles de mapping VALIDES = config (tree.yaml) seule.
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        self.assertEqual(set(snap["folders"]), {"01-SCIENCES/ASTRO", "09-FANTOME"})
+        # 02-INFO (disque, hors config) n'est PAS une cible mappable
+        self.assertNotIn("02-INFO", snap["folders"])
+
+    def test_tree_shows_union_even_if_not_mappable(self):
+        # mais l'ARBRE affiché contient bien les dossiers disque + parents implicites
+        snap = taxonomy.get_snapshot("default", force_reload=True)
+        nodes = self._flatten(snap["tree"], {})
+        for f in ("01-SCIENCES", "01-SCIENCES/ASTRO", "02-INFO", "09-FANTOME"):
+            self.assertIn(f, nodes)
+
+
+# ─── Fix B : adoption d'un dossier hors config dans tree.yaml ──────────────
+
+
+class TestAdoptFolder(unittest.TestCase):
+    """adopt_folder ajoute à tree.yaml un dossier déjà sur le disque mais
+    hors config (+ ses parents implicites), sous lock + backup."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-adopt-")
+        self.root = Path(self.tmp)
+        self.prof = self.root / "profiles" / "default"
+        self.target = self.root / "BIBLIO"
+        self.prof.mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(
+            yaml.safe_dump({"target": str(self.target)}), encoding="utf-8")
+        (self.prof / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": ["01-SCIENCES/ASTRO"]}), encoding="utf-8")
+        # disque : 02-INFO/IA existe physiquement, hors config
+        (self.target / "01-SCIENCES" / "ASTRO").mkdir(parents=True)
+        (self.target / "02-INFO" / "IA").mkdir(parents=True)
+        self.patch = mock.patch(
+            "dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+        taxonomy.reset_cache()
+
+    def tearDown(self):
+        self.patch.stop()
+        taxonomy.reset_cache()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_adopt_adds_folder_and_implicit_parents(self):
+        result = taxonomy.adopt_folder("default", "02-INFO/IA")
+        self.assertTrue(result["ok"])
+        # 02-INFO (parent implicite) ET 02-INFO/IA ajoutés ; ASTRO déjà là, pas re-listé
+        self.assertEqual(set(result["added"]), {"02-INFO", "02-INFO/IA"})
+        folders = yaml.safe_load((self.prof / "tree.yaml").read_text())["folders"]
+        self.assertIn("02-INFO", folders)
+        self.assertIn("02-INFO/IA", folders)
+        self.assertIn("01-SCIENCES/ASTRO", folders)  # préservé
+        # backup tree.yaml créé
+        backups = list(
+            (self.prof / ".cache" / "taxonomy-backups").glob("tree-*.yaml"))
+        self.assertTrue(backups)
+
+    def test_adopt_already_in_config_409(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "01-SCIENCES/ASTRO")
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_adopt_not_on_disk_404(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "99-GHOST")
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_adopt_traversal_rejected_400(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "../../escape")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_adopt_internal_denormalized_rejected_400(self):
+        # "02-INFO/IA" existe sur le disque ; "02-INFO/X/../IA" résout vers lui
+        # mais contient ".." → doit être REJETÉ (sinon écrirait des entrées
+        # corrompues comme "02-INFO/X/.." dans tree.yaml).
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "02-INFO/X/../IA")
+        self.assertEqual(ctx.exception.status, 400)
+        folders = yaml.safe_load((self.prof / "tree.yaml").read_text())["folders"]
+        # aucune entrée corrompue écrite
+        self.assertFalse(any(".." in f for f in folders))
+        self.assertNotIn("02-INFO/X/..", folders)
+
+    def test_adopt_double_slash_rejected_400(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "02-INFO//IA")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_adopt_blocked_by_lock_423(self):
+        lock = self.prof / ".cache" / "taxonomy.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("busy")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "02-INFO/IA")
+        self.assertEqual(ctx.exception.status, 423)
+
+
+class TestAdoptFolderEndpoint(TestAdoptFolder):
+    """Même fixture que TestAdoptFolder, plus le client HTTP."""
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_adopt_endpoint(self):
+        r = self.client.post("/api/taxonomy/folder/adopt",
+                             json={"profile": "default", "path": "02-INFO/IA"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("02-INFO/IA", r.json()["added"])
+
+    def test_adopt_endpoint_404(self):
+        r = self.client.post("/api/taxonomy/folder/adopt",
+                             json={"profile": "default", "path": "99-GHOST"})
+        self.assertEqual(r.status_code, 404)
+
+    def test_adopt_endpoint_missing_profile_400(self):
+        r = self.client.post("/api/taxonomy/folder/adopt",
+                             json={"path": "02-INFO/IA"})
+        self.assertEqual(r.status_code, 400)
+
+
 class TestBuildReclassifyProjection(unittest.TestCase):
     """Projection live complète : matérialise tous les moves, applique
     la canonicalisation, sépare P1/P2."""

@@ -2347,6 +2347,21 @@ async def taxonomy_folder_delete_api(request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/taxonomy/folder/adopt")
+async def taxonomy_folder_adopt_api(request: Request):
+    """Adopte un dossier existant sur le disque (hors config) dans tree.yaml."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    path = body.get("path") or ""
+    if not profile:
+        return JSONResponse({"error": "profile manquant"}, status_code=400)
+    try:
+        return JSONResponse(taxonomy.adopt_folder(profile, path))
+    except taxonomy.TaxonomyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.post("/api/taxonomy/mapping/preview")
 async def taxonomy_mapping_preview_api(request: Request):
     """Dry-run: simulate the effect of an add/update/delete on the cache

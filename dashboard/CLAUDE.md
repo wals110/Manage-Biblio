@@ -147,6 +147,24 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **Affectation en lot** (colonne Thèmes LLM) : checkboxes de multi-sélection + toolbar avec 2 actions :
   - **Mapper la sélection → dossier** : choisir un dossier (autocomplete) → tous les thèmes cochés y sont affectés via `POST /api/taxonomy/mappings/bulk-add` (`add_mappings_bulk` : backup unique, skip rapporté des déjà-mappés, lock 423)
   - **💡 Suggérer + Mapper** : `POST /api/taxonomy/mappings/suggest` (`suggest_mappings`) → moteur : (1) passe **déterministe fiable** = matching exact nom de thème ↔ dernier segment de dossier (haute précision, le KeywordClassifier a été retiré car imprécis — il matchait des mots-clés incidents, ex. « Colloid Science » → Géométrie via « surface »), (2) passe **LLM batché** = `LLMMapper.resolve_batch` (N thèmes en 1 appel chunké de 40, borné `max_llm`, no-op sans clé API) pour les ambigus → panneau de revue (badge source déterministe/LLM/non-résolu, confiance, dossier éditable inline, non-résolus décochés) → Appliquer les acceptés en bulk-add
+
+### Arbre Mappings : reflet du disque (config ↔ disque)
+
+- `get_snapshot` construit l'arbre depuis l'**union** de `tree.yaml` (config) +
+  du **scan disque** (`_scan_disk` : un seul `os.walk` du target, dossiers cachés
+  exclus) + des **parents implicites** (pour `a/b/c`, on recrée `a` et `a/b`).
+  Chaque nœud porte `in_config`/`on_disk` → l'UI marque 3 états : normal,
+  **« hors config »** (sur disque, absent de tree.yaml), **« non créé »** (dans
+  tree.yaml, absent du disque).
+- `snap["folders"]` reste **config-only** (= cibles de mapping valides) ; l'union
+  ne sert qu'à l'affichage de l'arbre. Un dossier hors-config n'est mappable
+  qu'après **adoption**.
+- `adopt_folder(profile, path)` (+ `POST /api/taxonomy/folder/adopt`) ajoute un
+  dossier disque hors-config (+ parents implicites) à `tree.yaml` (lock + backup),
+  via le bouton « Adopter » sur le nœud. Corrige le bug : un `tree.yaml`
+  « leaf-only » (enfants sans parents déclarés) masquait des sections pourtant
+  présentes sur le disque.
+
 - **Toast d'impact** : `✓ "X" → /Y · N fichiers au prochain reclassify` (N pris dans `themes_llm[theme].count`)
 - **Backup auto** : avant chaque write, `theme_mapping.yaml` copié dans `profiles/<p>/.cache/taxonomy-backups/theme_mapping-YYYYMMDD-HHMMSS.yaml` (rotation 20)
 - **Lock concurrence** : `.taxonomy.lock` bloque les writes pendant un baseline_run ou autre tâche externe
@@ -157,8 +175,8 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 
 - **63 tests** dans [../tests/auto/test_dashboard.py](../tests/auto/test_dashboard.py) (routes + data.py + hubs + redirects 301)
 - **70 tests** dans [../tests/auto/test_overview.py](../tests/auto/test_overview.py) (16 cards + 2 builders + cache TTL + 3 macros)
-- **212 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride)
-- **104 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection)
+- **233 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride + disk-reflect + adopt_folder)
+- **104 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection + lock fencing)
 - **9 tests** dans [../tests/auto/test_viewer_copy.py](../tests/auto/test_viewer_copy.py) (copy + clear destination, path traversal, refus de `default`)
 - **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
 - **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
