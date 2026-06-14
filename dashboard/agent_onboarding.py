@@ -5,6 +5,7 @@ en thread daemon + polling status.json. Calqué sur dashboard/agent_refonte.py.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import uuid
 from collections.abc import Callable
@@ -13,6 +14,15 @@ from pathlib import Path
 from typing import Any
 
 from dashboard import data
+
+# Segment de chemin sûr : alphanumérique en tête, puis alnum/_/- (pas de '/',
+# pas de '..'). Les noms de profil et run_id viennent de l'HTTP (non fiables) et
+# sont interpolés dans des chemins disque — on bloque toute traversée.
+_SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def _is_safe_segment(value: str) -> bool:
+    return bool(_SAFE_SEGMENT.match(value or ""))
 
 
 def _status_path(profile: str, run_id: str) -> Path:
@@ -29,6 +39,8 @@ def _write_status(profile: str, run_id: str, payload: dict[str, Any]) -> None:
 
 
 def get_status(profile: str, run_id: str) -> dict[str, Any] | None:
+    if not (_is_safe_segment(profile) and _is_safe_segment(run_id)):
+        return None
     p = _status_path(profile, run_id)
     if not p.exists():
         return None
@@ -80,6 +92,8 @@ def start_onboarding(profile_name: str, inbox_path: str) -> dict[str, Any]:
     mono-utilisateur, cohérent avec agent_refonte.
     """
     from lib import profile as _profile
+    if not _is_safe_segment(profile_name):
+        raise ValueError(f"invalid profile name: {profile_name!r}")
     pdir = data.get_project_root() / "profiles" / profile_name
     if pdir.exists():
         raise FileExistsError(f"profile already exists: {profile_name}")
@@ -95,5 +109,7 @@ def start_onboarding(profile_name: str, inbox_path: str) -> dict[str, Any]:
 def finalize(profile: str) -> dict[str, Any]:
     """Retire le flag onboarding_draft."""
     from lib import profile as _profile
+    if not _is_safe_segment(profile):
+        raise ValueError(f"invalid profile name: {profile!r}")
     _profile.set_onboarding_draft(profile, False)
     return {"ok": True, "profile": profile}

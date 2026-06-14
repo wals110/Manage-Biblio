@@ -403,6 +403,24 @@ class TestOnboardingEndpoints(unittest.TestCase):
         r = self.client.post("/api/agent/onboarding/start", json={"profile_name": "x"})
         self.assertEqual(r.status_code, 400)
 
+    def test_start_rejects_traversal_name(self):
+        r = self.client.post("/api/agent/onboarding/start",
+            json={"profile_name": "../evil", "inbox_path": str(self.target)})
+        self.assertEqual(r.status_code, 400)
+        # aucun dossier créé hors du sandbox profiles/
+        self.assertFalse((self.root / "evil").exists())
+        self.assertFalse((self.root.parent / "evil").exists())
+
+    def test_status_rejects_traversal_run_id(self):
+        r = self.client.get(
+            "/api/agent/onboarding/status?profile=perso&run_id=../../x")
+        self.assertEqual(r.status_code, 404)
+
+    def test_finalize_rejects_traversal_name(self):
+        r = self.client.post("/api/agent/onboarding/finalize",
+            json={"profile": "../../etc"})
+        self.assertEqual(r.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

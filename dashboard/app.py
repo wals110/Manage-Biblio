@@ -3068,6 +3068,8 @@ async def api_onboarding_start(request: Request):
         return JSONResponse({"error": "profile_name et inbox_path requis"}, status_code=400)
     try:
         return JSONResponse(agent_onboarding.start_onboarding(name, inbox))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     except FileExistsError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
 
@@ -3088,4 +3090,9 @@ async def api_onboarding_finalize(request: Request):
     profile = (body.get("profile") or "").strip()
     if not profile:
         return JSONResponse({"error": "profile requis"}, status_code=400)
-    return JSONResponse(agent_onboarding.finalize(profile))
+    try:
+        return JSONResponse(agent_onboarding.finalize(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError:
+        return JSONResponse({"error": "profil introuvable"}, status_code=404)
