@@ -312,5 +312,51 @@ class TestBuildProposal(unittest.TestCase):
         self.assertIn("stats", cov)
 
 
+class TestAgentOnboardingWrapper(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-wrap-")
+        self.root = Path(self.tmp)
+        self.target = self.root / "RAW"
+        (self.target / "a.pdf").parent.mkdir(parents=True, exist_ok=True)
+        (self.target / "a.pdf").write_bytes(b"%PDF-1.4 a")
+        self.patch = mock.patch("dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+        self.patch2 = mock.patch("lib.profile.get_project_root", return_value=self.root)
+        self.patch2.start()
+
+    def tearDown(self):
+        mock.patch.stopall()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_scan_endpoint_logic(self):
+        from dashboard import agent_onboarding as ao
+        r = ao.scan(str(self.target))
+        self.assertEqual(r["n_files"], 1)
+        self.assertIn("estimate", r)
+
+    def test_start_then_status_done(self):
+        from dashboard import agent_onboarding as ao
+        # exécution synchrone : on patche _spawn pour appeler la cible direct
+        with mock.patch.object(ao, "_spawn", lambda fn, args, name: fn(*args)), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        return_value={"coverage": 80.0, "stats": {"n_in_lib": 10}}):
+            res = ao.start_onboarding("perso-2026", str(self.target))
+            run_id = res["run_id"]
+            st = ao.get_status("perso-2026", run_id)
+        self.assertEqual(st["status"], "done")
+        self.assertEqual(st["coverage"], 80.0)
+        # profil brouillon créé
+        cfg = yaml.safe_load((self.root / "profiles" / "perso-2026" / "profile.yaml").read_text())
+        self.assertTrue(cfg["onboarding_draft"])
+
+    def test_finalize_clears_flag(self):
+        from dashboard import agent_onboarding as ao
+        from lib import profile as prof
+        prof.create_draft_profile("perso-2026", str(self.target))
+        ao.finalize("perso-2026")
+        cfg = yaml.safe_load((self.root / "profiles" / "perso-2026" / "profile.yaml").read_text())
+        self.assertFalse(cfg["onboarding_draft"])
+
+
 if __name__ == "__main__":
     unittest.main()
