@@ -15,21 +15,17 @@ from typing import Any
 from dashboard import data
 
 
-def _runs_dir(profile: str) -> Path:
-    base = data.get_project_root() / "profiles" / profile / ".cache" / "onboarding"
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
-
 def _status_path(profile: str, run_id: str) -> Path:
-    d = _runs_dir(profile) / run_id
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "status.json"
+    # Résolution PURE (aucun mkdir) : un read (get_status) ne doit pas créer de
+    # dossier pour un run_id inconnu. La création est faite par _write_status.
+    return (data.get_project_root() / "profiles" / profile / ".cache"
+            / "onboarding" / run_id / "status.json")
 
 
 def _write_status(profile: str, run_id: str, payload: dict[str, Any]) -> None:
-    _status_path(profile, run_id).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    p = _status_path(profile, run_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def get_status(profile: str, run_id: str) -> dict[str, Any] | None:
@@ -73,7 +69,16 @@ def _run(profile: str, run_id: str) -> None:
 
 
 def start_onboarding(profile_name: str, inbox_path: str) -> dict[str, Any]:
-    """Crée le profil brouillon puis lance l'analyse/proposition en thread."""
+    """Crée le profil brouillon puis lance l'analyse/proposition en thread.
+
+    Cycle de vie / reprise : si `build_proposal` échoue en cours de route, le
+    profil brouillon reste sur disque (flag `onboarding_draft: true`) avec un
+    état partiel et un statut `error`. Une nouvelle tentative bute alors sur le
+    `FileExistsError` ci-dessous — l'utilisateur doit supprimer le profil
+    partiel avant de relancer. Le garde `exists()` n'est pas mutex-protégé
+    (TOCTOU sur deux starts concurrents) — acceptable pour un dashboard
+    mono-utilisateur, cohérent avec agent_refonte.
+    """
     from lib import profile as _profile
     pdir = data.get_project_root() / "profiles" / profile_name
     if pdir.exists():
