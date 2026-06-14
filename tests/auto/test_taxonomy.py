@@ -3326,5 +3326,100 @@ class TestSnapshotReflectsDisk(unittest.TestCase):
             self.assertIn(f, nodes)
 
 
+# ─── Fix B : adoption d'un dossier hors config dans tree.yaml ──────────────
+
+
+class TestAdoptFolder(unittest.TestCase):
+    """adopt_folder ajoute à tree.yaml un dossier déjà sur le disque mais
+    hors config (+ ses parents implicites), sous lock + backup."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-adopt-")
+        self.root = Path(self.tmp)
+        self.prof = self.root / "profiles" / "default"
+        self.target = self.root / "BIBLIO"
+        self.prof.mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(
+            yaml.safe_dump({"target": str(self.target)}), encoding="utf-8")
+        (self.prof / "tree.yaml").write_text(
+            yaml.safe_dump({"folders": ["01-SCIENCES/ASTRO"]}), encoding="utf-8")
+        # disque : 02-INFO/IA existe physiquement, hors config
+        (self.target / "01-SCIENCES" / "ASTRO").mkdir(parents=True)
+        (self.target / "02-INFO" / "IA").mkdir(parents=True)
+        self.patch = mock.patch(
+            "dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+        taxonomy.reset_cache()
+
+    def tearDown(self):
+        self.patch.stop()
+        taxonomy.reset_cache()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_adopt_adds_folder_and_implicit_parents(self):
+        result = taxonomy.adopt_folder("default", "02-INFO/IA")
+        self.assertTrue(result["ok"])
+        # 02-INFO (parent implicite) ET 02-INFO/IA ajoutés ; ASTRO déjà là, pas re-listé
+        self.assertEqual(set(result["added"]), {"02-INFO", "02-INFO/IA"})
+        folders = yaml.safe_load((self.prof / "tree.yaml").read_text())["folders"]
+        self.assertIn("02-INFO", folders)
+        self.assertIn("02-INFO/IA", folders)
+        self.assertIn("01-SCIENCES/ASTRO", folders)  # préservé
+        # backup tree.yaml créé
+        backups = list(
+            (self.prof / ".cache" / "taxonomy-backups").glob("tree-*.yaml"))
+        self.assertTrue(backups)
+
+    def test_adopt_already_in_config_409(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "01-SCIENCES/ASTRO")
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_adopt_not_on_disk_404(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "99-GHOST")
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_adopt_traversal_rejected_400(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "../../escape")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_adopt_blocked_by_lock_423(self):
+        lock = self.prof / ".cache" / "taxonomy.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("busy")
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "02-INFO/IA")
+        self.assertEqual(ctx.exception.status, 423)
+
+
+class TestAdoptFolderEndpoint(TestAdoptFolder):
+    """Même fixture que TestAdoptFolder, plus le client HTTP."""
+
+    def setUp(self):
+        super().setUp()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_adopt_endpoint(self):
+        r = self.client.post("/api/taxonomy/folder/adopt",
+                             json={"profile": "default", "path": "02-INFO/IA"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("02-INFO/IA", r.json()["added"])
+
+    def test_adopt_endpoint_404(self):
+        r = self.client.post("/api/taxonomy/folder/adopt",
+                             json={"profile": "default", "path": "99-GHOST"})
+        self.assertEqual(r.status_code, 404)
+
+    def test_adopt_endpoint_missing_profile_400(self):
+        r = self.client.post("/api/taxonomy/folder/adopt",
+                             json={"path": "02-INFO/IA"})
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

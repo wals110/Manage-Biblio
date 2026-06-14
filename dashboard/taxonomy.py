@@ -2432,6 +2432,59 @@ def create_folder(profile: str, parent: str, name: str) -> dict:
         }
 
 
+def adopt_folder(profile: str, path: str) -> dict:
+    """Ajoute à tree.yaml un dossier existant sur le disque mais hors config
+    (+ ses parents implicites non encore déclarés), pour le rendre cible de
+    mapping valide. Sous lock + backup. NE crée PAS de dossier (il existe
+    déjà) et NE valide PAS le nom au regex (le dossier est déjà sur le FS).
+
+    Erreurs : 400 (chemin vide / hors target / pas de target), 404 (absent du
+    disque), 409 (déjà dans tree.yaml), 423 (lock présent).
+    """
+    lock = _locks[profile]
+    with lock:
+        _check_lock_free(profile)
+        rel = (path or "").strip().strip("/")
+        if not rel:
+            raise TaxonomyError("chemin de dossier vide", 400)
+        target = _profile_target_path(profile)
+        if target is None:
+            raise TaxonomyError("profil sans target configuré", 400)
+        # Garde anti-évasion : le dossier doit rester sous le target.
+        fs = (target / rel).resolve()
+        try:
+            fs.relative_to(target.resolve())
+        except ValueError as exc:
+            raise TaxonomyError("chemin hors du target", 400) from exc
+        if not fs.is_dir():
+            raise TaxonomyError(
+                f"le dossier n'existe pas sur le disque : {rel}", 404)
+        folders = _load_tree(profile)
+        folder_set = set(folders)
+        # Le dossier lui-même est déjà une cible de mapping valide → 409.
+        if rel in folder_set:
+            raise TaxonomyError(
+                f"le dossier '{rel}' est déjà dans tree.yaml", 409)
+        # Le dossier + ses parents implicites pas encore déclarés.
+        to_add: list[str] = []
+        parts = rel.split("/")
+        for i in range(1, len(parts) + 1):
+            p = "/".join(parts[:i])
+            if p not in folder_set:
+                to_add.append(p)
+        backup = _backup_tree(profile)
+        _write_tree(profile, folders + to_add)
+        reset_cache(profile)
+        return {
+            "ok": True,
+            "added": sorted(to_add),
+            "backup": (
+                str(backup.relative_to(data.get_project_root()))
+                if backup else None
+            ),
+        }
+
+
 def delete_folder_preview(profile: str, path: str) -> dict:
     """Stats about what a `delete_folder(path)` would remove.
 
