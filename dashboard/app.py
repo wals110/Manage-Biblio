@@ -2481,6 +2481,20 @@ async def taxonomy_file_move_api(request: Request):
 # ════════════════════════════════════════════════════════════════════════
 
 
+@app.get("/onboarding")
+async def onboarding_page(request: Request):
+    """Assistant d'onboarding d'un nouveau profil (scan → Vision → proposition)."""
+    available = [
+        p["name"] if isinstance(p, dict) else p
+        for p in data.get_available_profiles(include_all=True)
+    ]
+    return templates.TemplateResponse(
+        request,
+        "onboarding.html",
+        {"active": "onboarding", "available_profiles": available},
+    )
+
+
 @app.get("/agent/refonte")
 async def agent_refonte_page(request: Request, profile: str = "default"):
     """Page dédiée à l'agent Refonte (Phase A — Diagnostic)."""

@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{# Page standalone — assistant d'onboarding d'un nouveau profil.
+   Accessible via /onboarding (lien sidebar « ➕ Nouveau profil »).
+
+   3 étapes : ① configuration (répertoire + scan/estimation) →
+   ② progression Vision (poll status toutes les 2 s) →
+   ③ proposition/couverture + handoff vers Mappings.
+
+   Aucune logique métier ici : appelle les 4 routes /api/agent/onboarding/*. #}
+{% set active = "onboarding" %}
+{% block title %}Nouveau profil — Onboarding{% endblock %}
+
+{% block content %}
+<h1 class="page-title">➕ Onboarding — nouveau profil</h1>
+<p class="page-subtitle">
+    Analyse un répertoire brut et propose une taxonomie de départ, puis te rend
+    la main aux outils Mappings. Le profil brouillon est créé tout de suite —
+    <b>aucun fichier n'est déplacé</b>.
+</p>
+
+<div class="onb-steps">
+    <div class="onb-step active" id="onb-stepper-1">
+        <span class="onb-step-num">①</span><span class="onb-step-lbl">Configuration</span>
+    </div>
+    <div class="onb-step" id="onb-stepper-2">
+        <span class="onb-step-num">②</span><span class="onb-step-lbl">Analyse Vision</span>
+    </div>
+    <div class="onb-step" id="onb-stepper-3">
+        <span class="onb-step-num">③</span><span class="onb-step-lbl">Taxonomie proposée</span>
+    </div>
+</div>
+
+<!-- ── Étape 1 : configuration + scan ── -->
+<div class="onb-card" id="onboarding_step_1">
+    <div class="onb-row">
+        <div class="onb-field">
+            <label class="filter-label" for="onb-inbox">Répertoire brut à analyser</label>
+            <input type="text" id="onb-inbox" placeholder="/chemin/vers/mes/livres">
+        </div>
+        <div class="onb-field onb-field-action">
+            <button class="btn-secondary" id="onb-scan-btn" type="button">📁 Scanner</button>
+        </div>
+    </div>
+    <div id="onb-scan-error" class="onb-error" style="display:none;"></div>
+
+    <div id="onb-scan-result" style="display:none;">
+        <div class="onb-estimate" id="onb-estimate"></div>
+        <div class="onb-row" style="margin-top:14px;">
+            <div class="onb-field">
+                <label class="filter-label" for="onb-pname">Nom du profil</label>
+                <input type="text" id="onb-pname" placeholder="perso-2026">
+            </div>
+        </div>
+        <div class="onb-note">
+            Le profil brouillon est créé immédiatement (skeleton + target). La
+            Vision peuple son <code>vision_cache</code> — aucun fichier déplacé.
+        </div>
+        <div id="onb-start-error" class="onb-error" style="display:none;"></div>
+        <div class="onb-actions">
+            <button class="btn-primary" id="onb-start-btn" type="button">Analyser le répertoire</button>
+            <span class="muted small">Tu confirmes la dépense avant de lancer.</span>
+        </div>
+    </div>
+</div>
+
+<!-- ── Étape 2 : analyse Vision (poll) ── -->
+<div class="onb-card" id="onboarding_step_2" style="display:none;">
+    <div><b>Analyse LLM Vision — tout le corpus</b></div>
+    <div class="onb-bar"><div class="onb-fill" id="onb-fill"></div></div>
+    <div class="onb-progtxt muted small">
+        <span id="onb-ptxt">0 / 0</span> · <span id="onb-phase">démarrage…</span>
+    </div>
+    <div class="onb-note">
+        Chaque couverture analysée est mise en cache → le classify final sera
+        gratuit (pas de re-Vision).
+    </div>
+    <div id="onb-poll-error" class="onb-error" style="display:none;"></div>
+</div>
+
+<!-- ── Étape 3 : proposition / couverture ── -->
+<div class="onb-card" id="onboarding_step_3" style="display:none;">
+    <div><b>Taxonomie proposée</b> — clusterisation des thèmes observés</div>
+    <div class="onb-chips" id="onb-chips"></div>
+    <div class="onb-note">
+        La taxonomie est écrite dans le profil brouillon. Tu la raffines avec les
+        outils existants.
+    </div>
+    <div class="onb-actions">
+        <button class="btn-primary" id="onb-continue-btn" type="button">
+            Continuer dans Mappings pour raffiner →
+        </button>
+    </div>
+</div>
+
+<style>
+.onb-steps { display:flex; gap:10px; margin:8px 0 18px; max-width:720px; }
+.onb-step {
+    flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px;
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    opacity:.5;
+}
+.onb-step.active { opacity:1; border-color:var(--blue); box-shadow:0 0 0 1px var(--blue) inset; }
+.onb-step.done { opacity:1; border-color:var(--green); }
+.onb-step-num {
+    width:24px; height:24px; border-radius:50%; display:grid; place-items:center;
+    font-weight:700; background:var(--card-hover); flex:0 0 auto;
+}
+.onb-step.active .onb-step-num { background:var(--blue); color:#06210d; }
+.onb-step.done .onb-step-num { background:var(--green); color:#06210d; }
+.onb-step-lbl { font-size:13px; }
+
+.onb-card {
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:18px; margin-bottom:14px; max-width:720px;
+}
+.onb-row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+.onb-field { flex:1; min-width:220px; }
+.onb-field-action { flex:0 0 auto; min-width:0; }
+.onb-card input[type=text] {
+    width:100%; background:var(--bg); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); padding:9px 11px; font-size:14px;
+}
+.onb-estimate {
+    margin:14px 0 0; padding:10px 12px; background:var(--card-hover);
+    border:1px dashed var(--border); border-radius:8px; color:var(--muted);
+}
+.onb-estimate b { color:var(--text); }
+.onb-note { color:var(--muted); font-size:12.5px; margin-top:8px; }
+.onb-actions { display:flex; gap:10px; margin-top:16px; align-items:center; }
+.onb-error {
+    margin-top:12px; padding:9px 12px; border-radius:8px; font-size:13px;
+    background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.4);
+    color:var(--red);
+}
+.onb-bar {
+    height:12px; border-radius:6px; background:rgba(255,255,255,.07);
+    overflow:hidden; margin:14px 0 8px;
+}
+.onb-fill {
+    height:100%; width:0; background:linear-gradient(90deg,#3a7bd5,#4ade80);
+    transition:width .25s;
+}
+.onb-progtxt { font-variant-numeric:tabular-nums; }
+.onb-chips { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
+.onb-chip {
+    padding:8px 12px; border-radius:10px; background:var(--card-hover);
+    border:1px solid var(--border); min-width:120px;
+}
+.onb-chip .k { font-size:11px; color:var(--muted); }
+.onb-chip .v { font-size:18px; font-weight:700; }
+.onb-chip.ok .v { color:var(--green); }
+.onb-chip.warn .v { color:var(--yellow); }
+</style>
+
+<script>
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const fr = (n) => Number(n || 0).toLocaleString('fr-FR');
+
+    let scanData = null;       // résultat du dernier scan
+    let inboxPath = '';        // répertoire validé par le scan
+    let profileName = '';      // nom du profil créé
+    let runId = '';            // run_id de l'analyse
+    let pollTimer = null;
+
+    function setStep(n) {
+        [1, 2, 3].forEach((i) => {
+            const s = $('onb-stepper-' + i);
+            s.classList.toggle('active', i === n);
+            s.classList.toggle('done', i < n);
+            s.querySelector('.onb-step-num').textContent =
+                i < n ? '✓' : { 1: '①', 2: '②', 3: '③' }[i];
+        });
+        $('onboarding_step_1').style.display = n === 1 ? '' : 'none';
+        $('onboarding_step_2').style.display = n === 2 ? '' : 'none';
+        $('onboarding_step_3').style.display = n === 3 ? '' : 'none';
+    }
+
+    function showErr(id, msg) {
+        const el = $(id);
+        el.textContent = msg;
+        el.style.display = msg ? '' : 'none';
+    }
+
+    // ── Étape 1 : scan ──────────────────────────────────────────────────
+    $('onb-scan-btn').addEventListener('click', async () => {
+        const inbox = $('onb-inbox').value.trim();
+        showErr('onb-scan-error', '');
+        $('onb-scan-result').style.display = 'none';
+        if (!inbox) { showErr('onb-scan-error', 'Indique un répertoire à analyser.'); return; }
+        $('onb-scan-btn').disabled = true;
+        try {
+            const r = await fetch('/api/agent/onboarding/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inbox_path: inbox }),
+            });
+            const d = await r.json();
+            if (!r.ok) { showErr('onb-scan-error', d.error || ('HTTP ' + r.status)); return; }
+            scanData = d;
+            inboxPath = inbox;
+            renderEstimate(d);
+            $('onb-scan-result').style.display = '';
+        } catch (e) {
+            showErr('onb-scan-error', 'Erreur réseau : ' + e.message);
+        } finally {
+            $('onb-scan-btn').disabled = false;
+        }
+    });
+
+    function renderEstimate(d) {
+        const fmt = d.by_format || {};
+        const parts = Object.keys(fmt).sort()
+            .map((k) => fr(fmt[k]) + ' ' + k.replace(/^\./, '').toUpperCase());
+        const est = d.estimate || {};
+        $('onb-estimate').innerHTML =
+            '📁 <b>' + fr(d.n_files) + ' fichiers</b> détectés'
+            + (parts.length ? ' (' + parts.join(' · ') + ')' : '')
+            + ' · estimation Vision LLM ≈ <b>$' + (est.usd != null ? est.usd : '?') + '</b>'
+            + ' · ~' + (est.eta_min != null ? est.eta_min : '?') + ' min';
+    }
+
+    // ── Étape 1 → 2 : start + poll ──────────────────────────────────────
+    $('onb-start-btn').addEventListener('click', async () => {
+        const name = $('onb-pname').value.trim();
+        showErr('onb-start-error', '');
+        if (!name) { showErr('onb-start-error', 'Donne un nom au profil.'); return; }
+        $('onb-start-btn').disabled = true;
+        try {
+            const r = await fetch('/api/agent/onboarding/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile_name: name, inbox_path: inboxPath }),
+            });
+            const d = await r.json();
+            if (!r.ok) {
+                // 400 nom invalide / manquant · 409 profil existe déjà
+                showErr('onb-start-error', d.error || ('HTTP ' + r.status));
+                $('onb-start-btn').disabled = false;
+                return;
+            }
+            profileName = d.profile;
+            runId = d.run_id;
+            setStep(2);
+            startPoll();
+        } catch (e) {
+            showErr('onb-start-error', 'Erreur réseau : ' + e.message);
+            $('onb-start-btn').disabled = false;
+        }
+    });
+
+    function startPoll() {
+        showErr('onb-poll-error', '');
+        const tick = async () => {
+            let d;
+            try {
+                const r = await fetch('/api/agent/onboarding/status?profile='
+                    + encodeURIComponent(profileName) + '&run_id='
+                    + encodeURIComponent(runId));
+                d = await r.json();
+                if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            } catch (e) {
+                return; // transitoire — on réessaie au prochain tick
+            }
+            if (d.status === 'running' || d.status === 'pending') {
+                const total = d.n_total || 0;
+                const done = d.n_done || 0;
+                const pct = total ? Math.round((100 * done) / total) : 0;
+                $('onb-fill').style.width = pct + '%';
+                $('onb-ptxt').textContent = fr(done) + ' / ' + fr(total);
+                $('onb-phase').textContent = d.phase
+                    ? ('phase : ' + d.phase) : 'analyse en cours…';
+            } else if (d.status === 'done') {
+                clearInterval(pollTimer); pollTimer = null;
+                $('onb-fill').style.width = '100%';
+                renderProposal(d);
+                setStep(3);
+            } else if (d.status === 'error') {
+                clearInterval(pollTimer); pollTimer = null;
+                showErr('onb-poll-error', '✗ ' + (d.error || 'erreur inconnue'));
+            }
+        };
+        tick();
+        pollTimer = setInterval(tick, 2000);
+    }
+
+    // ── Étape 3 : proposition / couverture ──────────────────────────────
+    function renderProposal(d) {
+        const st = d.stats || {};
+        const cov = d.coverage != null ? d.coverage : 0;
+        const inLib = st.n_in_lib || 0;
+        const mapped = st.n_with_prediction || 0;
+        const other = st.n_no_prediction != null
+            ? st.n_no_prediction : Math.max(0, inLib - mapped);
+        const covClass = cov >= 80 ? 'ok' : (cov >= 50 ? 'warn' : '');
+        $('onb-chips').innerHTML =
+            chip(covClass, 'Couverture (dry-run)', cov + ' %')
+            + chip('', 'Fichiers analysés', fr(inLib))
+            + chip('ok', 'Mappés', fr(mapped))
+            + chip('warn', 'Sans destination', fr(other));
+    }
+
+    function chip(cls, k, v) {
+        return '<div class="onb-chip ' + cls + '"><div class="k">' + k
+            + '</div><div class="v">' + v + '</div></div>';
+    }
+
+    // ── Handoff vers Mappings ───────────────────────────────────────────
+    $('onb-continue-btn').addEventListener('click', () => {
+        window.location = '/taxonomy?profile=' + encodeURIComponent(profileName);
+    });
+
+    setStep(1);
+})();
+</script>
+{% endblock %}
