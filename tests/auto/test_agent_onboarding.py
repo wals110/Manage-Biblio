@@ -251,5 +251,26 @@ class TestProposeTaxonomy(unittest.TestCase):
         self.assertNotIn("_INBOX/Foo", tree)
 
 
+class TestProposeCategories(unittest.TestCase):
+    def test_build_categories_from_tree(self):
+        from agents.onboarding import proposition
+        tree = ["02-INFORMATIQUE", "02-INFORMATIQUE/Deep-Learning", "_A-TRIER"]
+        fake_llm = mock.Mock()
+        with mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[{"chemin": "02-INFORMATIQUE/Deep-Learning",
+                                       "groupe": "informatique", "priorite": 5,
+                                       "mots_cles": ["neural", "deep learning"]}]) as pk:
+            cats = proposition.propose_categories(tree)
+        # categories.yaml groupé par 'groupe'
+        self.assertIn("informatique", cats)
+        self.assertEqual(cats["informatique"][0]["chemin"], "02-INFORMATIQUE/Deep-Learning")
+        # creations passées = dossiers feuilles (pas _A-TRIER, pas la racine de section)
+        creations = pk.call_args.kwargs["creations"]
+        paths = {c["path"] for c in creations}
+        self.assertIn("02-INFORMATIQUE/Deep-Learning", paths)
+        self.assertNotIn("_A-TRIER", paths)
+
+
 if __name__ == "__main__":
     unittest.main()

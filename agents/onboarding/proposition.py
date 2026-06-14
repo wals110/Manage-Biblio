@@ -8,6 +8,9 @@ from pathlib import Path
 
 import yaml
 
+from agents.llm import get_agent_llm
+from agents.refonte.categories_llm import propose_keywords_for_new_folders
+from agents.refonte.proposition_tools import _groupe_from_path_prefix
 from lib import profile as _profilelib
 from lib import vision_cache
 from lib.theme_canon import extract_themes_from_vision_cache
@@ -98,3 +101,33 @@ def cluster_corpus(profile: str) -> list[dict]:
         })
     out.sort(key=lambda c: c["count"], reverse=True)
     return out
+
+
+def propose_categories(tree_folders: list[str]) -> dict:
+    """Génère categories.yaml (P2) pour les dossiers feuilles via categories_llm,
+    ancré sur le contenu. Retourne la structure {groupe: [entries]}.
+    """
+    # Dossiers feuilles (≥ 1 '/' = sous-dossier), hors résiduel/_INBOX
+    leaves = [f for f in tree_folders
+              if "/" in f and not f.startswith("_")]
+    if not leaves:
+        return {}
+    creations = [{"path": f, "rationale": "dossier de la taxonomie d'onboarding"}
+                 for f in leaves]
+    # Pas de categories existantes au bootstrap → groupes inférés depuis les
+    # préfixes des dossiers proposés eux-mêmes.
+    existing_cats: dict = {}
+    groupe_inference = {f: _groupe_from_path_prefix(f, existing_cats) for f in leaves}
+    try:
+        entries = propose_keywords_for_new_folders(
+            llm=get_agent_llm(), creations=creations,
+            existing_groupes=[], groupe_inference=groupe_inference, sample_entries={})
+    except Exception:  # noqa: BLE001
+        entries = []
+    cats: dict[str, list[dict]] = {}
+    for e in entries:
+        g = e.get("groupe") or "autres"
+        cats.setdefault(g, []).append(
+            {"chemin": e["chemin"], "priorite": e.get("priorite", 5),
+             "mots_cles": list(e.get("mots_cles", []))})
+    return cats
