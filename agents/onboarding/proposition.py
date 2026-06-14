@@ -10,6 +10,8 @@ import yaml
 
 from lib import profile as _profilelib
 from lib import vision_cache
+from lib.theme_canon import extract_themes_from_vision_cache
+from lib.theme_normalizer import cluster_themes
 from lib.vision import DEFAULT_MODEL, analyze_cover
 
 _EXTS = (".pdf", ".epub")
@@ -75,3 +77,24 @@ def run_vision(profile: str, on_progress: Callable[[int, int], None]) -> dict:
         on_progress(i, n_total)
     vision_cache.save_cache(cache_path, cache)
     return {"n_total": n_total, "n_analyzed": n_analyzed}
+
+
+def cluster_corpus(profile: str) -> list[dict]:
+    """Clusterise tous les thèmes du vision_cache → clusters enrichis de counts.
+
+    Retourne [{canonical, canonical_forms, raw_members, count}], trié par
+    count décroissant. `canonical` = 1ère forme canonique du cluster.
+    """
+    themes = extract_themes_from_vision_cache(profile)   # {raw: count}
+    clusters = cluster_themes(themes.keys())             # [{canonical_forms, raw_members}]
+    out: list[dict] = []
+    for c in clusters:
+        count = sum(int(themes.get(m, 0)) for m in c["raw_members"])
+        out.append({
+            "canonical": (c["canonical_forms"] or c["raw_members"] or [""])[0],
+            "canonical_forms": c["canonical_forms"],
+            "raw_members": c["raw_members"],
+            "count": count,
+        })
+    out.sort(key=lambda c: c["count"], reverse=True)
+    return out

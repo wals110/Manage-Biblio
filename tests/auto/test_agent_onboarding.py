@@ -155,5 +155,40 @@ class TestRunVision(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class TestClusterCorpus(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-clu-")
+        self.root = Path(self.tmp)
+        self.prof = self.root / "profiles" / "perso" / ".cache"
+        self.prof.mkdir(parents=True)
+        cache = {}
+        for i, theme in enumerate(["Deep Learning", "deep learning", "Astronomy"]):
+            cache[f"k{i}"] = {"result": {"theme": theme,
+                "themes": [{"theme": theme, "confidence": 0.9}], "confidence": 0.9},
+                "model": "M", "prompt_version": "v3", "cached_at": "t"}
+        (self.prof / "vision_cache.json").write_text(json.dumps(cache), encoding="utf-8")
+        # extract_themes_from_vision_cache resolves the cache path via
+        # theme_canon._vision_cache_path → `from dashboard import data;
+        # data.get_project_root()`. Patch that single real helper.
+        self.patch = mock.patch("dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_cluster_corpus_groups_and_counts(self):
+        from agents.onboarding import proposition
+        clusters = proposition.cluster_corpus("perso")
+        # "Deep Learning" + "deep learning" fusionnent (count 2), "Astronomy" seul (count 1)
+        by_count = {c["count"] for c in clusters}
+        self.assertIn(2, by_count)
+        self.assertIn(1, by_count)
+        for c in clusters:
+            self.assertIn("canonical", c)
+            self.assertIn("raw_members", c)
+            self.assertIn("count", c)
+
+
 if __name__ == "__main__":
     unittest.main()
