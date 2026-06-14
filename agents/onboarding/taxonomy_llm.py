@@ -44,6 +44,9 @@ def propose_taxonomy(llm: Any, clusters: list[dict]) -> tuple[list[str], dict[st
     toujours présent dans l'arbre (bucket résiduel).
     """
     by_canon = {c["canonical"]: c for c in clusters}
+    if len(clusters) > 200:
+        log.info("propose_taxonomy: %d clusters → tronqué à 200 ; les thèmes "
+                 "au-delà retomberont dans %s", len(clusters), _RESIDUAL)
     payload = "\n".join(
         f"- canonical={c['canonical']!r} volume={c['count']} variantes={c['raw_members'][:4]}"
         for c in clusters[:200]
@@ -62,6 +65,7 @@ def propose_taxonomy(llm: Any, clusters: list[dict]) -> tuple[list[str], dict[st
     for sec in result.sections:
         folder = _sanitize_folder(sec.folder)
         if not folder:
+            log.warning("propose_taxonomy: section ignorée (dossier invalide %r)", sec.folder)
             continue
         # parents implicites
         parts = folder.split("/")
@@ -77,15 +81,29 @@ def propose_taxonomy(llm: Any, clusters: list[dict]) -> tuple[list[str], dict[st
 
 
 def _sanitize_folder(path: str) -> str:
-    """Nettoie un chemin de dossier proposé (segments FS-safe, ≤ 2 niveaux)."""
+    """Nettoie + normalise un chemin de dossier proposé.
+
+    - segments FS-safe (regex), ≤ 2 niveaux, rejet traversal / segment caché ;
+    - rejet du nom réservé _INBOX (jamais une section de classement) ;
+    - normalisation de forme : section de 1er niveau forcée en MAJUSCULES
+      (convention spec). La casse des sous-dossiers reste celle du LLM (revue
+      par l'utilisateur dans le brouillon) — on ne TitleCase pas pour ne pas
+      casser les acronymes (NLP, IA-ML).
+    Retourne "" si invalide (le cluster concerné retombe alors dans _A-TRIER).
+    """
     import re
     segs = [s.strip() for s in (path or "").strip().strip("/").split("/") if s.strip()]
     segs = segs[:2]   # profondeur 2 max
+    if not segs:
+        return ""
     safe = []
     for s in segs:
         if s in (".", "..") or s.startswith("."):
             return ""
+        if s.upper() == "_INBOX":
+            return ""
         if not re.match(r"^[A-Za-zÀ-ÿ0-9 _.\-&()]+$", s):
             return ""
         safe.append(s)
+    safe[0] = safe[0].upper()   # section de 1er niveau en MAJUSCULES (convention spec)
     return "/".join(safe)

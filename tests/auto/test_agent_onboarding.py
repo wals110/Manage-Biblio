@@ -228,6 +228,28 @@ class TestProposeTaxonomy(unittest.TestCase):
         self.assertEqual(mapping, {})                 # cluster inconnu → ignoré
         self.assertIn("_A-TRIER", tree)
 
+    def test_level1_uppercased_and_inbox_rejected(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [
+            {"canonical": "a", "raw_members": ["A"], "count": 5},
+            {"canonical": "b", "raw_members": ["B"], "count": 3},
+        ]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="03-sciences/Astronomie", cluster_canonicals=["a"]),
+            taxonomy_llm._Section(folder="_INBOX/Foo", cluster_canonicals=["b"]),
+        ])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
+        # section de 1er niveau forcée en MAJUSCULES
+        self.assertEqual(mapping["A"], "03-SCIENCES/Astronomie")
+        self.assertIn("03-SCIENCES", tree)
+        self.assertIn("03-SCIENCES/Astronomie", tree)
+        # _INBOX réservé → B non mappé, _INBOX absent de l'arbre
+        self.assertNotIn("B", mapping)
+        self.assertNotIn("_INBOX", tree)
+        self.assertNotIn("_INBOX/Foo", tree)
+
 
 if __name__ == "__main__":
     unittest.main()
