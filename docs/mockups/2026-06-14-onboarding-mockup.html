@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — Agent Onboarding (Klodo)</title>
+<style>
+  :root{
+    --bg:#0b1220; --bg2:#0f1830; --panel:#111c33; --panel2:#16223e;
+    --border:#26344f; --border2:#334155; --muted:#9aa4b2; --text:#e6edf6;
+    --accent:#4caf50; --warn:#e0a800; --danger:#e57373; --blue:#5b8def;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0a1020,#0b1220 40%);color:var(--text);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:22px 18px 60px}
+  /* nav-bar mock */
+  .topbar{display:flex;align-items:center;gap:14px;padding:10px 14px;background:var(--bg2);
+    border:1px solid var(--border);border-radius:10px;margin-bottom:18px}
+  .brand{font-weight:700;letter-spacing:.4px}
+  .navtabs{display:flex;gap:4px;margin-left:8px;flex-wrap:wrap}
+  .navtab{padding:5px 10px;border-radius:7px;color:var(--muted);font-size:13px;cursor:default}
+  .navtab.active{background:var(--panel2);color:var(--text)}
+  .spacer{flex:1}
+  .profsel{position:relative}
+  .profbtn{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);
+    border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text)}
+  .badge-draft{font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(224,168,0,.18);
+    color:var(--warn);border:1px solid rgba(224,168,0,.4)}
+  .menu{position:absolute;right:0;top:110%;background:var(--panel);border:1px solid var(--border);
+    border-radius:8px;min-width:220px;padding:6px;display:none;z-index:5;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+  .menu.open{display:block}
+  .menu .it{padding:7px 9px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+  .menu .it:hover{background:var(--panel2)}
+  .menu .it.new{color:var(--accent);font-weight:600;border-top:1px solid var(--border);margin-top:4px;padding-top:9px}
+
+  h1{font-size:18px;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 18px}
+  /* stepper */
+  .steps{display:flex;gap:10px;margin-bottom:16px}
+  .step{flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);
+    border:1px solid var(--border);border-radius:10px;opacity:.5}
+  .step.active{opacity:1;border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+  .step.done{opacity:1;border-color:rgba(76,175,80,.5)}
+  .step .num{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+    background:var(--panel2);flex:0 0 auto}
+  .step.active .num{background:var(--blue)} .step.done .num{background:var(--accent)}
+  .step .lbl{font-size:13px}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .field{flex:1;min-width:220px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  input[type=text]{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+    color:var(--text);padding:9px 11px;font-size:14px}
+  .estimate{margin:14px 0;padding:10px 12px;background:var(--panel2);border:1px dashed var(--border2);
+    border-radius:8px;color:var(--muted)}
+  .estimate b{color:var(--text)}
+  .note{color:var(--muted);font-size:12.5px;margin-top:8px}
+  .btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer;font-weight:600}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .btn-accent{background:var(--accent);color:#06210d}
+  .btn-secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+  .btn-warn{background:rgba(224,168,0,.18);color:var(--warn);border:1px solid rgba(224,168,0,.45)}
+  .actions{display:flex;gap:10px;margin-top:16px;align-items:center}
+  .hidden{display:none}
+
+  /* progress */
+  .bar{height:12px;border-radius:6px;background:rgba(255,255,255,.07);overflow:hidden;margin:12px 0 8px}
+  .fill{height:100%;width:0;background:linear-gradient(90deg,#3a7bd5,#4caf50);transition:width .25s}
+  .progtxt{font-variant-numeric:tabular-nums}
+
+  /* coverage chips */
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+  .chip{padding:8px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);min-width:120px}
+  .chip .k{font-size:11px;color:var(--muted)} .chip .v{font-size:18px;font-weight:700}
+  .chip.ok .v{color:var(--accent)} .chip.warn .v{color:var(--warn)} .chip.bad .v{color:var(--danger)}
+
+  /* mini tree */
+  .tree{font-size:13px;margin-top:10px}
+  .tnode{padding:3px 0 3px 0;display:flex;align-items:center;gap:8px}
+  .tnode .nm{flex:0 0 auto}
+  .tbadge{font-size:10px;padding:1px 6px;border-radius:8px}
+  .tbadge.orphan{background:rgba(224,168,0,.18);color:var(--warn);border:1px solid rgba(224,168,0,.4)}
+  .tbadge.ghost{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid rgba(255,255,255,.12)}
+  .tcount{margin-left:auto;color:var(--muted);font-size:12px}
+  .indent1{padding-left:18px}.indent2{padding-left:36px}
+
+  .banner{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;
+    background:rgba(224,168,0,.12);border:1px solid rgba(224,168,0,.4);margin-bottom:14px}
+  .banner .dot{font-size:16px}
+  .subtabs{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px}
+  .subtab{padding:5px 10px;border-radius:7px;font-size:13px;color:var(--muted)}
+  .subtab.active{background:var(--panel2);color:var(--text)}
+  .legend{color:var(--muted);font-size:12px;margin-top:10px}
+  .pill{display:inline-block;padding:0 6px;border-radius:8px;font-size:10px;margin:0 2px;vertical-align:middle}
+  .controls{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .small{font-size:12px;color:var(--muted)}
+  .restart{position:fixed;bottom:16px;right:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ── nav-bar ── -->
+  <div class="topbar">
+    <span class="brand">📚 Klodo</span>
+    <div class="navtabs">
+      <span class="navtab">Overview</span>
+      <span class="navtab" id="nav-tax">Taxonomie</span>
+      <span class="navtab">Curation</span>
+      <span class="navtab">Logs</span>
+    </div>
+    <span class="spacer"></span>
+    <div class="profsel">
+      <div class="profbtn" id="profbtn">
+        <span id="profname">default</span>
+        <span id="profbadge" class="badge-draft hidden">brouillon</span>
+        <span>▾</span>
+      </div>
+      <div class="menu" id="menu">
+        <div class="it">default</div>
+        <div class="it">test</div>
+        <div class="it">source-files</div>
+        <div class="it new" id="newprof">➕ Nouveau profil</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ VUE ONBOARDING (assistant) ═══════════ -->
+  <div id="view-onboarding">
+    <h1>Onboarding — nouveau profil</h1>
+    <p class="sub">Analyse un répertoire brut et propose une taxonomie de départ, puis te rend la main aux outils Mappings.</p>
+
+    <div class="steps">
+      <div class="step active" id="s1"><span class="num">①</span><span class="lbl">Configuration</span></div>
+      <div class="step" id="s2"><span class="num">②</span><span class="lbl">Analyse Vision</span></div>
+      <div class="step" id="s3"><span class="num">③</span><span class="lbl">Taxonomie proposée</span></div>
+    </div>
+
+    <!-- Étape 1 -->
+    <div class="card" id="card1">
+      <div class="row">
+        <div class="field"><label>Nom du profil</label><input type="text" id="pname" value="perso-2026"></div>
+        <div class="field"><label>Répertoire brut (target)</label><input type="text" value="/Volumes/ExtSSD/MyBooks"></div>
+      </div>
+      <div class="estimate">📁 <b>3 412 fichiers</b> détectés (3 360 PDF · 52 ePub) · estimation Vision LLM ≈ <b>$1.16</b> · ~18 min</div>
+      <div class="note">Le profil brouillon est créé tout de suite (skeleton + target). La Vision peuple son <code>vision_cache</code> — <b>aucun fichier n'est déplacé</b>.</div>
+      <div class="actions">
+        <button class="btn btn-primary" id="go2">Analyser le répertoire</button>
+        <span class="small">Tu confirmes la dépense avant de lancer.</span>
+      </div>
+    </div>
+
+    <!-- Étape 2 -->
+    <div class="card hidden" id="card2">
+      <div><b>Analyse LLM Vision — tout le corpus</b></div>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="progtxt small"><span id="ptxt">0 / 3 412</span> · <span id="petr">~18 min restantes</span></div>
+      <div class="note">Chaque couverture analysée est mise en cache → le classify final sera gratuit (pas de re-Vision).</div>
+    </div>
+
+    <!-- Étape 3 -->
+    <div class="card hidden" id="card3">
+      <div><b>Taxonomie proposée</b> — 1 appel LLM a clusterisé <b>tous</b> les thèmes observés</div>
+      <div class="chips">
+        <div class="chip"><div class="k">Sections</div><div class="v">7</div></div>
+        <div class="chip"><div class="k">Mappings</div><div class="v">142</div></div>
+        <div class="chip ok"><div class="k">Couverture (dry-run)</div><div class="v">81 %</div></div>
+      </div>
+      <div class="chips">
+        <div class="chip ok"><div class="k">Mappés</div><div class="v">2 760</div></div>
+        <div class="chip warn"><div class="k">Dans « Autres »</div><div class="v">652</div></div>
+        <div class="chip"><div class="k">Erreurs Vision</div><div class="v">0</div></div>
+      </div>
+      <div class="tree">
+        <div class="tnode"><span>📂</span><span class="nm">01-INFORMATIQUE</span><span class="tcount">1 124</span></div>
+        <div class="tnode indent1"><span>📁</span><span class="nm">Langages-Programmation</span><span class="tcount">540</span></div>
+        <div class="tnode indent1"><span>📁</span><span class="nm">Frameworks-Web</span><span class="tcount">210</span></div>
+        <div class="tnode"><span>📂</span><span class="nm">02-SCIENCES</span><span class="tcount">618</span></div>
+        <div class="tnode"><span>📂</span><span class="nm">03-SHS</span><span class="tcount">274</span></div>
+        <div class="tnode"><span>📂</span><span class="nm">_A-TRIER</span><span class="tcount">652</span></div>
+      </div>
+      <div class="note">La taxonomie est écrite dans le profil brouillon. Tu la raffines avec les outils existants.</div>
+      <div class="actions">
+        <button class="btn btn-accent" id="goTax">Continuer dans Mappings pour raffiner →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ VUE TAXONOMIE / MAPPINGS (handoff, réutilise l'existant) ═══════════ -->
+  <div id="view-tax" class="hidden">
+    <div class="banner">
+      <span class="dot">🟡</span>
+      <div>
+        <b>Profil « perso-2026 » en cours d'onboarding — 81 % couverts.</b>
+        <div class="small">Raffine la taxonomie (adopte des dossiers, ajoute des mappings), vérifie avec « Voir ce qui bougerait », puis applique.</div>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn btn-secondary" id="finalize">Finaliser</button>
+    </div>
+
+    <div class="subtabs">
+      <span class="subtab active">🔗 Mappings</span>
+      <span class="subtab">📂 Catégories</span>
+      <span class="subtab">✏️ Rename</span>
+      <span class="subtab">🤖 Refonte</span>
+      <span class="subtab">🧬 Dédupli</span>
+    </div>
+
+    <div class="card">
+      <div class="controls">
+        <b>Arbre des dossiers</b>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="dryrun">🚀 Voir ce qui bougerait</button>
+          <button class="btn btn-accent" id="apply">▶ Appliquer (déplacer)</button>
+        </div>
+      </div>
+      <div class="tree">
+        <div class="tnode"><span>📂</span><span class="nm">01-INFORMATIQUE</span><span class="tcount">1 124</span></div>
+        <div class="tnode indent1"><span>📁</span><span class="nm">Langages-Programmation</span><span class="tcount">540</span></div>
+        <div class="tnode indent2"><span>📁</span><span class="nm">Python</span><span class="tcount">180</span></div>
+        <div class="tnode indent2"><span>📁</span><span class="nm">JavaScript</span><span class="tbadge orphan">hors config</span><span class="tcount">96</span></div>
+        <div class="tnode"><span>📂</span><span class="nm">02-SCIENCES</span><span class="tcount">618</span></div>
+        <div class="tnode indent1"><span>📁</span><span class="nm">Mathematiques</span><span class="tbadge ghost">non créé</span><span class="tcount">0</span></div>
+        <div class="tnode"><span>📂</span><span class="nm">_A-TRIER</span><span class="tcount">652</span></div>
+      </div>
+      <div class="legend">
+        Légende : <span class="pill tbadge orphan">hors config</span> sur disque, à adopter ·
+        <span class="pill tbadge ghost">non créé</span> déclaré mais absent du disque ·
+        au survol d'un nœud : <b>adopter</b> / créer / renommer.
+      </div>
+      <div class="note" id="dryout"></div>
+    </div>
+
+    <div class="card" style="border-style:dashed">
+      <b>👉 Ici tout est l'existant.</b> L'onboarding ne fait QUE l'assistant (config → Vision → proposition).
+      Le raffinage (éditeur d'arbre, mappings en lot, adopt #178) et l'application (Apply global #177) sont déjà en place.
+    </div>
+  </div>
+
+</div>
+
+<button class="btn btn-secondary restart" id="restart">↻ Recommencer la démo</button>
+
+<script>
+const $=s=>document.querySelector(s);
+const show=(el,on=true)=>el.classList.toggle('hidden',!on);
+
+// menu profil
+$('#profbtn').onclick=()=>$('#menu').classList.toggle('open');
+document.addEventListener('click',e=>{ if(!e.target.closest('.profsel')) $('#menu').classList.remove('open'); });
+$('#newprof').onclick=()=>{ goView('onboarding'); $('#menu').classList.remove('open'); reset(); };
+
+function goView(v){
+  show($('#view-onboarding'), v==='onboarding');
+  show($('#view-tax'), v==='tax');
+  $('#nav-tax').classList.toggle('active', v==='tax');
+}
+
+function setStep(n){
+  [1,2,3].forEach(i=>{
+    const s=$('#s'+i);
+    s.classList.toggle('active',i===n);
+    s.classList.toggle('done',i<n);
+    if(i<n){ s.querySelector('.num').textContent='✓'; }
+    else { s.querySelector('.num').textContent={1:'①',2:'②',3:'③'}[i]; }
+  });
+  show($('#card1'),n===1); show($('#card2'),n===2); show($('#card3'),n===3);
+}
+
+function reset(){
+  setStep(1); $('#fill').style.width='0'; $('#dryout').textContent='';
+  $('#profname').textContent='default'; show($('#profbadge'),false);
+}
+
+// étape 1 → 2 : analyse vision animée
+$('#go2').onclick=()=>{
+  $('#profname').textContent='perso-2026'; show($('#profbadge'),true); // profil brouillon créé
+  setStep(2);
+  let done=0,total=3412; const fill=$('#fill');
+  const t=setInterval(()=>{
+    done+=Math.round(total/45)+Math.floor(Math.random()*40);
+    if(done>=total){ done=total; clearInterval(t); setTimeout(()=>setStep(3),450); }
+    fill.style.width=(100*done/total)+'%';
+    $('#ptxt').textContent=done.toLocaleString('fr')+' / '+total.toLocaleString('fr');
+    const min=Math.max(0,Math.round(18*(1-done/total)));
+    $('#petr').textContent='~'+min+' min restantes';
+  },70);
+};
+
+// étape 3 → handoff Mappings
+$('#goTax').onclick=()=>goView('tax');
+
+// dry-run dans Mappings
+$('#dryrun').onclick=()=>{
+  $('#dryout').textContent='Dry-run : 2 760 mappés · 652 dans « _A-TRIER » · 0 erreur — couverture 81 %. Adopte « JavaScript » et ajoute des mappings pour réduire les Autres.';
+};
+$('#apply').onclick=()=>{
+  $('#dryout').textContent='▶ Apply global lancé — déplacement de 2 760 fichiers (journalisé, annulable). Une fois fini, le profil sort du mode brouillon.';
+};
+$('#finalize').onclick=()=>{ show($('#profbadge'),false); $('#dryout').textContent='✓ Profil finalisé — il sort du mode brouillon, utilisable normalement.'; };
+
+$('#restart').onclick=()=>{ goView('onboarding'); reset(); };
+
+// départ
+goView('onboarding'); reset();
+</script>
+</body>
+</html>
