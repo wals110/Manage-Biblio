@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests de l'agent Onboarding (Vision/LLM mockés, zéro SSD réel)."""
 
+import json
 import os
 import shutil
 import sys
@@ -90,6 +91,68 @@ class TestScanEstimate(unittest.TestCase):
         self.assertAlmostEqual(e["usd"], 0.34, places=2)
         self.assertIn("eta_min", e)
         self.assertEqual(e["n_pages"], 2)
+
+
+class TestRunVision(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-vis-")
+        self.root = Path(self.tmp)
+        self.target = self.root / "RAW"
+        for n in ("a.pdf", "b.pdf"):
+            p = self.target / n
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"%PDF-1.4 " + n.encode())
+        self.prof = self.root / "profiles" / "perso"
+        self.prof.mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(yaml.safe_dump({
+            "target": str(self.target), "llm": {"model": "M",
+            "endpoint": "https://e"}, "defaults": {"workers": 1, "pages": 2}}),
+            encoding="utf-8")
+        self.patch = mock.patch("lib.profile.get_project_root", return_value=self.root)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_run_vision_populates_cache_and_progress(self):
+        from agents.onboarding import proposition
+        seen = []
+
+        def fake(path, **kw):
+            return {"title": "T", "theme": "Deep Learning",
+                    "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
+
+        def on_prog(d, t):
+            seen.append((d, t))
+
+        with mock.patch("agents.onboarding.proposition.analyze_cover", side_effect=fake):
+            r = proposition.run_vision("perso", on_progress=on_prog)
+        self.assertEqual(r["n_total"], 2)
+        self.assertEqual(r["n_analyzed"], 2)
+        cache = json.loads((self.prof / ".cache" / "vision_cache.json").read_text())
+        self.assertEqual(len(cache), 2)
+        self.assertEqual(seen[-1], (2, 2))            # progression finale
+
+    def test_run_vision_resumes_from_cache(self):
+        import lib.vision_cache as vc
+        from agents.onboarding import proposition
+        # pré-remplir le cache pour a.pdf → doit être skippé
+        cache = {}
+        key = vc.compute_cache_key(str(self.target / "a.pdf"), model="M", n_pages=2)
+        vc.store(cache, key, {"theme": "X", "themes": [], "confidence": 0.5}, "M")
+        (self.prof / ".cache").mkdir(exist_ok=True)
+        vc.save_cache(self.prof / ".cache" / "vision_cache.json", cache)
+        calls = []
+
+        def fake(path, **kw):
+            calls.append(path)
+            return {"theme": "Y", "themes": [], "confidence": 0.8}
+
+        with mock.patch("agents.onboarding.proposition.analyze_cover", side_effect=fake):
+            r = proposition.run_vision("perso", on_progress=lambda d, t: None)
+        self.assertEqual(r["n_analyzed"], 1)           # seul b.pdf analysé
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":
