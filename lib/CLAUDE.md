@@ -15,6 +15,13 @@ LLM Vision (thème, titre) → 1. Theme Mapping (355+ entrées, gratuit)
                             → 4. Suggestion de nouveau dossier (review humain)
 ```
 
+- `classify_combined` / `classify_by_theme` acceptent un `canon_table` optionnel
+  (theme-canon.json) qui canonicalise le thème AVANT le lookup theme_mapping —
+  rend Dédupli effectif sur les destinations. Câblé dans reclassify_dryrun,
+  build_reclassify_projection (via `dashboard/taxonomy._scan_and_classify`) et le
+  simulateur refonte. Param optionnel (défaut None = identité) : appelants
+  existants inchangés.
+
 ### Pièges connus
 - **Mots-clés courts** (≤3 chars ou ambigus) : utiliser `WORD_BOUNDARY_KEYWORDS` dans `KeywordClassifier`
 - **Faux positifs résolus** : "bert" dans "Albert", "christ" dans "Christopher", "bible" dans "Linux Bible", "Pascal" (prénom)

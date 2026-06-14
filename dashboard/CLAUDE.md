@@ -37,6 +37,28 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   `POST …/apply/adopt|restore-config|execute|undo-moves`.
 - UI : bloc « Application » (stepper 2 étapes) au-dessus des onglets
   Verdict/Arbre/Plan d'un run Phase B done.
+
+### Apply global (synchroniser la bibliothèque avec la config live)
+
+- **`apply_engine.py`** — moteur de déplacement source-agnostique (extrait de
+  l'apply refonte) : `execute_move_batch(target, moves, profile_dir, on_progress)`,
+  garde-fous `safe_target_subdir`/`prune_empty_dirs`, `spawn`, `target_path`,
+  `ApplyError`. Partagé par refonte ET global — un seul exemplaire du code de
+  déplacement dangereux.
+- **`reclassify_apply.py`** — apply global (couche B seule, pas d'adoption) :
+  preview (projection live `taxonomy.build_reclassify_projection` figée en
+  `projection.csv`) → execute (rejoue le CSV via apply_engine) → undo
+  (`move_journal.undo_batch`). État global par profil
+  `.cache/reclassify/apply/{state,status,projection.csv}`. Détection
+  « en attente » via hash de config (theme_mapping+categories+tree+theme-canon,
+  instantané, sans scan). Déterministe P1+P2 (P1 par défaut, P2 opt-in),
+  canonicalisation appliquée.
+- Routes : `GET/POST /api/taxonomy/reclassify/apply/{preview,pending,status,execute,undo}`.
+- UI : modale « Voir ce qui bougerait » (toolbar Mappings) étendue en
+  preview→appliquer→progression→annuler + carte « Bibliothèque » dans Overview.
+- Fencing : `categories.py` vérifie désormais `.cache/taxonomy.lock` (423 pendant
+  un apply).
+
 - **Backend tests fonctionnels** : DuckDB via [../tests/functional/db.py](../tests/functional/db.py) — tables `runs`, `series_results`, `check_results`, `manual_validations`
 - **Templates** : 10 templates principaux + ~12 partials (`partials/tests_*.html`, `partials/baseline_*.html`, `partials/overview_*.html`)
 - **Macros réutilisables** dans `templates/macros/widgets.html` : `kpi_card`, `kpi_card_big`, `status_badge`, `run_banner`, `pagination`, `filter_bar`, `data_table`, `mini_bar`, `activity_timeline`, `subtabs_header`
@@ -153,8 +175,9 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 
 - **63 tests** dans [../tests/auto/test_dashboard.py](../tests/auto/test_dashboard.py) (routes + data.py + hubs + redirects 301)
 - **70 tests** dans [../tests/auto/test_overview.py](../tests/auto/test_overview.py) (16 cards + 2 builders + cache TTL + 3 macros)
-- **229 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride + disk-reflect + adopt_folder)
-- **103 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection)
+- **233 tests** dans [../tests/auto/test_taxonomy.py](../tests/auto/test_taxonomy.py) (write safety + agrégation snapshot + endpoints HTTP + cascade rename + breakdown 3-way + bulk-delete + bulk-add + suggest hybride + disk-reflect + adopt_folder)
+- **104 tests** dans [../tests/auto/test_categories.py](../tests/auto/test_categories.py) (CRUD entries + suggest_target_path + orphan detection + lock fencing)
 - **9 tests** dans [../tests/auto/test_viewer_copy.py](../tests/auto/test_viewer_copy.py) (copy + clear destination, path traversal, refus de `default`)
 - **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
-- **48 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
+- **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
+- **16 tests** dans [../tests/auto/test_reclassify_apply.py](../tests/auto/test_reclassify_apply.py) (preview, execute, undo, pending, status, hash config, fencing 423)

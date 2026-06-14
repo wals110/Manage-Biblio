@@ -324,6 +324,16 @@ class TestAddEntry(WriteTestBase):
             categories.add_entry(self.profile_name, "informatique",
                                  "02-INFO/Z", "abc", [])
 
+    def test_add_entry_blocked_by_lock(self):
+        # Sentinel .cache/taxonomy.lock dans le profil → write bloqué
+        lock = self.profile_dir / ".cache" / "taxonomy.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("reclassify-apply")
+        with self.assertRaises(categories.CategoriesError) as ctx:
+            categories.add_entry(self.profile_name, "informatique",
+                                 "02-INFO/Z", 5, ["kw"])
+        self.assertEqual(ctx.exception.status, 423)
+
 
 # ── update_entry ─────────────────────────────────────────────────────────
 

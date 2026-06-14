@@ -684,7 +684,7 @@ class TestBuildSnapshots(OverviewTestBase):
         expected = {
             "files", "classified", "folders", "llm_cost", "health",
             "vision_cache", "inbox", "baseline_runs", "agent_sessions",
-            "top_themes", "top_folders", "recent_activity",
+            "top_themes", "top_folders", "recent_activity", "sync",
         }
         self.assertEqual(set(r.keys()), expected)
 

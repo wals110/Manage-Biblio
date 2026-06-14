@@ -3438,5 +3438,82 @@ class TestAdoptFolderEndpoint(TestAdoptFolder):
         self.assertEqual(r.status_code, 400)
 
 
+class TestBuildReclassifyProjection(unittest.TestCase):
+    """Projection live complète : matérialise tous les moves, applique
+    la canonicalisation, sépare P1/P2."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-proj-")
+        self.root = Path(self.tmp)
+        self.prof = self.root / "profiles" / "default"
+        self.target = self.root / "BIBLIO"
+        self.prof.mkdir(parents=True)
+        (self.prof / "profile.yaml").write_text(
+            yaml.safe_dump({"target": str(self.target),
+                            "llm": {"model": "M"}, "defaults": {"pages": 2}}),
+            encoding="utf-8")
+        (self.prof / "theme_mapping.yaml").write_text(
+            yaml.safe_dump({"Deep Learning": "B/DL"}), encoding="utf-8")
+        for rel in ("A/a.pdf", "A/b.pdf"):
+            p = self.target / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # Contenu distinct par fichier : la clé vision_cache est
+            # content-based (head bytes), des octets identiques
+            # collisionneraient les deux entrées.
+            p.write_bytes(b"%PDF-1.4 " + rel.encode())
+        cache_dir = self.prof / ".cache"
+        cache_dir.mkdir(exist_ok=True)
+        (cache_dir / "theme-canon.json").write_text(
+            json.dumps({"mapping": {"dl variant": "Deep Learning"}}),
+            encoding="utf-8")
+        import lib.vision_cache as vc
+        cache = {}
+        for rel, theme in (("A/a.pdf", "dl variant"), ("A/b.pdf", "zzz unknown")):
+            key = vc.compute_cache_key(str(self.target / rel), model="M", n_pages=2)
+            # Shape réel du vision_cache : scalaire `theme` + liste `themes`.
+            # Le scalaire alimente le texte du KeywordClassifier (P2).
+            cache[key] = {"result": {"theme": theme,
+                                     "themes": [{"theme": theme, "confidence": 0.95}],
+                                     "confidence": 0.95}}
+        (self.prof / ".cache" / "vision_cache.json").write_text(
+            json.dumps(cache), encoding="utf-8")
+        self.patch = mock.patch("dashboard.data.get_project_root",
+                                return_value=self.root)
+        self.patch.start()
+        taxonomy.reset_cache()
+
+    def tearDown(self):
+        self.patch.stop()
+        taxonomy.reset_cache()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_canonicalization_routes_variant(self):
+        moves = taxonomy.build_reclassify_projection("default", include_keyword=False)
+        rels = {m["rel_path"]: m for m in moves}
+        self.assertIn("A/a.pdf", rels)
+        self.assertEqual(rels["A/a.pdf"]["proposed_folder"], "B/DL")
+        self.assertEqual(rels["A/a.pdf"]["signal"], "p1")
+        self.assertNotIn("A/b.pdf", rels)
+
+    def test_keyword_excluded_unless_opted_in(self):
+        (self.prof / "categories.yaml").write_text(
+            yaml.safe_dump({"sci": [{"chemin": "B/KW", "priorite": 5,
+                                     "mots_cles": ["unknown"]}]}),
+            encoding="utf-8")
+        taxonomy.reset_cache()
+        no_kw = taxonomy.build_reclassify_projection("default", include_keyword=False)
+        with_kw = taxonomy.build_reclassify_projection("default", include_keyword=True)
+        self.assertNotIn("A/b.pdf", {m["rel_path"] for m in no_kw})
+        kw_rels = {m["rel_path"]: m for m in with_kw}
+        self.assertIn("A/b.pdf", kw_rels)
+        self.assertEqual(kw_rels["A/b.pdf"]["signal"], "p2")
+
+    def test_returns_empty_without_target(self):
+        shutil.rmtree(self.target)
+        taxonomy.reset_cache()
+        self.assertEqual(
+            taxonomy.build_reclassify_projection("default", include_keyword=False), [])
+
+
 if __name__ == "__main__":
     unittest.main()
