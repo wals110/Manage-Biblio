@@ -190,5 +190,44 @@ class TestClusterCorpus(unittest.TestCase):
             self.assertIn("count", c)
 
 
+class TestProposeTaxonomy(unittest.TestCase):
+    def test_propose_tree_and_mapping(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [
+            {"canonical": "deep learning", "raw_members": ["Deep Learning", "deep learning"], "count": 40},
+            {"canonical": "astronomy", "raw_members": ["Astronomy"], "count": 12},
+        ]
+        # LLM mocké : retourne le schéma Pydantic attendu
+        fake_out = taxonomy_llm._ProposedTaxonomy(
+            sections=[
+                taxonomy_llm._Section(folder="02-INFORMATIQUE/Deep-Learning",
+                                      cluster_canonicals=["deep learning"]),
+                taxonomy_llm._Section(folder="01-SCIENCES/Astronomie",
+                                      cluster_canonicals=["astronomy"]),
+            ])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
+        # tree contient les dossiers + parents implicites + _A-TRIER
+        self.assertIn("02-INFORMATIQUE", tree)
+        self.assertIn("02-INFORMATIQUE/Deep-Learning", tree)
+        self.assertIn("_A-TRIER", tree)
+        # mapping : chaque raw_member du cluster → son dossier
+        self.assertEqual(mapping["Deep Learning"], "02-INFORMATIQUE/Deep-Learning")
+        self.assertEqual(mapping["deep learning"], "02-INFORMATIQUE/Deep-Learning")
+        self.assertEqual(mapping["Astronomy"], "01-SCIENCES/Astronomie")
+
+    def test_assignment_to_unknown_cluster_skipped(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [{"canonical": "a", "raw_members": ["A"], "count": 1}]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="X/Y", cluster_canonicals=["zzz-inexistant"])])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
+        self.assertEqual(mapping, {})                 # cluster inconnu → ignoré
+        self.assertIn("_A-TRIER", tree)
+
+
 if __name__ == "__main__":
     unittest.main()
