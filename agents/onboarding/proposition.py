@@ -44,6 +44,10 @@ def run_vision(profile: str, on_progress: Callable[[int, int], None]) -> dict:
     """
     cfg = _load_profile_cfg(profile)
     target = Path(str(cfg.get("target") or ""))
+    # NB : le fallback modèle doit rester aligné avec celui utilisé par le
+    # dry-run (dashboard.taxonomy._scan_and_classify) — la clé de cache Vision
+    # en dépend. Les profils créés par init_profile ont toujours llm.model, donc
+    # ce fallback ne sert qu'aux profils sans modèle (où il faut la même valeur).
     model = (cfg.get("llm") or {}).get("model") or DEFAULT_MODEL
     endpoint = (cfg.get("llm") or {}).get("endpoint") or ""
     n_pages = int((cfg.get("defaults") or {}).get("pages") or 2)

@@ -311,6 +311,48 @@ class TestBuildProposal(unittest.TestCase):
         self.assertIn("coverage", cov)
         self.assertIn("stats", cov)
 
+    def test_build_proposal_end_to_end(self):
+        # Chaîne complète vision → cluster → propose → categories → write → dry-run
+        # avec les VRAIES fonctions (seuls Vision + LLM sont mockés) : verrouille
+        # la cohérence des shapes à chaque frontière contre toute dérive future.
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "Deep Learning",
+               "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
+
+        def fake_invoke(messages):
+            import re as _re
+            canons = _re.findall(r"canonical='([^']*)'", messages[-1]["content"])
+            return taxonomy_llm._ProposedTaxonomy(sections=[
+                taxonomy_llm._Section(folder="02-INFORMATIQUE/Deep-Learning",
+                                      cluster_canonicals=canons)])
+
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke
+        seen = []
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[{"chemin": "02-INFORMATIQUE/Deep-Learning",
+                                       "groupe": "informatique", "priorite": 5,
+                                       "mots_cles": ["neural"]}]):
+            cov = proposition.build_proposal("perso", lambda d, t: seen.append((d, t)))
+        # Vision a peuplé le cache
+        cache = json.loads((self.prof / ".cache" / "vision_cache.json").read_text())
+        self.assertEqual(len(cache), 1)
+        # les 3 YAMLs reflètent la proposition de bout en bout
+        tree = yaml.safe_load((self.prof / "tree.yaml").read_text())
+        self.assertIn("02-INFORMATIQUE/Deep-Learning", tree["folders"])
+        self.assertIn("02-INFORMATIQUE", tree["folders"])      # parent implicite
+        self.assertIn("_A-TRIER", tree["folders"])
+        mapping = yaml.safe_load((self.prof / "theme_mapping.yaml").read_text())
+        self.assertEqual(mapping.get("Deep Learning"), "02-INFORMATIQUE/Deep-Learning")
+        cats = yaml.safe_load((self.prof / "categories.yaml").read_text())
+        self.assertIn("informatique", cats)
+        self.assertIn("coverage", cov)
+        self.assertIn("stats", cov)
+        self.assertTrue(seen)                                  # on_progress appelé
+
 
 class TestAgentOnboardingWrapper(unittest.TestCase):
     def setUp(self):
@@ -356,6 +398,16 @@ class TestAgentOnboardingWrapper(unittest.TestCase):
         ao.finalize("perso-2026")
         cfg = yaml.safe_load((self.root / "profiles" / "perso-2026" / "profile.yaml").read_text())
         self.assertFalse(cfg["onboarding_draft"])
+
+    def test_run_writes_error_status_on_failure(self):
+        from dashboard import agent_onboarding as ao
+        with mock.patch.object(ao, "_spawn", lambda fn, args, name: fn(*args)), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        side_effect=RuntimeError("boom")):
+            res = ao.start_onboarding("perso-err", str(self.target))
+            st = ao.get_status("perso-err", res["run_id"])
+        self.assertEqual(st["status"], "error")
+        self.assertIn("boom", st["error"])
 
 
 class TestOnboardingEndpoints(unittest.TestCase):
