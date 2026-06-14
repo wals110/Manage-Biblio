@@ -2447,10 +2447,19 @@ def adopt_folder(profile: str, path: str) -> dict:
         rel = (path or "").strip().strip("/")
         if not rel:
             raise TaxonomyError("chemin de dossier vide", 400)
+        # Refuse les segments de navigation : le rel est stocké TEL QUEL dans
+        # tree.yaml, donc "a/b/../c" ou "a//b" écriraient des entrées corrompues.
+        segments = rel.split("/")
+        if any(seg in ("", ".", "..") for seg in segments):
+            raise TaxonomyError(
+                "chemin de dossier invalide (segments vides, '.' ou '..' interdits)",
+                400)
         target = _profile_target_path(profile)
         if target is None:
             raise TaxonomyError("profil sans target configuré", 400)
-        # Garde anti-évasion : le dossier doit rester sous le target.
+        # Garde anti-évasion (défense en profondeur) : le dossier doit rester
+        # sous le target. Attrape les chemins absolus et tout ce qui aurait
+        # glissé au-delà du check par segments ci-dessus.
         fs = (target / rel).resolve()
         try:
             fs.relative_to(target.resolve())

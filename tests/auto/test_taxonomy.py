@@ -3385,6 +3385,23 @@ class TestAdoptFolder(unittest.TestCase):
             taxonomy.adopt_folder("default", "../../escape")
         self.assertEqual(ctx.exception.status, 400)
 
+    def test_adopt_internal_denormalized_rejected_400(self):
+        # "02-INFO/IA" existe sur le disque ; "02-INFO/X/../IA" résout vers lui
+        # mais contient ".." → doit être REJETÉ (sinon écrirait des entrées
+        # corrompues comme "02-INFO/X/.." dans tree.yaml).
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "02-INFO/X/../IA")
+        self.assertEqual(ctx.exception.status, 400)
+        folders = yaml.safe_load((self.prof / "tree.yaml").read_text())["folders"]
+        # aucune entrée corrompue écrite
+        self.assertFalse(any(".." in f for f in folders))
+        self.assertNotIn("02-INFO/X/..", folders)
+
+    def test_adopt_double_slash_rejected_400(self):
+        with self.assertRaises(taxonomy.TaxonomyError) as ctx:
+            taxonomy.adopt_folder("default", "02-INFO//IA")
+        self.assertEqual(ctx.exception.status, 400)
+
     def test_adopt_blocked_by_lock_423(self):
         lock = self.prof / ".cache" / "taxonomy.lock"
         lock.parent.mkdir(parents=True, exist_ok=True)
