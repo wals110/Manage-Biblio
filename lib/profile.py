@@ -158,6 +158,8 @@ class Profile:
         # Cache directory: inside the profile folder (.cache/)
         self.cache_dir = str(self._profile_dir / ".cache")
 
+        self.onboarding_draft = bool(data.get("onboarding_draft", False))
+
     def _load_tree_yaml(self) -> None:
         """Load tree.yaml and set tree attribute."""
         data = self._load_yaml("tree.yaml")
@@ -367,6 +369,27 @@ def init_profile(name: str, target: str) -> Profile:
 
     # Load and return the new profile
     return Profile(name)
+
+
+def create_draft_profile(name: str, target: str) -> "Profile":
+    """Crée un profil brouillon (skeleton vide + flag onboarding_draft=true).
+
+    L'onboarding y écrira ensuite les 3 YAMLs proposés. Le flag marque le
+    profil comme incomplet jusqu'à finalisation.
+    """
+    init_profile(name, target)
+    set_onboarding_draft(name, True)
+    return Profile(name)
+
+
+def set_onboarding_draft(name: str, value: bool) -> None:
+    """Écrit/retire le flag onboarding_draft dans profile.yaml (préserve le reste)."""
+    path = get_project_root() / PROFILES_DIR / name / "profile.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    cfg["onboarding_draft"] = bool(value)
+    path.write_text(
+        yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8")
 
 
 if __name__ == "__main__":
