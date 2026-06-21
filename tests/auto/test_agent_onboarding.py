@@ -457,6 +457,27 @@ class TestBuildProposal(unittest.TestCase):
         self.assertIn("warning", rep)
         self.assertIn("proposition", rep["warning"].lower())   # warning ciblé proposition
 
+    def test_build_proposal_passes_onboarding_options(self):
+        # Les options stockées dans profile.yaml descendent jusqu'à propose_taxonomy.
+        from agents.onboarding import proposition
+        pj = self.prof / "profile.yaml"
+        cfg = yaml.safe_load(pj.read_text())
+        cfg["onboarding_options"] = {"max_depth": 3, "folder_language": "en"}
+        pj.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+        captured = {}
+
+        def fake_propose(llm, clusters, options=None):
+            captured["options"] = options
+            return ["_A-TRIER"], {}
+
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda p, **k: {"theme": "X",
+                            "themes": [{"theme": "X", "confidence": 0.9}], "confidence": 0.9}), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=mock.Mock()), \
+             mock.patch("agents.onboarding.proposition.propose_taxonomy", side_effect=fake_propose):
+            proposition.build_proposal("perso", lambda d, t: None)
+        self.assertEqual(captured["options"], {"max_depth": 3, "folder_language": "en"})
+
 
 class TestAgentOnboardingWrapper(unittest.TestCase):
     def setUp(self):

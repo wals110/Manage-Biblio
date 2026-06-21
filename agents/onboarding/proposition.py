@@ -196,7 +196,8 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dic
     """
     vis = run_vision(profile, on_progress)
     clusters = cluster_corpus(profile)
-    tree, mapping = propose_taxonomy(get_agent_llm(), clusters)
+    options = _load_profile_cfg(profile).get("onboarding_options")
+    tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options)
     cats = propose_categories(tree)
     report = write_proposal(profile, tree, mapping, cats)
     report["vision"] = vis
