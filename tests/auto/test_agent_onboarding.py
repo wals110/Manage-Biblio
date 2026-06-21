@@ -50,6 +50,16 @@ class TestDraftProfile(unittest.TestCase):
         cfg = yaml.safe_load((self.root / "profiles" / "perso-2026" / "profile.yaml").read_text())
         self.assertFalse(cfg["onboarding_draft"])
 
+    def test_draft_profile_uses_enabled_vision_model(self):
+        # Régression : init_profile écrivait Qwen/Qwen2.5-VL-7B-Instruct, désactivé
+        # chez SiliconFlow (HTTP 403 "Model disabled") → Vision en échec à l'onboarding.
+        from lib import profile as prof
+        from lib.constants import DEFAULT_VISION_MODEL
+        prof.create_draft_profile("m", str(self.target))
+        cfg = yaml.safe_load((self.root / "profiles" / "m" / "profile.yaml").read_text())
+        self.assertEqual(cfg["llm"]["model"], DEFAULT_VISION_MODEL)
+        self.assertNotEqual(cfg["llm"]["model"], "Qwen/Qwen2.5-VL-7B-Instruct")
+
 
 class TestScanEstimate(unittest.TestCase):
     def setUp(self):

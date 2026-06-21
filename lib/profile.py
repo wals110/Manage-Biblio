@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from lib.constants import DEFAULT_VISION_MODEL
 from lib.exceptions import ConfigError
 from lib.logger import get_logger, setup_logger
 
@@ -146,7 +147,7 @@ class Profile:
         # LLM config is nested under 'llm:' key
         llm = data.get("llm", {})
         self.llm_provider = llm.get("provider", "siliconflow")
-        self.llm_model = llm.get("model", "Qwen3-VL-8B")
+        self.llm_model = llm.get("model", DEFAULT_VISION_MODEL)
         self.llm_endpoint = llm.get("endpoint", "https://api.siliconflow.com/v1/chat/completions")
 
         self.defaults = data.get("defaults", {})
@@ -340,7 +341,7 @@ def init_profile(name: str, target: str) -> Profile:
             "fallback": "_A-TRIER",
             "llm": {
                 "provider": "siliconflow",
-                "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+                "model": DEFAULT_VISION_MODEL,
                 "endpoint": "https://api.siliconflow.com/v1/chat/completions",
             },
             "defaults": {
