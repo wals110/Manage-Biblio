@@ -376,6 +376,22 @@ class TestBuildProposal(unittest.TestCase):
         self.assertIn("stats", cov)
         self.assertTrue(seen)                                  # on_progress appelé
 
+    def test_build_proposal_warns_on_total_vision_failure(self):
+        # Vision échoue sur tous les fichiers → build_proposal renvoie un warning
+        # explicite (au lieu d'une taxonomie vide présentée comme un succès).
+        from agents.onboarding import proposition, taxonomy_llm
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = \
+            taxonomy_llm._ProposedTaxonomy(sections=[])
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda p, **k: {"error": "api"}), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm):
+            rep = proposition.build_proposal("perso", lambda d, t: None)
+        self.assertEqual(rep["vision"]["n_total"], 1)
+        self.assertEqual(rep["vision"]["n_analyzed"], 0)
+        self.assertIn("warning", rep)
+        self.assertIn("Vision", rep["warning"])
+
 
 class TestAgentOnboardingWrapper(unittest.TestCase):
     def setUp(self):
@@ -431,6 +447,18 @@ class TestAgentOnboardingWrapper(unittest.TestCase):
             st = ao.get_status("perso-err", res["run_id"])
         self.assertEqual(st["status"], "error")
         self.assertIn("boom", st["error"])
+
+    def test_status_carries_vision_warning(self):
+        from dashboard import agent_onboarding as ao
+        with mock.patch.object(ao, "_spawn", lambda fn, args, name: fn(*args)), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        return_value={"coverage": 0.0, "stats": {"n_in_lib": 3},
+                                      "warning": "Vision en échec sur les 3 fichiers"}):
+            res = ao.start_onboarding("perso-warn", str(self.target))
+            st = ao.get_status("perso-warn", res["run_id"])
+        self.assertEqual(st["status"], "done")
+        self.assertIn("warning", st)
+        self.assertIn("Vision", st["warning"])
 
 
 class TestOnboardingEndpoints(unittest.TestCase):

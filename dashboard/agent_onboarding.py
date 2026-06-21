@@ -74,7 +74,8 @@ def _run(profile: str, run_id: str) -> None:
             "run_id": run_id, "profile": profile, "status": "done",
             "completed_at": datetime.now(UTC).isoformat(),
             "coverage": cov["coverage"], "stats": cov["stats"],
-            "by_destination": cov.get("by_destination", []), "error": None})
+            "by_destination": cov.get("by_destination", []),
+            "warning": cov.get("warning"), "error": None})
     except Exception as exc:  # noqa: BLE001 — frontière de thread
         _write_status(profile, run_id, {
             "run_id": run_id, "profile": profile, "status": "error", "error": str(exc)})

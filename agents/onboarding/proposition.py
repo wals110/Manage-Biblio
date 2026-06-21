@@ -187,9 +187,21 @@ def _atomic_yaml(path: Path, payload: dict) -> None:
 
 def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dict:
     """Pipeline complet « Analyse & proposition » : vision → cluster → propose →
-    categories → write 3 YAMLs → dry-run. Retourne le rapport de couverture."""
-    run_vision(profile, on_progress)
+    categories → write 3 YAMLs → dry-run. Retourne le rapport de couverture.
+
+    Ajoute `vision` (compteurs n_total/n_analyzed) et, si la Vision a échoué sur
+    TOUS les fichiers (0 analysé alors qu'il y en a), un `warning` explicite —
+    sinon une Vision en échec produirait une taxonomie vide présentée comme un
+    succès (couverture 0 %, rien à raffiner).
+    """
+    vis = run_vision(profile, on_progress)
     clusters = cluster_corpus(profile)
     tree, mapping = propose_taxonomy(get_agent_llm(), clusters)
     cats = propose_categories(tree)
-    return write_proposal(profile, tree, mapping, cats)
+    report = write_proposal(profile, tree, mapping, cats)
+    report["vision"] = vis
+    if vis.get("n_total", 0) > 0 and vis.get("n_analyzed", 0) == 0:
+        report["warning"] = (
+            f"Vision en échec sur les {vis['n_total']} fichiers (0 analysé) — "
+            "vérifie le modèle Vision du profil et la clé API SiliconFlow.")
+    return report

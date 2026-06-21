@@ -80,6 +80,7 @@
 <!-- ── Étape 3 : proposition / couverture ── -->
 <div class="onb-card" id="onboarding_step_3" style="display:none;">
     <div><b>Taxonomie proposée</b> — clusterisation des thèmes observés</div>
+    <div class="onb-warning" id="onb-warning" style="display:none;"></div>
     <div class="onb-chips" id="onb-chips"></div>
     <div class="onb-note">
         La taxonomie est écrite dans le profil brouillon. Tu la raffines avec les
@@ -141,6 +142,11 @@
     transition:width .25s;
 }
 .onb-progtxt { font-variant-numeric:tabular-nums; }
+.onb-warning {
+    margin:14px 0; padding:11px 14px; border-radius:10px;
+    background:rgba(224,72,72,.12); border:1px solid rgba(224,72,72,.45);
+    color:#f0a0a0; font-size:13px; line-height:1.5;
+}
 .onb-chips { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
 .onb-chip {
     padding:8px 12px; border-radius:10px; background:var(--card-hover);
@@ -304,6 +310,13 @@
 
     // ── Étape 3 : proposition / couverture ──────────────────────────────
     function renderProposal(d) {
+        const warnEl = $('onb-warning');
+        if (d.warning) {
+            warnEl.textContent = '⚠️ ' + d.warning;
+            warnEl.style.display = '';
+        } else {
+            warnEl.style.display = 'none';
+        }
         const st = d.stats || {};
         const cov = d.coverage != null ? d.coverage : 0;
         const inLib = st.n_in_lib || 0;
