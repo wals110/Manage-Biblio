@@ -7,9 +7,14 @@ wrapper côté `dashboard/` qui expose ses routes et son UI.
 
 - **[llm.py](llm.py)** — `get_agent_llm(model=None, *, temperature=0.1, ...) -> ChatOpenAI`.
   Pointe par défaut sur **SiliconFlow** (`api.siliconflow.com`, **jamais** `.cn`)
-  avec **GLM-4.7** (`zai-org/GLM-4.7`), `streaming=True`. Surchargeable via
-  `KLODO_AGENT_MODEL`. **Lève `RuntimeError` sans `SILICONFLOW_API_KEY`** → en
-  test, toujours mocker `get_agent_llm` (jamais d'appel LLM réel).
+  avec **`Qwen/Qwen2.5-72B-Instruct`** (`DEFAULT_MODEL`), `streaming=True`.
+  Surchargeable via `KLODO_AGENT_MODEL`. **Lève `RuntimeError` sans
+  `SILICONFLOW_API_KEY`** → en test, toujours mocker `get_agent_llm`.
+  - ⚠️ `zai-org/GLM-4.7` (ancien défaut) est **désactivé** chez SiliconFlow (403)
+    et la famille GLM refuse le **json-mode** de `with_structured_output` (20024).
+    → tout appel `with_structured_output(...)` doit forcer `method="function_calling"`
+    (cf. `lib/theme_judge`, `theme_canonicalizer`, `agents/refonte/categories_llm`,
+    `agents/onboarding/taxonomy_llm`) pour rester compatible quel que soit le modèle.
 
 ## Agent Refonte (`agents/refonte/`)
 
