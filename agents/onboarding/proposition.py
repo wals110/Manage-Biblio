@@ -77,9 +77,10 @@ def run_vision(profile: str, on_progress: Callable[[int, int], None]) -> dict:
             model=model,
             n_pages=n_pages,
         )
-        # Un résultat None (PDF illisible / LLM en échec) n'est jamais mis en
-        # cache : il sera re-tenté au prochain run reprenable.
-        if key and isinstance(result, dict):
+        # Un résultat None (PDF illisible) OU un dict {"error": ...} (échec API,
+        # ex. 403 modèle désactivé) n'est jamais mis en cache : il sera re-tenté
+        # au prochain run reprenable, et ne compte pas comme analysé.
+        if key and isinstance(result, dict) and not result.get("error"):
             vision_cache.store(cache, key, result, model)
             n_analyzed += 1
             if n_analyzed % 25 == 0:

@@ -164,6 +164,19 @@ class TestRunVision(unittest.TestCase):
         self.assertEqual(r["n_analyzed"], 1)           # seul b.pdf analysé
         self.assertEqual(len(calls), 1)
 
+    def test_run_vision_does_not_cache_errors(self):
+        # Un résultat {"error": ...} (ex. 403 modèle désactivé) ne doit PAS être
+        # mis en cache (sinon collé : skippé au re-run reprenable).
+        from agents.onboarding import proposition
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: {"error": "api"}):
+            r = proposition.run_vision("perso", on_progress=lambda d, t: None)
+        self.assertEqual(r["n_total"], 2)
+        self.assertEqual(r["n_analyzed"], 0)           # aucun succès → rien d'analysé
+        cache_path = self.prof / ".cache" / "vision_cache.json"
+        cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+        self.assertEqual(len(cache), 0)                # aucune erreur en cache
+
 
 class TestClusterCorpus(unittest.TestCase):
     def setUp(self):
