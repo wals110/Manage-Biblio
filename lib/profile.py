@@ -399,6 +399,21 @@ def set_onboarding_draft(name: str, value: bool) -> None:
         encoding="utf-8")
 
 
+def set_onboarding_options(name: str, options: dict) -> None:
+    """Écrit le bloc `onboarding_options` dans profile.yaml (forme de la taxonomie
+    paramétrée par l'utilisateur : profondeur, numérotation, langue, granularité).
+
+    Préserve les autres clés (round-trip safe_load/safe_dump, comme
+    set_onboarding_draft).
+    """
+    path = get_project_root() / PROFILES_DIR / name / "profile.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    cfg["onboarding_options"] = dict(options or {})
+    path.write_text(
+        yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8")
+
+
 if __name__ == "__main__":
     # Example usage
     from lib.logger import setup_logger

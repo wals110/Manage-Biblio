@@ -81,8 +81,13 @@ def _run(profile: str, run_id: str) -> None:
             "run_id": run_id, "profile": profile, "status": "error", "error": str(exc)})
 
 
-def start_onboarding(profile_name: str, inbox_path: str) -> dict[str, Any]:
+def start_onboarding(profile_name: str, inbox_path: str,
+                     options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Crée le profil brouillon puis lance l'analyse/proposition en thread.
+
+    `options` (facultatif) : forme de la taxonomie paramétrée par l'utilisateur
+    (profondeur, numérotation, langue, granularité) — persistée dans profile.yaml
+    et relue par build_proposal.
 
     Cycle de vie / reprise : si `build_proposal` échoue en cours de route, le
     profil brouillon reste sur disque (flag `onboarding_draft: true`) avec un
@@ -99,6 +104,8 @@ def start_onboarding(profile_name: str, inbox_path: str) -> dict[str, Any]:
     if pdir.exists():
         raise FileExistsError(f"profile already exists: {profile_name}")
     _profile.create_draft_profile(profile_name, inbox_path)
+    if options:
+        _profile.set_onboarding_options(profile_name, options)
     run_id = str(uuid.uuid4())
     _write_status(profile_name, run_id, {
         "run_id": run_id, "profile": profile_name, "status": "pending",

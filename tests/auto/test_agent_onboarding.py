@@ -60,6 +60,15 @@ class TestDraftProfile(unittest.TestCase):
         self.assertEqual(cfg["llm"]["model"], DEFAULT_VISION_MODEL)
         self.assertNotEqual(cfg["llm"]["model"], "Qwen/Qwen2.5-VL-7B-Instruct")
 
+    def test_set_onboarding_options_persists(self):
+        from lib import profile as prof
+        prof.create_draft_profile("opt", str(self.target))
+        prof.set_onboarding_options("opt", {"max_depth": 3, "numbered_sections": False})
+        cfg = yaml.safe_load((self.root / "profiles" / "opt" / "profile.yaml").read_text())
+        self.assertEqual(cfg["onboarding_options"]["max_depth"], 3)
+        self.assertFalse(cfg["onboarding_options"]["numbered_sections"])
+        self.assertTrue(cfg["onboarding_draft"])   # préservé (round-trip)
+
 
 class TestScanEstimate(unittest.TestCase):
     def setUp(self):
@@ -545,6 +554,17 @@ class TestAgentOnboardingWrapper(unittest.TestCase):
         self.assertEqual(st["status"], "done")
         self.assertIn("warning", st)
         self.assertIn("Vision", st["warning"])
+
+    def test_start_onboarding_stores_options(self):
+        from dashboard import agent_onboarding as ao
+        with mock.patch.object(ao, "_spawn", lambda fn, args, name: fn(*args)), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        return_value={"coverage": 0.0, "stats": {}}):
+            ao.start_onboarding("perso-opt", str(self.target),
+                                options={"max_depth": 3, "numbered_sections": False})
+        cfg = yaml.safe_load((self.root / "profiles" / "perso-opt" / "profile.yaml").read_text())
+        self.assertEqual(cfg["onboarding_options"]["max_depth"], 3)
+        self.assertFalse(cfg["onboarding_options"]["numbered_sections"])
 
 
 class TestOnboardingEndpoints(unittest.TestCase):
