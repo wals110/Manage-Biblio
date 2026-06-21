@@ -282,6 +282,46 @@ class TestProposeTaxonomy(unittest.TestCase):
         self.assertNotIn("_INBOX", tree)
         self.assertNotIn("_INBOX/Foo", tree)
 
+    def test_duplicate_section_names_consolidated(self):
+        # Régression écran Beta-tests : le LLM a produit 01-/02-/03-INFORMATIQUE
+        # (3 sections homonymes) → on les fusionne sous UNE section + sous-dossiers.
+        from agents.onboarding import taxonomy_llm
+        clusters = [
+            {"canonical": "ai", "raw_members": ["AI"], "count": 3},
+            {"canonical": "net", "raw_members": ["Net"], "count": 2},
+            {"canonical": "meth", "raw_members": ["Meth"], "count": 1},
+        ]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="01-Informatique/IA", cluster_canonicals=["ai"]),
+            taxonomy_llm._Section(folder="02-Informatique/Reseaux", cluster_canonicals=["net"]),
+            taxonomy_llm._Section(folder="03-Informatique/Methodes", cluster_canonicals=["meth"]),
+        ])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        tree, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters)   # défaut numéroté
+        self.assertEqual(m["AI"], "01-Informatique/IA")
+        self.assertEqual(m["Net"], "01-Informatique/Reseaux")        # consolidé sous 01-
+        self.assertEqual(m["Meth"], "01-Informatique/Methodes")
+        self.assertIn("01-Informatique", tree)
+        self.assertNotIn("02-Informatique", tree)
+        self.assertNotIn("03-Informatique", tree)
+
+    def test_distinct_sections_keep_their_numbers(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [
+            {"canonical": "a", "raw_members": ["A"], "count": 2},
+            {"canonical": "b", "raw_members": ["B"], "count": 1},
+        ]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="02-Informatique/IA", cluster_canonicals=["a"]),
+            taxonomy_llm._Section(folder="01-Sciences/Physique", cluster_canonicals=["b"]),
+        ])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        _, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
+        self.assertEqual(m["A"], "02-Informatique/IA")               # numéros LLM préservés
+        self.assertEqual(m["B"], "01-Sciences/Physique")
+
     def test_options_casing_upper_and_lower(self):
         from agents.onboarding import taxonomy_llm
         clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]

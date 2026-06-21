@@ -94,6 +94,11 @@ def _build_system(opts: dict[str, Any]) -> str:
     if gran:
         parts.append(gran)
     parts.append(
+        "Les sections de 1er niveau ont des noms DISTINCTS : si plusieurs clusters "
+        "relèvent du même domaine, regroupe-les dans UNE section avec des sous-dossiers "
+        "(JAMAIS des sections homonymes numérotées différemment, ex. interdit : "
+        "01-Informatique ET 02-Informatique).")
+    parts.append(
         "N'invente pas de thème — chaque section couvre un ou plusieurs clusters "
         "fournis ; regroupe les petits clusters proches. Tu assignes chaque cluster "
         "(par sa forme canonique) à EXACTEMENT un dossier feuille.")
@@ -139,13 +144,20 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
 
     folders: set[str] = {_RESIDUAL}
     mapping: dict[str, str] = {}
+    section_canon: dict[str, str] = {}   # nom de section (sans n°, MAJ) → segment canonique
     for sec in result.sections:
         folder = _sanitize_folder(sec.folder, opts)
         if not folder:
             log.warning("propose_taxonomy: section ignorée (dossier invalide %r)", sec.folder)
             continue
-        # parents implicites
         parts = folder.split("/")
+        # Consolide les sections HOMONYMES (ex. 01-/02-/03-INFORMATIQUE → 01-…) :
+        # plusieurs clusters d'un même domaine doivent partager UNE section avec
+        # des sous-dossiers, pas plusieurs sections homonymes numérotées différemment.
+        if opts["numbered_sections"]:
+            base = _strip_num_prefix(parts[0]).upper()
+            parts[0] = section_canon.setdefault(base, parts[0])
+            folder = "/".join(parts)
         for i in range(1, len(parts) + 1):
             folders.add("/".join(parts[:i]))
         for canon in sec.cluster_canonicals:
@@ -155,6 +167,12 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
             for raw in c["raw_members"]:
                 mapping[raw] = folder
     return sorted(folders), mapping
+
+
+def _strip_num_prefix(seg: str) -> str:
+    """Retire un préfixe numérique de section formaté ('01-Foo' → 'Foo')."""
+    m = re.match(r"^\d{1,3}-(.+)$", seg)
+    return m.group(1) if m else seg
 
 
 def _format_segment(seg: str, case: str, sep: str, is_section: bool, numbered: bool) -> str:
