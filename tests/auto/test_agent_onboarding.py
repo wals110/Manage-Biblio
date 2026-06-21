@@ -260,7 +260,7 @@ class TestProposeTaxonomy(unittest.TestCase):
         self.assertEqual(mapping, {})                 # cluster inconnu → ignoré
         self.assertIn("_A-TRIER", tree)
 
-    def test_level1_uppercased_and_inbox_rejected(self):
+    def test_default_casing_title_and_inbox_rejected(self):
         from agents.onboarding import taxonomy_llm
         clusters = [
             {"canonical": "a", "raw_members": ["A"], "count": 5},
@@ -273,14 +273,50 @@ class TestProposeTaxonomy(unittest.TestCase):
         fake_llm = mock.Mock()
         fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
         tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
-        # section de 1er niveau forcée en MAJUSCULES
-        self.assertEqual(mapping["A"], "03-SCIENCES/Astronomie")
-        self.assertIn("03-SCIENCES", tree)
-        self.assertIn("03-SCIENCES/Astronomie", tree)
+        # défaut = Casse Titre (préfixe numérique préservé) : "sciences" → "Sciences"
+        self.assertEqual(mapping["A"], "03-Sciences/Astronomie")
+        self.assertIn("03-Sciences", tree)
+        self.assertIn("03-Sciences/Astronomie", tree)
         # _INBOX réservé → B non mappé, _INBOX absent de l'arbre
         self.assertNotIn("B", mapping)
         self.assertNotIn("_INBOX", tree)
         self.assertNotIn("_INBOX/Foo", tree)
+
+    def test_options_casing_upper_and_lower(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="01-Machine Learning/Deep Learning",
+                                  cluster_canonicals=["x"])])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        _, m_up = taxonomy_llm.propose_taxonomy(fake_llm, clusters,
+            options={"folder_case": "upper", "word_separator": "-"})
+        self.assertEqual(m_up["X"], "01-MACHINE-LEARNING/DEEP-LEARNING")
+        _, m_lo = taxonomy_llm.propose_taxonomy(fake_llm, clusters,
+            options={"folder_case": "lower", "word_separator": "_"})
+        self.assertEqual(m_lo["X"], "01-machine_learning/deep_learning")
+
+    def test_options_separator_none_collapses_words(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="01-Deep Learning", cluster_canonicals=["x"])])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        _, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters,
+            options={"folder_case": "title", "word_separator": "none"})
+        self.assertEqual(m["X"], "01-DeepLearning")
+
+    def test_title_casing_preserves_acronyms(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="02-Informatique/NLP", cluster_canonicals=["x"])])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        _, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters)   # défaut title
+        self.assertEqual(m["X"], "02-Informatique/NLP")            # NLP non altéré
 
     def test_options_max_depth_3_keeps_three_levels(self):
         from agents.onboarding import taxonomy_llm
@@ -310,27 +346,34 @@ class TestProposeTaxonomy(unittest.TestCase):
 
     def test_build_system_reflects_options(self):
         from agents.onboarding import taxonomy_llm
-        s_num = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
-            {"numbered_sections": True, "folder_language": "fr", "max_depth": 2,
-             "granularity": "compact"}))
-        self.assertIn("MAJUSCULES", s_num)
-        self.assertIn("FRANÇAIS", s_num.upper())
-        self.assertIn("PEU", s_num)                # granularité compacte → "PEU de grandes sections"
-        s_alt = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
-            {"numbered_sections": False, "folder_language": "en", "max_depth": 3,
-             "granularity": "detailed"}))
-        self.assertIn("SANS", s_alt.upper())       # sans préfixe numérique
-        self.assertIn("3 niveau", s_alt)
-        self.assertIn("FINES", s_alt)              # granularité détaillée → "sections FINES"
+        s = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
+            {"folder_case": "upper", "folder_language": "fr", "min_depth": 1,
+             "max_depth": 2, "granularity": "compact", "word_separator": "_"}))
+        self.assertIn("MAJUSCULES", s)
+        self.assertIn("FRANÇAIS", s.upper())
+        self.assertIn("PEU", s)                    # granularité compacte
+        self.assertIn("underscore", s.lower())     # séparateur _
+        self.assertIn("entre 1 et 2", s)           # fourchette de profondeur
+        s2 = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
+            {"folder_case": "lower", "min_depth": 3, "max_depth": 3,
+             "granularity": "detailed", "numbered_sections": False}))
+        self.assertIn("minuscules", s2)
+        self.assertIn("EXACTEMENT 3", s2)          # min == max
+        self.assertIn("FINES", s2)
+        self.assertIn("pas de préfixe", s2.lower())
 
     def test_normalize_options_clamps_invalid(self):
         from agents.onboarding import taxonomy_llm
         o = taxonomy_llm._normalize_options(
-            {"max_depth": 9, "folder_language": "zz", "granularity": "huge"})
-        self.assertEqual(o["max_depth"], 2)            # hors {2,3} → défaut 2
+            {"min_depth": 3, "max_depth": 2, "folder_case": "zz",
+             "word_separator": "x", "folder_language": "zz", "granularity": "huge"})
+        self.assertEqual(o["max_depth"], 2)
+        self.assertEqual(o["min_depth"], 2)            # min > max → ramené à max
+        self.assertEqual(o["folder_case"], "title")
+        self.assertEqual(o["word_separator"], "-")
         self.assertEqual(o["folder_language"], "auto")
         self.assertEqual(o["granularity"], "auto")
-        self.assertTrue(o["numbered_sections"])        # défaut True
+        self.assertTrue(o["numbered_sections"])
 
 
 class TestProposeCategories(unittest.TestCase):
