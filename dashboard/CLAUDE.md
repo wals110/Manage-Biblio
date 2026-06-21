@@ -65,10 +65,13 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   `scan.py` (scan + estimation coût, read-only), `taxonomy_llm.py` (1 appel LLM
   « propose une hiérarchie depuis les clusters » — sections issues du contenu,
   forme suivant des conventions **paramétrables** par l'utilisateur via
-  `onboarding_options` : profondeur (2/3), numérotation des sections (`01-…`),
-  langue des noms (auto/fr/en), granularité (auto/compact/detailed). Défauts =
-  ≤ 2 niveaux, 1er niveau MAJUSCULES numérotées, `_A-TRIER` résiduel, `_INBOX`
-  réservé. `with_structured_output(..., method="function_calling")` (compat GLM/Qwen)),
+  `onboarding_options` : profondeur min/max (1-3), numérotation des sections
+  (`01-…`), casse (`title`/`upper`/`lower` — `title` préserve les acronymes),
+  séparateur des mots composés (`-`/`_`/`none`), langue (auto/fr/en),
+  granularité (auto/compact/detailed). Défauts = 1-2 niveaux, Casse Titre,
+  tirets, sections numérotées, `_A-TRIER` résiduel, `_INBOX` réservé.
+  `_format_segment` applique casse+séparateur ; `_sanitize_folder` borne la
+  profondeur. `with_structured_output(..., method="function_calling")` (compat GLM/Qwen)),
   `proposition.py` (orchestration :
   `run_vision` Vision full-corpus reprenable → `cluster_corpus` via
   `lib/theme_canon` → `propose_taxonomy` → `propose_categories` via

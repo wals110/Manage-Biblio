@@ -56,12 +56,41 @@
             <div class="onb-options-title">Options de taxonomie — forme de l'arborescence proposée</div>
             <div class="onb-row">
                 <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-mindepth">Profondeur min</label>
+                    <select id="onb-opt-mindepth">
+                        <option value="1" selected>1 niveau</option>
+                        <option value="2">2 niveaux</option>
+                        <option value="3">3 niveaux</option>
+                    </select>
+                </div>
+                <div class="onb-field">
                     <label class="filter-label" for="onb-opt-depth">Profondeur max</label>
                     <select id="onb-opt-depth">
                         <option value="2" selected>2 niveaux</option>
                         <option value="3">3 niveaux</option>
+                        <option value="1">1 niveau</option>
                     </select>
                 </div>
+            </div>
+            <div class="onb-row">
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-case">Casse des noms</label>
+                    <select id="onb-opt-case">
+                        <option value="title" selected>Titre (Deep-Learning)</option>
+                        <option value="upper">MAJUSCULES (DEEP-LEARNING)</option>
+                        <option value="lower">minuscules (deep-learning)</option>
+                    </select>
+                </div>
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-sep">Séparateur des mots composés</label>
+                    <select id="onb-opt-sep">
+                        <option value="-" selected>Tiret (Deep-Learning)</option>
+                        <option value="_">Underscore (Deep_Learning)</option>
+                        <option value="none">Aucun (DeepLearning)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="onb-row">
                 <div class="onb-field">
                     <label class="filter-label" for="onb-opt-lang">Langue des noms</label>
                     <select id="onb-opt-lang">
@@ -82,7 +111,7 @@
             <label class="onb-check">
                 <input type="checkbox" id="onb-opt-numbered" checked>
                 Numéroter les sections de 1<sup>er</sup> niveau
-                (<code>01-SCIENCES</code> vs <code>SCIENCES</code>)
+                (<code>01-Sciences</code> vs <code>Sciences</code>)
             </label>
         </div>
         <div class="onb-note">
@@ -178,6 +207,16 @@
     width:100%; background:var(--bg); border:1px solid var(--border);
     border-radius:8px; color:var(--text); padding:9px 11px; font-size:14px;
 }
+.onb-card input[type=text]:focus, .onb-card select:focus { outline:none; border-color:var(--blue); }
+.onb-card select {
+    width:100%; background:var(--bg); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); padding:9px 32px 9px 11px; font-size:14px;
+    cursor:pointer; appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat; background-position:right 10px center;
+}
+.onb-card select:hover { border-color:var(--blue); }
+.onb-card select option { background:var(--card); color:var(--text); }
 .onb-estimate {
     margin:14px 0 0; padding:10px 12px; background:var(--card-hover);
     border:1px dashed var(--border); border-radius:8px; color:var(--muted);
@@ -191,6 +230,7 @@
 .onb-options-title { font-size:12px; color:var(--muted); margin-bottom:10px;
     text-transform:uppercase; letter-spacing:.04em; }
 .onb-options .onb-row { display:flex; gap:14px; flex-wrap:wrap; }
+.onb-options .onb-row + .onb-row { margin-top:12px; }
 .onb-options .onb-field { flex:1; min-width:150px; }
 .onb-check { display:flex; align-items:center; gap:8px; margin-top:12px;
     font-size:13px; color:var(--text); }
@@ -329,7 +369,10 @@
         showErr('onb-start-error', '');
         if (!name) { showErr('onb-start-error', 'Donne un nom au profil.'); return; }
         const options = {
+            min_depth: parseInt($('onb-opt-mindepth').value, 10) || 1,
             max_depth: parseInt($('onb-opt-depth').value, 10) || 2,
+            folder_case: $('onb-opt-case').value,
+            word_separator: $('onb-opt-sep').value,
             numbered_sections: $('onb-opt-numbered').checked,
             folder_language: $('onb-opt-lang').value,
             granularity: $('onb-opt-gran').value,
