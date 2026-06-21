@@ -3076,8 +3076,10 @@ async def api_onboarding_start(request: Request):
     inbox = (body.get("inbox_path") or "").strip()
     if not name or not inbox:
         return JSONResponse({"error": "profile_name et inbox_path requis"}, status_code=400)
+    opts = body.get("options")
+    options = opts if isinstance(opts, dict) else None
     try:
-        return JSONResponse(agent_onboarding.start_onboarding(name, inbox))
+        return JSONResponse(agent_onboarding.start_onboarding(name, inbox, options))
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except FileExistsError as exc:

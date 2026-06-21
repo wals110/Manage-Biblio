@@ -608,6 +608,23 @@ class TestOnboardingEndpoints(unittest.TestCase):
         f = self.client.post("/api/agent/onboarding/finalize", json={"profile": "perso"})
         self.assertEqual(f.status_code, 200)
 
+    def test_start_with_options_persists(self):
+        from dashboard import agent_onboarding as ao
+
+        def sync(fn, args, name):
+            return fn(*args)
+
+        with mock.patch.object(ao, "_spawn", sync), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        return_value={"coverage": 0.0, "stats": {}}):
+            r = self.client.post("/api/agent/onboarding/start",
+                json={"profile_name": "perso", "inbox_path": str(self.target),
+                      "options": {"max_depth": 3, "folder_language": "en"}})
+        self.assertEqual(r.status_code, 200)
+        cfg = yaml.safe_load((self.root / "profiles" / "perso" / "profile.yaml").read_text())
+        self.assertEqual(cfg["onboarding_options"]["max_depth"], 3)
+        self.assertEqual(cfg["onboarding_options"]["folder_language"], "en")
+
     def test_start_missing_fields_400(self):
         r = self.client.post("/api/agent/onboarding/start", json={"profile_name": "x"})
         self.assertEqual(r.status_code, 400)
