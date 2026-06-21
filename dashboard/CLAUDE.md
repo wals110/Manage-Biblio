@@ -1,6 +1,6 @@
 # Dashboard — Tests fonctionnels + Cockpit Biblio Klodo
 
-FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run python -m dashboard.app` (port 8080).
+FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run python -m dashboard` (port 8080) — exécute [`dashboard/__main__.py`](__main__.py) qui charge `.env` puis lance `uvicorn.run("dashboard.app:app", port=8080)`. **`-m dashboard.app` ne démarre PAS le serveur** (`app.py` n'a pas de bloc `__main__`). Alternative : `./klodo.sh dashboard`.
 
 ## Architecture
 
