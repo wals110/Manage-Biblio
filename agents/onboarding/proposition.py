@@ -204,4 +204,13 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dic
         report["warning"] = (
             f"Vision en échec sur les {vis['n_total']} fichiers (0 analysé) — "
             "vérifie le modèle Vision du profil et la clé API SiliconFlow.")
+    elif clusters and not mapping:
+        # La Vision a détecté des thèmes mais propose_taxonomy n'a rien mappé :
+        # l'appel LLM de proposition a échoué (modèle agent désactivé/indisponible)
+        # ou n'a rien produit d'exploitable → arbre vide. Sans ce warning, on
+        # afficherait des thèmes orphelins sans aucune arborescence (cf. agents/llm.py).
+        report["warning"] = (
+            f"Proposition de taxonomie en échec — {len(clusters)} thèmes détectés "
+            "mais aucune arborescence proposée (modèle agent LLM indisponible ? "
+            "voir agents/llm.py). Les thèmes restent à mapper manuellement.")
     return report

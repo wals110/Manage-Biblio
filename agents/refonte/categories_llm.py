@@ -82,7 +82,9 @@ def propose_keywords_for_new_folders(
                 f"mots_cles={s.get('mots_cles', [])[:5]}"
             )
 
-    structured = llm.with_structured_output(_NewCategoriesProposal)
+    # function_calling : compatible tout modèle tool-capable (le json-mode par
+    # défaut casse sur GLM — cf. lib/theme_judge / theme_canonicalizer).
+    structured = llm.with_structured_output(_NewCategoriesProposal, method="function_calling")
     result = None
     last_error: str = ""
     for attempt in range(2):  # 1 try + 1 retry

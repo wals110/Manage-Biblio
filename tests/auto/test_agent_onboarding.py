@@ -392,6 +392,25 @@ class TestBuildProposal(unittest.TestCase):
         self.assertIn("warning", rep)
         self.assertIn("Vision", rep["warning"])
 
+    def test_build_proposal_warns_when_proposition_fails(self):
+        # Vision OK (thèmes détectés) mais l'appel LLM de proposition échoue
+        # (modèle agent désactivé/indisponible) → arbre vide. On veut un warning
+        # explicite « proposition », pas une taxonomie vide présentée en succès.
+        from agents.onboarding import proposition
+        vis = {"title": "T", "theme": "Machine Learning",
+               "themes": [{"theme": "Machine Learning", "confidence": 0.9}],
+               "confidence": 0.9}
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = \
+            RuntimeError("403 Model disabled")
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda p, **k: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm):
+            rep = proposition.build_proposal("perso", lambda d, t: None)
+        self.assertEqual(rep["vision"]["n_analyzed"], 1)        # la Vision a réussi
+        self.assertIn("warning", rep)
+        self.assertIn("proposition", rep["warning"].lower())   # warning ciblé proposition
+
 
 class TestAgentOnboardingWrapper(unittest.TestCase):
     def setUp(self):

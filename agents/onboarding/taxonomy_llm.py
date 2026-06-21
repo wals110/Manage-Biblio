@@ -51,7 +51,10 @@ def propose_taxonomy(llm: Any, clusters: list[dict]) -> tuple[list[str], dict[st
         f"- canonical={c['canonical']!r} volume={c['count']} variantes={c['raw_members'][:4]}"
         for c in clusters[:200]
     )
-    structured = llm.with_structured_output(_ProposedTaxonomy)
+    # method="function_calling" : compatible avec tout modèle tool-capable, alors
+    # que le json-mode par défaut casse sur la famille GLM (20024 "Json mode is
+    # not supported"). Cohérent avec lib/theme_judge + theme_canonicalizer.
+    structured = llm.with_structured_output(_ProposedTaxonomy, method="function_calling")
     try:
         result = structured.invoke(
             [{"role": "system", "content": _SYSTEM},
