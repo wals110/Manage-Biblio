@@ -311,13 +311,17 @@ class TestProposeTaxonomy(unittest.TestCase):
     def test_build_system_reflects_options(self):
         from agents.onboarding import taxonomy_llm
         s_num = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
-            {"numbered_sections": True, "folder_language": "fr", "max_depth": 2}))
+            {"numbered_sections": True, "folder_language": "fr", "max_depth": 2,
+             "granularity": "compact"}))
         self.assertIn("MAJUSCULES", s_num)
         self.assertIn("FRANÇAIS", s_num.upper())
+        self.assertIn("PEU", s_num)                # granularité compacte → "PEU de grandes sections"
         s_alt = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
-            {"numbered_sections": False, "folder_language": "en", "max_depth": 3}))
+            {"numbered_sections": False, "folder_language": "en", "max_depth": 3,
+             "granularity": "detailed"}))
         self.assertIn("SANS", s_alt.upper())       # sans préfixe numérique
         self.assertIn("3 niveau", s_alt)
+        self.assertIn("FINES", s_alt)              # granularité détaillée → "sections FINES"
 
     def test_normalize_options_clamps_invalid(self):
         from agents.onboarding import taxonomy_llm
@@ -624,6 +628,22 @@ class TestOnboardingEndpoints(unittest.TestCase):
         cfg = yaml.safe_load((self.root / "profiles" / "perso" / "profile.yaml").read_text())
         self.assertEqual(cfg["onboarding_options"]["max_depth"], 3)
         self.assertEqual(cfg["onboarding_options"]["folder_language"], "en")
+
+    def test_start_ignores_malformed_options(self):
+        from dashboard import agent_onboarding as ao
+
+        def sync(fn, args, name):
+            return fn(*args)
+
+        with mock.patch.object(ao, "_spawn", sync), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        return_value={"coverage": 0.0, "stats": {}}):
+            r = self.client.post("/api/agent/onboarding/start",
+                json={"profile_name": "perso", "inbox_path": str(self.target),
+                      "options": ["junk", "not", "a", "dict"]})
+        self.assertEqual(r.status_code, 200)   # liste ignorée (isinstance dict) → défauts
+        cfg = yaml.safe_load((self.root / "profiles" / "perso" / "profile.yaml").read_text())
+        self.assertNotIn("onboarding_options", cfg)   # rien stocké (options=None)
 
     def test_start_missing_fields_400(self):
         r = self.client.post("/api/agent/onboarding/start", json={"profile_name": "x"})
