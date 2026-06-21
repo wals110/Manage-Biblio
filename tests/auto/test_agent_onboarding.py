@@ -273,6 +273,52 @@ class TestProposeTaxonomy(unittest.TestCase):
         self.assertNotIn("_INBOX", tree)
         self.assertNotIn("_INBOX/Foo", tree)
 
+    def test_options_max_depth_3_keeps_three_levels(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 3}]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="01-SCIENCES/Informatique/Reseaux",
+                                  cluster_canonicals=["x"])])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters, options={"max_depth": 3})
+        self.assertIn("01-SCIENCES/Informatique/Reseaux", tree)   # 3 niveaux conservés
+        self.assertIn("01-SCIENCES/Informatique", tree)           # parent implicite
+        self.assertEqual(mapping["X"], "01-SCIENCES/Informatique/Reseaux")
+
+    def test_options_default_depth_2_truncates(self):
+        from agents.onboarding import taxonomy_llm
+        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 3}]
+        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
+            taxonomy_llm._Section(folder="01-SCIENCES/Informatique/Reseaux",
+                                  cluster_canonicals=["x"])])
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
+        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)   # défaut max_depth=2
+        self.assertIn("01-SCIENCES/Informatique", tree)
+        self.assertNotIn("01-SCIENCES/Informatique/Reseaux", tree)         # tronqué
+        self.assertEqual(mapping["X"], "01-SCIENCES/Informatique")
+
+    def test_build_system_reflects_options(self):
+        from agents.onboarding import taxonomy_llm
+        s_num = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
+            {"numbered_sections": True, "folder_language": "fr", "max_depth": 2}))
+        self.assertIn("MAJUSCULES", s_num)
+        self.assertIn("FRANÇAIS", s_num.upper())
+        s_alt = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
+            {"numbered_sections": False, "folder_language": "en", "max_depth": 3}))
+        self.assertIn("SANS", s_alt.upper())       # sans préfixe numérique
+        self.assertIn("3 niveau", s_alt)
+
+    def test_normalize_options_clamps_invalid(self):
+        from agents.onboarding import taxonomy_llm
+        o = taxonomy_llm._normalize_options(
+            {"max_depth": 9, "folder_language": "zz", "granularity": "huge"})
+        self.assertEqual(o["max_depth"], 2)            # hors {2,3} → défaut 2
+        self.assertEqual(o["folder_language"], "auto")
+        self.assertEqual(o["granularity"], "auto")
+        self.assertTrue(o["numbered_sections"])        # défaut True
+
 
 class TestProposeCategories(unittest.TestCase):
     def test_build_categories_from_tree(self):
