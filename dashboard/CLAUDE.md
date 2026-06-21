@@ -83,8 +83,10 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   (`lib/profile.create_draft_profile` / `set_onboarding_draft`) → badge sidebar,
   bandeau Taxonomie/Mappings et bouton **Finaliser** (retire le flag).
 - Routes : `POST …/onboarding/{scan,start,finalize}`, `GET …/onboarding/status`,
-  `GET …/onboarding/is-draft`. Page assistant `/onboarding` (stepper 3 étapes :
-  scan/estimation → progression Vision → couverture) + entrée nav
+  `GET …/onboarding/is-draft`, `GET /api/fs/browse` (explorateur de dossiers
+  serveur — sous-dossiers + n_files, local-only 127.0.0.1, pour le sélecteur
+  « 📂 Parcourir » de l'étape Configuration). Page assistant `/onboarding`
+  (stepper 3 étapes : scan/estimation → progression Vision → couverture) + entrée nav
   « ➕ Nouveau profil ». L'étape « Raffinage & application » = handoff vers
   l'onglet Mappings + Apply global existants (aucun code neuf).
 - Réutilise : `lib.vision`, `vision_cache`, `theme_canon`, `categories_llm`,

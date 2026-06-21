@@ -38,6 +38,7 @@
             <input type="text" id="onb-inbox" placeholder="/chemin/vers/mes/livres">
         </div>
         <div class="onb-field onb-field-action">
+            <button class="btn-secondary" id="onb-browse-btn" type="button">📂 Parcourir…</button>
             <button class="btn-secondary" id="onb-scan-btn" type="button">📁 Scanner</button>
         </div>
     </div>
@@ -126,6 +127,29 @@
     </div>
 </div>
 
+<!-- ── Explorateur de dossiers (sélection interactive) ── -->
+<div id="onb-browse-modal" class="onb-modal" style="display:none;">
+    <div class="onb-modal-box">
+        <div class="onb-modal-head">
+            <span>📂 Choisir un répertoire</span>
+            <button class="onb-modal-x" id="onb-browse-close" type="button">✕</button>
+        </div>
+        <div class="onb-browse-path">
+            <button class="btn-secondary onb-browse-up" id="onb-browse-up" type="button"
+                    title="Dossier parent">⬆</button>
+            <code id="onb-browse-cwd"></code>
+        </div>
+        <div class="onb-browse-list" id="onb-browse-list"></div>
+        <div class="onb-browse-foot">
+            <span class="muted small" id="onb-browse-count"></span>
+            <div class="onb-browse-actions">
+                <button class="btn-secondary" id="onb-browse-cancel" type="button">Annuler</button>
+                <button class="btn-primary" id="onb-browse-choose" type="button">Choisir ce dossier</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
 .onb-steps { display:flex; gap:10px; margin:8px 0 18px; max-width:720px; }
 .onb-step {
@@ -200,6 +224,27 @@
 .onb-chip .v { font-size:18px; font-weight:700; }
 .onb-chip.ok .v { color:var(--green); }
 .onb-chip.warn .v { color:var(--yellow); }
+/* ── Explorateur de dossiers ── */
+.onb-modal { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50;
+    display:flex; align-items:center; justify-content:center; }
+.onb-modal-box { width:min(620px,92vw); max-height:80vh; display:flex; flex-direction:column;
+    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.onb-modal-head { display:flex; justify-content:space-between; align-items:center;
+    padding:12px 16px; border-bottom:1px solid var(--border); font-weight:600; }
+.onb-modal-x { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; }
+.onb-browse-path { display:flex; gap:8px; align-items:center; padding:10px 16px;
+    border-bottom:1px solid var(--border); }
+.onb-browse-path code { font-size:12px; color:var(--muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left; }
+.onb-browse-up { padding:4px 10px; }
+.onb-browse-list { overflow:auto; flex:1; padding:6px; min-height:160px; }
+.onb-browse-item { display:block; width:100%; text-align:left; background:none; border:none;
+    color:var(--text); padding:8px 12px; border-radius:6px; cursor:pointer; font-size:14px; }
+.onb-browse-item:hover { background:var(--card-hover); }
+.onb-browse-empty { color:var(--muted); padding:10px 12px; font-size:13px; }
+.onb-browse-foot { display:flex; justify-content:space-between; align-items:center;
+    gap:12px; padding:12px 16px; border-top:1px solid var(--border); }
+.onb-browse-actions { display:flex; gap:8px; }
 </style>
 
 <script>
@@ -390,6 +435,63 @@
     $('onb-continue-btn').addEventListener('click', () => {
         window.location = '/taxonomy?profile=' + encodeURIComponent(profileName);
     });
+
+    // ── Explorateur de dossiers (sélection interactive) ──
+    const browseModal = $('onb-browse-modal');
+    let browseCwd = '';
+
+    async function browseLoad(path) {
+        const list = $('onb-browse-list');
+        try {
+            const u = '/api/fs/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
+            const r = await fetch(u);
+            const d = await r.json();
+            if (!r.ok) { list.textContent = d.error || ('HTTP ' + r.status); return; }
+            browseCwd = d.path;
+            $('onb-browse-cwd').textContent = d.path;
+            $('onb-browse-up').disabled = !d.parent;
+            $('onb-browse-up').dataset.parent = d.parent || '';
+            const n = d.n_files || 0;
+            $('onb-browse-count').textContent = n
+                ? (n + ' fichier(s) pdf/epub ici') : 'Aucun fichier pdf/epub directement ici';
+            list.innerHTML = '';
+            if (!d.dirs.length) {
+                const e = document.createElement('div');
+                e.className = 'onb-browse-empty';
+                e.textContent = '(aucun sous-dossier)';
+                list.appendChild(e);
+            }
+            d.dirs.forEach((dir) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'onb-browse-item';
+                row.textContent = '📁 ' + dir.name;   // textContent → pas d'XSS
+                row.addEventListener('click', () => browseLoad(dir.path));
+                list.appendChild(row);
+            });
+        } catch (e) {
+            list.textContent = 'Erreur réseau : ' + e.message;
+        }
+    }
+
+    $('onb-browse-btn').addEventListener('click', () => {
+        browseModal.style.display = 'flex';
+        browseLoad($('onb-inbox').value.trim());   // démarre sur le chemin saisi, sinon home
+    });
+    const browseClose = () => { browseModal.style.display = 'none'; };
+    $('onb-browse-close').addEventListener('click', browseClose);
+    $('onb-browse-cancel').addEventListener('click', browseClose);
+    $('onb-browse-up').addEventListener('click', () => {
+        const p = $('onb-browse-up').dataset.parent;
+        if (p) browseLoad(p);
+    });
+    $('onb-browse-choose').addEventListener('click', () => {
+        if (!browseCwd) return;
+        $('onb-inbox').value = browseCwd;
+        browseClose();
+        $('onb-scan-btn').click();   // scanne directement le dossier choisi
+    });
+    browseModal.addEventListener('click', (e) => { if (e.target === browseModal) browseClose(); });
 
     setStep(1);
 })();
