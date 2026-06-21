@@ -668,5 +668,37 @@ class TestOnboardingEndpoints(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+class TestFsBrowse(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-fs-")
+        self.root = Path(self.tmp)
+        (self.root / "Sub A").mkdir()
+        (self.root / "Sub B").mkdir()
+        (self.root / ".hidden").mkdir()
+        (self.root / "a.pdf").write_bytes(b"%PDF")
+        (self.root / "b.epub").write_bytes(b"x")
+        (self.root / "notes.txt").write_bytes(b"x")
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_browse_lists_subdirs_and_counts(self):
+        r = self.client.get("/api/fs/browse", params={"path": str(self.root)})
+        self.assertEqual(r.status_code, 200)
+        j = r.json()
+        self.assertEqual([d["name"] for d in j["dirs"]], ["Sub A", "Sub B"])  # triés, .hidden exclu
+        self.assertEqual(j["n_files"], 2)             # pdf + epub, pas .txt
+        self.assertIsNotNone(j["parent"])
+        self.assertTrue(j["path"].endswith(self.root.name))
+
+    def test_browse_invalid_path_400(self):
+        r = self.client.get("/api/fs/browse", params={"path": "/private/tmp/nope-xyz-123"})
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

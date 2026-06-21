@@ -3055,6 +3055,44 @@ async def api_agent_refonte_proposition_start(request: Request):
 # ════════════════════════════════════════════════════════════════════════
 
 
+@app.get("/api/fs/browse")
+async def api_fs_browse(path: str = ""):
+    """Explorateur de dossiers côté serveur (dashboard bindé 127.0.0.1, mono-user).
+
+    Liste les sous-dossiers d'un répertoire + le nombre de fichiers classables
+    (pdf/epub) directement dedans, pour le sélecteur de dossier de l'onboarding.
+    Path vide → home de l'utilisateur.
+    """
+    import os
+
+    from fastapi.responses import JSONResponse
+    base = (path or "").strip() or os.path.expanduser("~")
+    base = os.path.abspath(os.path.expanduser(base))
+    if not os.path.isdir(base):
+        return JSONResponse({"error": "répertoire introuvable"}, status_code=400)
+    dirs: list[dict] = []
+    n_files = 0
+    try:
+        with os.scandir(base) as it:
+            for e in it:
+                if e.name.startswith("."):
+                    continue
+                if e.is_dir(follow_symlinks=False):
+                    dirs.append({"name": e.name, "path": e.path})
+                elif e.is_file() and e.name.lower().endswith((".pdf", ".epub")):
+                    n_files += 1
+    except PermissionError:
+        return JSONResponse({"error": "accès refusé"}, status_code=403)
+    dirs.sort(key=lambda d: d["name"].lower())
+    parent = os.path.dirname(base)
+    return JSONResponse({
+        "path": base,
+        "parent": parent if parent and parent != base else None,
+        "dirs": dirs,
+        "n_files": n_files,
+    })
+
+
 @app.post("/api/agent/onboarding/scan")
 async def api_onboarding_scan(request: Request):
     from fastapi.responses import JSONResponse
