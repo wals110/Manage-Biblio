@@ -64,8 +64,12 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **`agents/onboarding/`** (pipeline, PAS un agent ReAct/LangGraph) :
   `scan.py` (scan + estimation coût, read-only), `taxonomy_llm.py` (1 appel LLM
   « propose une hiérarchie depuis les clusters » — sections issues du contenu,
-  forme imposée par conventions : ≤ 2 niveaux, 1er niveau MAJUSCULES, bucket
-  résiduel `_A-TRIER`, `_INBOX` réservé), `proposition.py` (orchestration :
+  forme suivant des conventions **paramétrables** par l'utilisateur via
+  `onboarding_options` : profondeur (2/3), numérotation des sections (`01-…`),
+  langue des noms (auto/fr/en), granularité (auto/compact/detailed). Défauts =
+  ≤ 2 niveaux, 1er niveau MAJUSCULES numérotées, `_A-TRIER` résiduel, `_INBOX`
+  réservé. `with_structured_output(..., method="function_calling")` (compat GLM/Qwen)),
+  `proposition.py` (orchestration :
   `run_vision` Vision full-corpus reprenable → `cluster_corpus` via
   `lib/theme_canon` → `propose_taxonomy` → `propose_categories` via
   `agents/refonte/categories_llm` → `write_proposal` : écrit les 3 YAMLs après
@@ -208,4 +212,4 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
 - **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
 - **16 tests** dans [../tests/auto/test_reclassify_apply.py](../tests/auto/test_reclassify_apply.py) (preview, execute, undo, pending, status, hash config, fencing 423)
-- **23 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile, scan/estimate, run_vision reprenable, cluster_corpus, propose_taxonomy, propose_categories, write_proposal + dry-run, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)
+- **38 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile + modèle Vision actif, scan/estimate, run_vision reprenable + no-cache des erreurs, cluster_corpus, propose_taxonomy + options de forme, propose_categories, write_proposal + dry-run, warnings Vision/proposition, onboarding_options bout-en-bout, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)
