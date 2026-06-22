@@ -223,184 +223,118 @@ class TestClusterCorpus(unittest.TestCase):
 
 
 class TestProposeTaxonomy(unittest.TestCase):
-    def test_propose_tree_and_mapping(self):
-        from agents.onboarding import taxonomy_llm
+    def _llm(self, pairs):
+        from agents.onboarding import taxonomy_llm as t
+        out = t._Assignments(items=[t._Assign(canonical=c, section=s) for c, s in pairs])
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.return_value = out
+        return llm
+
+    def test_section_slash_theme_depth2(self):
+        from agents.onboarding import taxonomy_llm as t
         clusters = [
             {"canonical": "deep learning", "raw_members": ["Deep Learning", "deep learning"], "count": 40},
             {"canonical": "astronomy", "raw_members": ["Astronomy"], "count": 12},
         ]
-        # LLM mocké : retourne le schéma Pydantic attendu
-        fake_out = taxonomy_llm._ProposedTaxonomy(
-            sections=[
-                taxonomy_llm._Section(folder="02-INFORMATIQUE/Deep-Learning",
-                                      cluster_canonicals=["deep learning"]),
-                taxonomy_llm._Section(folder="01-SCIENCES/Astronomie",
-                                      cluster_canonicals=["astronomy"]),
-            ])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
-        # tree contient les dossiers + parents implicites + _A-TRIER
-        self.assertIn("02-INFORMATIQUE", tree)
-        self.assertIn("02-INFORMATIQUE/Deep-Learning", tree)
-        self.assertIn("_A-TRIER", tree)
-        # mapping : chaque raw_member du cluster → son dossier
-        self.assertEqual(mapping["Deep Learning"], "02-INFORMATIQUE/Deep-Learning")
-        self.assertEqual(mapping["deep learning"], "02-INFORMATIQUE/Deep-Learning")
-        self.assertEqual(mapping["Astronomy"], "01-SCIENCES/Astronomie")
-
-    def test_assignment_to_unknown_cluster_skipped(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [{"canonical": "a", "raw_members": ["A"], "count": 1}]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="X/Y", cluster_canonicals=["zzz-inexistant"])])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
-        self.assertEqual(mapping, {})                 # cluster inconnu → ignoré
-        self.assertIn("_A-TRIER", tree)
-
-    def test_default_casing_title_and_inbox_rejected(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [
-            {"canonical": "a", "raw_members": ["A"], "count": 5},
-            {"canonical": "b", "raw_members": ["B"], "count": 3},
-        ]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="03-sciences/Astronomie", cluster_canonicals=["a"]),
-            taxonomy_llm._Section(folder="_INBOX/Foo", cluster_canonicals=["b"]),
-        ])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
-        # défaut = Casse Titre (préfixe numérique préservé) : "sciences" → "Sciences"
-        self.assertEqual(mapping["A"], "03-Sciences/Astronomie")
-        self.assertIn("03-Sciences", tree)
-        self.assertIn("03-Sciences/Astronomie", tree)
-        # _INBOX réservé → B non mappé, _INBOX absent de l'arbre
-        self.assertNotIn("B", mapping)
-        self.assertNotIn("_INBOX", tree)
-        self.assertNotIn("_INBOX/Foo", tree)
-
-    def test_duplicate_section_names_consolidated(self):
-        # Régression écran Beta-tests : le LLM a produit 01-/02-/03-INFORMATIQUE
-        # (3 sections homonymes) → on les fusionne sous UNE section + sous-dossiers.
-        from agents.onboarding import taxonomy_llm
-        clusters = [
-            {"canonical": "ai", "raw_members": ["AI"], "count": 3},
-            {"canonical": "net", "raw_members": ["Net"], "count": 2},
-            {"canonical": "meth", "raw_members": ["Meth"], "count": 1},
-        ]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="01-Informatique/IA", cluster_canonicals=["ai"]),
-            taxonomy_llm._Section(folder="02-Informatique/Reseaux", cluster_canonicals=["net"]),
-            taxonomy_llm._Section(folder="03-Informatique/Methodes", cluster_canonicals=["meth"]),
-        ])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        tree, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters)   # défaut numéroté
-        self.assertEqual(m["AI"], "01-Informatique/IA")
-        self.assertEqual(m["Net"], "01-Informatique/Reseaux")        # consolidé sous 01-
-        self.assertEqual(m["Meth"], "01-Informatique/Methodes")
+        llm = self._llm([("deep learning", "Informatique"), ("astronomy", "Sciences")])
+        tree, mapping = t.propose_taxonomy(llm, clusters, options={"min_depth": 2, "max_depth": 3})
+        self.assertEqual(mapping["Deep Learning"], "01-Informatique/Deep-Learning")
+        self.assertEqual(mapping["deep learning"], "01-Informatique/Deep-Learning")
+        self.assertEqual(mapping["Astronomy"], "02-Sciences/Astronomy")
         self.assertIn("01-Informatique", tree)
-        self.assertNotIn("02-Informatique", tree)
-        self.assertNotIn("03-Informatique", tree)
+        self.assertIn("01-Informatique/Deep-Learning", tree)
+        self.assertIn("_A-TRIER", tree)
 
-    def test_distinct_sections_keep_their_numbers(self):
-        from agents.onboarding import taxonomy_llm
+    def test_all_clusters_covered(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(5)]
+        llm = self._llm([(f"t{i}", "Informatique") for i in range(5)])
+        _, mapping = t.propose_taxonomy(llm, clusters)
+        self.assertEqual(len(mapping), 5)
+        for i in range(5):
+            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+
+    def test_homonym_sections_consolidated_and_numbered(self):
+        from agents.onboarding import taxonomy_llm as t
         clusters = [
-            {"canonical": "a", "raw_members": ["A"], "count": 2},
+            {"canonical": "alpha", "raw_members": ["Alpha"], "count": 3},
+            {"canonical": "beta", "raw_members": ["Beta"], "count": 2},
+            {"canonical": "gamma", "raw_members": ["Gamma"], "count": 1},
+        ]
+        llm = self._llm([("alpha", "Informatique"), ("beta", "Informatique"), ("gamma", "Sciences")])
+        tree, mapping = t.propose_taxonomy(llm, clusters)
+        self.assertEqual(mapping["Alpha"], "01-Informatique/Alpha")
+        self.assertEqual(mapping["Beta"], "01-Informatique/Beta")
+        self.assertEqual(mapping["Gamma"], "02-Sciences/Gamma")
+        self.assertNotIn("02-Informatique", tree)
+
+    def test_max_depth_1_section_only(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "deep learning", "raw_members": ["DL"], "count": 1}]
+        llm = self._llm([("deep learning", "Informatique")])
+        tree, mapping = t.propose_taxonomy(llm, clusters, options={"max_depth": 1})
+        self.assertEqual(mapping["DL"], "01-Informatique")
+        self.assertNotIn("01-Informatique/Deep-Learning", tree)
+
+    def test_casing_upper_and_lower(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "machine learning", "raw_members": ["X"], "count": 1}]
+        _, m_up = t.propose_taxonomy(self._llm([("machine learning", "Informatique")]),
+                                     clusters, options={"folder_case": "upper", "word_separator": "-"})
+        self.assertEqual(m_up["X"], "01-INFORMATIQUE/MACHINE-LEARNING")
+        _, m_lo = t.propose_taxonomy(self._llm([("machine learning", "Informatique")]),
+                                     clusters, options={"folder_case": "lower", "word_separator": "_"})
+        self.assertEqual(m_lo["X"], "01-informatique/machine_learning")
+
+    def test_separator_none(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "deep learning", "raw_members": ["X"], "count": 1}]
+        _, m = t.propose_taxonomy(self._llm([("deep learning", "Informatique")]),
+                                  clusters, options={"word_separator": "none"})
+        self.assertEqual(m["X"], "01-Informatique/DeepLearning")
+
+    def test_title_preserves_acronyms(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "NLP", "raw_members": ["X"], "count": 1}]
+        _, m = t.propose_taxonomy(self._llm([("NLP", "Informatique")]), clusters)
+        self.assertEqual(m["X"], "01-Informatique/NLP")
+
+    def test_unnumbered_sections(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "astro", "raw_members": ["X"], "count": 1}]
+        _, m = t.propose_taxonomy(self._llm([("astro", "Sciences")]),
+                                  clusters, options={"numbered_sections": False})
+        self.assertEqual(m["X"], "Sciences/Astro")
+
+    def test_theme_equal_section_uses_general(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "informatique", "raw_members": ["X"], "count": 1}]
+        _, m = t.propose_taxonomy(self._llm([("informatique", "Informatique")]), clusters)
+        self.assertEqual(m["X"], "01-Informatique/Général")
+
+    def test_inbox_section_rejected(self):
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [
+            {"canonical": "a", "raw_members": ["A"], "count": 1},
             {"canonical": "b", "raw_members": ["B"], "count": 1},
         ]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="02-Informatique/IA", cluster_canonicals=["a"]),
-            taxonomy_llm._Section(folder="01-Sciences/Physique", cluster_canonicals=["b"]),
-        ])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        _, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters)
-        self.assertEqual(m["A"], "02-Informatique/IA")               # numéros LLM préservés
-        self.assertEqual(m["B"], "01-Sciences/Physique")
+        _, m = t.propose_taxonomy(self._llm([("a", "_INBOX"), ("b", "Sciences")]), clusters)
+        self.assertNotIn("A", m)
+        self.assertEqual(m["B"], "01-Sciences/B")
 
-    def test_options_casing_upper_and_lower(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="01-Machine Learning/Deep Learning",
-                                  cluster_canonicals=["x"])])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        _, m_up = taxonomy_llm.propose_taxonomy(fake_llm, clusters,
-            options={"folder_case": "upper", "word_separator": "-"})
-        self.assertEqual(m_up["X"], "01-MACHINE-LEARNING/DEEP-LEARNING")
-        _, m_lo = taxonomy_llm.propose_taxonomy(fake_llm, clusters,
-            options={"folder_case": "lower", "word_separator": "_"})
-        self.assertEqual(m_lo["X"], "01-machine_learning/deep_learning")
+    def test_empty_clusters(self):
+        from agents.onboarding import taxonomy_llm as t
+        tree, m = t.propose_taxonomy(mock.Mock(), [])
+        self.assertEqual(tree, ["_A-TRIER"])
+        self.assertEqual(m, {})
 
-    def test_options_separator_none_collapses_words(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="01-Deep Learning", cluster_canonicals=["x"])])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        _, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters,
-            options={"folder_case": "title", "word_separator": "none"})
-        self.assertEqual(m["X"], "01-DeepLearning")
-
-    def test_title_casing_preserves_acronyms(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 1}]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="02-Informatique/NLP", cluster_canonicals=["x"])])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        _, m = taxonomy_llm.propose_taxonomy(fake_llm, clusters)   # défaut title
-        self.assertEqual(m["X"], "02-Informatique/NLP")            # NLP non altéré
-
-    def test_options_max_depth_3_keeps_three_levels(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 3}]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="01-SCIENCES/Informatique/Reseaux",
-                                  cluster_canonicals=["x"])])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters, options={"max_depth": 3})
-        self.assertIn("01-SCIENCES/Informatique/Reseaux", tree)   # 3 niveaux conservés
-        self.assertIn("01-SCIENCES/Informatique", tree)           # parent implicite
-        self.assertEqual(mapping["X"], "01-SCIENCES/Informatique/Reseaux")
-
-    def test_options_default_depth_2_truncates(self):
-        from agents.onboarding import taxonomy_llm
-        clusters = [{"canonical": "x", "raw_members": ["X"], "count": 3}]
-        fake_out = taxonomy_llm._ProposedTaxonomy(sections=[
-            taxonomy_llm._Section(folder="01-SCIENCES/Informatique/Reseaux",
-                                  cluster_canonicals=["x"])])
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = fake_out
-        tree, mapping = taxonomy_llm.propose_taxonomy(fake_llm, clusters)   # défaut max_depth=2
-        self.assertIn("01-SCIENCES/Informatique", tree)
-        self.assertNotIn("01-SCIENCES/Informatique/Reseaux", tree)         # tronqué
-        self.assertEqual(mapping["X"], "01-SCIENCES/Informatique")
-
-    def test_build_system_reflects_options(self):
-        from agents.onboarding import taxonomy_llm
-        s = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
-            {"folder_case": "upper", "folder_language": "fr", "min_depth": 1,
-             "max_depth": 2, "granularity": "compact", "word_separator": "_"}))
-        self.assertIn("MAJUSCULES", s)
-        self.assertIn("FRANÇAIS", s.upper())
-        self.assertIn("PEU", s)                    # granularité compacte
-        self.assertIn("underscore", s.lower())     # séparateur _
-        self.assertIn("entre 1 et 2", s)           # fourchette de profondeur
-        s2 = taxonomy_llm._build_system(taxonomy_llm._normalize_options(
-            {"folder_case": "lower", "min_depth": 3, "max_depth": 3,
-             "granularity": "detailed", "numbered_sections": False}))
-        self.assertIn("minuscules", s2)
-        self.assertIn("EXACTEMENT 3", s2)          # min == max
-        self.assertIn("FINES", s2)
-        self.assertIn("pas de préfixe", s2.lower())
+    def test_llm_failure_fallback(self):
+        from agents.onboarding import taxonomy_llm as t
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = RuntimeError("403")
+        tree, m = t.propose_taxonomy(llm, [{"canonical": "x", "raw_members": ["X"], "count": 1}])
+        self.assertEqual(tree, ["_A-TRIER"])
+        self.assertEqual(m, {})
 
     def test_normalize_options_clamps_invalid(self):
         from agents.onboarding import taxonomy_llm
@@ -408,12 +342,20 @@ class TestProposeTaxonomy(unittest.TestCase):
             {"min_depth": 3, "max_depth": 2, "folder_case": "zz",
              "word_separator": "x", "folder_language": "zz", "granularity": "huge"})
         self.assertEqual(o["max_depth"], 2)
-        self.assertEqual(o["min_depth"], 2)            # min > max → ramené à max
+        self.assertEqual(o["min_depth"], 2)
         self.assertEqual(o["folder_case"], "title")
         self.assertEqual(o["word_separator"], "-")
         self.assertEqual(o["folder_language"], "auto")
         self.assertEqual(o["granularity"], "auto")
         self.assertTrue(o["numbered_sections"])
+
+    def test_assign_system_reflects_options(self):
+        from agents.onboarding import taxonomy_llm as t
+        s = t._assign_system(t._normalize_options(
+            {"folder_language": "fr", "granularity": "detailed"}), "Informatique, Sciences")
+        self.assertIn("FRANÇAIS", s.upper())
+        self.assertIn("FIN", s.upper())
+        self.assertIn("Informatique", s)
 
 
 class TestProposeCategories(unittest.TestCase):
@@ -485,11 +427,11 @@ class TestBuildProposal(unittest.TestCase):
                "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
 
         def fake_invoke(messages):
+            # le LLM assigne chaque cluster (extrait du payload) à un domaine
             import re as _re
-            canons = _re.findall(r"canonical='([^']*)'", messages[-1]["content"])
-            return taxonomy_llm._ProposedTaxonomy(sections=[
-                taxonomy_llm._Section(folder="02-INFORMATIQUE/Deep-Learning",
-                                      cluster_canonicals=canons)])
+            canons = _re.findall(r"^- (.+?) \(volume", messages[-1]["content"], _re.M)
+            return taxonomy_llm._Assignments(items=[
+                taxonomy_llm._Assign(canonical=c, section="Informatique") for c in canons])
 
         fake_llm = mock.Mock()
         fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke
@@ -498,22 +440,21 @@ class TestBuildProposal(unittest.TestCase):
                         side_effect=lambda path, **kw: vis), \
              mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
              mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
-                        return_value=[{"chemin": "02-INFORMATIQUE/Deep-Learning",
+                        return_value=[{"chemin": "01-Informatique/Deep-Learning",
                                        "groupe": "informatique", "priorite": 5,
                                        "mots_cles": ["neural"]}]):
             cov = proposition.build_proposal("perso", lambda d, t: seen.append((d, t)))
         # Vision a peuplé le cache
         cache = json.loads((self.prof / ".cache" / "vision_cache.json").read_text())
         self.assertEqual(len(cache), 1)
-        # les 3 YAMLs reflètent la proposition de bout en bout
+        # structure SECTION/Thème (profondeur 2) écrite dans tree.yaml
         tree = yaml.safe_load((self.prof / "tree.yaml").read_text())
-        self.assertIn("02-INFORMATIQUE/Deep-Learning", tree["folders"])
-        self.assertIn("02-INFORMATIQUE", tree["folders"])      # parent implicite
+        self.assertIn("01-Informatique", tree["folders"])      # section
+        self.assertTrue(any(f.startswith("01-Informatique/") for f in tree["folders"]))
         self.assertIn("_A-TRIER", tree["folders"])
         mapping = yaml.safe_load((self.prof / "theme_mapping.yaml").read_text())
-        self.assertEqual(mapping.get("Deep Learning"), "02-INFORMATIQUE/Deep-Learning")
-        cats = yaml.safe_load((self.prof / "categories.yaml").read_text())
-        self.assertIn("informatique", cats)
+        self.assertIn("Deep Learning", mapping)
+        self.assertTrue(mapping["Deep Learning"].startswith("01-Informatique/"))  # sous-dossier
         self.assertIn("coverage", cov)
         self.assertIn("stats", cov)
         self.assertTrue(seen)                                  # on_progress appelé
@@ -521,10 +462,8 @@ class TestBuildProposal(unittest.TestCase):
     def test_build_proposal_warns_on_total_vision_failure(self):
         # Vision échoue sur tous les fichiers → build_proposal renvoie un warning
         # explicite (au lieu d'une taxonomie vide présentée comme un succès).
-        from agents.onboarding import proposition, taxonomy_llm
-        fake_llm = mock.Mock()
-        fake_llm.with_structured_output.return_value.invoke.return_value = \
-            taxonomy_llm._ProposedTaxonomy(sections=[])
+        from agents.onboarding import proposition
+        fake_llm = mock.Mock()   # non appelé : 0 cluster après échec Vision total
         with mock.patch("agents.onboarding.proposition.analyze_cover",
                         side_effect=lambda p, **k: {"error": "api"}), \
              mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm):

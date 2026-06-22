@@ -1,9 +1,12 @@
-"""Proposition de hiérarchie depuis les clusters (1 appel LLM).
+"""Proposition de hiérarchie depuis les clusters de thèmes.
 
-Les SECTIONS viennent du contenu (clusters) ; la FORME suit des conventions —
-imposées par défaut mais **paramétrables** par l'utilisateur à l'onboarding :
-profondeur (min/max), numérotation des sections, casse des noms, séparateur des
-mots composés, langue, granularité. Pas de template figé : des conventions.
+Approche **par lots** (scalable) : le LLM assigne un DOMAINE (section de 1er
+niveau) à CHAQUE cluster, en traitant les clusters par paquets et en réutilisant
+les domaines déjà créés. La structure finale est `SECTION / Thème` (profondeur 2
+par construction → `min_depth=2` respecté), chaque thème devenant un sous-dossier.
+
+La FORME suit des conventions paramétrables (profondeur, numérotation, casse,
+séparateur, langue, granularité). Pas de template figé.
 """
 
 from __future__ import annotations
@@ -16,11 +19,13 @@ from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
 _RESIDUAL = "_A-TRIER"
+_CHUNK = 40          # nb de clusters par appel LLM (assignation de domaine)
+_GENERAL = {"fr": "Général", "en": "General", "auto": "Général"}
 
 # Options de taxonomie (défauts = conventions lisibles : Titre, tirets, ≤ 2 niv.).
 DEFAULT_OPTIONS: dict[str, Any] = {
-    "min_depth": 1,             # 1..3 (borne basse — best-effort via prompt)
-    "max_depth": 2,             # 1..3 (borne haute — appliquée par le sanitizer)
+    "min_depth": 1,             # 1..3 (borne basse)
+    "max_depth": 2,             # 1..3 (≥ 2 → structure SECTION/Thème)
     "numbered_sections": True,  # 01-Sciences vs Sciences
     "folder_case": "title",     # title | upper | lower
     "word_separator": "-",      # "-" | "_" | "none" (mots composés)
@@ -58,171 +63,136 @@ def _normalize_options(options: dict | None) -> dict[str, Any]:
     return o
 
 
-def _build_system(opts: dict[str, Any]) -> str:
-    """Construit le prompt système selon les options de forme."""
-    lo, hi = opts["min_depth"], opts["max_depth"]
-    depth_rule = (f"profondeur EXACTEMENT {hi} niveau{'x' if hi > 1 else ''}"
-                  if lo == hi else f"profondeur entre {lo} et {hi} niveaux")
-    num_rule = ("sections de 1er niveau préfixées d'un numéro à 2 chiffres (01-, 02-…)"
-                if opts["numbered_sections"] else "pas de préfixe numérique sur les sections")
-    case_rule = {
-        "upper": "noms de dossiers en MAJUSCULES",
-        "lower": "noms de dossiers en minuscules",
-        "title": "noms de dossiers en Casse Titre (1re lettre majuscule, acronymes préservés)",
-    }[opts["folder_case"]]
-    sep_rule = {
-        "-": "mots composés reliés par des tirets (ex. Deep-Learning)",
-        "_": "mots composés reliés par des underscores (ex. Deep_Learning)",
-        "none": "mots composés collés sans séparateur (ex. DeepLearning)",
-    }[opts["word_separator"]]
+def _assign_system(opts: dict[str, Any], existing: str) -> str:
+    """Prompt système pour l'assignation d'un domaine à un lot de thèmes."""
     lang = {
-        "fr": "Nomme les dossiers en FRANÇAIS.",
-        "en": "Name folders in ENGLISH.",
-        "auto": "Nomme les dossiers dans la langue dominante du corpus.",
+        "fr": "Donne les noms de domaines en FRANÇAIS.",
+        "en": "Give domain names in ENGLISH.",
+        "auto": "Donne les noms de domaines dans la langue dominante du corpus.",
     }[opts["folder_language"]]
     gran = {
-        "compact": "Préfère PEU de grandes sections (regroupe largement).",
-        "detailed": "Crée des sections plutôt FINES et spécialisées.",
+        "compact": "Regroupe LARGEMENT : peu de grands domaines génériques.",
+        "detailed": "Sois plus FIN : crée des domaines spécialisés quand c'est pertinent.",
         "auto": "",
     }[opts["granularity"]]
-    parts = [
-        "Tu proposes une arborescence de dossiers pour classer une bibliothèque, à "
-        "partir de clusters de thèmes observés (avec leur volume).",
-        f"RÈGLES DE FORME : {depth_rule} ; {num_rule} ; {case_rule} ; {sep_rule}.",
-        lang,
-    ]
-    if gran:
-        parts.append(gran)
-    parts.append(
-        "Les sections de 1er niveau ont des noms DISTINCTS : si plusieurs clusters "
-        "relèvent du même domaine, regroupe-les dans UNE section avec des sous-dossiers "
-        "(JAMAIS des sections homonymes numérotées différemment, ex. interdit : "
-        "01-Informatique ET 02-Informatique).")
-    parts.append(
-        "N'invente pas de thème — chaque section couvre un ou plusieurs clusters "
-        "fournis ; regroupe les petits clusters proches. Tu assignes chaque cluster "
-        "(par sa forme canonique) à EXACTEMENT un dossier feuille.")
-    return " ".join(parts)
+    return (
+        "Tu classes des thèmes de documents dans des DOMAINES (les sections de 1er "
+        "niveau d'une bibliothèque). Pour CHAQUE thème de la liste, indique le "
+        "domaine large auquel il appartient (recopie le thème dans `canonical`). "
+        f"RÉUTILISE en priorité un domaine déjà existant : {existing}. "
+        "Ne crée un nouveau domaine que si aucun existant ne convient. "
+        + lang + (" " + gran if gran else "")
+        + " Assigne TOUS les thèmes fournis — aucun ne doit rester sans domaine."
+    )
 
 
-class _Section(BaseModel):
-    folder: str = Field(description="Chemin du dossier feuille, ex '02-INFORMATIQUE/Deep-Learning'")
-    cluster_canonicals: list[str] = Field(description="Canoniques des clusters classés ici")
+class _Assign(BaseModel):
+    canonical: str = Field(description="forme canonique du thème, recopiée telle quelle")
+    section: str = Field(description="nom du domaine large (ex. Informatique, Mathématiques, Sciences)")
 
 
-class _ProposedTaxonomy(BaseModel):
-    sections: list[_Section]
+class _Assignments(BaseModel):
+    items: list[_Assign]
+
+
+def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> dict[str, str]:
+    """Assigne un domaine à chaque cluster, par lots. Retourne {canonical: domaine}."""
+    structured = llm.with_structured_output(_Assignments, method="function_calling")
+    assigned: dict[str, str] = {}
+    sections_seen: list[str] = []
+    for start in range(0, len(clusters), _CHUNK):
+        batch = clusters[start:start + _CHUNK]
+        by_canon = {c["canonical"]: c for c in batch}
+        existing = ", ".join(sections_seen[:60]) or "(aucun encore — crée les premiers)"
+        payload = "\n".join(f"- {c['canonical']} (volume {c['count']})" for c in batch)
+        try:
+            res = structured.invoke(
+                [{"role": "system", "content": _assign_system(opts, existing)},
+                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}])
+        except Exception as exc:  # noqa: BLE001 — frontière LLM
+            log.warning("assign_sections: lot %d échoué: %s", start // _CHUNK, exc)
+            continue
+        for a in res.items:
+            sec = (a.section or "").strip()
+            if not sec or a.canonical not in by_canon:
+                continue
+            assigned[a.canonical] = sec
+            if sec not in sections_seen:
+                sections_seen.append(sec)
+    return assigned
+
+
+def _fmt(name: str, case: str, sep: str) -> str:
+    """Formate un nom de dossier (casse + séparateur, sans préfixe numérique).
+
+    Découpe en mots, retire les caractères non FS-safe, applique la casse (`title`
+    préserve les acronymes), rejoint avec le séparateur. "" si rien d'exploitable.
+    """
+    rest = (name or "").strip()
+    m = re.match(r"^\d{1,3}[\s\-_]+(.+)$", rest)   # retire un préfixe numérique éventuel
+    if m:
+        rest = m.group(1)
+    clean: list[str] = []
+    for w in re.split(r"[\s_\-]+", rest):
+        w = re.sub(r"[^A-Za-zÀ-ÿ0-9.&()]", "", w)
+        if not w:
+            continue
+        if case == "upper":
+            w = w.upper()
+        elif case == "lower":
+            w = w.lower()
+        elif w.islower():        # title — n'altère que les mots tout-minuscule
+            w = w[:1].upper() + w[1:]
+        clean.append(w)
+    if not clean:
+        return ""
+    return ("" if sep == "none" else sep).join(clean)
 
 
 def propose_taxonomy(llm: Any, clusters: list[dict],
                      options: dict | None = None) -> tuple[list[str], dict[str, str]]:
     """Retourne (tree_folders, theme_mapping). theme_mapping = {raw_theme: folder}.
 
-    `options` : forme de la taxonomie (cf. DEFAULT_OPTIONS). Robuste : un cluster
-    assigné à un canonical inconnu est ignoré ; _A-TRIER toujours présent.
+    Structure `SECTION/Thème` : le LLM assigne un domaine à chaque cluster (par
+    lots → couverture complète), le thème devient le sous-dossier (profondeur 2
+    si `max_depth ≥ 2`). Sections numérotées de façon déterministe (homonymes
+    consolidés). `_A-TRIER` toujours présent ; fallback si le LLM échoue partout.
     """
     opts = _normalize_options(options)
-    by_canon = {c["canonical"]: c for c in clusters}
-    if len(clusters) > 200:
-        log.info("propose_taxonomy: %d clusters → tronqué à 200 ; les thèmes "
-                 "au-delà retomberont dans %s", len(clusters), _RESIDUAL)
-    payload = "\n".join(
-        f"- canonical={c['canonical']!r} volume={c['count']} variantes={c['raw_members'][:4]}"
-        for c in clusters[:200]
-    )
-    # method="function_calling" : compatible avec tout modèle tool-capable, alors
-    # que le json-mode par défaut casse sur la famille GLM (20024 "Json mode is
-    # not supported"). Cohérent avec lib/theme_judge + theme_canonicalizer.
-    structured = llm.with_structured_output(_ProposedTaxonomy, method="function_calling")
-    try:
-        result = structured.invoke(
-            [{"role": "system", "content": _build_system(opts)},
-             {"role": "user", "content": f"Clusters observés :\n{payload}"}])
-    except Exception as exc:  # noqa: BLE001 — frontière LLM
-        log.warning("propose_taxonomy LLM failed: %s — fallback _A-TRIER seul", exc)
+    if not clusters:
+        return [_RESIDUAL], {}
+    assigned = _assign_sections(llm, clusters, opts)
+    if not assigned:
+        log.warning("propose_taxonomy: aucune assignation LLM — fallback _A-TRIER seul")
         return [_RESIDUAL], {}
 
     folders: set[str] = {_RESIDUAL}
     mapping: dict[str, str] = {}
-    section_canon: dict[str, str] = {}   # nom de section (sans n°, MAJ) → segment canonique
-    for sec in result.sections:
-        folder = _sanitize_folder(sec.folder, opts)
-        if not folder:
-            log.warning("propose_taxonomy: section ignorée (dossier invalide %r)", sec.folder)
-            continue
-        parts = folder.split("/")
-        # Consolide les sections HOMONYMES (ex. 01-/02-/03-INFORMATIQUE → 01-…) :
-        # plusieurs clusters d'un même domaine doivent partager UNE section avec
-        # des sous-dossiers, pas plusieurs sections homonymes numérotées différemment.
+    section_num: dict[str, str] = {}   # nom de section (MAJ) → numéro "NN"
+    case, sep = opts["folder_case"], opts["word_separator"]
+    for c in clusters:
+        sec_raw = assigned.get(c["canonical"])
+        if not sec_raw:
+            continue                                   # non assigné → reste orphelin
+        sec_fmt = _fmt(sec_raw, case, sep)
+        if not sec_fmt or sec_fmt.upper() in ("INBOX", "_INBOX"):
+            continue   # nom de section réservé → on saute (le thème reste orphelin)
         if opts["numbered_sections"]:
-            base = _strip_num_prefix(parts[0]).upper()
-            parts[0] = section_canon.setdefault(base, parts[0])
-            folder = "/".join(parts)
+            key = sec_fmt.upper()
+            if key not in section_num:
+                section_num[key] = f"{len(section_num) + 1:02d}"
+            section_seg = f"{section_num[key]}-{sec_fmt}"
+        else:
+            section_seg = sec_fmt
+        parts = [section_seg]
+        if opts["max_depth"] >= 2:                     # SECTION/Thème (profondeur 2)
+            sub = _fmt(c["canonical"], case, sep)
+            if not sub or sub.upper() == sec_fmt.upper() or sub.upper() in ("INBOX", "_INBOX"):
+                sub = _fmt(_GENERAL[opts["folder_language"]], case, sep)
+            parts.append(sub)
+        folder = "/".join(parts)
         for i in range(1, len(parts) + 1):
             folders.add("/".join(parts[:i]))
-        for canon in sec.cluster_canonicals:
-            c = by_canon.get(canon)
-            if not c:
-                continue  # canonical halluciné → ignoré
-            for raw in c["raw_members"]:
-                mapping[raw] = folder
+        for raw in c["raw_members"]:
+            mapping[raw] = folder
     return sorted(folders), mapping
-
-
-def _strip_num_prefix(seg: str) -> str:
-    """Retire un préfixe numérique de section formaté ('01-Foo' → 'Foo')."""
-    m = re.match(r"^\d{1,3}-(.+)$", seg)
-    return m.group(1) if m else seg
-
-
-def _format_segment(seg: str, case: str, sep: str, is_section: bool, numbered: bool) -> str:
-    """Applique casse + séparateur à un segment de dossier.
-
-    Préserve/normalise un préfixe numérique de section (`01-`) ; découpe le reste
-    en mots (espaces/-/_), applique la casse (`title` préserve les acronymes en
-    ne touchant que les mots tout-minuscule), puis rejoint avec le séparateur.
-    """
-    rest = seg.strip()
-    prefix = ""
-    m = re.match(r"^(\d{1,3})[\s\-_]+(.+)$", rest)
-    if m:
-        rest = m.group(2)
-        if is_section and numbered:
-            prefix = m.group(1).zfill(2) + "-"
-    words = [w for w in re.split(r"[\s\-_]+", rest) if w]
-    if case == "upper":
-        words = [w.upper() for w in words]
-    elif case == "lower":
-        words = [w.lower() for w in words]
-    else:  # title — n'altère que les mots tout-minuscule (acronymes NLP/IA-ML préservés)
-        words = [(w[:1].upper() + w[1:]) if w.islower() else w for w in words]
-    joined = ("" if sep == "none" else sep).join(words)
-    return prefix + joined
-
-
-def _sanitize_folder(path: str, opts: dict[str, Any]) -> str:
-    """Nettoie + normalise un chemin de dossier proposé selon `opts`.
-
-    - segments FS-safe (regex), profondeur ≤ `max_depth`, rejet traversal /
-      segment caché / nom réservé `_INBOX` ;
-    - casse + séparateur appliqués par `_format_segment`.
-    Retourne "" si invalide (le cluster concerné retombe alors dans _A-TRIER).
-    """
-    segs = [s.strip() for s in (path or "").strip().strip("/").split("/") if s.strip()]
-    segs = segs[:opts["max_depth"]]
-    if not segs:
-        return ""
-    out = []
-    for i, s in enumerate(segs):
-        if s in (".", "..") or s.startswith("."):
-            return ""
-        if s.upper() == "_INBOX":
-            return ""
-        if not re.match(r"^[A-Za-zÀ-ÿ0-9 _.\-&()]+$", s):
-            return ""
-        formatted = _format_segment(s, opts["folder_case"], opts["word_separator"],
-                                    i == 0, opts["numbered_sections"])
-        if not formatted:
-            return ""
-        out.append(formatted)
-    return "/".join(out)
