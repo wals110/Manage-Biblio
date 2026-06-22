@@ -223,11 +223,12 @@ class TestClusterCorpus(unittest.TestCase):
 
 
 class TestProposeTaxonomy(unittest.TestCase):
-    def _llm(self, pairs):
+    def _llm(self, clusters, sec_map):
         from agents.onboarding import taxonomy_llm as t
-        out = t._Assignments(items=[t._Assign(canonical=c, section=s) for c, s in pairs])
+        items = [t._Assign(index=i + 1, section=sec_map[c["canonical"]])
+                 for i, c in enumerate(clusters) if c["canonical"] in sec_map]
         llm = mock.Mock()
-        llm.with_structured_output.return_value.invoke.return_value = out
+        llm.with_structured_output.return_value.invoke.return_value = t._Assignments(items=items)
         return llm
 
     def test_section_slash_theme_depth2(self):
@@ -236,7 +237,7 @@ class TestProposeTaxonomy(unittest.TestCase):
             {"canonical": "deep learning", "raw_members": ["Deep Learning", "deep learning"], "count": 40},
             {"canonical": "astronomy", "raw_members": ["Astronomy"], "count": 12},
         ]
-        llm = self._llm([("deep learning", "Informatique"), ("astronomy", "Sciences")])
+        llm = self._llm(clusters, {"deep learning": "Informatique", "astronomy": "Sciences"})
         tree, mapping = t.propose_taxonomy(llm, clusters, options={"min_depth": 2, "max_depth": 3})
         self.assertEqual(mapping["Deep Learning"], "01-Informatique/Deep-Learning")
         self.assertEqual(mapping["deep learning"], "01-Informatique/Deep-Learning")
@@ -248,11 +249,21 @@ class TestProposeTaxonomy(unittest.TestCase):
     def test_all_clusters_covered(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(5)]
-        llm = self._llm([(f"t{i}", "Informatique") for i in range(5)])
+        llm = self._llm(clusters, {f"t{i}": "Informatique" for i in range(5)})
         _, mapping = t.propose_taxonomy(llm, clusters)
         self.assertEqual(len(mapping), 5)
         for i in range(5):
             self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+
+    def test_index_matching_robust_to_reformulated_section(self):
+        # le LLM peut reformuler le nom de domaine ; le matching par index tient
+        from agents.onboarding import taxonomy_llm as t
+        clusters = [{"canonical": "deep learning", "raw_members": ["X"], "count": 1}]
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.return_value = \
+            t._Assignments(items=[t._Assign(index=1, section="Informatique")])
+        _, m = t.propose_taxonomy(llm, clusters)
+        self.assertEqual(m["X"], "01-Informatique/Deep-Learning")
 
     def test_homonym_sections_consolidated_and_numbered(self):
         from agents.onboarding import taxonomy_llm as t
@@ -261,7 +272,7 @@ class TestProposeTaxonomy(unittest.TestCase):
             {"canonical": "beta", "raw_members": ["Beta"], "count": 2},
             {"canonical": "gamma", "raw_members": ["Gamma"], "count": 1},
         ]
-        llm = self._llm([("alpha", "Informatique"), ("beta", "Informatique"), ("gamma", "Sciences")])
+        llm = self._llm(clusters, {"alpha": "Informatique", "beta": "Informatique", "gamma": "Sciences"})
         tree, mapping = t.propose_taxonomy(llm, clusters)
         self.assertEqual(mapping["Alpha"], "01-Informatique/Alpha")
         self.assertEqual(mapping["Beta"], "01-Informatique/Beta")
@@ -271,7 +282,7 @@ class TestProposeTaxonomy(unittest.TestCase):
     def test_max_depth_1_section_only(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": "deep learning", "raw_members": ["DL"], "count": 1}]
-        llm = self._llm([("deep learning", "Informatique")])
+        llm = self._llm(clusters, {"deep learning": "Informatique"})
         tree, mapping = t.propose_taxonomy(llm, clusters, options={"max_depth": 1})
         self.assertEqual(mapping["DL"], "01-Informatique")
         self.assertNotIn("01-Informatique/Deep-Learning", tree)
@@ -279,37 +290,37 @@ class TestProposeTaxonomy(unittest.TestCase):
     def test_casing_upper_and_lower(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": "machine learning", "raw_members": ["X"], "count": 1}]
-        _, m_up = t.propose_taxonomy(self._llm([("machine learning", "Informatique")]),
+        _, m_up = t.propose_taxonomy(self._llm(clusters, {"machine learning": "Informatique"}),
                                      clusters, options={"folder_case": "upper", "word_separator": "-"})
         self.assertEqual(m_up["X"], "01-INFORMATIQUE/MACHINE-LEARNING")
-        _, m_lo = t.propose_taxonomy(self._llm([("machine learning", "Informatique")]),
+        _, m_lo = t.propose_taxonomy(self._llm(clusters, {"machine learning": "Informatique"}),
                                      clusters, options={"folder_case": "lower", "word_separator": "_"})
         self.assertEqual(m_lo["X"], "01-informatique/machine_learning")
 
     def test_separator_none(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": "deep learning", "raw_members": ["X"], "count": 1}]
-        _, m = t.propose_taxonomy(self._llm([("deep learning", "Informatique")]),
+        _, m = t.propose_taxonomy(self._llm(clusters, {"deep learning": "Informatique"}),
                                   clusters, options={"word_separator": "none"})
         self.assertEqual(m["X"], "01-Informatique/DeepLearning")
 
     def test_title_preserves_acronyms(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": "NLP", "raw_members": ["X"], "count": 1}]
-        _, m = t.propose_taxonomy(self._llm([("NLP", "Informatique")]), clusters)
+        _, m = t.propose_taxonomy(self._llm(clusters, {"NLP": "Informatique"}), clusters)
         self.assertEqual(m["X"], "01-Informatique/NLP")
 
     def test_unnumbered_sections(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": "astro", "raw_members": ["X"], "count": 1}]
-        _, m = t.propose_taxonomy(self._llm([("astro", "Sciences")]),
+        _, m = t.propose_taxonomy(self._llm(clusters, {"astro": "Sciences"}),
                                   clusters, options={"numbered_sections": False})
         self.assertEqual(m["X"], "Sciences/Astro")
 
     def test_theme_equal_section_uses_general(self):
         from agents.onboarding import taxonomy_llm as t
         clusters = [{"canonical": "informatique", "raw_members": ["X"], "count": 1}]
-        _, m = t.propose_taxonomy(self._llm([("informatique", "Informatique")]), clusters)
+        _, m = t.propose_taxonomy(self._llm(clusters, {"informatique": "Informatique"}), clusters)
         self.assertEqual(m["X"], "01-Informatique/Général")
 
     def test_inbox_section_rejected(self):
@@ -318,7 +329,7 @@ class TestProposeTaxonomy(unittest.TestCase):
             {"canonical": "a", "raw_members": ["A"], "count": 1},
             {"canonical": "b", "raw_members": ["B"], "count": 1},
         ]
-        _, m = t.propose_taxonomy(self._llm([("a", "_INBOX"), ("b", "Sciences")]), clusters)
+        _, m = t.propose_taxonomy(self._llm(clusters, {"a": "_INBOX", "b": "Sciences"}), clusters)
         self.assertNotIn("A", m)
         self.assertEqual(m["B"], "01-Sciences/B")
 
@@ -427,11 +438,11 @@ class TestBuildProposal(unittest.TestCase):
                "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
 
         def fake_invoke(messages):
-            # le LLM assigne chaque cluster (extrait du payload) à un domaine
+            # le LLM assigne chaque thème (par son numéro) à un domaine
             import re as _re
-            canons = _re.findall(r"^- (.+?) \(volume", messages[-1]["content"], _re.M)
+            idxs = _re.findall(r"^(\d+)\. ", messages[-1]["content"], _re.M)
             return taxonomy_llm._Assignments(items=[
-                taxonomy_llm._Assign(canonical=c, section="Informatique") for c in canons])
+                taxonomy_llm._Assign(index=int(n), section="Informatique") for n in idxs])
 
         fake_llm = mock.Mock()
         fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke

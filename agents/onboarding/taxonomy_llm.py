@@ -77,17 +77,17 @@ def _assign_system(opts: dict[str, Any], existing: str) -> str:
     }[opts["granularity"]]
     return (
         "Tu classes des thèmes de documents dans des DOMAINES (les sections de 1er "
-        "niveau d'une bibliothèque). Pour CHAQUE thème de la liste, indique le "
-        "domaine large auquel il appartient (recopie le thème dans `canonical`). "
+        "niveau d'une bibliothèque). Chaque thème porte un NUMÉRO. Pour CHAQUE thème, "
+        "renvoie son NUMÉRO (`index`) et le domaine large auquel il appartient. "
         f"RÉUTILISE en priorité un domaine déjà existant : {existing}. "
         "Ne crée un nouveau domaine que si aucun existant ne convient. "
         + lang + (" " + gran if gran else "")
-        + " Assigne TOUS les thèmes fournis — aucun ne doit rester sans domaine."
+        + " Assigne TOUS les thèmes — une réponse par numéro, du premier au dernier."
     )
 
 
 class _Assign(BaseModel):
-    canonical: str = Field(description="forme canonique du thème, recopiée telle quelle")
+    index: int = Field(description="numéro du thème dans la liste (1, 2, 3, …)")
     section: str = Field(description="nom du domaine large (ex. Informatique, Mathématiques, Sciences)")
 
 
@@ -96,15 +96,19 @@ class _Assignments(BaseModel):
 
 
 def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> dict[str, str]:
-    """Assigne un domaine à chaque cluster, par lots. Retourne {canonical: domaine}."""
+    """Assigne un domaine à chaque cluster, par lots. Retourne {canonical: domaine}.
+
+    Matching par NUMÉRO (pas par texte) : le LLM reformule souvent la forme
+    canonique (casse/traduction) → un match exact en perdrait la plupart.
+    """
     structured = llm.with_structured_output(_Assignments, method="function_calling")
     assigned: dict[str, str] = {}
     sections_seen: list[str] = []
     for start in range(0, len(clusters), _CHUNK):
         batch = clusters[start:start + _CHUNK]
-        by_canon = {c["canonical"]: c for c in batch}
         existing = ", ".join(sections_seen[:60]) or "(aucun encore — crée les premiers)"
-        payload = "\n".join(f"- {c['canonical']} (volume {c['count']})" for c in batch)
+        payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
+                            for i, c in enumerate(batch))
         try:
             res = structured.invoke(
                 [{"role": "system", "content": _assign_system(opts, existing)},
@@ -113,10 +117,13 @@ def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> di
             log.warning("assign_sections: lot %d échoué: %s", start // _CHUNK, exc)
             continue
         for a in res.items:
-            sec = (a.section or "").strip()
-            if not sec or a.canonical not in by_canon:
+            idx = a.index - 1
+            if not (0 <= idx < len(batch)):
                 continue
-            assigned[a.canonical] = sec
+            sec = (a.section or "").strip()
+            if not sec:
+                continue
+            assigned[batch[idx]["canonical"]] = sec
             if sec not in sections_seen:
                 sections_seen.append(sec)
     return assigned
