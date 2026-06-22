@@ -108,7 +108,7 @@ class TestRenameApply(unittest.TestCase):
 
         def fake_undo(profile, batch_id):
             captured["batch_id"] = batch_id
-            return {"n_undone": 2, "n_failed": 0}
+            return {"n_undone": 2, "n_errors": 0}
 
         with mock.patch("dashboard.rename.undo_batch_for_profile", side_effect=fake_undo):
             self.ra.start_undo("perso")
@@ -158,7 +158,7 @@ class TestRenameApplyEndpoints(unittest.TestCase):
         self.assertEqual(st["progress"]["status"], "done")
 
         with mock.patch("dashboard.rename.undo_batch_for_profile",
-                        return_value={"n_undone": 1, "n_failed": 0}):
+                        return_value={"n_undone": 1, "n_errors": 0}):
             u = self.client.post("/api/rename/apply/undo", json={"profile": "perso"})
         self.assertEqual(u.status_code, 200)
         self.assertFalse(self.ra.read_state("perso")["executed"])

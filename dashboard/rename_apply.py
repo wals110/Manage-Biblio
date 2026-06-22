@@ -204,8 +204,8 @@ def _run_undo(profile: str) -> dict[str, Any]:
                     "n_failed": 0, "error": None})
     result = rename_mod.undo_batch_for_profile(profile, batch_id)
     write_state(profile, {"executed": False, "rolled_back": True})
-    n_undone = result.get("n_undone", result.get("undone", 0))
-    n_failed = result.get("n_failed", len(result.get("errors", [])))
+    n_undone = result.get("n_undone", 0)
+    n_failed = result.get("n_errors", 0)
     _write_progress(profile, {"op": "undo", "status": "done",
                     "n_done": n_undone, "n_total": n_undone + n_failed,
                     "n_failed": n_failed, "error": None})
