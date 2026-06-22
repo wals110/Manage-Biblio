@@ -123,5 +123,54 @@ class TestRenameApply(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 409)
 
 
+class TestRenameApplyEndpoints(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-rnae-")
+        self.root = Path(self.tmp)
+        mock.patch("dashboard.data.get_project_root", return_value=self.root).start()
+        import dashboard.rename_apply as ra
+        self.ra = ra
+        mock.patch.object(ra, "_spawn", lambda fn, args, name: fn(*args)).start()
+        from fastapi.testclient import TestClient
+
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        mock.patch.stopall()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_preview_then_execute_then_undo_flow(self):
+        cands = [{"rel_path": "a.pdf", "current_name": "a.pdf",
+                  "suggested_name": "Algo.pdf", "category": "placeholder"}]
+        with mock.patch("dashboard.rename.rename_audit", return_value=_audit(cands)):
+            r = self.client.post("/api/rename/apply/preview", json={"profile": "perso"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["n_planned"], 1)
+
+        with mock.patch("dashboard.rename.commit_rename_bulk",
+                        return_value={"ok": True, "batch_id": "B1", "n_total": 1,
+                                      "n_renamed": 1, "n_errors": 0, "successes": [], "errors": []}):
+            e = self.client.post("/api/rename/apply/execute", json={"profile": "perso"})
+        self.assertEqual(e.status_code, 200)
+        st = self.client.get("/api/rename/apply/status", params={"profile": "perso"}).json()
+        self.assertTrue(st["state"]["executed"])
+        self.assertEqual(st["progress"]["status"], "done")
+
+        with mock.patch("dashboard.rename.undo_batch_for_profile",
+                        return_value={"n_undone": 1, "n_failed": 0}):
+            u = self.client.post("/api/rename/apply/undo", json={"profile": "perso"})
+        self.assertEqual(u.status_code, 200)
+        self.assertFalse(self.ra.read_state("perso")["executed"])
+
+    def test_execute_without_preview_409(self):
+        r = self.client.post("/api/rename/apply/execute", json={"profile": "perso"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_missing_profile_400(self):
+        r = self.client.post("/api/rename/apply/preview", json={})
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

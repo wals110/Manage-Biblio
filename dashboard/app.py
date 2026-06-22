@@ -1882,6 +1882,60 @@ async def rename_override_api(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
 
 
+# ── Apply global du rename (renommer toute la bibliothèque) ──
+@app.get("/api/rename/apply/status")
+async def rename_apply_status_api(profile: str):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    return JSONResponse(rename_apply.get_status(profile))
+
+
+@app.post("/api/rename/apply/preview")
+async def rename_apply_preview_api(request: Request):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(rename_apply.build_preview(profile))
+    except rename_apply.RenameApplyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/apply/execute")
+async def rename_apply_execute_api(request: Request):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(rename_apply.start_execute(profile))
+    except rename_apply.RenameApplyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/apply/undo")
+async def rename_apply_undo_api(request: Request):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(rename_apply.start_undo(profile))
+    except rename_apply.RenameApplyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,
