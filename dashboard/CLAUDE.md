@@ -59,6 +59,24 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - Fencing : `categories.py` vérifie désormais `.cache/taxonomy.lock` (423 pendant
   un apply).
 
+### Apply global du RENAME (renommer toute la bibliothèque)
+
+- **`rename_apply.py`** — symétrique de `reclassify_apply` mais pour les **noms**
+  de fichiers (le basename, pas le dossier) : preview (audit complet → fige la
+  liste des renommages **placeholder + divergents**, hors casse-seule et hors
+  « marqués OK », dans `projection.csv`) → execute (rejoue via
+  `rename.commit_rename_bulk` = UN batch journalisé, collisions/manquants
+  skippés et rapportés) → undo (`rename.undo_batch_for_profile`). État par profil
+  `.cache/rename/apply/{state,status,projection.csv}`. Job en thread daemon +
+  polling `status.json`.
+- Routes : `GET /api/rename/apply/status`, `POST /api/rename/apply/{preview,execute,undo}`.
+- UI : bouton **🚀 Tout renommer** (toolbar sub-tab Rename) → confirm avec
+  compteurs → application → toast → propose d'annuler le lot.
+- ⚠ Asymétrie connue **classification vs rename** : ce sont deux moteurs distincts
+  (`apply_engine`/`move_journal` déplacent ; `renamer`/`rename_journal` renomment).
+  L'onboarding ne renomme PAS — pour appliquer les titres détectés par la Vision,
+  passer par ce « Tout renommer » (ou `./klodo.sh rename --execute`).
+
 ### Agent Onboarding (bootstrap d'un profil depuis un répertoire brut)
 
 - **`agents/onboarding/`** (pipeline, PAS un agent ReAct/LangGraph) :
@@ -217,4 +235,5 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
 - **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
 - **16 tests** dans [../tests/auto/test_reclassify_apply.py](../tests/auto/test_reclassify_apply.py) (preview, execute, undo, pending, status, hash config, fencing 423)
+- **9 tests** dans [../tests/auto/test_rename_apply.py](../tests/auto/test_rename_apply.py) (apply global rename : preview périmètre placeholder+divergent, execute rejoue la projection figée, undo, 409 sans preview, endpoints)
 - **38 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile + modèle Vision actif, scan/estimate, run_vision reprenable + no-cache des erreurs, cluster_corpus, propose_taxonomy + options de forme, propose_categories, write_proposal + dry-run, warnings Vision/proposition, onboarding_options bout-en-bout, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)
