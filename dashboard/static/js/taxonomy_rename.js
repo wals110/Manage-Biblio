@@ -213,6 +213,89 @@
     return body;
   }
 
+  // ── Apply global du rename (renommer toute la bibliothèque) ──
+  async function _applyPost(path) {
+    const r = await fetch('/api/rename/apply/' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: state.profile }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { /* ignore */ }
+    if (!r.ok) {
+      const err = new Error((body && body.error) || `HTTP ${r.status}`);
+      err.status = r.status;
+      throw err;
+    }
+    return body;
+  }
+
+  async function _applyPoll() {
+    // Attend la fin du job background (status done|error), 1.5s.
+    for (;;) {
+      const r = await fetch('/api/rename/apply/status?profile='
+        + encodeURIComponent(state.profile));
+      const d = await r.json();
+      const p = d.progress;
+      if (p && (p.status === 'done' || p.status === 'error')) return p;
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+  }
+
+  async function applyAllRenames() {
+    const prev = await withBusy('Analyse de la bibliothèque…',
+      () => _applyPost('preview'));
+    if (!prev) return;
+    if (!prev.n_planned) {
+      showToast('Aucun renommage à appliquer (placeholder + divergents).', 'ok');
+      return;
+    }
+    const ok = await showConfirm({
+      title: 'Renommer toute la bibliothèque',
+      body: `${prev.n_planned} fichier(s) seront renommés `
+        + `(${prev.n_placeholder} générique(s) + ${prev.n_divergent} divergent(s)). `
+        + `Les diffs de casse seule et les fichiers « OK » sont exclus. Annulable ensuite.`,
+      confirmLabel: 'Appliquer', cancelLabel: 'Annuler', variant: 'danger',
+    });
+    if (!ok) return;
+
+    const done = await withBusy('Renommage en cours…', async () => {
+      await _applyPost('execute');
+      return _applyPoll();
+    });
+    if (!done) return;
+    if (done.status === 'error') {
+      showToast('Échec : ' + (done.error || 'erreur'), 'error');
+      return;
+    }
+    showToast(`✓ ${done.n_done} renommé(s)`
+      + (done.n_failed ? ` · ${done.n_failed} erreur(s)` : ''),
+      done.n_failed ? 'error' : 'ok');
+    state.data = await fetchAudit(true);   // rafraîchit la liste avec les nouveaux noms
+    renderAll();
+
+    if (done.n_done > 0) {
+      const undo = await showConfirm({
+        title: 'Renommage appliqué',
+        body: `${done.n_done} fichier(s) renommé(s). Tu peux annuler tout le lot.`,
+        confirmLabel: 'Annuler le lot', cancelLabel: 'Garder', variant: 'danger',
+      });
+      if (undo) {
+        const u = await withBusy('Annulation…', async () => {
+          await _applyPost('undo');
+          return _applyPoll();
+        });
+        if (u && u.status !== 'error') {
+          showToast(`↩ ${u.n_done} renommage(s) annulé(s)`, 'ok');
+          state.data = await fetchAudit(true);
+          renderAll();
+        } else if (u) {
+          showToast('Échec de l\'annulation : ' + (u.error || ''), 'error');
+        }
+      }
+    }
+  }
+
   // Reuses the shared modal HTML (#tax-confirm-modal) declared in
   // taxonomy.html — same pattern as taxonomy_categories.js. We can't
   // share the JS helper because each sub-tab module lives in its own
@@ -1663,6 +1746,10 @@
     const rescanBtn = $('#tax-rename-rescan-btn');
     if (rescanBtn) {
       rescanBtn.addEventListener('click', () => manualRescan());
+    }
+    const applyAllBtn = $('#tax-rename-applyall-btn');
+    if (applyAllBtn) {
+      applyAllBtn.addEventListener('click', () => applyAllRenames());
     }
     // Passively refresh the "il y a Xmin" label so it stays sensible
     // when the user keeps the tab open without interacting. Cheap:
