@@ -242,8 +242,37 @@
     }
   }
 
+  // Overlay « busy » SANS le timeout de sécurité 30s de withBusy : un rename
+  // global sur 18k fichiers dépasse 30s et la progression est suivie côté
+  // serveur (status.json) — pas besoin du garde-fou « action trop longue ».
+  function _setApplyBusy(on, label) {
+    const overlay = $('#tax-busy');
+    const lbl = $('#tax-busy-label');
+    if (!overlay) return;
+    if (on) {
+      if (lbl && label) lbl.textContent = label;
+      overlay.classList.add('is-active');
+      overlay.setAttribute('aria-hidden', 'false');
+    } else {
+      overlay.classList.remove('is-active');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function _applyPhase(label, runFn) {
+    _setApplyBusy(true, label);
+    try {
+      return await runFn();
+    } catch (e) {
+      showToast('Erreur : ' + (e.message || e), 'error');
+      return null;
+    } finally {
+      _setApplyBusy(false);
+    }
+  }
+
   async function applyAllRenames() {
-    const prev = await withBusy('Analyse de la bibliothèque…',
+    const prev = await _applyPhase('Analyse de la bibliothèque…',
       () => _applyPost('preview'));
     if (!prev) return;
     if (!prev.n_planned) {
@@ -259,7 +288,7 @@
     });
     if (!ok) return;
 
-    const done = await withBusy('Renommage en cours…', async () => {
+    const done = await _applyPhase('Renommage en cours…', async () => {
       await _applyPost('execute');
       return _applyPoll();
     });
@@ -281,7 +310,7 @@
         confirmLabel: 'Annuler le lot', cancelLabel: 'Garder', variant: 'danger',
       });
       if (undo) {
-        const u = await withBusy('Annulation…', async () => {
+        const u = await _applyPhase('Annulation…', async () => {
           await _applyPost('undo');
           return _applyPoll();
         });

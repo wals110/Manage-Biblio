@@ -101,6 +101,31 @@ class TestRenameApply(unittest.TestCase):
             self.ra.start_execute("perso")
         self.assertEqual(ctx.exception.status, 409)
 
+    def test_execute_empty_projection_does_not_call_bulk(self):
+        cands = [{"rel_path": "c.pdf", "current_name": "c.pdf",
+                  "suggested_name": "C.pdf", "category": "minor_case"}]
+        with mock.patch("dashboard.rename.rename_audit", return_value=_audit(cands)):
+            self.ra.build_preview("perso")        # 0 dans le périmètre
+        with mock.patch("dashboard.rename.commit_rename_bulk") as bulk:
+            self.ra.start_execute("perso")
+            bulk.assert_not_called()              # pas d'appel sur projection vide
+        st = self.ra.read_state("perso")
+        self.assertTrue(st["executed"])
+        self.assertEqual(st["n_renamed"], 0)
+        self.assertEqual(self.ra.get_status("perso")["progress"]["status"], "done")
+
+    def test_execute_writes_error_status_on_failure(self):
+        cands = [{"rel_path": "a.pdf", "current_name": "a.pdf",
+                  "suggested_name": "Algo.pdf", "category": "placeholder"}]
+        with mock.patch("dashboard.rename.rename_audit", return_value=_audit(cands)):
+            self.ra.build_preview("perso")
+        with mock.patch("dashboard.rename.commit_rename_bulk",
+                        side_effect=RuntimeError("boom")):
+            self.ra.start_execute("perso")
+        prog = self.ra.get_status("perso")["progress"]
+        self.assertEqual(prog["status"], "error")
+        self.assertIn("boom", prog["error"])
+
     # ── undo ─────────────────────────────────────────────────────────────
     def test_undo_calls_undo_batch_and_resets_state(self):
         self.ra.write_state("perso", {"executed": True, "batch_id": "B1", "n_renamed": 2})
