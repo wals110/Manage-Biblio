@@ -80,8 +80,9 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 ### Agent Onboarding (bootstrap d'un profil depuis un répertoire brut)
 
 - **`agents/onboarding/`** (pipeline, PAS un agent ReAct/LangGraph) :
-  `scan.py` (scan + estimation coût, read-only), `taxonomy_llm.py` (1 appel LLM
-  « propose une hiérarchie depuis les clusters » — sections issues du contenu,
+  `scan.py` (scan + estimation coût, read-only), `taxonomy_llm.py` (le LLM
+  assigne un domaine à CHAQUE cluster par lots de 40, matching par numéro →
+  structure SECTION/Thème scalable, couverture quasi-totale ; sections issues du contenu,
   forme suivant des conventions **paramétrables** par l'utilisateur via
   `onboarding_options` : profondeur min/max (1-3), numérotation des sections
   (`01-…`), casse (`title`/`upper`/`lower` — `title` préserve les acronymes),

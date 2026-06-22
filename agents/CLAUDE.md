@@ -42,10 +42,13 @@ Bootstrap d'un **nouveau** profil depuis un répertoire brut. **Pipeline**
 
 - **`scan.py`** — `scan_directory` (compte pdf/epub, détecte une pré-organisation)
   + `estimate_cost` (coût/ETA Vision). Read-only, aucun LLM.
-- **`taxonomy_llm.py`** — `propose_taxonomy(llm, clusters)` : 1 appel LLM qui mappe
-  les clusters de thèmes vers une hiérarchie de dossiers. Les **sections** viennent
-  du contenu ; la **forme** est imposée (≤ 2 niveaux, 1er niveau MAJUSCULES, sous-
-  dossiers TitleCase, `_A-TRIER` résiduel, `_INBOX` réservé, segments FS-safe).
+- **`taxonomy_llm.py`** — `propose_taxonomy(llm, clusters, options)` : **scalable**.
+  Le LLM assigne un **domaine** (section) à **chaque** cluster, par **lots de 40**,
+  le matching se faisant **par numéro** (le LLM reformule souvent la canonical →
+  un match texte exact en perdrait ~75 %). Structure **`SECTION/Thème`** par
+  construction (profondeur 2 → `min_depth` respecté ; `max_depth=1` → section
+  seule). Sections numérotées de façon déterministe + homonymes consolidés ;
+  `_A-TRIER` résiduel ; `_INBOX` réservé. Forme paramétrable (cf. `onboarding_options`).
 - **`proposition.py`** — orchestration : `run_vision` (Vision full-corpus,
   reprenable via `vision_cache`) → `cluster_corpus` (via `lib/theme_canon` +
   `theme_normalizer`) → `propose_taxonomy` → `propose_categories` (réutilise
