@@ -1,10 +1,10 @@
 # Dashboard — Tests fonctionnels + Cockpit Biblio Klodo
 
-FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run python -m dashboard.app` (port 8080).
+FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run python -m dashboard` (port 8080) — exécute [`dashboard/__main__.py`](__main__.py) qui charge `.env` puis lance `uvicorn.run("dashboard.app:app", port=8080)`. **`-m dashboard.app` ne démarre PAS le serveur** (`app.py` n'a pas de bloc `__main__`). Alternative : `./klodo.sh dashboard`.
 
 ## Architecture
 
-- **Nav-bar 7 onglets** : Overview · Tests · Curation · Baseline · Taxonomie · Logs · Admin (refactor UX juin 2026 : 12 → 7)
+- **Nav-bar 7 onglets** : Overview · Tests · Curation · Baseline · Taxonomie · Logs · Admin (refactor UX juin 2026 : 12 → 7) + entrée séparée « ➕ Nouveau profil » → `/onboarding` (assistant d'onboarding)
 - **2 hubs avec sub-tabs server-rendered** (`?view=X`) :
   - `/tests?view=` → exec | rapports | comparer | metriques | historique
   - `/baseline?view=` → disagreements | suggestions
@@ -58,6 +58,65 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   preview→appliquer→progression→annuler + carte « Bibliothèque » dans Overview.
 - Fencing : `categories.py` vérifie désormais `.cache/taxonomy.lock` (423 pendant
   un apply).
+
+### Apply global du RENAME (renommer toute la bibliothèque)
+
+- **`rename_apply.py`** — symétrique de `reclassify_apply` mais pour les **noms**
+  de fichiers (le basename, pas le dossier) : preview (audit complet → fige la
+  liste des renommages **placeholder + divergents**, hors casse-seule et hors
+  « marqués OK », dans `projection.csv`) → execute (rejoue via
+  `rename.commit_rename_bulk` = UN batch journalisé, collisions/manquants
+  skippés et rapportés) → undo (`rename.undo_batch_for_profile`). État par profil
+  `.cache/rename/apply/{state,status,projection.csv}`. Job en thread daemon +
+  polling `status.json`.
+- Routes : `GET /api/rename/apply/status`, `POST /api/rename/apply/{preview,execute,undo}`.
+- UI : bouton **🚀 Tout renommer** (toolbar sub-tab Rename) → confirm avec
+  compteurs → application → toast → propose d'annuler le lot.
+- ⚠ Asymétrie connue **classification vs rename** : ce sont deux moteurs distincts
+  (`apply_engine`/`move_journal` déplacent ; `renamer`/`rename_journal` renomment).
+  L'onboarding ne renomme PAS — pour appliquer les titres détectés par la Vision,
+  passer par ce « Tout renommer » (ou `./klodo.sh rename --execute`).
+
+### Agent Onboarding (bootstrap d'un profil depuis un répertoire brut)
+
+- **`agents/onboarding/`** (pipeline, PAS un agent ReAct/LangGraph) :
+  `scan.py` (scan + estimation coût, read-only), `taxonomy_llm.py` (le LLM
+  assigne un domaine à CHAQUE cluster par lots de 40, matching par numéro →
+  structure SECTION/Thème scalable, couverture quasi-totale ; sections issues du contenu,
+  forme suivant des conventions **paramétrables** par l'utilisateur via
+  `onboarding_options` : profondeur min/max (1-3), numérotation des sections
+  (`01-…`), casse (`title`/`upper`/`lower` — `title` préserve les acronymes),
+  séparateur des mots composés (`-`/`_`/`none`), langue (auto/fr/en),
+  granularité (auto/compact/detailed). Défauts = 1-2 niveaux, Casse Titre,
+  tirets, sections numérotées, `_A-TRIER` résiduel, `_INBOX` réservé.
+  `_format_segment` applique casse+séparateur ; `_sanitize_folder` borne la
+  profondeur. `with_structured_output(..., method="function_calling")` (compat GLM/Qwen)),
+  `proposition.py` (orchestration :
+  `run_vision` Vision full-corpus reprenable → `cluster_corpus` via
+  `lib/theme_canon` → `propose_taxonomy` → `propose_categories` via
+  `agents/refonte/categories_llm` → `write_proposal` : écrit les 3 YAMLs après
+  backup + dry-run de couverture via `reclassify_dryrun`).
+- **`agent_onboarding.py`** : wrapper thread+poll (scan synchrone,
+  `start_onboarding` crée le profil **brouillon** + lance l'analyse en thread
+  daemon, `get_status`, `finalize`). État par run dans
+  `profiles/<p>/.cache/onboarding/<run_id>/status.json`. Noms de profil/run_id
+  validés anti-traversal (`_is_safe_segment`).
+- Profil **brouillon** : flag `onboarding_draft: true` dans `profile.yaml`
+  (`lib/profile.create_draft_profile` / `set_onboarding_draft`) → badge sidebar,
+  bandeau Taxonomie/Mappings et bouton **Finaliser** (retire le flag).
+- Routes : `POST …/onboarding/{scan,start,finalize}`, `GET …/onboarding/status`,
+  `GET …/onboarding/is-draft`, `GET /api/fs/browse` (explorateur de dossiers
+  serveur — sous-dossiers + n_files, local-only 127.0.0.1, pour le sélecteur
+  « 📂 Parcourir » de l'étape Configuration). Page assistant `/onboarding`
+  (stepper 3 étapes : scan/estimation → progression Vision → couverture) + entrée nav
+  « ➕ Nouveau profil ». À l'étape 3, bouton **🚀 Déplacer les fichiers classés**
+  (frontend only) : appelle l'Apply global reclassify existant
+  (`/api/taxonomy/reclassify/apply/{preview,execute,status,undo}`, keyword=true)
+  sur le profil brouillon → preview/confirm → déplace les fichiers ayant une
+  destination (les sans-destination restent en place), annulable. Puis handoff
+  « Continuer dans Mappings » pour le raffinage.
+- Réutilise : `lib.vision`, `vision_cache`, `theme_canon`, `categories_llm`,
+  `reclassify_dryrun`, `init_profile`.
 
 - **Backend tests fonctionnels** : DuckDB via [../tests/functional/db.py](../tests/functional/db.py) — tables `runs`, `series_results`, `check_results`, `manual_validations`
 - **Templates** : 10 templates principaux + ~12 partials (`partials/tests_*.html`, `partials/baseline_*.html`, `partials/overview_*.html`)
@@ -181,3 +240,5 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **31 tests** dans [../tests/auto/test_thumbnail.py](../tests/auto/test_thumbnail.py) (PDF, ePub2/3, placeholder, count_pages, clear_cache mixed format)
 - **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
 - **16 tests** dans [../tests/auto/test_reclassify_apply.py](../tests/auto/test_reclassify_apply.py) (preview, execute, undo, pending, status, hash config, fencing 423)
+- **9 tests** dans [../tests/auto/test_rename_apply.py](../tests/auto/test_rename_apply.py) (apply global rename : preview périmètre placeholder+divergent, execute rejoue la projection figée, undo, 409 sans preview, endpoints)
+- **38 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile + modèle Vision actif, scan/estimate, run_vision reprenable + no-cache des erreurs, cluster_corpus, propose_taxonomy + options de forme, propose_categories, write_proposal + dry-run, warnings Vision/proposition, onboarding_options bout-en-bout, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)

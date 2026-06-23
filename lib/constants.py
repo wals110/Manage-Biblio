@@ -21,6 +21,10 @@ MAPPER_PENALTY = 0.9            # Pénalité appliquée au score du mapper
 KEYWORD_DEFAULT_SCORE = 0.5     # Score par défaut pour les résultats keyword
 
 # ── Vision / PDF ─────────────────────────────────────────────
+# Modèle Vision par défaut — SOURCE UNIQUE (lib.vision.DEFAULT_MODEL et
+# lib.profile.init_profile s'y réfèrent pour ne pas diverger). Doit rester un
+# modèle ACTIF chez SiliconFlow (Qwen2.5-VL-7B-Instruct a été désactivé → 403).
+DEFAULT_VISION_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 PDF_DPI = 150               # Résolution d'extraction des pages PDF
 PDF_EXTRACT_THREADS = 2     # Threads pour pdf2image
 PDF_MAX_PAGES = 5           # Nombre max de pages envoyées au LLM

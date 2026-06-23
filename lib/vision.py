@@ -50,6 +50,7 @@ except ImportError:
     HAS_PIL = False
 
 from lib.constants import (
+    DEFAULT_VISION_MODEL,
     JPEG_QUALITY,
     LLM_MAX_RETRIES,
     LLM_TIMEOUT,
@@ -68,7 +69,7 @@ log = get_logger()
 # ════════════════════════════════════════════════════════════════════════════
 
 SILICONFLOW_ENDPOINT = "https://api.siliconflow.com/v1/chat/completions"
-DEFAULT_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
+DEFAULT_MODEL = DEFAULT_VISION_MODEL
 
 VISION_PROMPT = """Analyze this book cover image. Respond ONLY with a valid JSON object, nothing else:
 

@@ -1,12 +1,9 @@
 """Factory LLM partagée entre tous les agents Klodo.
 
-Par défaut, pointe sur SiliconFlow avec GLM-4.7 (stable, tool-use propre,
-suit bien les prompts FR — testé 2026-05-25 face à des `APIConnectionError`
-récurrents sur DeepSeek-V3.2 côté SiliconFlow).
+Par défaut, pointe sur SiliconFlow avec Qwen2.5-72B-Instruct (actif, supporte
+le structured-output `with_structured_output`, suit bien les prompts FR).
 
-Le modèle est surchargeable via la variable d'env `KLODO_AGENT_MODEL`
-(par ex. pour repasser sur DeepSeek-V3.2 quand l'instabilité côté
-SiliconFlow sera résorbée).
+Le modèle est surchargeable via la variable d'env `KLODO_AGENT_MODEL`.
 
 L'endpoint est compatible OpenAI — `langchain_openai.ChatOpenAI` est
 le client adéquat (pas besoin de wrapper custom).
@@ -18,20 +15,20 @@ import os
 
 from langchain_openai import ChatOpenAI
 
-DEFAULT_MODEL = "zai-org/GLM-4.7"  # stable + tool-use FR (2026-05-25)
-# Choix de modèle (mis à jour 2026-05-25 après plusieurs erreurs DeepSeek) :
-#   - GLM-4.7 (défaut courant) — stable, tool-use FR propre, ~9s/réponse libre,
-#     ~2s en tool-call. Pas d'APIConnectionError observée.
-#   - GLM-5 / GLM-5.1 : alternatives plus récentes, OK en tool-use, à utiliser
-#     si GLM-4.7 régresse.
-#   - DeepSeek-V3.2 : tool-use excellent quand ça marche mais
-#     `APIConnectionError` récurrent côté SiliconFlow en mai 2026 (cf. run
-#     47377f35 — 7 LLM calls puis erreur).
-#   - DeepSeek-V3.2-Exp : désactivé sans préavis sur SiliconFlow (piège -Exp).
-#   - DeepSeek-V3.1 : régresse vers le chinois sur prompts multi-tour
-#     complexes (a produit un problème d'algo chinois au lieu du rapport).
-# Test rapide en cas de doute : `curl https://api.siliconflow.com/v1/models`
-# pour voir la liste live, puis vérifier que le modèle suit un prompt FR.
+DEFAULT_MODEL = "Qwen/Qwen2.5-72B-Instruct"  # actif + structured-output FR (2026-06-21)
+# Choix de modèle (mis à jour 2026-06-21) — CONTRAINTE CLÉ : les agents utilisent
+# `llm.with_structured_output(...)`, qui passe par le json-mode SiliconFlow.
+#   - GLM-4.7 (ancien défaut) — DÉSACTIVÉ chez SiliconFlow (HTTP 403 "Model
+#     disabled"). Toute la famille GLM-5/5.1/4.5-Air renvoie en plus
+#     "Json mode is not supported for this model" → INCOMPATIBLE structured-output.
+#   - Qwen/Qwen2.5-72B-Instruct (défaut courant) — actif, structured-output OK,
+#     meilleur français des candidats testés.
+#   - Qwen/Qwen3-32B — actif, structured-output OK (alternative plus légère).
+#   - DeepSeek-V3.2 — structured-output OK mais sorties plutôt anglaises et
+#     `APIConnectionError` récurrents observés (cf. historique mai 2026).
+# Vérif rapide : `curl https://api.siliconflow.com/v1/models` (liste live) PUIS
+# tester `get_agent_llm(model=X).with_structured_output(M).invoke(...)` — un
+# modèle "actif" ne garantit PAS le support du structured-output (cas GLM).
 DEFAULT_BASE_URL = "https://api.siliconflow.com/v1"
 DEFAULT_TIMEOUT_S = 300  # 5 min par appel LLM — Phase B avec payload ~6k tokens
 # peut prendre >180s côté SiliconFlow quand le provider est chargé

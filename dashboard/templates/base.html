@@ -19,12 +19,15 @@
             <li><a href="/taxonomy" class="{% if active == 'taxonomy' %}active{% endif %}">Taxonomie</a></li>
             <li><a href="/logs" class="{% if active == 'logs' %}active{% endif %}">Logs</a></li>
             <li style="margin-top:16px;border-top:1px solid var(--border);padding-top:8px;">
+                <a href="/onboarding" class="{% if active == 'onboarding' %}active{% endif %}">&#10133; Nouveau profil</a>
+            </li>
+            <li>
                 <a href="/admin" class="{% if active == 'admin' %}active{% endif %}">&#9881; Admin</a>
             </li>
         </ul>
         <div class="sidebar-footer">
             Klodo v1.0.0-dev<br>
-            Profil : default
+            Profil : default<span id="onb-draft-badge" class="onb-badge" style="display:none">brouillon</span>
         </div>
     </aside>
     <main class="main">
@@ -32,6 +35,24 @@
     </main>
 <script src="/static/js/common.js"></script>
 <script src="/static/js/validation.js"></script>
+<script>
+// Badge « brouillon » : affiché quand le profil actif est un brouillon
+// d'onboarding (onboarding_draft: true). base.html ne connaît pas le profil
+// actif → on le lit depuis le query param ?profile=.
+(function () {
+  var profile = new URLSearchParams(location.search).get('profile');
+  if (!profile) return;
+  fetch('/api/agent/onboarding/is-draft?profile=' + encodeURIComponent(profile))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (d && d.draft) {
+        var badge = document.getElementById('onb-draft-badge');
+        if (badge) badge.style.display = '';
+      }
+    })
+    .catch(function () { /* silencieux — pas de badge si erreur */ });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

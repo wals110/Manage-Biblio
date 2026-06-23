@@ -6985,3 +6985,11 @@ th {
 .dash-sync-row {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
+
+/* ── Onboarding (badge brouillon + bandeau) ────────────────────────── */
+.onb-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+    background: rgba(224,168,0,.18); color: #e0a800; border: 1px solid rgba(224,168,0,.4); }
+.tax-onboarding-banner { display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+    border-radius: 10px; background: rgba(224,168,0,.12); border: 1px solid rgba(224,168,0,.4);
+    margin-bottom: 14px; }
+.tax-onboarding-banner button { margin-left: auto; }

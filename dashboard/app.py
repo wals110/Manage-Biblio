@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from dashboard import (
+    agent_onboarding,
     agent_refonte,
     agent_refonte_apply,
     baseline,
@@ -1881,6 +1882,60 @@ async def rename_override_api(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=exc.status)
 
 
+# ── Apply global du rename (renommer toute la bibliothèque) ──
+@app.get("/api/rename/apply/status")
+async def rename_apply_status_api(profile: str):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    return JSONResponse(rename_apply.get_status(profile))
+
+
+@app.post("/api/rename/apply/preview")
+async def rename_apply_preview_api(request: Request):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(rename_apply.build_preview(profile))
+    except rename_apply.RenameApplyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/apply/execute")
+async def rename_apply_execute_api(request: Request):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(rename_apply.start_execute(profile))
+    except rename_apply.RenameApplyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
+@app.post("/api/rename/apply/undo")
+async def rename_apply_undo_api(request: Request):
+    from fastapi.responses import JSONResponse
+
+    from dashboard import rename_apply
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(rename_apply.start_undo(profile))
+    except rename_apply.RenameApplyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+
+
 @app.get("/api/categories/entry/files")
 async def categories_entry_files_api(
     profile: str,
@@ -2480,6 +2535,16 @@ async def taxonomy_file_move_api(request: Request):
 # ════════════════════════════════════════════════════════════════════════
 
 
+@app.get("/onboarding")
+async def onboarding_page(request: Request):
+    """Assistant d'onboarding d'un nouveau profil (scan → Vision → proposition)."""
+    return templates.TemplateResponse(
+        request,
+        "onboarding.html",
+        {"active": "onboarding"},
+    )
+
+
 @app.get("/agent/refonte")
 async def agent_refonte_page(request: Request, profile: str = "default"):
     """Page dédiée à l'agent Refonte (Phase A — Diagnostic)."""
@@ -3037,3 +3102,115 @@ async def api_agent_refonte_proposition_start(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=400)
     except FileNotFoundError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  Agent Onboarding — scan / start / status / finalize
+# ════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/api/fs/browse")
+async def api_fs_browse(path: str = ""):
+    """Explorateur de dossiers côté serveur (dashboard bindé 127.0.0.1, mono-user).
+
+    Liste les sous-dossiers d'un répertoire + le nombre de fichiers classables
+    (pdf/epub) directement dedans, pour le sélecteur de dossier de l'onboarding.
+    Path vide → home de l'utilisateur.
+    """
+    import os
+
+    from fastapi.responses import JSONResponse
+    base = (path or "").strip() or os.path.expanduser("~")
+    base = os.path.abspath(os.path.expanduser(base))
+    if not os.path.isdir(base):
+        return JSONResponse({"error": "répertoire introuvable"}, status_code=400)
+    dirs: list[dict] = []
+    n_files = 0
+    try:
+        with os.scandir(base) as it:
+            for e in it:
+                if e.name.startswith("."):
+                    continue
+                if e.is_dir(follow_symlinks=False):
+                    dirs.append({"name": e.name, "path": e.path})
+                elif e.is_file() and e.name.lower().endswith((".pdf", ".epub")):
+                    n_files += 1
+    except PermissionError:
+        return JSONResponse({"error": "accès refusé"}, status_code=403)
+    dirs.sort(key=lambda d: d["name"].lower())
+    parent = os.path.dirname(base)
+    return JSONResponse({
+        "path": base,
+        "parent": parent if parent and parent != base else None,
+        "dirs": dirs,
+        "n_files": n_files,
+    })
+
+
+@app.post("/api/agent/onboarding/scan")
+async def api_onboarding_scan(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    inbox = (body.get("inbox_path") or "").strip()
+    if not inbox:
+        return JSONResponse({"error": "inbox_path requis"}, status_code=400)
+    import os
+    if not os.path.isdir(inbox):
+        return JSONResponse({"error": "répertoire introuvable"}, status_code=400)
+    return JSONResponse(agent_onboarding.scan(inbox))
+
+
+@app.post("/api/agent/onboarding/start")
+async def api_onboarding_start(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    name = (body.get("profile_name") or "").strip()
+    inbox = (body.get("inbox_path") or "").strip()
+    if not name or not inbox:
+        return JSONResponse({"error": "profile_name et inbox_path requis"}, status_code=400)
+    opts = body.get("options")
+    options = opts if isinstance(opts, dict) else None
+    try:
+        return JSONResponse(agent_onboarding.start_onboarding(name, inbox, options))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileExistsError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.get("/api/agent/onboarding/status")
+async def api_onboarding_status(profile: str, run_id: str):
+    from fastapi.responses import JSONResponse
+    st = agent_onboarding.get_status(profile, run_id)
+    if st is None:
+        return JSONResponse({"error": "run introuvable"}, status_code=404)
+    return JSONResponse(st)
+
+
+@app.post("/api/agent/onboarding/finalize")
+async def api_onboarding_finalize(request: Request):
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    profile = (body.get("profile") or "").strip()
+    if not profile:
+        return JSONResponse({"error": "profile requis"}, status_code=400)
+    try:
+        return JSONResponse(agent_onboarding.finalize(profile))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError:
+        return JSONResponse({"error": "profil introuvable"}, status_code=404)
+
+
+@app.get("/api/agent/onboarding/is-draft")
+async def api_onboarding_is_draft(profile: str):
+    from fastapi.responses import JSONResponse
+
+    from dashboard.agent_onboarding import _is_safe_segment
+    if not _is_safe_segment(profile):
+        return JSONResponse({"draft": False})
+    try:
+        from lib.profile import Profile
+        return JSONResponse({"draft": bool(Profile(profile).onboarding_draft)})
+    except Exception:  # noqa: BLE001 — profil absent/illisible → pas brouillon
+        return JSONResponse({"draft": False})

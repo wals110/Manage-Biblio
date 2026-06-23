@@ -77,6 +77,10 @@
 
 <!-- ─────────────────────── View: Mappings (default) ─────────────────────── -->
 <div class="tax-view tax-view-mappings active" data-view="mappings">
+<div id="tax-onboarding-banner" class="tax-onboarding-banner" style="display:none">
+  <span>🟡 Profil en cours d'onboarding — raffine les mappings puis applique, et finalise quand tu es prêt.</span>
+  <button id="onb-finalize-btn" class="btn-secondary" type="button">Finaliser</button>
+</div>
 <div class="tax-grid" id="tax-grid">
     <!-- Colonne 1 — Arbre -->
     <section class="tax-col tax-col-tree">
@@ -324,6 +328,11 @@
                           title="Renommages faits dans cette session encore non annulés — pense à finir l'undo si besoin">
                         ⚠ <span id="tax-rename-history-session-n">0</span>
                     </span>
+                </button>
+                <button type="button" id="tax-rename-applyall-btn"
+                        class="tax-rename-rescan-btn"
+                        title="Renommer toute la bibliothèque d'un coup (placeholder + divergents) — preview puis application, annulable">
+                    🚀 Tout renommer
                 </button>
             </div>
             <div class="tax-rename-filters" id="tax-rename-filters"></div>

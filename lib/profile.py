@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from lib.constants import DEFAULT_VISION_MODEL
 from lib.exceptions import ConfigError
 from lib.logger import get_logger, setup_logger
 
@@ -146,7 +147,7 @@ class Profile:
         # LLM config is nested under 'llm:' key
         llm = data.get("llm", {})
         self.llm_provider = llm.get("provider", "siliconflow")
-        self.llm_model = llm.get("model", "Qwen3-VL-8B")
+        self.llm_model = llm.get("model", DEFAULT_VISION_MODEL)
         self.llm_endpoint = llm.get("endpoint", "https://api.siliconflow.com/v1/chat/completions")
 
         self.defaults = data.get("defaults", {})
@@ -157,6 +158,8 @@ class Profile:
 
         # Cache directory: inside the profile folder (.cache/)
         self.cache_dir = str(self._profile_dir / ".cache")
+
+        self.onboarding_draft = bool(data.get("onboarding_draft", False))
 
     def _load_tree_yaml(self) -> None:
         """Load tree.yaml and set tree attribute."""
@@ -338,7 +341,7 @@ def init_profile(name: str, target: str) -> Profile:
             "fallback": "_A-TRIER",
             "llm": {
                 "provider": "siliconflow",
-                "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+                "model": DEFAULT_VISION_MODEL,
                 "endpoint": "https://api.siliconflow.com/v1/chat/completions",
             },
             "defaults": {
@@ -367,6 +370,48 @@ def init_profile(name: str, target: str) -> Profile:
 
     # Load and return the new profile
     return Profile(name)
+
+
+def create_draft_profile(name: str, target: str) -> "Profile":
+    """Crée un profil brouillon (skeleton vide + flag onboarding_draft=true).
+
+    L'onboarding y écrira ensuite les 3 YAMLs proposés. Le flag marque le
+    profil comme incomplet jusqu'à finalisation.
+    """
+    init_profile(name, target)
+    set_onboarding_draft(name, True)
+    return Profile(name)
+
+
+def set_onboarding_draft(name: str, value: bool) -> None:
+    """Écrit/retire le flag onboarding_draft dans profile.yaml.
+
+    Préserve les clés/valeurs et leur ordre (sort_keys=False) ; les
+    commentaires YAML ne sont PAS conservés (round-trip safe_load/safe_dump).
+    Sans impact dans le flux onboarding (profile.yaml généré par init_profile
+    n'a pas de commentaires).
+    """
+    path = get_project_root() / PROFILES_DIR / name / "profile.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    cfg["onboarding_draft"] = bool(value)
+    path.write_text(
+        yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8")
+
+
+def set_onboarding_options(name: str, options: dict) -> None:
+    """Écrit le bloc `onboarding_options` dans profile.yaml (forme de la taxonomie
+    paramétrée par l'utilisateur : profondeur, numérotation, langue, granularité).
+
+    Préserve les autres clés (round-trip safe_load/safe_dump, comme
+    set_onboarding_draft).
+    """
+    path = get_project_root() / PROFILES_DIR / name / "profile.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    cfg["onboarding_options"] = dict(options or {})
+    path.write_text(
+        yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8")
 
 
 if __name__ == "__main__":

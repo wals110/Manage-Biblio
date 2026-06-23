@@ -1,0 +1,609 @@
+{% extends "base.html" %}
+{# Page standalone — assistant d'onboarding d'un nouveau profil.
+   Accessible via /onboarding (lien sidebar « ➕ Nouveau profil »).
+
+   3 étapes : ① configuration (répertoire + scan/estimation) →
+   ② progression Vision (poll status toutes les 2 s) →
+   ③ proposition/couverture + handoff vers Mappings.
+
+   Aucune logique métier ici : appelle les 4 routes /api/agent/onboarding/*. #}
+{% set active = "onboarding" %}
+{% block title %}Nouveau profil — Onboarding{% endblock %}
+
+{% block content %}
+<h1 class="page-title">➕ Onboarding — nouveau profil</h1>
+<p class="page-subtitle">
+    Analyse un répertoire brut et propose une taxonomie de départ, puis te rend
+    la main aux outils Mappings. Le profil brouillon est créé tout de suite —
+    <b>aucun fichier n'est déplacé</b>.
+</p>
+
+<div class="onb-steps">
+    <div class="onb-step active" id="onb-stepper-1">
+        <span class="onb-step-num">①</span><span class="onb-step-lbl">Configuration</span>
+    </div>
+    <div class="onb-step" id="onb-stepper-2">
+        <span class="onb-step-num">②</span><span class="onb-step-lbl">Analyse Vision</span>
+    </div>
+    <div class="onb-step" id="onb-stepper-3">
+        <span class="onb-step-num">③</span><span class="onb-step-lbl">Taxonomie proposée</span>
+    </div>
+</div>
+
+<!-- ── Étape 1 : configuration + scan ── -->
+<div class="onb-card" id="onboarding_step_1">
+    <div class="onb-row">
+        <div class="onb-field">
+            <label class="filter-label" for="onb-inbox">Répertoire brut à analyser</label>
+            <input type="text" id="onb-inbox" placeholder="/chemin/vers/mes/livres">
+        </div>
+        <div class="onb-field onb-field-action">
+            <button class="btn-secondary" id="onb-browse-btn" type="button">📂 Parcourir…</button>
+            <button class="btn-secondary" id="onb-scan-btn" type="button">📁 Scanner</button>
+        </div>
+    </div>
+    <div id="onb-scan-error" class="onb-error" style="display:none;"></div>
+
+    <div id="onb-scan-result" style="display:none;">
+        <div class="onb-estimate" id="onb-estimate"></div>
+        <div class="onb-row" style="margin-top:14px;">
+            <div class="onb-field">
+                <label class="filter-label" for="onb-pname">Nom du profil</label>
+                <input type="text" id="onb-pname" placeholder="perso-2026">
+            </div>
+        </div>
+        <div class="onb-options">
+            <div class="onb-options-title">Options de taxonomie — forme de l'arborescence proposée</div>
+            <div class="onb-row">
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-mindepth">Profondeur min</label>
+                    <select id="onb-opt-mindepth">
+                        <option value="1" selected>1 niveau</option>
+                        <option value="2">2 niveaux</option>
+                        <option value="3">3 niveaux</option>
+                    </select>
+                </div>
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-depth">Profondeur max</label>
+                    <select id="onb-opt-depth">
+                        <option value="2" selected>2 niveaux</option>
+                        <option value="3">3 niveaux</option>
+                        <option value="1">1 niveau</option>
+                    </select>
+                </div>
+            </div>
+            <div class="onb-row">
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-case">Casse des noms</label>
+                    <select id="onb-opt-case">
+                        <option value="title" selected>Titre (Deep-Learning)</option>
+                        <option value="upper">MAJUSCULES (DEEP-LEARNING)</option>
+                        <option value="lower">minuscules (deep-learning)</option>
+                    </select>
+                </div>
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-sep">Séparateur des mots composés</label>
+                    <select id="onb-opt-sep">
+                        <option value="-" selected>Tiret (Deep-Learning)</option>
+                        <option value="_">Underscore (Deep_Learning)</option>
+                        <option value="none">Aucun (DeepLearning)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="onb-row">
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-lang">Langue des noms</label>
+                    <select id="onb-opt-lang">
+                        <option value="auto" selected>Auto (langue du corpus)</option>
+                        <option value="fr">Français</option>
+                        <option value="en">Anglais</option>
+                    </select>
+                </div>
+                <div class="onb-field">
+                    <label class="filter-label" for="onb-opt-gran">Granularité</label>
+                    <select id="onb-opt-gran">
+                        <option value="auto" selected>Auto</option>
+                        <option value="compact">Compacte (peu de sections)</option>
+                        <option value="detailed">Détaillée (sections fines)</option>
+                    </select>
+                </div>
+            </div>
+            <label class="onb-check">
+                <input type="checkbox" id="onb-opt-numbered" checked>
+                Numéroter les sections de 1<sup>er</sup> niveau
+                (<code>01-Sciences</code> vs <code>Sciences</code>)
+            </label>
+        </div>
+        <div class="onb-note">
+            Le profil brouillon est créé immédiatement (skeleton + target). La
+            Vision peuple son <code>vision_cache</code> — aucun fichier déplacé.
+        </div>
+        <div id="onb-start-error" class="onb-error" style="display:none;"></div>
+        <div class="onb-actions">
+            <button class="btn-primary" id="onb-start-btn" type="button">Analyser le répertoire</button>
+            <span class="muted small">Tu confirmes la dépense avant de lancer.</span>
+        </div>
+    </div>
+</div>
+
+<!-- ── Étape 2 : analyse Vision (poll) ── -->
+<div class="onb-card" id="onboarding_step_2" style="display:none;">
+    <div><b>Analyse LLM Vision — tout le corpus</b></div>
+    <div class="onb-bar"><div class="onb-fill" id="onb-fill"></div></div>
+    <div class="onb-progtxt muted small">
+        <span id="onb-ptxt">0 / 0</span> · <span id="onb-phase">démarrage…</span>
+    </div>
+    <div class="onb-note">
+        Chaque couverture analysée est mise en cache → le classify final sera
+        gratuit (pas de re-Vision).
+    </div>
+    <div id="onb-poll-error" class="onb-error" style="display:none;"></div>
+</div>
+
+<!-- ── Étape 3 : proposition / couverture ── -->
+<div class="onb-card" id="onboarding_step_3" style="display:none;">
+    <div><b>Taxonomie proposée</b> — clusterisation des thèmes observés</div>
+    <div class="onb-warning" id="onb-warning" style="display:none;"></div>
+    <div class="onb-chips" id="onb-chips"></div>
+    <div class="onb-note">
+        La taxonomie est écrite dans le profil brouillon. Tu peux déplacer
+        maintenant les fichiers déjà classés (preview + annulable) ; ceux sans
+        destination restent en place pour un tri manuel.
+    </div>
+    <div id="onb-move-status" class="onb-note" style="display:none;"></div>
+    <div class="onb-actions">
+        <button class="btn-secondary" id="onb-move-btn" type="button">
+            🚀 Déplacer les fichiers classés
+        </button>
+        <button class="btn-primary" id="onb-continue-btn" type="button">
+            Continuer dans Mappings pour raffiner →
+        </button>
+    </div>
+</div>
+
+<!-- ── Explorateur de dossiers (sélection interactive) ── -->
+<div id="onb-browse-modal" class="onb-modal" style="display:none;">
+    <div class="onb-modal-box">
+        <div class="onb-modal-head">
+            <span>📂 Choisir un répertoire</span>
+            <button class="onb-modal-x" id="onb-browse-close" type="button">✕</button>
+        </div>
+        <div class="onb-browse-path">
+            <button class="btn-secondary onb-browse-up" id="onb-browse-up" type="button"
+                    title="Dossier parent">⬆</button>
+            <code id="onb-browse-cwd"></code>
+        </div>
+        <div class="onb-browse-list" id="onb-browse-list"></div>
+        <div class="onb-browse-foot">
+            <span class="muted small" id="onb-browse-count"></span>
+            <div class="onb-browse-actions">
+                <button class="btn-secondary" id="onb-browse-cancel" type="button">Annuler</button>
+                <button class="btn-primary" id="onb-browse-choose" type="button">Choisir ce dossier</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.onb-steps { display:flex; gap:10px; margin:8px 0 18px; max-width:720px; }
+.onb-step {
+    flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px;
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    opacity:.5;
+}
+.onb-step.active { opacity:1; border-color:var(--blue); box-shadow:0 0 0 1px var(--blue) inset; }
+.onb-step.done { opacity:1; border-color:var(--green); }
+.onb-step-num {
+    width:24px; height:24px; border-radius:50%; display:grid; place-items:center;
+    font-weight:700; background:var(--card-hover); flex:0 0 auto;
+}
+.onb-step.active .onb-step-num { background:var(--blue); color:#06210d; }
+.onb-step.done .onb-step-num { background:var(--green); color:#06210d; }
+.onb-step-lbl { font-size:13px; }
+
+.onb-card {
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:18px; margin-bottom:14px; max-width:720px;
+}
+.onb-row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+.onb-field { flex:1; min-width:220px; }
+.onb-field-action { flex:0 0 auto; min-width:0; }
+.onb-card input[type=text] {
+    width:100%; background:var(--bg); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); padding:9px 11px; font-size:14px;
+}
+.onb-card input[type=text]:focus, .onb-card select:focus { outline:none; border-color:var(--blue); }
+.onb-card select {
+    width:100%; background:var(--bg); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); padding:9px 32px 9px 11px; font-size:14px;
+    cursor:pointer; appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat; background-position:right 10px center;
+}
+.onb-card select:hover { border-color:var(--blue); }
+.onb-card select option { background:var(--card); color:var(--text); }
+.onb-estimate {
+    margin:14px 0 0; padding:10px 12px; background:var(--card-hover);
+    border:1px dashed var(--border); border-radius:8px; color:var(--muted);
+}
+.onb-estimate b { color:var(--text); }
+.onb-note { color:var(--muted); font-size:12.5px; margin-top:8px; }
+.onb-options {
+    margin-top:16px; padding:12px 14px; background:var(--card-hover);
+    border:1px solid var(--border); border-radius:8px;
+}
+.onb-options-title { font-size:12px; color:var(--muted); margin-bottom:10px;
+    text-transform:uppercase; letter-spacing:.04em; }
+.onb-options .onb-row { display:flex; gap:14px; flex-wrap:wrap; }
+.onb-options .onb-row + .onb-row { margin-top:12px; }
+.onb-options .onb-field { flex:1; min-width:150px; }
+.onb-check { display:flex; align-items:center; gap:8px; margin-top:12px;
+    font-size:13px; color:var(--text); }
+.onb-check code { color:var(--muted); }
+.onb-actions { display:flex; gap:10px; margin-top:16px; align-items:center; }
+.onb-error {
+    margin-top:12px; padding:9px 12px; border-radius:8px; font-size:13px;
+    background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.4);
+    color:var(--red);
+}
+.onb-bar {
+    height:12px; border-radius:6px; background:rgba(255,255,255,.07);
+    overflow:hidden; margin:14px 0 8px;
+}
+.onb-fill {
+    height:100%; width:0; background:linear-gradient(90deg,#3a7bd5,#4ade80);
+    transition:width .25s;
+}
+.onb-progtxt { font-variant-numeric:tabular-nums; }
+.onb-warning {
+    margin:14px 0; padding:11px 14px; border-radius:10px;
+    background:rgba(224,72,72,.12); border:1px solid rgba(224,72,72,.45);
+    color:#f0a0a0; font-size:13px; line-height:1.5;
+}
+.onb-chips { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
+.onb-chip {
+    padding:8px 12px; border-radius:10px; background:var(--card-hover);
+    border:1px solid var(--border); min-width:120px;
+}
+.onb-chip .k { font-size:11px; color:var(--muted); }
+.onb-chip .v { font-size:18px; font-weight:700; }
+.onb-chip.ok .v { color:var(--green); }
+.onb-chip.warn .v { color:var(--yellow); }
+/* ── Explorateur de dossiers ── */
+.onb-modal { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50;
+    display:flex; align-items:center; justify-content:center; }
+.onb-modal-box { width:min(620px,92vw); max-height:80vh; display:flex; flex-direction:column;
+    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.onb-modal-head { display:flex; justify-content:space-between; align-items:center;
+    padding:12px 16px; border-bottom:1px solid var(--border); font-weight:600; }
+.onb-modal-x { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; }
+.onb-browse-path { display:flex; gap:8px; align-items:center; padding:10px 16px;
+    border-bottom:1px solid var(--border); }
+.onb-browse-path code { font-size:12px; color:var(--muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left; }
+.onb-browse-up { padding:4px 10px; }
+.onb-browse-list { overflow:auto; flex:1; padding:6px; min-height:160px; }
+.onb-browse-item { display:block; width:100%; text-align:left; background:none; border:none;
+    color:var(--text); padding:8px 12px; border-radius:6px; cursor:pointer; font-size:14px; }
+.onb-browse-item:hover { background:var(--card-hover); }
+.onb-browse-empty { color:var(--muted); padding:10px 12px; font-size:13px; }
+.onb-browse-foot { display:flex; justify-content:space-between; align-items:center;
+    gap:12px; padding:12px 16px; border-top:1px solid var(--border); }
+.onb-browse-actions { display:flex; gap:8px; }
+</style>
+
+<script>
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const fr = (n) => Number(n || 0).toLocaleString('fr-FR');
+    const esc = (s) => String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    let scanData = null;       // résultat du dernier scan
+    let inboxPath = '';        // répertoire validé par le scan
+    let profileName = '';      // nom du profil créé
+    let runId = '';            // run_id de l'analyse
+    let pollTimer = null;
+    let pollFails = 0;         // budget d'erreurs consécutives du poll
+
+    // FIX 2 : on arrête le poll si l'utilisateur quitte la page.
+    window.addEventListener('beforeunload', () => {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    });
+
+    function setStep(n) {
+        [1, 2, 3].forEach((i) => {
+            const s = $('onb-stepper-' + i);
+            s.classList.toggle('active', i === n);
+            s.classList.toggle('done', i < n);
+            s.querySelector('.onb-step-num').textContent =
+                i < n ? '✓' : { 1: '①', 2: '②', 3: '③' }[i];
+        });
+        $('onboarding_step_1').style.display = n === 1 ? '' : 'none';
+        $('onboarding_step_2').style.display = n === 2 ? '' : 'none';
+        $('onboarding_step_3').style.display = n === 3 ? '' : 'none';
+    }
+
+    function showErr(id, msg) {
+        const el = $(id);
+        el.textContent = msg;
+        el.style.display = msg ? '' : 'none';
+    }
+
+    // ── Étape 1 : scan ──────────────────────────────────────────────────
+    $('onb-scan-btn').addEventListener('click', async () => {
+        const inbox = $('onb-inbox').value.trim();
+        showErr('onb-scan-error', '');
+        $('onb-scan-result').style.display = 'none';
+        if (!inbox) { showErr('onb-scan-error', 'Indique un répertoire à analyser.'); return; }
+        $('onb-scan-btn').disabled = true;
+        try {
+            const r = await fetch('/api/agent/onboarding/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inbox_path: inbox }),
+            });
+            const d = await r.json();
+            if (!r.ok) { showErr('onb-scan-error', d.error || ('HTTP ' + r.status)); return; }
+            scanData = d;
+            inboxPath = inbox;
+            renderEstimate(d);
+            $('onb-scan-result').style.display = '';
+        } catch (e) {
+            showErr('onb-scan-error', 'Erreur réseau : ' + e.message);
+        } finally {
+            $('onb-scan-btn').disabled = false;
+        }
+    });
+
+    function renderEstimate(d) {
+        const fmt = d.by_format || {};
+        const parts = Object.keys(fmt).sort()
+            .map((k) => fr(fmt[k]) + ' ' + esc(k.replace(/^\./, '').toUpperCase()));
+        const est = d.estimate || {};
+        $('onb-estimate').innerHTML =
+            '📁 <b>' + fr(d.n_files) + ' fichiers</b> détectés'
+            + (parts.length ? ' (' + parts.join(' · ') + ')' : '')
+            + ' · estimation Vision LLM ≈ <b>$' + (est.usd != null ? esc(est.usd) : '?') + '</b>'
+            + ' · ~' + (est.eta_min != null ? esc(est.eta_min) : '?') + ' min';
+    }
+
+    // ── Étape 1 → 2 : start + poll ──────────────────────────────────────
+    $('onb-start-btn').addEventListener('click', async () => {
+        const name = $('onb-pname').value.trim();
+        showErr('onb-start-error', '');
+        if (!name) { showErr('onb-start-error', 'Donne un nom au profil.'); return; }
+        const options = {
+            min_depth: parseInt($('onb-opt-mindepth').value, 10) || 1,
+            max_depth: parseInt($('onb-opt-depth').value, 10) || 2,
+            folder_case: $('onb-opt-case').value,
+            word_separator: $('onb-opt-sep').value,
+            numbered_sections: $('onb-opt-numbered').checked,
+            folder_language: $('onb-opt-lang').value,
+            granularity: $('onb-opt-gran').value,
+        };
+        $('onb-start-btn').disabled = true;
+        try {
+            const r = await fetch('/api/agent/onboarding/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile_name: name, inbox_path: inboxPath, options: options }),
+            });
+            const d = await r.json();
+            if (!r.ok) {
+                // 400 nom invalide / manquant · 409 profil existe déjà
+                showErr('onb-start-error', d.error || ('HTTP ' + r.status));
+                $('onb-start-btn').disabled = false;
+                return;
+            }
+            profileName = d.profile;
+            runId = d.run_id;
+            setStep(2);
+            startPoll();
+        } catch (e) {
+            showErr('onb-start-error', 'Erreur réseau : ' + e.message);
+            $('onb-start-btn').disabled = false;
+        }
+    });
+
+    function startPoll() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        pollFails = 0;
+        showErr('onb-poll-error', '');
+        const tick = async () => {
+            let d;
+            try {
+                const r = await fetch('/api/agent/onboarding/status?profile='
+                    + encodeURIComponent(profileName) + '&run_id='
+                    + encodeURIComponent(runId));
+                d = await r.json();
+                if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                if (!d || !d.status) throw new Error('statut injoignable');
+                pollFails = 0; // statut valide reçu — on réarme le budget
+            } catch (e) {
+                pollFails++;
+                if (pollFails >= 5) {
+                    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                    showErr('onb-poll-error',
+                        'Suivi interrompu : ' + (e.message || 'statut injoignable'));
+                }
+                return; // sinon transitoire, on retente
+            }
+            if (d.status === 'running' || d.status === 'pending') {
+                const total = d.n_total || 0;
+                const done = d.n_done || 0;
+                const pct = total ? Math.round((100 * done) / total) : 0;
+                $('onb-fill').style.width = pct + '%';
+                $('onb-ptxt').textContent = fr(done) + ' / ' + fr(total);
+                $('onb-phase').textContent = d.phase
+                    ? ('phase : ' + d.phase) : 'analyse en cours…';
+            } else if (d.status === 'done') {
+                clearInterval(pollTimer); pollTimer = null;
+                $('onb-fill').style.width = '100%';
+                renderProposal(d);
+                setStep(3);
+            } else if (d.status === 'error') {
+                clearInterval(pollTimer); pollTimer = null;
+                showErr('onb-poll-error', '✗ ' + (d.error || 'erreur inconnue'));
+            }
+        };
+        tick();
+        pollTimer = setInterval(tick, 2000);
+    }
+
+    // ── Étape 3 : proposition / couverture ──────────────────────────────
+    function renderProposal(d) {
+        const warnEl = $('onb-warning');
+        if (d.warning) {
+            warnEl.textContent = '⚠️ ' + d.warning;
+            warnEl.style.display = '';
+        } else {
+            warnEl.style.display = 'none';
+        }
+        const st = d.stats || {};
+        const cov = d.coverage != null ? d.coverage : 0;
+        const inLib = st.n_in_lib || 0;
+        const mapped = st.n_with_prediction || 0;
+        const other = st.n_no_prediction != null
+            ? st.n_no_prediction : Math.max(0, inLib - mapped);
+        const covClass = cov >= 80 ? 'ok' : (cov >= 50 ? 'warn' : '');
+        $('onb-chips').innerHTML =
+            chip(covClass, 'Couverture (dry-run)', cov + ' %')
+            + chip('', 'Fichiers analysés', fr(inLib))
+            + chip('ok', 'Mappés', fr(mapped))
+            + chip('warn', 'Sans destination', fr(other));
+    }
+
+    function chip(cls, k, v) {
+        return '<div class="onb-chip ' + cls + '"><div class="k">' + k
+            + '</div><div class="v">' + v + '</div></div>';
+    }
+
+    // ── Handoff vers Mappings ───────────────────────────────────────────
+    $('onb-continue-btn').addEventListener('click', () => {
+        window.location = '/taxonomy?profile=' + encodeURIComponent(profileName);
+    });
+
+    // ── Déplacer les fichiers classés (réutilise l'Apply global reclassify) ──
+    const _rcaBase = '/api/taxonomy/reclassify/apply';
+    function _moveShow(msg) {
+        const s = $('onb-move-status');
+        s.textContent = msg; s.style.display = '';
+    }
+    async function _rcaPollDone() {
+        for (;;) {
+            const st = await fetch(_rcaBase + '/status?profile='
+                + encodeURIComponent(profileName)).then((r) => r.json());
+            const p = st.progress;
+            if (p && (p.status === 'done' || p.status === 'error')) return p;
+            if (p) _moveShow(`Déplacement… ${p.n_done || 0}/${p.n_total || '?'}`);
+            await new Promise((res) => setTimeout(res, 1500));
+        }
+    }
+    async function moveClassified() {
+        const btn = $('onb-move-btn');
+        btn.disabled = true;
+        try {
+            _moveShow('Calcul de ce qui bougerait…');
+            const pv = await fetch(_rcaBase + '/preview?profile='
+                + encodeURIComponent(profileName) + '&keyword=true').then((r) => r.json());
+            if (pv.error) { _moveShow('✗ ' + pv.error); return; }
+            const n = pv.n_moves || 0;
+            if (!n) {
+                _moveShow('Aucun fichier à déplacer (rien de classé vers un sous-dossier).');
+                return;
+            }
+            if (!window.confirm(`Déplacer ${n} fichier(s) dans leurs dossiers ?\n`
+                + `Les fichiers sans destination restent en place. Annulable ensuite.`)) {
+                $('onb-move-status').style.display = 'none';
+                return;
+            }
+            _moveShow('Déplacement en cours…');
+            await fetch(_rcaBase + '/execute', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile: profileName }) });
+            const prog = await _rcaPollDone();
+            if (prog.status === 'error') { _moveShow('✗ Échec : ' + (prog.error || 'erreur')); return; }
+            const moved = prog.n_done || 0, failed = prog.n_failed || 0, skipped = prog.n_skipped || 0;
+            _moveShow(`✓ ${moved} déplacé(s)`
+                + (skipped ? ` · ${skipped} ignoré(s)` : '')
+                + (failed ? ` · ${failed} erreur(s)` : ''));
+            if (moved > 0 && window.confirm(`${moved} fichier(s) déplacé(s). Annuler le déplacement ?`)) {
+                _moveShow('Annulation…');
+                await fetch(_rcaBase + '/undo', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile: profileName }) });
+                const u = await _rcaPollDone();
+                _moveShow(u.status === 'error'
+                    ? ('✗ ' + (u.error || 'échec annulation'))
+                    : '↩ Déplacement annulé.');
+            }
+        } catch (e) {
+            _moveShow('Erreur : ' + (e.message || e));
+        } finally {
+            btn.disabled = false;
+        }
+    }
+    $('onb-move-btn').addEventListener('click', moveClassified);
+
+    // ── Explorateur de dossiers (sélection interactive) ──
+    const browseModal = $('onb-browse-modal');
+    let browseCwd = '';
+
+    async function browseLoad(path) {
+        const list = $('onb-browse-list');
+        try {
+            const u = '/api/fs/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
+            const r = await fetch(u);
+            const d = await r.json();
+            if (!r.ok) { list.textContent = d.error || ('HTTP ' + r.status); return; }
+            browseCwd = d.path;
+            $('onb-browse-cwd').textContent = d.path;
+            $('onb-browse-up').disabled = !d.parent;
+            $('onb-browse-up').dataset.parent = d.parent || '';
+            const n = d.n_files || 0;
+            $('onb-browse-count').textContent = n
+                ? (n + ' fichier(s) pdf/epub ici') : 'Aucun fichier pdf/epub directement ici';
+            list.innerHTML = '';
+            if (!d.dirs.length) {
+                const e = document.createElement('div');
+                e.className = 'onb-browse-empty';
+                e.textContent = '(aucun sous-dossier)';
+                list.appendChild(e);
+            }
+            d.dirs.forEach((dir) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'onb-browse-item';
+                row.textContent = '📁 ' + dir.name;   // textContent → pas d'XSS
+                row.addEventListener('click', () => browseLoad(dir.path));
+                list.appendChild(row);
+            });
+        } catch (e) {
+            list.textContent = 'Erreur réseau : ' + e.message;
+        }
+    }
+
+    $('onb-browse-btn').addEventListener('click', () => {
+        browseModal.style.display = 'flex';
+        browseLoad($('onb-inbox').value.trim());   // démarre sur le chemin saisi, sinon home
+    });
+    const browseClose = () => { browseModal.style.display = 'none'; };
+    $('onb-browse-close').addEventListener('click', browseClose);
+    $('onb-browse-cancel').addEventListener('click', browseClose);
+    $('onb-browse-up').addEventListener('click', () => {
+        const p = $('onb-browse-up').dataset.parent;
+        if (p) browseLoad(p);
+    });
+    $('onb-browse-choose').addEventListener('click', () => {
+        if (!browseCwd) return;
+        $('onb-inbox').value = browseCwd;
+        browseClose();
+        $('onb-scan-btn').click();   // scanne directement le dossier choisi
+    });
+    browseModal.addEventListener('click', (e) => { if (e.target === browseModal) browseClose(); });
+
+    setStep(1);
+})();
+</script>
+{% endblock %}
