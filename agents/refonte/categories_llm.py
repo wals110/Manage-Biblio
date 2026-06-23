@@ -20,8 +20,13 @@ log = logging.getLogger(__name__)
 class _NewCategoryEntry(BaseModel):
     chemin: str
     groupe: str
-    priorite: int = Field(ge=1, le=99, default=5)
-    mots_cles: list[str] = Field(min_length=3, max_length=15)
+    # Pas de contraintes DURES (ge/le, min/max) : sur un gros lot, une seule
+    # entrée non conforme renvoyée par le LLM ferait échouer TOUT le batch
+    # (cf. onboarding 360 dossiers). On guide via `description` et on borne en
+    # post-traitement plutôt que de rejeter à la validation.
+    priorite: int = Field(default=5, description="priorité 1 (haute) à 99 (basse)")
+    mots_cles: list[str] = Field(default_factory=list,
+                                 description="3 à 15 mots-clés de classification")
 
 
 class _NewCategoriesProposal(BaseModel):
@@ -132,7 +137,7 @@ def propose_keywords_for_new_folders(
         out.append({
             "chemin": entry.chemin,
             "groupe": entry.groupe,
-            "priorite": entry.priorite,
+            "priorite": max(1, min(99, entry.priorite)),   # borné en post-traitement
             "mots_cles": list(entry.mots_cles),
         })
         seen_paths.add(entry.chemin)

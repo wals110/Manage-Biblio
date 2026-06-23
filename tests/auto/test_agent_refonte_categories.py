@@ -237,20 +237,58 @@ class TestCategoriesLLM(unittest.TestCase):
         self.assertEqual(result, [])
         mock_llm.with_structured_output.assert_not_called()
 
-    def test_propose_keywords_pydantic_min_max_mots_cles(self):
+    def test_entry_tolerates_partial_fields(self):
+        # Robustesse : pas de contrainte DURE (une entrée non conforme ne doit
+        # plus faire échouer tout le lot). mots_cles absent → [], priorité/count
+        # hors borne acceptés (bornés en post-traitement).
         from agents.refonte.categories_llm import _NewCategoryEntry
-        # min 3 mots_cles
-        with self.assertRaises(Exception):
-            _NewCategoryEntry(chemin="X/Y", groupe="informatique",
-                              priorite=5, mots_cles=["a", "b"])
-        # max 15 mots_cles
-        with self.assertRaises(Exception):
-            _NewCategoryEntry(chemin="X/Y", groupe="informatique",
-                              priorite=5, mots_cles=[f"k{i}" for i in range(16)])
-        # OK in range
-        entry = _NewCategoryEntry(chemin="X/Y", groupe="informatique",
-                                  priorite=5, mots_cles=["a", "b", "c"])
-        self.assertEqual(len(entry.mots_cles), 3)
+        e = _NewCategoryEntry(chemin="X/Y", groupe="informatique")   # ni mots_cles ni priorite
+        self.assertEqual(e.mots_cles, [])
+        self.assertEqual(e.priorite, 5)
+        # < 3 et > 15 mots_cles : acceptés (plus de min/max)
+        self.assertEqual(len(_NewCategoryEntry(chemin="X/Y", groupe="g",
+                         mots_cles=["a", "b"]).mots_cles), 2)
+        self.assertEqual(len(_NewCategoryEntry(chemin="X/Y", groupe="g",
+                         mots_cles=[f"k{i}" for i in range(20)]).mots_cles), 20)
+
+    def test_propose_keywords_tolerates_entry_without_motscles(self):
+        # Régression onboarding (360 dossiers) : une entrée sans mots_cles ne
+        # doit PAS faire échouer tout le batch.
+        from agents.refonte.categories_llm import (
+            _NewCategoriesProposal,
+            _NewCategoryEntry,
+            propose_keywords_for_new_folders,
+        )
+        fake = _NewCategoriesProposal(entries=[
+            _NewCategoryEntry(chemin="02-INFO/RAG", groupe="informatique"),   # pas de mots_cles
+        ])
+        llm = mock.MagicMock()
+        llm.with_structured_output.return_value.invoke.return_value = fake
+        result = propose_keywords_for_new_folders(
+            llm=llm, creations=[{"path": "02-INFO/RAG", "rationale": "t"}],
+            existing_groupes=["informatique"],
+            groupe_inference={"02-INFO/RAG": "informatique"}, sample_entries={})
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["mots_cles"], [])
+        self.assertEqual(result[0]["chemin"], "02-INFO/RAG")
+
+    def test_priorite_clamped_in_output(self):
+        from agents.refonte.categories_llm import (
+            _NewCategoriesProposal,
+            _NewCategoryEntry,
+            propose_keywords_for_new_folders,
+        )
+        fake = _NewCategoriesProposal(entries=[
+            _NewCategoryEntry(chemin="02-INFO/RAG", groupe="informatique",
+                              priorite=999, mots_cles=["a"]),   # hors borne
+        ])
+        llm = mock.MagicMock()
+        llm.with_structured_output.return_value.invoke.return_value = fake
+        result = propose_keywords_for_new_folders(
+            llm=llm, creations=[{"path": "02-INFO/RAG", "rationale": "t"}],
+            existing_groupes=["informatique"],
+            groupe_inference={"02-INFO/RAG": "informatique"}, sample_entries={})
+        self.assertEqual(result[0]["priorite"], 99)   # borné à 99
 
     def test_propose_keywords_pydantic_groupe_validation(self):
         """Le LLM retourne un groupe inconnu → drop entry + fallback."""
