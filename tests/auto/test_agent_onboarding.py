@@ -550,7 +550,7 @@ class TestBuildProposal(unittest.TestCase):
         pj.write_text(yaml.safe_dump(cfg), encoding="utf-8")
         captured = {}
 
-        def fake_propose(llm, clusters, options=None):
+        def fake_propose(llm, clusters, options=None, **kwargs):
             captured["options"] = options
             return ["_A-TRIER"], {}
 
@@ -561,6 +561,49 @@ class TestBuildProposal(unittest.TestCase):
              mock.patch("agents.onboarding.proposition.propose_taxonomy", side_effect=fake_propose):
             proposition.build_proposal("perso", lambda d, t: None)
         self.assertEqual(captured["options"], {"max_depth": 3, "folder_language": "en"})
+
+    def test_build_proposal_reports_phases(self):
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "Deep Learning",
+               "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
+
+        def fake_invoke(messages):
+            import re as _re
+            idxs = _re.findall(r"^(\d+)\. ", messages[-1]["content"], _re.M)
+            return taxonomy_llm._Assignments(items=[
+                taxonomy_llm._Assign(index=int(n), section="Informatique") for n in idxs])
+
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke
+        phases = []
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]):
+            proposition.build_proposal("perso", lambda d, t: None,
+                                       on_phase=lambda ph, d, t: phases.append(ph))
+        # phases post-Vision émises (au moins clustering + taxonomie + catégories + écriture)
+        self.assertIn("clustering", phases)
+        self.assertTrue(any("taxonomie" in p for p in phases))   # via on_step de propose_taxonomy
+        self.assertIn("catégories", phases)
+        self.assertIn("écriture", phases)
+
+    def test_build_proposal_on_phase_optional(self):
+        # rétro-compat : sans on_phase, build_proposal fonctionne comme avant
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "X",
+               "themes": [{"theme": "X", "confidence": 0.9}], "confidence": 0.9}
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = \
+            lambda m: taxonomy_llm._Assignments(items=[taxonomy_llm._Assign(index=1, section="Sciences")])
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]):
+            rep = proposition.build_proposal("perso", lambda d, t: None)   # pas de on_phase
+        self.assertIn("coverage", rep)
 
 
 class TestAgentOnboardingWrapper(unittest.TestCase):
@@ -640,6 +683,28 @@ class TestAgentOnboardingWrapper(unittest.TestCase):
         cfg = yaml.safe_load((self.root / "profiles" / "perso-opt" / "profile.yaml").read_text())
         self.assertEqual(cfg["onboarding_options"]["max_depth"], 3)
         self.assertFalse(cfg["onboarding_options"]["numbered_sections"])
+
+    def test_wrapper_writes_post_vision_phases(self):
+        from dashboard import agent_onboarding as ao
+        writes = []
+
+        def fake_build(profile, on_progress, on_phase=None):
+            on_progress(2, 2)
+            if on_phase:
+                on_phase("taxonomie · regroupement", 1, 3)
+            return {"coverage": 50.0, "stats": {}, "by_destination": [],
+                    "vision": {"n_total": 2, "n_analyzed": 2}}
+
+        with mock.patch.object(ao, "_write_status",
+                               side_effect=lambda p, r, payload: writes.append(payload)), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        side_effect=fake_build):
+            ao._run("perso", "run-xyz")
+
+        phases = [w.get("phase") for w in writes]
+        self.assertIn("vision", phases)
+        self.assertIn("taxonomie · regroupement", phases)
+        self.assertTrue(any(w.get("status") == "done" for w in writes))
 
 
 class TestOnboardingEndpoints(unittest.TestCase):

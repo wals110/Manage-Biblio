@@ -192,9 +192,15 @@ def _atomic_yaml(path: Path, payload: dict) -> None:
     tmp.replace(path)
 
 
-def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dict:
+def build_proposal(profile: str, on_progress: Callable[[int, int], None],
+                   on_phase: Callable[[str, int, int], None] | None = None) -> dict:
     """Pipeline complet « Analyse & proposition » : vision → cluster → propose →
     categories → write 3 YAMLs → dry-run. Retourne le rapport de couverture.
+
+    `on_phase(label, done, total)` est appelé à chaque étape post-Vision
+    (clustering, taxonomie, catégories, écriture) pour permettre au wrapper
+    d'émettre une progression dans status.json. Paramètre optionnel : sans
+    on_phase, comportement identique à l'original (rétro-compatibilité).
 
     Ajoute `vision` (compteurs n_total/n_analyzed) et, si la Vision a échoué sur
     TOUS les fichiers (0 analysé alors qu'il y en a), un `warning` explicite —
@@ -202,9 +208,14 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dic
     succès (couverture 0 %, rien à raffiner).
     """
     vis = run_vision(profile, on_progress)
+    if on_phase:
+        on_phase("clustering", 0, 1)
     clusters = cluster_corpus(profile)
     options = _load_profile_cfg(profile).get("onboarding_options")
-    tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options)
+    on_step = (lambda label, done, total: on_phase(label, done, total)) if on_phase else None
+    tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options, on_step=on_step)
+    if on_phase:
+        on_phase("catégories", 0, 1)
     folder_hints: dict[str, list[str]] = {}
     for c in clusters:
         # tous les raw_members d'un cluster mappent vers le MÊME dossier
@@ -214,6 +225,8 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dic
         if folder:
             folder_hints.setdefault(folder, []).append(c["canonical"])
     cats = propose_categories(tree, folder_hints)
+    if on_phase:
+        on_phase("écriture", 0, 1)
     report = write_proposal(profile, tree, mapping, cats)
     report["vision"] = vis
     if vis.get("n_total", 0) > 0 and vis.get("n_analyzed", 0) == 0:
