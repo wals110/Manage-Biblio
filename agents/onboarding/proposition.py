@@ -21,6 +21,7 @@ from lib.vision import DEFAULT_MODEL, analyze_cover
 
 log = logging.getLogger(__name__)
 _EXTS = (".pdf", ".epub")
+_MAX_HINTS_IN_RATIONALE = 12   # plafond de thèmes absorbés cités dans le rationale (prompt LLM)
 
 
 def _profile_dir(profile: str) -> Path:
@@ -131,7 +132,7 @@ def propose_categories(tree_folders: list[str],
         rationale = "dossier de la taxonomie d'onboarding"
         hints = (folder_hints or {}).get(f)
         if hints:
-            rationale += " — regroupe : " + ", ".join(hints[:12])
+            rationale += " — regroupe : " + ", ".join(hints[:_MAX_HINTS_IN_RATIONALE])
         creations.append({"path": f, "rationale": rationale})
     # Pas de categories existantes au bootstrap → groupes inférés depuis les
     # préfixes des dossiers proposés eux-mêmes.
@@ -206,6 +207,8 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dic
     tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options)
     folder_hints: dict[str, list[str]] = {}
     for c in clusters:
+        # tous les raw_members d'un cluster mappent vers le MÊME dossier
+        # (cf. propose_taxonomy) → raws[0] est représentatif.
         raws = c["raw_members"]
         folder = mapping.get(raws[0]) if raws else None
         if folder:
