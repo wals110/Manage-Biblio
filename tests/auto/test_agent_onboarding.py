@@ -829,6 +829,51 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(len(out), t._CHUNK + 5)               # tous assignés
         self.assertIn("Macro", seen_existing[1])               # 2e lot voit le grand thème du 1er
 
+    @staticmethod
+    def _cl(name, count):
+        return {"canonical": name, "raw_members": [name.upper()], "count": count}
+
+    def test_enforce_cap_under_cap_unchanged(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl("a", 1), self._cl("b", 1), self._cl("c", 1)]
+        macro = {"a": "A", "b": "B", "c": "C"}
+        self.assertEqual(t._enforce_cap(macro, cl, cap=8, lang="fr"), macro)
+
+    def test_enforce_cap_collapses_keeping_biggest(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl("big1", 100), self._cl("big2", 90),
+              self._cl("small1", 5), self._cl("small2", 4)]
+        macro = {"big1": "Alpha", "big2": "Beta", "small1": "Gamma", "small2": "Delta"}
+        out = t._enforce_cap(macro, cl, cap=3, lang="fr")   # garde cap-1=2 plus gros
+        self.assertEqual(out["big1"], "Alpha")
+        self.assertEqual(out["big2"], "Beta")
+        self.assertEqual(out["small1"], "Divers")
+        self.assertEqual(out["small2"], "Divers")
+        self.assertLessEqual(len(set(out.values())), 3)
+
+    def test_enforce_cap_deterministic_tiebreak(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 1 gros + 3 ex-aequo ; cap=3 → garde gros + 1 ex-aequo (tie-break par nom)
+        cl = [self._cl("huge", 100), self._cl("z", 10), self._cl("a", 10), self._cl("b", 10)]
+        macro = {"huge": "Huge", "z": "Zeta", "a": "Alpha", "b": "Beta"}
+        out1 = t._enforce_cap(macro, cl, cap=3, lang="fr")
+        out2 = t._enforce_cap(macro, cl, cap=3, lang="fr")
+        self.assertEqual(out1, out2)                         # reproductible
+        self.assertEqual(out1["huge"], "Huge")
+        self.assertEqual(out1["a"], "Alpha")                # (-10, "Alpha") gagne le dernier slot
+        self.assertEqual(out1["b"], "Divers")
+        self.assertEqual(out1["z"], "Divers")
+
+    def test_enforce_cap_divers_dominant_degrades_to_fine(self):
+        from agents.onboarding import taxonomy_llm as t
+        # queue collapsée (8+8+8=24) > plus gros conservé (10) → grain fin
+        cl = [self._cl("k1", 10), self._cl("k2", 9),
+              self._cl("t1", 8), self._cl("t2", 8), self._cl("t3", 8)]
+        macro = {"k1": "A", "k2": "B", "t1": "C", "t2": "D", "t3": "E"}
+        out = t._enforce_cap(macro, cl, cap=3, lang="fr")
+        self.assertEqual(out, {"k1": "k1", "k2": "k2", "t1": "t1", "t2": "t2", "t3": "t3"})
+        self.assertNotIn("Divers", out.values())
+
 
 if __name__ == "__main__":
     unittest.main()

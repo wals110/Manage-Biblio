@@ -201,6 +201,37 @@ def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str,
     return assigned
 
 
+def _enforce_cap(macro_map: dict[str, str], section_clusters: list[dict],
+                 cap: int, lang: str) -> dict[str, str]:
+    """Plafonne le nb de grands thèmes d'une section (cf. spec §4). Déterministe.
+
+    ≤ cap → inchangé. Sinon : tri `(-volume, nom)`, garde les `cap-1` plus gros,
+    fusionne le reste dans `_DIVERS[lang]` (clé idempotente). Si « Divers » devient
+    le plus gros bucket → dégrade la section au grain fin (chaque thème = son canonical).
+    """
+    vol: dict[str, int] = {}
+    for c in section_clusters:
+        m = macro_map.get(c["canonical"])
+        if m:
+            vol[m] = vol.get(m, 0) + int(c["count"])
+    if len(vol) <= cap:
+        return macro_map
+    ordered = sorted(vol, key=lambda m: (-vol[m], m))      # tie-break déterministe
+    keep = set(ordered[:cap - 1])
+    divers = _DIVERS[lang]
+    out: dict[str, str] = {}
+    for c in section_clusters:
+        m = macro_map.get(c["canonical"])
+        if not m:
+            continue
+        out[c["canonical"]] = m if m in keep else divers
+    divers_vol = sum(int(c["count"]) for c in section_clusters
+                     if out.get(c["canonical"]) == divers)
+    if divers_vol > vol[ordered[0]]:                       # « Divers » dominant → grain fin
+        return {c["canonical"]: c["canonical"] for c in section_clusters}
+    return out
+
+
 def _fmt(name: str, case: str, sep: str) -> str:
     """Formate un nom de dossier (casse + séparateur, sans préfixe numérique).
 
