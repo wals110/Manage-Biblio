@@ -1005,6 +1005,44 @@ class TestMacroThemeFactorization(unittest.TestCase):
         for i in range(10):
             self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
 
+    def test_on_step_reports_pass1_and_pass2(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 50 clusters → 2 lots passe 1 ; tous en "Informatique" (>skip=6) → 1 section engorgée
+        cl = [self._cl(f"t{i}", 50 - i) for i in range(50)]
+        sec_map = {f"t{i}": "Informatique" for i in range(50)}
+        macro_map = {f"t{i}": ("Machine Learning" if i % 2 else "Réseaux") for i in range(50)}
+        llm = self._llm(sec_map, macro_map=macro_map)
+        steps = []
+        t.propose_taxonomy(llm, cl, options={"granularity": "compact"},
+                           on_step=lambda label, done, total: steps.append((label, done, total)))
+        labels = [s[0] for s in steps]
+        self.assertTrue(any("domaines" in lbl for lbl in labels))        # passe 1
+        self.assertTrue(any("regroupement" in lbl for lbl in labels))    # passe 2
+        # passe 1 : 2 lots (ceil(50/40)) ; le dernier rapport domaines doit être (2, 2)
+        dom = [s for s in steps if "domaines" in s[0]]
+        self.assertEqual(dom[-1][1:], (2, 2))
+        # passe 2 : 1 section engorgée → dernier rapport (1, 1)
+        grp = [s for s in steps if "regroupement" in s[0]]
+        self.assertEqual(grp[-1][1:], (1, 1))
+
+    def test_pass2_parallel_groups_all_sections(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 2 sections engorgées (8 thèmes chacune) → toutes deux regroupées (parallèle)
+        cl = ([self._cl(f"i{i}", 10 - i) for i in range(8)]
+              + [self._cl(f"s{i}", 10 - i) for i in range(8)])
+        sec_map = {**{f"i{i}": "Informatique" for i in range(8)},
+                   **{f"s{i}": "Sciences" for i in range(8)}}
+        macro_map = {**{f"i{i}": "Machine Learning" for i in range(8)},
+                     **{f"s{i}": "Physique" for i in range(8)}}
+        llm = self._llm(sec_map, macro_map=macro_map)
+        steps = []
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"},
+                                           on_step=lambda lbl, d, tot: steps.append((lbl, d, tot)))
+        self.assertEqual(mapping["I0"], "01-Informatique/Machine-Learning")
+        self.assertEqual(mapping["S0"], "02-Sciences/Physique")
+        grp = [s for s in steps if "regroupement" in s[0]]
+        self.assertEqual(grp[-1][1:], (2, 2))   # 2 sections engorgées rapportées
+
 
 if __name__ == "__main__":
     unittest.main()

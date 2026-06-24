@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -20,6 +22,7 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 _RESIDUAL = "_A-TRIER"
 _CHUNK = 40          # nb de clusters par appel LLM (assignation de domaine)
+_MACRO_WORKERS = 8   # parallélisme de la passe 2 (sections indépendantes)
 _GENERAL = {"fr": "Général", "en": "General", "auto": "Général"}
 _DIVERS = {"fr": "Divers", "en": "Misc", "auto": "Divers"}
 # granularity → règles de la passe 2 (None = passe 2 désactivée)
@@ -133,7 +136,8 @@ class _Assignments(BaseModel):
     items: list[_Assign]
 
 
-def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> dict[str, str]:
+def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any],
+                     on_step: Callable[[str, int, int], None] | None = None) -> dict[str, str]:
     """Assigne un domaine à chaque cluster, par lots. Retourne {canonical: domaine}.
 
     Matching par NUMÉRO (pas par texte) : le LLM reformule souvent la forme
@@ -142,7 +146,8 @@ def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> di
     structured = llm.with_structured_output(_Assignments, method="function_calling")
     assigned: dict[str, str] = {}
     sections_seen: list[str] = []
-    for start in range(0, len(clusters), _CHUNK):
+    n_batches = (len(clusters) + _CHUNK - 1) // _CHUNK
+    for bi, start in enumerate(range(0, len(clusters), _CHUNK)):
         batch = clusters[start:start + _CHUNK]
         existing = ", ".join(sections_seen[:60]) or "(aucun encore — crée les premiers)"
         payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
@@ -164,6 +169,8 @@ def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> di
             assigned[batch[idx]["canonical"]] = sec
             if sec not in sections_seen:
                 sections_seen.append(sec)
+        if on_step:
+            on_step("taxonomie · domaines", bi + 1, n_batches)
     return assigned
 
 
@@ -264,7 +271,8 @@ def _fmt(name: str, case: str, sep: str) -> str:
 
 
 def propose_taxonomy(llm: Any, clusters: list[dict],
-                     options: dict | None = None) -> tuple[list[str], dict[str, str]]:
+                     options: dict | None = None,
+                     on_step: Callable[[str, int, int], None] | None = None) -> tuple[list[str], dict[str, str]]:
     """Retourne (tree_folders, theme_mapping). theme_mapping = {raw_theme: folder}.
 
     Deux passes : (1) `_assign_sections` assigne un domaine à chaque cluster ;
@@ -272,16 +280,19 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
     thèmes (pilotée par `granularity`). Le grand thème devient le sous-dossier ; les
     thèmes fins y sont absorbés. Garde-fous : skip des petites sections, `_enforce_cap`,
     repli grain-fin avant « Général ». `_A-TRIER` toujours présent.
+
+    `on_step(label, done, total)` est appelé après chaque lot de la passe 1 et après
+    chaque section traitée en passe 2 (sections indépendantes → parallèle).
     """
     opts = _normalize_options(options)
     if not clusters:
         return [_RESIDUAL], {}
-    assigned = _assign_sections(llm, clusters, opts)
+    assigned = _assign_sections(llm, clusters, opts, on_step=on_step)
     if not assigned:
         log.warning("propose_taxonomy: aucune assignation LLM — fallback _A-TRIER seul")
         return [_RESIDUAL], {}
 
-    # Passe 2 : regrouper les thèmes en grands thèmes, par section.
+    # Passe 2 : regrouper les thèmes en grands thèmes, par section (parallèle).
     gran = _GRANULARITY.get(opts["granularity"])   # None si detailed
     by_section: dict[str, list[dict]] = {}
     for c in clusters:
@@ -289,21 +300,34 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
         if sec:
             by_section.setdefault(sec, []).append(c)
     macro_of: dict[str, str] = {}
+    engorged: list[tuple[str, list[dict]]] = []
     for sec, sec_clusters in by_section.items():
         if gran is None or len(sec_clusters) <= gran["skip"]:
             for c in sec_clusters:                 # petite section / detailed → grain fin
                 macro_of[c["canonical"]] = c["canonical"]
-            continue
-        # garde-fou construction : un échec d'invoke PAR LOT est déjà capté dans
-        # _assign_macro_themes ; ce except ne couvre que with_structured_output/init.
-        try:
-            m = _assign_macro_themes(llm, sec_clusters, opts, gran["low"], gran["high"])
-        except Exception as exc:  # noqa: BLE001 — frontière LLM
-            log.warning("propose_taxonomy: passe 2 échouée section %r: %s", sec, exc)
-            m = {}
-        m = _enforce_cap(m, sec_clusters, gran["cap"], opts["folder_language"])
-        for c in sec_clusters:                     # trou d'index → grain fin
-            macro_of[c["canonical"]] = m.get(c["canonical"]) or c["canonical"]
+        else:
+            engorged.append((sec, sec_clusters))
+
+    if engorged:
+        def _group_one(item: tuple[str, list[dict]]) -> tuple[list[dict], dict[str, str]]:
+            sec, sec_clusters = item
+            try:
+                m = _assign_macro_themes(llm, sec_clusters, opts, gran["low"], gran["high"])
+            except Exception as exc:  # noqa: BLE001 — frontière LLM
+                log.warning("propose_taxonomy: passe 2 échouée section %r: %s", sec, exc)
+                m = {}
+            return sec_clusters, _enforce_cap(m, sec_clusters, gran["cap"], opts["folder_language"])
+
+        done = 0
+        with ThreadPoolExecutor(max_workers=min(_MACRO_WORKERS, len(engorged))) as ex:
+            futures = [ex.submit(_group_one, item) for item in engorged]
+            for fut in as_completed(futures):
+                sec_clusters, m = fut.result()     # consommé dans le thread principal (sûr)
+                for c in sec_clusters:             # trou d'index → grain fin
+                    macro_of[c["canonical"]] = m.get(c["canonical"]) or c["canonical"]
+                done += 1
+                if on_step:
+                    on_step("taxonomie · regroupement", done, len(engorged))
 
     folders: set[str] = {_RESIDUAL}
     mapping: dict[str, str] = {}
