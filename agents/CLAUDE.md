@@ -42,13 +42,14 @@ Bootstrap d'un **nouveau** profil depuis un répertoire brut. **Pipeline**
 
 - **`scan.py`** — `scan_directory` (compte pdf/epub, détecte une pré-organisation)
   + `estimate_cost` (coût/ETA Vision). Read-only, aucun LLM.
-- **`taxonomy_llm.py`** — `propose_taxonomy(llm, clusters, options)` : **scalable**.
-  Le LLM assigne un **domaine** (section) à **chaque** cluster, par **lots de 40**,
-  le matching se faisant **par numéro** (le LLM reformule souvent la canonical →
-  un match texte exact en perdrait ~75 %). Structure **`SECTION/Thème`** par
-  construction (profondeur 2 → `min_depth` respecté ; `max_depth=1` → section
-  seule). Sections numérotées de façon déterministe + homonymes consolidés ;
-  `_A-TRIER` résiduel ; `_INBOX` réservé. Forme paramétrable (cf. `onboarding_options`).
+- **`taxonomy_llm.py`** — `propose_taxonomy(llm, clusters, options)` : **2 passes**.
+  Passe 1 (`_assign_sections`) : un DOMAINE (section) par cluster, par lots, matching
+  par numéro. Passe 2 (`_assign_macro_themes`) : regroupe, *par section engorgée*, les
+  thèmes fins en **grands thèmes** (pilotée par `granularity` — cf. `_GRANULARITY`).
+  Garde-fous déterministes : skip des petites sections, `_enforce_cap` (tie-break
+  stable + anti-« Divers » dominant), repli grain-fin avant « Général ». Structure
+  `SECTION/GrandThème` (profondeur 2) ; les thèmes fins sont absorbés dans
+  `theme_mapping`. `_A-TRIER` résiduel ; `_INBOX` réservé.
 - **`proposition.py`** — orchestration : `run_vision` (Vision full-corpus,
   reprenable via `vision_cache`) → `cluster_corpus` (via `lib/theme_canon` +
   `theme_normalizer`) → `propose_taxonomy` → `propose_categories` (réutilise
