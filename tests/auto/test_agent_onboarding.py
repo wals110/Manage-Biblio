@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -767,8 +768,6 @@ class TestMacroThemeFactorization(unittest.TestCase):
         sec_map  : {canonical: section}  (passe 1)
         macro_map: {canonical: grand_thème} (passe 2)
         """
-        import re
-
         from agents.onboarding import taxonomy_llm as t
 
         def _invoke(messages):
@@ -820,7 +819,6 @@ class TestMacroThemeFactorization(unittest.TestCase):
 
         def _invoke(messages):
             seen_existing.append(messages[0]["content"])
-            import re
             items = [t._Assign(index=int(n), section="Macro")
                      for n in re.findall(r"^\s*(\d+)\. ", messages[-1]["content"], re.M)]
             return t._Assignments(items=items)

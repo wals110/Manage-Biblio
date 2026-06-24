@@ -175,10 +175,10 @@ def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str,
     """
     structured = llm.with_structured_output(_Assignments, method="function_calling")
     assigned: dict[str, str] = {}
-    seen: list[str] = []
+    macros_seen: list[str] = []
     for start in range(0, len(section_clusters), _CHUNK):
         batch = section_clusters[start:start + _CHUNK]
-        existing = ", ".join(seen[:60]) or "(aucun encore — crée les premiers)"
+        existing = ", ".join(macros_seen[:60]) or "(aucun encore — crée les premiers)"
         payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
                             for i, c in enumerate(batch))
         try:
@@ -196,8 +196,8 @@ def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str,
             if not macro:
                 continue
             assigned[batch[idx]["canonical"]] = macro
-            if macro not in seen:
-                seen.append(macro)
+            if macro not in macros_seen:
+                macros_seen.append(macro)
     return assigned
 
 
