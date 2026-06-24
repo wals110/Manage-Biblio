@@ -751,7 +751,9 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertTrue(t._collides("Sciences", "Sciences"))
         self.assertTrue(t._collides("sciences", "SCIENCES"))   # insensible à la casse
         self.assertTrue(t._collides("INBOX", "Sciences"))
+        self.assertTrue(t._collides("_INBOX", "Sciences"))
         self.assertFalse(t._collides("Astrophysique", "Sciences"))
+        self.assertFalse(t._collides("Divers", "Sciences"))   # bucket légitime, pas une collision
 
     def test_granularity_table_values(self):
         from agents.onboarding import taxonomy_llm as t

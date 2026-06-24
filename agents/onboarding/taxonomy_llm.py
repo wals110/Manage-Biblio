@@ -71,7 +71,12 @@ def _normalize_options(options: dict | None) -> dict[str, Any]:
 
 
 def _collides(sub: str, sec_fmt: str) -> bool:
-    """True si `sub` est vide, identique à la section, ou un nom réservé."""
+    """True si `sub` est vide, identique à la section, ou réservé (`INBOX`/`_INBOX`).
+
+    NB : « Général » et « Divers » ne sont PAS des collisions — ce sont des noms de
+    dossier de repli/débordement légitimes (fallback dernier recours et bucket de
+    `_enforce_cap`). Les rejeter ici casserait le plafonnement.
+    """
     return (not sub) or sub.upper() == sec_fmt.upper() or sub.upper() in ("INBOX", "_INBOX")
 
 
