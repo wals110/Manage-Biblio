@@ -139,6 +139,13 @@
         gratuit (pas de re-Vision).
     </div>
     <div id="onb-poll-error" class="onb-error" style="display:none;"></div>
+    <div class="onb-actions" style="margin-top:12px;">
+        <button class="btn-secondary" id="onb-cancel-btn" type="button">↩ Annuler / Recommencer</button>
+    </div>
+    <div class="onb-note muted small">
+        Le calcul peut prendre plusieurs minutes (analyse + proposition). « Recommencer »
+        revient à la configuration ; la Vision déjà faite reste en cache.
+    </div>
 </div>
 
 <!-- ── Étape 3 : proposition / couverture ── -->
@@ -405,6 +412,13 @@
             showErr('onb-start-error', 'Erreur réseau : ' + e.message);
             $('onb-start-btn').disabled = false;
         }
+    });
+
+    $('onb-cancel-btn').addEventListener('click', () => {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        showErr('onb-poll-error', '');
+        $('onb-start-btn').disabled = false;   // ré-arme le bouton Analyser
+        setStep(1);                            // retour à la configuration
     });
 
     function startPoll() {

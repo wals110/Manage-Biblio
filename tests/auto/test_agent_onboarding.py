@@ -803,6 +803,14 @@ class TestOnboardingEndpoints(unittest.TestCase):
             json={"profile": "../../etc"})
         self.assertEqual(r.status_code, 400)
 
+    def test_onboarding_page_has_cancel_button(self):
+        # garde-fou : le bouton Annuler/Recommencer est présent dans la page
+        r = self.client.get("/onboarding")
+        self.assertEqual(r.status_code, 200)
+        body = r.text
+        self.assertIn("onb-cancel-btn", body)
+        self.assertIn("Annuler / Recommencer", body)
+
 
 class TestFsBrowse(unittest.TestCase):
     def setUp(self):
