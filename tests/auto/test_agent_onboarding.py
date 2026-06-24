@@ -849,7 +849,22 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(out["big2"], "Beta")
         self.assertEqual(out["small1"], "Divers")
         self.assertEqual(out["small2"], "Divers")
-        self.assertLessEqual(len(set(out.values())), 3)
+        self.assertEqual(set(out.values()), {"Alpha", "Beta", "Divers"})
+
+    def test_enforce_cap_idempotent_when_llm_named_divers(self):
+        from agents.onboarding import taxonomy_llm as t
+        # le LLM a lui-même nommé un grand thème "Divers" : le collapse fusionne dedans
+        cl = [self._cl("big1", 100), self._cl("big2", 90),
+              self._cl("d1", 5), self._cl("d2", 4), self._cl("s1", 3)]
+        macro = {"big1": "Alpha", "big2": "Beta",
+                 "d1": "Divers", "d2": "Divers", "s1": "Gamma"}
+        out = t._enforce_cap(macro, cl, cap=3, lang="fr")   # 4 macros > cap → garde 2
+        self.assertEqual(out["big1"], "Alpha")
+        self.assertEqual(out["big2"], "Beta")
+        self.assertEqual(out["d1"], "Divers")               # déjà Divers → reste (idempotent)
+        self.assertEqual(out["d2"], "Divers")
+        self.assertEqual(out["s1"], "Divers")               # Gamma fusionné dans le Divers existant
+        self.assertEqual(set(out.values()), {"Alpha", "Beta", "Divers"})
 
     def test_enforce_cap_deterministic_tiebreak(self):
         from agents.onboarding import taxonomy_llm as t
