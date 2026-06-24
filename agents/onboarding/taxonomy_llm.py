@@ -209,9 +209,10 @@ def _enforce_cap(macro_map: dict[str, str], section_clusters: list[dict],
     fusionne le reste dans `_DIVERS[lang]` (clé idempotente). Si « Divers » devient
     le plus gros bucket → dégrade la section au grain fin (chaque thème = son canonical).
 
-    `cap ≥ 1` requis (en pratique 8 ou 16 depuis `_GRANULARITY`) ; `cap=0` donnerait
-    `ordered[:-1]` (silencieusement faux) — non atteint par les appelants actuels.
+    `cap` est borné à `≥ 1` via `max(1, cap)` (sinon `ordered[:-1]` serait
+    silencieusement faux) ; en pratique 8 ou 16 depuis `_GRANULARITY`.
     """
+    cap = max(1, cap)
     vol: dict[str, int] = {}
     for c in section_clusters:
         m = macro_map.get(c["canonical"])

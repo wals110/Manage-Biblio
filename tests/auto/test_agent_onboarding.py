@@ -876,6 +876,14 @@ class TestMacroThemeFactorization(unittest.TestCase):
         macro = {"a": "A", "b": "B", "c": "C"}
         self.assertEqual(t._enforce_cap(macro, cl, cap=8, lang="fr"), macro)
 
+    def test_enforce_cap_zero_clamped_to_one(self):
+        # cap=0 borné à 1 (max(1, cap)) : pas d'IndexError, résultat déterministe
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl("a", 5), self._cl("b", 3)]
+        macro = {"a": "A", "b": "B"}
+        self.assertEqual(t._enforce_cap(macro, cl, cap=0, lang="fr"),
+                         t._enforce_cap(macro, cl, cap=1, lang="fr"))
+
     def test_enforce_cap_collapses_keeping_biggest(self):
         from agents.onboarding import taxonomy_llm as t
         cl = [self._cl("big1", 100), self._cl("big2", 90),
