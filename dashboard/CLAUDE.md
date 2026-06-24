@@ -93,7 +93,8 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   profondeur. `with_structured_output(..., method="function_calling")` (compat GLM/Qwen)),
   `proposition.py` (orchestration :
   `run_vision` Vision full-corpus reprenable → `cluster_corpus` via
-  `lib/theme_canon` → `propose_taxonomy` → `propose_categories` via
+  `lib/theme_canon` → `propose_taxonomy` (**2 passes** : passe 1 sections + passe 2
+  grands thèmes pilotée par `granularity`) → `propose_categories` via
   `agents/refonte/categories_llm` → `write_proposal` : écrit les 3 YAMLs après
   backup + dry-run de couverture via `reclassify_dryrun`).
 - **`agent_onboarding.py`** : wrapper thread+poll (scan synchrone,
@@ -241,4 +242,4 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
 - **51 tests** dans [../tests/auto/test_refonte_apply.py](../tests/auto/test_refonte_apply.py) (adopt, execute, undo-moves, restore-config, preview, status, gating, anti-traversal)
 - **16 tests** dans [../tests/auto/test_reclassify_apply.py](../tests/auto/test_reclassify_apply.py) (preview, execute, undo, pending, status, hash config, fencing 423)
 - **9 tests** dans [../tests/auto/test_rename_apply.py](../tests/auto/test_rename_apply.py) (apply global rename : preview périmètre placeholder+divergent, execute rejoue la projection figée, undo, 409 sans preview, endpoints)
-- **38 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile + modèle Vision actif, scan/estimate, run_vision reprenable + no-cache des erreurs, cluster_corpus, propose_taxonomy + options de forme, propose_categories, write_proposal + dry-run, warnings Vision/proposition, onboarding_options bout-en-bout, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)
+- **69 tests** dans [../tests/auto/test_agent_onboarding.py](../tests/auto/test_agent_onboarding.py) (draft profile + modèle Vision actif, scan/estimate, run_vision reprenable + no-cache des erreurs, cluster_corpus, propose_taxonomy + options de forme + factorisation 2 passes/grands thèmes, propose_categories + folder_hints, write_proposal + dry-run, warnings Vision/proposition, onboarding_options bout-en-bout, wrapper thread/poll, routes scan/start/status/finalize, anti-traversal)

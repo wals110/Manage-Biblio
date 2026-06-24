@@ -69,7 +69,13 @@ def _run(profile: str, run_id: str) -> None:
             _write_status(profile, run_id, {
                 "run_id": run_id, "profile": profile, "status": "running",
                 "phase": "vision", "n_done": done, "n_total": total, "error": None})
-        cov = proposition.build_proposal(profile, on_progress)
+
+        def on_phase(phase: str, done: int, total: int) -> None:
+            _write_status(profile, run_id, {
+                "run_id": run_id, "profile": profile, "status": "running",
+                "phase": phase, "n_done": done, "n_total": total, "error": None})
+
+        cov = proposition.build_proposal(profile, on_progress, on_phase)
         _write_status(profile, run_id, {
             "run_id": run_id, "profile": profile, "status": "done",
             "completed_at": datetime.now(UTC).isoformat(),

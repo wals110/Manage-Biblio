@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -389,6 +390,20 @@ class TestProposeCategories(unittest.TestCase):
         self.assertIn("02-INFORMATIQUE/Deep-Learning", paths)
         self.assertNotIn("_A-TRIER", paths)
 
+    def test_folder_hints_enrich_rationale(self):
+        from agents.onboarding import proposition
+        tree = ["01-INFO", "01-INFO/Machine-Learning", "_A-TRIER"]
+        hints = {"01-INFO/Machine-Learning": ["deep learning", "transformers", "cnn"]}
+        fake_llm = mock.Mock()
+        with mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]) as pk:
+            proposition.propose_categories(tree, folder_hints=hints)
+        creations = pk.call_args.kwargs["creations"]
+        ml = next(c for c in creations if c["path"] == "01-INFO/Machine-Learning")
+        self.assertIn("deep learning", ml["rationale"])
+        self.assertIn("regroupe", ml["rationale"])
+
 
 class TestBuildProposal(unittest.TestCase):
     def setUp(self):
@@ -503,6 +518,29 @@ class TestBuildProposal(unittest.TestCase):
         self.assertIn("warning", rep)
         self.assertIn("proposition", rep["warning"].lower())   # warning ciblé proposition
 
+    def test_build_proposal_derives_folder_hints(self):
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "Deep Learning",
+               "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
+
+        def fake_invoke(messages):
+            import re as _re
+            idxs = _re.findall(r"^(\d+)\. ", messages[-1]["content"], _re.M)
+            return taxonomy_llm._Assignments(items=[
+                taxonomy_llm._Assign(index=int(n), section="Informatique") for n in idxs])
+
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]) as pk:
+            proposition.build_proposal("perso", lambda d, t: None)
+        creations = pk.call_args.kwargs["creations"]
+        self.assertTrue(creations)                              # au moins 1 dossier feuille
+        self.assertTrue(any("deep learning" in c["rationale"].lower() for c in creations))
+
     def test_build_proposal_passes_onboarding_options(self):
         # Les options stockées dans profile.yaml descendent jusqu'à propose_taxonomy.
         from agents.onboarding import proposition
@@ -512,7 +550,7 @@ class TestBuildProposal(unittest.TestCase):
         pj.write_text(yaml.safe_dump(cfg), encoding="utf-8")
         captured = {}
 
-        def fake_propose(llm, clusters, options=None):
+        def fake_propose(llm, clusters, options=None, **kwargs):
             captured["options"] = options
             return ["_A-TRIER"], {}
 
@@ -523,6 +561,49 @@ class TestBuildProposal(unittest.TestCase):
              mock.patch("agents.onboarding.proposition.propose_taxonomy", side_effect=fake_propose):
             proposition.build_proposal("perso", lambda d, t: None)
         self.assertEqual(captured["options"], {"max_depth": 3, "folder_language": "en"})
+
+    def test_build_proposal_reports_phases(self):
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "Deep Learning",
+               "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
+
+        def fake_invoke(messages):
+            import re as _re
+            idxs = _re.findall(r"^(\d+)\. ", messages[-1]["content"], _re.M)
+            return taxonomy_llm._Assignments(items=[
+                taxonomy_llm._Assign(index=int(n), section="Informatique") for n in idxs])
+
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke
+        phases = []
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]):
+            proposition.build_proposal("perso", lambda d, t: None,
+                                       on_phase=lambda ph, d, t: phases.append(ph))
+        # phases post-Vision émises (au moins clustering + taxonomie + catégories + écriture)
+        self.assertIn("clustering", phases)
+        self.assertTrue(any("taxonomie" in p for p in phases))   # via on_step de propose_taxonomy
+        self.assertIn("catégories", phases)
+        self.assertIn("écriture", phases)
+
+    def test_build_proposal_on_phase_optional(self):
+        # rétro-compat : sans on_phase, build_proposal fonctionne comme avant
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "X",
+               "themes": [{"theme": "X", "confidence": 0.9}], "confidence": 0.9}
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = \
+            lambda m: taxonomy_llm._Assignments(items=[taxonomy_llm._Assign(index=1, section="Sciences")])
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]):
+            rep = proposition.build_proposal("perso", lambda d, t: None)   # pas de on_phase
+        self.assertIn("coverage", rep)
 
 
 class TestAgentOnboardingWrapper(unittest.TestCase):
@@ -602,6 +683,28 @@ class TestAgentOnboardingWrapper(unittest.TestCase):
         cfg = yaml.safe_load((self.root / "profiles" / "perso-opt" / "profile.yaml").read_text())
         self.assertEqual(cfg["onboarding_options"]["max_depth"], 3)
         self.assertFalse(cfg["onboarding_options"]["numbered_sections"])
+
+    def test_wrapper_writes_post_vision_phases(self):
+        from dashboard import agent_onboarding as ao
+        writes = []
+
+        def fake_build(profile, on_progress, on_phase=None):
+            on_progress(2, 2)
+            if on_phase:
+                on_phase("taxonomie · regroupement", 1, 3)
+            return {"coverage": 50.0, "stats": {}, "by_destination": [],
+                    "vision": {"n_total": 2, "n_analyzed": 2}}
+
+        with mock.patch.object(ao, "_write_status",
+                               side_effect=lambda p, r, payload: writes.append(payload)), \
+             mock.patch("agents.onboarding.proposition.build_proposal",
+                        side_effect=fake_build):
+            ao._run("perso", "run-xyz")
+
+        phases = [w.get("phase") for w in writes]
+        self.assertIn("vision", phases)
+        self.assertIn("taxonomie · regroupement", phases)
+        self.assertTrue(any(w.get("status") == "done" for w in writes))
 
 
 class TestOnboardingEndpoints(unittest.TestCase):
@@ -700,6 +803,14 @@ class TestOnboardingEndpoints(unittest.TestCase):
             json={"profile": "../../etc"})
         self.assertEqual(r.status_code, 400)
 
+    def test_onboarding_page_has_cancel_button(self):
+        # garde-fou : le bouton Annuler/Recommencer est présent dans la page
+        r = self.client.get("/onboarding")
+        self.assertEqual(r.status_code, 200)
+        body = r.text
+        self.assertIn("onb-cancel-btn", body)
+        self.assertIn("Annuler / Recommencer", body)
+
 
 class TestFsBrowse(unittest.TestCase):
     def setUp(self):
@@ -731,6 +842,279 @@ class TestFsBrowse(unittest.TestCase):
     def test_browse_invalid_path_400(self):
         r = self.client.get("/api/fs/browse", params={"path": "/private/tmp/nope-xyz-123"})
         self.assertEqual(r.status_code, 400)
+
+
+class TestMacroThemeFactorization(unittest.TestCase):
+    def test_macro_system_reflects_target_and_language(self):
+        from agents.onboarding import taxonomy_llm as t
+        s = t._macro_system(t._normalize_options({"folder_language": "fr"}),
+                            "Machine Learning, Bases de Données", low=3, high=6)
+        self.assertIn("3", s)
+        self.assertIn("6", s)
+        self.assertIn("GRANDS THÈMES", s)               # distingue la passe 2 dans les mocks
+        self.assertIn("FRANÇAIS", s.upper())
+        self.assertIn("Machine Learning", s)            # grands thèmes déjà créés réinjectés
+        self.assertIn("réservés", s.lower())            # règle anti-collision (section/Général/Divers)
+
+    def test_collides_detects_section_and_reserved(self):
+        from agents.onboarding import taxonomy_llm as t
+        self.assertTrue(t._collides("", "Sciences"))
+        self.assertTrue(t._collides("Sciences", "Sciences"))
+        self.assertTrue(t._collides("sciences", "SCIENCES"))   # insensible à la casse
+        self.assertTrue(t._collides("INBOX", "Sciences"))
+        self.assertTrue(t._collides("_INBOX", "Sciences"))
+        self.assertFalse(t._collides("Astrophysique", "Sciences"))
+        self.assertFalse(t._collides("Divers", "Sciences"))   # bucket légitime, pas une collision
+
+    def test_granularity_table_values(self):
+        from agents.onboarding import taxonomy_llm as t
+        self.assertIsNone(t._GRANULARITY["detailed"])
+        self.assertEqual(t._GRANULARITY["compact"], {"skip": 6, "low": 3, "high": 6, "cap": 8})
+        self.assertEqual(t._GRANULARITY["auto"], {"skip": 12, "low": 6, "high": 12, "cap": 16})
+        self.assertEqual(t._DIVERS["fr"], "Divers")
+
+    def _llm(self, sec_map, macro_map=None, fail_pass2=False):
+        """Mock LLM conscient des passes : inspecte le payload (jamais positionnel).
+        sec_map  : {canonical: section}  (passe 1)
+        macro_map: {canonical: grand_thème} (passe 2)
+        """
+        from agents.onboarding import taxonomy_llm as t
+
+        def _invoke(messages):
+            system = messages[0]["content"]
+            user = messages[-1]["content"]
+            is_macro = "GRANDS THÈMES" in system
+            if is_macro and fail_pass2:
+                raise RuntimeError("403 passe 2")
+            items = []
+            for line in user.splitlines():
+                m = re.match(r"\s*(\d+)\.\s+(.*?)\s+\(volume", line)
+                if not m:
+                    continue
+                idx, name = int(m.group(1)), m.group(2)
+                label = (macro_map or {}).get(name) if is_macro else sec_map.get(name)
+                if label:
+                    items.append(t._Assign(index=idx, section=label))
+            return t._Assignments(items=items)
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        return llm
+
+    def test_assign_macro_themes_index_matching(self):
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": "deep learning", "raw_members": ["DL"], "count": 5},
+               {"canonical": "sql", "raw_members": ["SQL"], "count": 3}]
+        llm = self._llm({}, macro_map={"deep learning": "Machine Learning", "sql": "Bases de Données"})
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(out["deep learning"], "Machine Learning")
+        self.assertEqual(out["sql"], "Bases de Données")
+
+    def test_assign_macro_themes_ignores_out_of_range_and_empty(self):
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": "a", "raw_members": ["A"], "count": 1}]
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.return_value = t._Assignments(items=[
+            t._Assign(index=99, section="X"),      # hors-borne → ignoré
+            t._Assign(index=1, section="   "),     # vide → ignoré
+        ])
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(out, {})
+
+    def test_assign_macro_themes_reuses_macros_across_batches(self):
+        # > _CHUNK clusters → 2 lots ; le 2e lot doit voir les grands thèmes du 1er
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(t._CHUNK + 5)]
+        seen_existing = []
+
+        def _invoke(messages):
+            seen_existing.append(messages[0]["content"])
+            items = [t._Assign(index=int(n), section="Macro")
+                     for n in re.findall(r"^\s*(\d+)\. ", messages[-1]["content"], re.M)]
+            return t._Assignments(items=items)
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(len(out), t._CHUNK + 5)               # tous assignés
+        self.assertIn("Macro", seen_existing[1])               # 2e lot voit le grand thème du 1er
+
+    @staticmethod
+    def _cl(name, count):
+        return {"canonical": name, "raw_members": [name.upper()], "count": count}
+
+    def test_enforce_cap_under_cap_unchanged(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl("a", 1), self._cl("b", 1), self._cl("c", 1)]
+        macro = {"a": "A", "b": "B", "c": "C"}
+        self.assertEqual(t._enforce_cap(macro, cl, cap=8, lang="fr"), macro)
+
+    def test_enforce_cap_zero_clamped_to_one(self):
+        # cap=0 borné à 1 (max(1, cap)) : pas d'IndexError, résultat déterministe
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl("a", 5), self._cl("b", 3)]
+        macro = {"a": "A", "b": "B"}
+        self.assertEqual(t._enforce_cap(macro, cl, cap=0, lang="fr"),
+                         t._enforce_cap(macro, cl, cap=1, lang="fr"))
+
+    def test_enforce_cap_collapses_keeping_biggest(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl("big1", 100), self._cl("big2", 90),
+              self._cl("small1", 5), self._cl("small2", 4)]
+        macro = {"big1": "Alpha", "big2": "Beta", "small1": "Gamma", "small2": "Delta"}
+        out = t._enforce_cap(macro, cl, cap=3, lang="fr")   # garde cap-1=2 plus gros
+        self.assertEqual(out["big1"], "Alpha")
+        self.assertEqual(out["big2"], "Beta")
+        self.assertEqual(out["small1"], "Divers")
+        self.assertEqual(out["small2"], "Divers")
+        self.assertEqual(set(out.values()), {"Alpha", "Beta", "Divers"})
+
+    def test_enforce_cap_idempotent_when_llm_named_divers(self):
+        from agents.onboarding import taxonomy_llm as t
+        # le LLM a lui-même nommé un grand thème "Divers" : le collapse fusionne dedans
+        cl = [self._cl("big1", 100), self._cl("big2", 90),
+              self._cl("d1", 5), self._cl("d2", 4), self._cl("s1", 3)]
+        macro = {"big1": "Alpha", "big2": "Beta",
+                 "d1": "Divers", "d2": "Divers", "s1": "Gamma"}
+        out = t._enforce_cap(macro, cl, cap=3, lang="fr")   # 4 macros > cap → garde 2
+        self.assertEqual(out["big1"], "Alpha")
+        self.assertEqual(out["big2"], "Beta")
+        self.assertEqual(out["d1"], "Divers")               # déjà Divers → reste (idempotent)
+        self.assertEqual(out["d2"], "Divers")
+        self.assertEqual(out["s1"], "Divers")               # Gamma fusionné dans le Divers existant
+        self.assertEqual(set(out.values()), {"Alpha", "Beta", "Divers"})
+
+    def test_enforce_cap_deterministic_tiebreak(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 1 gros + 3 ex-aequo ; cap=3 → garde gros + 1 ex-aequo (tie-break par nom)
+        cl = [self._cl("huge", 100), self._cl("z", 10), self._cl("a", 10), self._cl("b", 10)]
+        macro = {"huge": "Huge", "z": "Zeta", "a": "Alpha", "b": "Beta"}
+        out1 = t._enforce_cap(macro, cl, cap=3, lang="fr")
+        out2 = t._enforce_cap(macro, cl, cap=3, lang="fr")
+        self.assertEqual(out1, out2)                         # reproductible
+        self.assertEqual(out1["huge"], "Huge")
+        self.assertEqual(out1["a"], "Alpha")                # (-10, "Alpha") gagne le dernier slot
+        self.assertEqual(out1["b"], "Divers")
+        self.assertEqual(out1["z"], "Divers")
+
+    def test_enforce_cap_divers_dominant_degrades_to_fine(self):
+        from agents.onboarding import taxonomy_llm as t
+        # queue collapsée (8+8+8=24) > plus gros conservé (10) → grain fin
+        cl = [self._cl("k1", 10), self._cl("k2", 9),
+              self._cl("t1", 8), self._cl("t2", 8), self._cl("t3", 8)]
+        macro = {"k1": "A", "k2": "B", "t1": "C", "t2": "D", "t3": "E"}
+        out = t._enforce_cap(macro, cl, cap=3, lang="fr")
+        self.assertEqual(out, {"k1": "k1", "k2": "k2", "t1": "t1", "t2": "t2", "t3": "t3"})
+        self.assertNotIn("Divers", out.values())
+
+    def test_compact_engorged_section_collapses_to_macros(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 8 clusters (> skip=6) tous en "Informatique" → 3 grands thèmes
+        cl = [self._cl(f"t{i}", 10 - i) for i in range(8)]
+        sec_map = {f"t{i}": "Informatique" for i in range(8)}
+        macro_map = {**{f"t{i}": "Machine Learning" for i in range(4)},
+                     **{f"t{i}": "Bases de Données" for i in range(4, 7)},
+                     "t7": "Réseaux"}
+        llm = self._llm(sec_map, macro_map=macro_map)
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        self.assertEqual(mapping["T0"], "01-Informatique/Machine-Learning")
+        self.assertEqual(mapping["T7"], "01-Informatique/Réseaux")
+        subs = {f for f in tree if f.startswith("01-Informatique/")}
+        self.assertEqual(len(subs), 3)                        # factorisé : 3 dossiers, pas 8
+
+    def test_compact_small_section_skips_pass2(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 1) for i in range(4)]         # 4 ≤ skip=6
+        llm = self._llm({f"t{i}": "Sciences" for i in range(4)},
+                        macro_map={f"t{i}": "NE_DOIT_PAS_ETRE_UTILISE" for i in range(4)})
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        self.assertEqual(mapping["T0"], "01-Sciences/T0")     # grain fin conservé
+        # passe 2 jamais appelée → un seul invoke (la passe 1)
+        self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
+
+    def test_detailed_disables_pass2(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 1) for i in range(10)]        # > 6 mais detailed → pas de passe 2
+        llm = self._llm({f"t{i}": "Informatique" for i in range(10)},
+                        macro_map={f"t{i}": "Macro" for i in range(10)})
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "detailed"})
+        self.assertEqual(mapping["T0"], "01-Informatique/T0")     # 1 dossier = 1 thème
+        self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
+
+    def test_anti_refusion_general_keeps_fine_grain(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 8 clusters en "Sciences" ; le LLM nomme 2 grands thèmes "Sciences" (collision)
+        cl = [self._cl(f"t{i}", 10 - i) for i in range(8)]
+        sec_map = {f"t{i}": "Sciences" for i in range(8)}
+        macro_map = {**{f"t{i}": "Astrophysique" for i in range(6)},
+                     "t6": "Sciences", "t7": "Sciences"}      # collisions
+        llm = self._llm(sec_map, macro_map=macro_map)
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        # les deux collisions retombent sur leurs thèmes FINS distincts, pas un "Général" partagé
+        self.assertEqual(mapping["T6"], "01-Sciences/T6")
+        self.assertEqual(mapping["T7"], "01-Sciences/T7")
+        self.assertNotEqual(mapping["T6"], mapping["T7"])
+
+    def test_pass2_failure_degrades_to_fine(self):
+        # invoke() lève en passe 2 → capté par le garde-fou PAR LOT de
+        # _assign_macro_themes (retourne {}) → propose_taxonomy retombe au grain fin.
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 1) for i in range(8)]         # > skip → passe 2 tentée
+        llm = self._llm({f"t{i}": "Informatique" for i in range(8)},
+                        macro_map={f"t{i}": "Macro" for i in range(8)}, fail_pass2=True)
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        for i in range(8):                                    # tous mappés au grain fin
+            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+
+    def test_enforce_cap_degrade_propagates_to_fine_grain(self):
+        # bout-en-bout : 10 grands thèmes distincts, volumes égaux → cap (8) dépassé
+        # ET « Divers » dominant → _enforce_cap dégrade → tout retombe au grain fin.
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 10) for i in range(10)]
+        sec_map = {f"t{i}": "Informatique" for i in range(10)}
+        macro_map = {f"t{i}": f"Macro{i}" for i in range(10)}      # 10 macros distincts
+        llm = self._llm(sec_map, macro_map=macro_map)
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        for i in range(10):
+            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+
+    def test_on_step_reports_pass1_and_pass2(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 50 clusters → 2 lots passe 1 ; tous en "Informatique" (>skip=6) → 1 section engorgée
+        cl = [self._cl(f"t{i}", 50 - i) for i in range(50)]
+        sec_map = {f"t{i}": "Informatique" for i in range(50)}
+        macro_map = {f"t{i}": ("Machine Learning" if i % 2 else "Réseaux") for i in range(50)}
+        llm = self._llm(sec_map, macro_map=macro_map)
+        steps = []
+        t.propose_taxonomy(llm, cl, options={"granularity": "compact"},
+                           on_step=lambda label, done, total: steps.append((label, done, total)))
+        labels = [s[0] for s in steps]
+        self.assertTrue(any("domaines" in lbl for lbl in labels))        # passe 1
+        self.assertTrue(any("regroupement" in lbl for lbl in labels))    # passe 2
+        # passe 1 : 2 lots (ceil(50/40)) ; le dernier rapport domaines doit être (2, 2)
+        dom = [s for s in steps if "domaines" in s[0]]
+        self.assertEqual(dom[-1][1:], (2, 2))
+        # passe 2 : 1 section engorgée → dernier rapport (1, 1)
+        grp = [s for s in steps if "regroupement" in s[0]]
+        self.assertEqual(grp[-1][1:], (1, 1))
+
+    def test_pass2_parallel_groups_all_sections(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 2 sections engorgées (8 thèmes chacune) → toutes deux regroupées (parallèle)
+        cl = ([self._cl(f"i{i}", 10 - i) for i in range(8)]
+              + [self._cl(f"s{i}", 10 - i) for i in range(8)])
+        sec_map = {**{f"i{i}": "Informatique" for i in range(8)},
+                   **{f"s{i}": "Sciences" for i in range(8)}}
+        macro_map = {**{f"i{i}": "Machine Learning" for i in range(8)},
+                     **{f"s{i}": "Physique" for i in range(8)}}
+        llm = self._llm(sec_map, macro_map=macro_map)
+        steps = []
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"},
+                                           on_step=lambda lbl, d, tot: steps.append((lbl, d, tot)))
+        self.assertEqual(mapping["I0"], "01-Informatique/Machine-Learning")
+        self.assertEqual(mapping["S0"], "02-Sciences/Physique")
+        grp = [s for s in steps if "regroupement" in s[0]]
+        self.assertEqual(grp[-1][1:], (2, 2))   # 2 sections engorgées rapportées
 
 
 if __name__ == "__main__":
