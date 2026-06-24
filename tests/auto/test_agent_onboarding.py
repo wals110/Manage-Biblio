@@ -733,5 +733,33 @@ class TestFsBrowse(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+class TestMacroThemeFactorization(unittest.TestCase):
+    def test_macro_system_reflects_target_and_language(self):
+        from agents.onboarding import taxonomy_llm as t
+        s = t._macro_system(t._normalize_options({"folder_language": "fr"}),
+                            "Machine Learning, Bases de Données", low=3, high=6)
+        self.assertIn("3", s)
+        self.assertIn("6", s)
+        self.assertIn("GRANDS THÈMES", s)               # distingue la passe 2 dans les mocks
+        self.assertIn("FRANÇAIS", s.upper())
+        self.assertIn("Machine Learning", s)            # grands thèmes déjà créés réinjectés
+        self.assertIn("réservés", s.lower())            # règle anti-collision (section/Général/Divers)
+
+    def test_collides_detects_section_and_reserved(self):
+        from agents.onboarding import taxonomy_llm as t
+        self.assertTrue(t._collides("", "Sciences"))
+        self.assertTrue(t._collides("Sciences", "Sciences"))
+        self.assertTrue(t._collides("sciences", "SCIENCES"))   # insensible à la casse
+        self.assertTrue(t._collides("INBOX", "Sciences"))
+        self.assertFalse(t._collides("Astrophysique", "Sciences"))
+
+    def test_granularity_table_values(self):
+        from agents.onboarding import taxonomy_llm as t
+        self.assertIsNone(t._GRANULARITY["detailed"])
+        self.assertEqual(t._GRANULARITY["compact"], {"skip": 6, "low": 3, "high": 6, "cap": 8})
+        self.assertEqual(t._GRANULARITY["auto"], {"skip": 12, "low": 6, "high": 12, "cap": 16})
+        self.assertEqual(t._DIVERS["fr"], "Divers")
+
+
 if __name__ == "__main__":
     unittest.main()

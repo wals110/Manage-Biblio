@@ -21,6 +21,13 @@ log = logging.getLogger(__name__)
 _RESIDUAL = "_A-TRIER"
 _CHUNK = 40          # nb de clusters par appel LLM (assignation de domaine)
 _GENERAL = {"fr": "Général", "en": "General", "auto": "Général"}
+_DIVERS = {"fr": "Divers", "en": "Misc", "auto": "Divers"}
+# granularity → règles de la passe 2 (None = passe 2 désactivée)
+_GRANULARITY: dict[str, dict | None] = {
+    "compact":  {"skip": 6,  "low": 3, "high": 6,  "cap": 8},
+    "auto":     {"skip": 12, "low": 6, "high": 12, "cap": 16},
+    "detailed": None,
+}
 
 # Options de taxonomie (défauts = conventions lisibles : Titre, tirets, ≤ 2 niv.).
 DEFAULT_OPTIONS: dict[str, Any] = {
@@ -61,6 +68,32 @@ def _normalize_options(options: dict | None) -> dict[str, Any]:
     if o["granularity"] not in ("auto", "compact", "detailed"):
         o["granularity"] = "auto"
     return o
+
+
+def _collides(sub: str, sec_fmt: str) -> bool:
+    """True si `sub` est vide, identique à la section, ou un nom réservé."""
+    return (not sub) or sub.upper() == sec_fmt.upper() or sub.upper() in ("INBOX", "_INBOX")
+
+
+def _macro_system(opts: dict[str, Any], existing: str, low: int, high: int) -> str:
+    """Prompt système de la passe 2 (regroupement en grands thèmes). Miroir de
+    `_assign_system`. Contient « GRANDS THÈMES » pour être distingué de la passe 1.
+    """
+    lang = {
+        "fr": "Donne les noms de grands thèmes en FRANÇAIS.",
+        "en": "Give broad-theme names in ENGLISH.",
+        "auto": "Donne les noms dans la langue dominante du corpus.",
+    }[opts["folder_language"]]
+    return (
+        "Tu regroupes des thèmes spécialisés en GRANDS THÈMES (sous-domaines larges). "
+        f"Vise {low} à {high} grands thèmes au total. Chaque thème porte un NUMÉRO ; "
+        "pour CHAQUE thème, renvoie son NUMÉRO (`index`) et le grand thème (`section`) "
+        "auquel il appartient. RÉUTILISE en priorité un grand thème déjà créé : "
+        f"{existing}. Crée un nouveau grand thème seulement si nécessaire. "
+        "NE nomme PAS un grand thème comme la section elle-même ni « Général/Divers » "
+        "(noms réservés). " + lang
+        + " Assigne TOUS les thèmes, du premier au dernier."
+    )
 
 
 def _assign_system(opts: dict[str, Any], existing: str) -> str:
