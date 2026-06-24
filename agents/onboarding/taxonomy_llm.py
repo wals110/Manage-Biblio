@@ -167,6 +167,40 @@ def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any]) -> di
     return assigned
 
 
+def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str, Any],
+                         low: int, high: int) -> dict[str, str]:
+    """Regroupe les clusters d'UNE section en grands thèmes. Par lots, matching par
+    NUMÉRO (le LLM reformule la canonical). Réutilise les grands thèmes entre lots.
+    Retourne {canonical: grand_thème}.
+    """
+    structured = llm.with_structured_output(_Assignments, method="function_calling")
+    assigned: dict[str, str] = {}
+    seen: list[str] = []
+    for start in range(0, len(section_clusters), _CHUNK):
+        batch = section_clusters[start:start + _CHUNK]
+        existing = ", ".join(seen[:60]) or "(aucun encore — crée les premiers)"
+        payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
+                            for i, c in enumerate(batch))
+        try:
+            res = structured.invoke(
+                [{"role": "system", "content": _macro_system(opts, existing, low, high)},
+                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}])
+        except Exception as exc:  # noqa: BLE001 — frontière LLM
+            log.warning("assign_macro_themes: lot %d échoué: %s", start // _CHUNK, exc)
+            continue
+        for a in res.items:
+            idx = a.index - 1
+            if not (0 <= idx < len(batch)):
+                continue
+            macro = (a.section or "").strip()
+            if not macro:
+                continue
+            assigned[batch[idx]["canonical"]] = macro
+            if macro not in seen:
+                seen.append(macro)
+    return assigned
+
+
 def _fmt(name: str, case: str, sep: str) -> str:
     """Formate un nom de dossier (casse + séparateur, sans préfixe numérique).
 

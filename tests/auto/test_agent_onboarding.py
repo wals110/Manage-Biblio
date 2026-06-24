@@ -762,6 +762,75 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(t._GRANULARITY["auto"], {"skip": 12, "low": 6, "high": 12, "cap": 16})
         self.assertEqual(t._DIVERS["fr"], "Divers")
 
+    def _llm(self, sec_map, macro_map=None, fail_pass2=False):
+        """Mock LLM conscient des passes : inspecte le payload (jamais positionnel).
+        sec_map  : {canonical: section}  (passe 1)
+        macro_map: {canonical: grand_thème} (passe 2)
+        """
+        import re
+
+        from agents.onboarding import taxonomy_llm as t
+
+        def _invoke(messages):
+            system = messages[0]["content"]
+            user = messages[-1]["content"]
+            is_macro = "GRANDS THÈMES" in system
+            if is_macro and fail_pass2:
+                raise RuntimeError("403 passe 2")
+            items = []
+            for line in user.splitlines():
+                m = re.match(r"\s*(\d+)\.\s+(.*?)\s+\(volume", line)
+                if not m:
+                    continue
+                idx, name = int(m.group(1)), m.group(2)
+                label = (macro_map or {}).get(name) if is_macro else sec_map.get(name)
+                if label:
+                    items.append(t._Assign(index=idx, section=label))
+            return t._Assignments(items=items)
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        return llm
+
+    def test_assign_macro_themes_index_matching(self):
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": "deep learning", "raw_members": ["DL"], "count": 5},
+               {"canonical": "sql", "raw_members": ["SQL"], "count": 3}]
+        llm = self._llm({}, macro_map={"deep learning": "Machine Learning", "sql": "Bases de Données"})
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(out["deep learning"], "Machine Learning")
+        self.assertEqual(out["sql"], "Bases de Données")
+
+    def test_assign_macro_themes_ignores_out_of_range_and_empty(self):
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": "a", "raw_members": ["A"], "count": 1}]
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.return_value = t._Assignments(items=[
+            t._Assign(index=99, section="X"),      # hors-borne → ignoré
+            t._Assign(index=1, section="   "),     # vide → ignoré
+        ])
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(out, {})
+
+    def test_assign_macro_themes_reuses_macros_across_batches(self):
+        # > _CHUNK clusters → 2 lots ; le 2e lot doit voir les grands thèmes du 1er
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(t._CHUNK + 5)]
+        seen_existing = []
+
+        def _invoke(messages):
+            seen_existing.append(messages[0]["content"])
+            import re
+            items = [t._Assign(index=int(n), section="Macro")
+                     for n in re.findall(r"^\s*(\d+)\. ", messages[-1]["content"], re.M)]
+            return t._Assignments(items=items)
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(len(out), t._CHUNK + 5)               # tous assignés
+        self.assertIn("Macro", seen_existing[1])               # 2e lot voit le grand thème du 1er
+
 
 if __name__ == "__main__":
     unittest.main()
