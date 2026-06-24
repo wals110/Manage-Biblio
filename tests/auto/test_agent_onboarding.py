@@ -390,6 +390,20 @@ class TestProposeCategories(unittest.TestCase):
         self.assertIn("02-INFORMATIQUE/Deep-Learning", paths)
         self.assertNotIn("_A-TRIER", paths)
 
+    def test_folder_hints_enrich_rationale(self):
+        from agents.onboarding import proposition
+        tree = ["01-INFO", "01-INFO/Machine-Learning", "_A-TRIER"]
+        hints = {"01-INFO/Machine-Learning": ["deep learning", "transformers", "cnn"]}
+        fake_llm = mock.Mock()
+        with mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]) as pk:
+            proposition.propose_categories(tree, folder_hints=hints)
+        creations = pk.call_args.kwargs["creations"]
+        ml = next(c for c in creations if c["path"] == "01-INFO/Machine-Learning")
+        self.assertIn("deep learning", ml["rationale"])
+        self.assertIn("regroupe", ml["rationale"])
+
 
 class TestBuildProposal(unittest.TestCase):
     def setUp(self):
@@ -503,6 +517,29 @@ class TestBuildProposal(unittest.TestCase):
         self.assertEqual(rep["vision"]["n_analyzed"], 1)        # la Vision a réussi
         self.assertIn("warning", rep)
         self.assertIn("proposition", rep["warning"].lower())   # warning ciblé proposition
+
+    def test_build_proposal_derives_folder_hints(self):
+        from agents.onboarding import proposition, taxonomy_llm
+        vis = {"title": "T", "theme": "Deep Learning",
+               "themes": [{"theme": "Deep Learning", "confidence": 0.9}], "confidence": 0.9}
+
+        def fake_invoke(messages):
+            import re as _re
+            idxs = _re.findall(r"^(\d+)\. ", messages[-1]["content"], _re.M)
+            return taxonomy_llm._Assignments(items=[
+                taxonomy_llm._Assign(index=int(n), section="Informatique") for n in idxs])
+
+        fake_llm = mock.Mock()
+        fake_llm.with_structured_output.return_value.invoke.side_effect = fake_invoke
+        with mock.patch("agents.onboarding.proposition.analyze_cover",
+                        side_effect=lambda path, **kw: vis), \
+             mock.patch("agents.onboarding.proposition.get_agent_llm", return_value=fake_llm), \
+             mock.patch("agents.onboarding.proposition.propose_keywords_for_new_folders",
+                        return_value=[]) as pk:
+            proposition.build_proposal("perso", lambda d, t: None)
+        creations = pk.call_args.kwargs["creations"]
+        self.assertTrue(creations)                              # au moins 1 dossier feuille
+        self.assertTrue(any("deep learning" in c["rationale"].lower() for c in creations))
 
     def test_build_proposal_passes_onboarding_options(self):
         # Les options stockées dans profile.yaml descendent jusqu'à propose_taxonomy.

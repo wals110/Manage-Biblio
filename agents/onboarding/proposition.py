@@ -111,7 +111,8 @@ def cluster_corpus(profile: str) -> list[dict]:
     return out
 
 
-def propose_categories(tree_folders: list[str]) -> dict:
+def propose_categories(tree_folders: list[str],
+                       folder_hints: dict[str, list[str]] | None = None) -> dict:
     """Génère categories.yaml (P2) pour les dossiers feuilles via categories_llm,
     ancré sur le contenu. Retourne la structure {groupe: [entries]}.
 
@@ -125,8 +126,13 @@ def propose_categories(tree_folders: list[str]) -> dict:
               if "/" in f and not f.startswith("_")]
     if not leaves:
         return {}
-    creations = [{"path": f, "rationale": "dossier de la taxonomie d'onboarding"}
-                 for f in leaves]
+    creations: list[dict] = []
+    for f in leaves:
+        rationale = "dossier de la taxonomie d'onboarding"
+        hints = (folder_hints or {}).get(f)
+        if hints:
+            rationale += " — regroupe : " + ", ".join(hints[:12])
+        creations.append({"path": f, "rationale": rationale})
     # Pas de categories existantes au bootstrap → groupes inférés depuis les
     # préfixes des dossiers proposés eux-mêmes.
     existing_cats: dict = {}
@@ -198,7 +204,13 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None]) -> dic
     clusters = cluster_corpus(profile)
     options = _load_profile_cfg(profile).get("onboarding_options")
     tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options)
-    cats = propose_categories(tree)
+    folder_hints: dict[str, list[str]] = {}
+    for c in clusters:
+        raws = c["raw_members"]
+        folder = mapping.get(raws[0]) if raws else None
+        if folder:
+            folder_hints.setdefault(folder, []).append(c["canonical"])
+    cats = propose_categories(tree, folder_hints)
     report = write_proposal(profile, tree, mapping, cats)
     report["vision"] = vis
     if vis.get("n_total", 0) > 0 and vis.get("n_analyzed", 0) == 0:
