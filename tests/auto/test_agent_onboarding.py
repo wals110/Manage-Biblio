@@ -938,12 +938,26 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertNotEqual(mapping["T6"], mapping["T7"])
 
     def test_pass2_failure_degrades_to_fine(self):
+        # invoke() lève en passe 2 → capté par le garde-fou PAR LOT de
+        # _assign_macro_themes (retourne {}) → propose_taxonomy retombe au grain fin.
         from agents.onboarding import taxonomy_llm as t
         cl = [self._cl(f"t{i}", 1) for i in range(8)]         # > skip → passe 2 tentée
         llm = self._llm({f"t{i}": "Informatique" for i in range(8)},
                         macro_map={f"t{i}": "Macro" for i in range(8)}, fail_pass2=True)
         _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
         for i in range(8):                                    # tous mappés au grain fin
+            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+
+    def test_enforce_cap_degrade_propagates_to_fine_grain(self):
+        # bout-en-bout : 10 grands thèmes distincts, volumes égaux → cap (8) dépassé
+        # ET « Divers » dominant → _enforce_cap dégrade → tout retombe au grain fin.
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 10) for i in range(10)]
+        sec_map = {f"t{i}": "Informatique" for i in range(10)}
+        macro_map = {f"t{i}": f"Macro{i}" for i in range(10)}      # 10 macros distincts
+        llm = self._llm(sec_map, macro_map=macro_map)
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        for i in range(10):
             self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
 
 

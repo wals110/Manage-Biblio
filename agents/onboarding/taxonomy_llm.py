@@ -293,6 +293,8 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
             for c in sec_clusters:                 # petite section / detailed → grain fin
                 macro_of[c["canonical"]] = c["canonical"]
             continue
+        # garde-fou construction : un échec d'invoke PAR LOT est déjà capté dans
+        # _assign_macro_themes ; ce except ne couvre que with_structured_output/init.
         try:
             m = _assign_macro_themes(llm, sec_clusters, opts, gran["low"], gran["high"])
         except Exception as exc:  # noqa: BLE001 — frontière LLM
@@ -324,6 +326,8 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
         if opts["max_depth"] >= 2:                 # SECTION/GrandThème (profondeur 2)
             sub = _fmt(macro_of.get(c["canonical"], c["canonical"]), case, sep)
             if _collides(sub, sec_fmt):
+                # macro collisionnel → repli grain fin distinct ; si le canonical lui-même
+                # vaut la section (cas-limite LLM), les deux replis tombent sur _GENERAL.
                 sub = _fmt(c["canonical"], case, sep)             # 1) repli grain fin distinct
                 if _collides(sub, sec_fmt):
                     sub = _fmt(_GENERAL[opts["folder_language"]], case, sep)   # 2) dernier recours
