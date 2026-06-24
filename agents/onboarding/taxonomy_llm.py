@@ -266,10 +266,11 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
                      options: dict | None = None) -> tuple[list[str], dict[str, str]]:
     """Retourne (tree_folders, theme_mapping). theme_mapping = {raw_theme: folder}.
 
-    Structure `SECTION/Thème` : le LLM assigne un domaine à chaque cluster (par
-    lots → couverture complète), le thème devient le sous-dossier (profondeur 2
-    si `max_depth ≥ 2`). Sections numérotées de façon déterministe (homonymes
-    consolidés). `_A-TRIER` toujours présent ; fallback si le LLM échoue partout.
+    Deux passes : (1) `_assign_sections` assigne un domaine à chaque cluster ;
+    (2) `_assign_macro_themes` regroupe, par section engorgée, les thèmes en grands
+    thèmes (pilotée par `granularity`). Le grand thème devient le sous-dossier ; les
+    thèmes fins y sont absorbés. Garde-fous : skip des petites sections, `_enforce_cap`,
+    repli grain-fin avant « Général ». `_A-TRIER` toujours présent.
     """
     opts = _normalize_options(options)
     if not clusters:
@@ -279,6 +280,28 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
         log.warning("propose_taxonomy: aucune assignation LLM — fallback _A-TRIER seul")
         return [_RESIDUAL], {}
 
+    # Passe 2 : regrouper les thèmes en grands thèmes, par section.
+    gran = _GRANULARITY.get(opts["granularity"])   # None si detailed
+    by_section: dict[str, list[dict]] = {}
+    for c in clusters:
+        sec = assigned.get(c["canonical"])
+        if sec:
+            by_section.setdefault(sec, []).append(c)
+    macro_of: dict[str, str] = {}
+    for sec, sec_clusters in by_section.items():
+        if gran is None or len(sec_clusters) <= gran["skip"]:
+            for c in sec_clusters:                 # petite section / detailed → grain fin
+                macro_of[c["canonical"]] = c["canonical"]
+            continue
+        try:
+            m = _assign_macro_themes(llm, sec_clusters, opts, gran["low"], gran["high"])
+        except Exception as exc:  # noqa: BLE001 — frontière LLM
+            log.warning("propose_taxonomy: passe 2 échouée section %r: %s", sec, exc)
+            m = {}
+        m = _enforce_cap(m, sec_clusters, gran["cap"], opts["folder_language"])
+        for c in sec_clusters:                     # trou d'index → grain fin
+            macro_of[c["canonical"]] = m.get(c["canonical"]) or c["canonical"]
+
     folders: set[str] = {_RESIDUAL}
     mapping: dict[str, str] = {}
     section_num: dict[str, str] = {}   # nom de section (MAJ) → numéro "NN"
@@ -286,10 +309,10 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
     for c in clusters:
         sec_raw = assigned.get(c["canonical"])
         if not sec_raw:
-            continue                                   # non assigné → reste orphelin
+            continue                               # non assigné → reste orphelin
         sec_fmt = _fmt(sec_raw, case, sep)
         if not sec_fmt or sec_fmt.upper() in ("INBOX", "_INBOX"):
-            continue   # nom de section réservé → on saute (le thème reste orphelin)
+            continue
         if opts["numbered_sections"]:
             key = sec_fmt.upper()
             if key not in section_num:
@@ -298,10 +321,12 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
         else:
             section_seg = sec_fmt
         parts = [section_seg]
-        if opts["max_depth"] >= 2:                     # SECTION/Thème (profondeur 2)
-            sub = _fmt(c["canonical"], case, sep)
-            if not sub or sub.upper() == sec_fmt.upper() or sub.upper() in ("INBOX", "_INBOX"):
-                sub = _fmt(_GENERAL[opts["folder_language"]], case, sep)
+        if opts["max_depth"] >= 2:                 # SECTION/GrandThème (profondeur 2)
+            sub = _fmt(macro_of.get(c["canonical"], c["canonical"]), case, sep)
+            if _collides(sub, sec_fmt):
+                sub = _fmt(c["canonical"], case, sep)             # 1) repli grain fin distinct
+                if _collides(sub, sec_fmt):
+                    sub = _fmt(_GENERAL[opts["folder_language"]], case, sep)   # 2) dernier recours
             parts.append(sub)
         folder = "/".join(parts)
         for i in range(1, len(parts) + 1):

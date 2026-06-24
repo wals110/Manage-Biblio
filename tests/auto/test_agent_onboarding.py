@@ -889,6 +889,63 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(out, {"k1": "k1", "k2": "k2", "t1": "t1", "t2": "t2", "t3": "t3"})
         self.assertNotIn("Divers", out.values())
 
+    def test_compact_engorged_section_collapses_to_macros(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 8 clusters (> skip=6) tous en "Informatique" → 3 grands thèmes
+        cl = [self._cl(f"t{i}", 10 - i) for i in range(8)]
+        sec_map = {f"t{i}": "Informatique" for i in range(8)}
+        macro_map = {**{f"t{i}": "Machine Learning" for i in range(4)},
+                     **{f"t{i}": "Bases de Données" for i in range(4, 7)},
+                     "t7": "Réseaux"}
+        llm = self._llm(sec_map, macro_map=macro_map)
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        self.assertEqual(mapping["T0"], "01-Informatique/Machine-Learning")
+        self.assertEqual(mapping["T7"], "01-Informatique/Réseaux")
+        subs = {f for f in tree if f.startswith("01-Informatique/")}
+        self.assertEqual(len(subs), 3)                        # factorisé : 3 dossiers, pas 8
+
+    def test_compact_small_section_skips_pass2(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 1) for i in range(4)]         # 4 ≤ skip=6
+        llm = self._llm({f"t{i}": "Sciences" for i in range(4)},
+                        macro_map={f"t{i}": "NE_DOIT_PAS_ETRE_UTILISE" for i in range(4)})
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        self.assertEqual(mapping["T0"], "01-Sciences/T0")     # grain fin conservé
+        # passe 2 jamais appelée → un seul invoke (la passe 1)
+        self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
+
+    def test_detailed_disables_pass2(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 1) for i in range(10)]        # > 6 mais detailed → pas de passe 2
+        llm = self._llm({f"t{i}": "Informatique" for i in range(10)},
+                        macro_map={f"t{i}": "Macro" for i in range(10)})
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "detailed"})
+        self.assertEqual(mapping["T0"], "01-Informatique/T0")     # 1 dossier = 1 thème
+        self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
+
+    def test_anti_refusion_general_keeps_fine_grain(self):
+        from agents.onboarding import taxonomy_llm as t
+        # 8 clusters en "Sciences" ; le LLM nomme 2 grands thèmes "Sciences" (collision)
+        cl = [self._cl(f"t{i}", 10 - i) for i in range(8)]
+        sec_map = {f"t{i}": "Sciences" for i in range(8)}
+        macro_map = {**{f"t{i}": "Astrophysique" for i in range(6)},
+                     "t6": "Sciences", "t7": "Sciences"}      # collisions
+        llm = self._llm(sec_map, macro_map=macro_map)
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        # les deux collisions retombent sur leurs thèmes FINS distincts, pas un "Général" partagé
+        self.assertEqual(mapping["T6"], "01-Sciences/T6")
+        self.assertEqual(mapping["T7"], "01-Sciences/T7")
+        self.assertNotEqual(mapping["T6"], mapping["T7"])
+
+    def test_pass2_failure_degrades_to_fine(self):
+        from agents.onboarding import taxonomy_llm as t
+        cl = [self._cl(f"t{i}", 1) for i in range(8)]         # > skip → passe 2 tentée
+        llm = self._llm({f"t{i}": "Informatique" for i in range(8)},
+                        macro_map={f"t{i}": "Macro" for i in range(8)}, fail_pass2=True)
+        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        for i in range(8):                                    # tous mappés au grain fin
+            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+
 
 if __name__ == "__main__":
     unittest.main()
