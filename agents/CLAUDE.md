@@ -36,7 +36,7 @@ Réorganise une taxonomie existante. Graphe **LangGraph**, 3 phases nommées :
 ## Agent Onboarding (`agents/onboarding/`)
 
 Bootstrap d'un **nouveau** profil depuis un répertoire brut. **Pipeline**
-(fonctions pures + 2 appels LLM directs `with_structured_output(...).invoke(...)`),
+(fonctions pures + appels LLM par lots `with_structured_output(...).invoke(...)`),
 **pas** un agent ReAct/LangGraph. 3 étapes nommées : **Scan & estimation** →
 **Analyse & proposition** → **Raffinage & application**.
 
