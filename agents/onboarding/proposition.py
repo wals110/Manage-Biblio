@@ -207,13 +207,16 @@ def build_proposal(profile: str, on_progress: Callable[[int, int], None],
     sinon une Vision en échec produirait une taxonomie vide présentée comme un
     succès (couverture 0 %, rien à raffiner).
     """
+    # on_phase(label, done, total) : les phases courtes (clustering/catégories/
+    # écriture) rapportent (0, 1) — le changement de label suffit à signaler la
+    # progression ; les phases LLM (taxonomie) rapportent une vraie fraction.
     vis = run_vision(profile, on_progress)
     if on_phase:
         on_phase("clustering", 0, 1)
     clusters = cluster_corpus(profile)
     options = _load_profile_cfg(profile).get("onboarding_options")
-    on_step = (lambda label, done, total: on_phase(label, done, total)) if on_phase else None
-    tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options, on_step=on_step)
+    # même signature (str, int, int) → on passe on_phase directement comme on_step.
+    tree, mapping = propose_taxonomy(get_agent_llm(), clusters, options, on_step=on_phase)
     if on_phase:
         on_phase("catégories", 0, 1)
     folder_hints: dict[str, list[str]] = {}
