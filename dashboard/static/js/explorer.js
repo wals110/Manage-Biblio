@@ -19,7 +19,7 @@
         if (d.status === 'ready') { projection = d; $('expl-loading').style.display = 'none'; render(); }
         else if (d.status === 'building') { poll(); }
         else { $('expl-loading').textContent = '✗ ' + (d.error || 'erreur'); }
-      });
+      }).catch((e) => { $('expl-loading').textContent = '✗ Erreur réseau : ' + (e.message || e); });
   }
   function poll() {
     fetch('/api/explorer/status?profile=' + encodeURIComponent(profile))
@@ -30,7 +30,7 @@
           $('expl-loading').textContent = `Calcul… ${s.n_done || 0}/${s.n_total || '?'} fichiers`;
           setTimeout(poll, 1000);
         }
-      });
+      }).catch((e) => { $('expl-loading').textContent = '✗ Erreur réseau : ' + (e.message || e); });
   }
 
   function render() {
@@ -56,7 +56,7 @@
         + `${p || '(racine)'} <span class="muted small">(${byFolder[p].length})</span>${badge}${out}</div>`;
     }).join('');
     $('expl-tree').querySelectorAll('.expl-folder').forEach((el) => {
-      el.onclick = () => { selected = decodeURIComponent(el.dataset.folder); render(); renderFiles(byFolder); };
+      el.onclick = () => { selected = decodeURIComponent(el.dataset.folder); render(); };
     });
     renderFiles(byFolder);
   }
@@ -85,7 +85,8 @@
   });
   $('expl-refresh').onclick = () => {
     fetch('/api/explorer/refresh?profile=' + encodeURIComponent(profile), { method: 'POST' })
-      .then(() => { projection = null; load(); });
+      .then(() => { projection = null; load(); })
+      .catch((e) => { $('expl-loading').style.display = ''; $('expl-loading').textContent = '✗ Erreur réseau : ' + (e.message || e); });
   };
   $('expl-apply').onclick = () => {
     if (!projection) return;
