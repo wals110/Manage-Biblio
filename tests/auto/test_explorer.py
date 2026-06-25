@@ -207,26 +207,6 @@ class TestExplorerRoutes(unittest.TestCase):
         rf.assert_called_once_with("p")
 
 
-class TestExplorerPage(unittest.TestCase):
-    def setUp(self):
-        from fastapi.testclient import TestClient
-
-        from dashboard.app import app
-        self.client = TestClient(app)
-
-    def test_explorer_page_renders(self):
-        r = self.client.get("/explorer")
-        self.assertEqual(r.status_code, 200)
-        body = r.text
-        self.assertIn("onb-expl-toggle", body)            # interrupteur Maintenant/Après
-        self.assertIn("explorer.js", body)
-        self.assertIn("reclassify_apply.js", body)        # module apply partagé chargé
-
-    def test_explorer_in_nav(self):
-        r = self.client.get("/")
-        self.assertIn('href="/explorer"', r.text)
-
-
 class TestOnboardingHandoff(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient

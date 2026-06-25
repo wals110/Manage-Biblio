@@ -2158,11 +2158,6 @@ async def api_explorer_refresh(profile: str):
     return JSONResponse(explorer.refresh(profile))
 
 
-@app.get("/explorer")
-async def explorer_page(request: Request):
-    """Page Explorateur — arbre dossiers + toggle Maintenant/Après + apply."""
-    return templates.TemplateResponse(request, "explorer.html", {"active": "explorer"})
-
 
 @app.get("/api/taxonomy/backups")
 async def taxonomy_backups_list_api(profile: str):
