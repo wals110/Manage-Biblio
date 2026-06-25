@@ -30,6 +30,7 @@ import shutil
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -46,6 +47,11 @@ _MIN_CONFIDENCE = 0.5
 
 # File listing cache TTL (seconds)
 _FILES_CACHE_TTL = 300
+
+# Flag de classification unifié du reclassify (P1 + P2 mots-clés). Consommé par
+# l'Explorateur ET son bouton Appliquer → garantit « Après » == apply déclenché
+# depuis l'Explorateur. Voir docs/.../2026-06-25-explorer-preview-design.md.
+RECLASSIFY_INCLUDE_KEYWORD = True
 
 # Snapshot cache TTL — derived data is cheap but vision_cache parsing is
 # the slow part; the snapshot stays valid until a write invalidates it.
@@ -912,10 +918,13 @@ def theme_files(profile: str, theme: str, limit: int = 50) -> dict:
 # paid) is NOT simulated — those files are reported as no_prediction.
 
 
-def _scan_and_classify(profile: str, *, include_step2: bool) -> list[dict]:
+def _scan_and_classify(profile: str, *, include_step2: bool,
+                       on_progress: "Callable[[int, int], None] | None" = None) -> list[dict]:
     """Scan full read-only de la bibliothèque + classement par fichier
     (P1+P2, pas de LLM Mapper). Applique la canonicalisation (Dédupli).
-    Retourne la liste brute des résultats par fichier."""
+    Retourne la liste brute des résultats par fichier.
+
+    on_progress(done, total) est appelé après chaque fichier traité si fourni."""
     from concurrent.futures import ThreadPoolExecutor
 
     from lib.classifier import classify_combined, load_keyword_classifier
@@ -967,9 +976,9 @@ def _scan_and_classify(profile: str, *, include_step2: bool) -> list[dict]:
         i = rel.rfind("/")
         current_folder = rel[:i] if i >= 0 else ""
         key = vision_cache.compute_cache_key(abs_path, model=model, n_pages=n_pages)
-        result = vision_cache.lookup(cache, key) if key else None
-        if not isinstance(result, dict):
-            result = {}
+        raw = vision_cache.lookup(cache, key) if key else None
+        analyzed = isinstance(raw, dict)
+        result = raw if analyzed else {}
         top_theme = ""
         top_conf = 0.0
         themes_arr = result.get("themes")
@@ -989,10 +998,17 @@ def _scan_and_classify(profile: str, *, include_step2: bool) -> list[dict]:
         return {"rel_path": rel, "current_folder": current_folder,
                 "predicted_folder": dest, "source": source,
                 "score": float(score) if score else 0.0,
-                "top_theme": top_theme, "top_confidence": round(top_conf, 3)}
+                "top_theme": top_theme, "top_confidence": round(top_conf, 3),
+                "analyzed": analyzed}
 
+    total = len(file_list)
+    results: list[dict] = []
     with ThreadPoolExecutor(max_workers=8) as ex:
-        return list(ex.map(_process, file_list))
+        for done, r in enumerate(ex.map(_process, file_list), start=1):
+            results.append(r)
+            if on_progress:
+                on_progress(done, total)
+    return results
 
 
 def reclassify_dryrun(
