@@ -1128,19 +1128,25 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(mapping["T0"], "01-Informatique/T0")     # 1 dossier = 1 thème
         self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
 
-    def test_anti_refusion_general_keeps_fine_grain(self):
+    def test_section_named_macro_routes_to_shared_general(self):
         from agents.onboarding import taxonomy_llm as t
-        # 8 clusters en "Sciences" ; le LLM nomme 2 grands thèmes "Sciences" (collision)
+        # 8 clusters en "Sciences" ; le LLM nomme 2 grands thèmes « Sciences » (= section).
+        # Au lieu d'EXPLOSER ces thèmes au grain fin (le LLM lumpe souvent une grosse
+        # part de la section dans un catch-all nommé comme la section → 80 thèmes
+        # donnaient 73 sous-dossiers sur the-big-one), ils sont routés vers UN bucket
+        # partagé « Général » → peu de dossiers.
         cl = [self._cl(f"t{i}", 10 - i) for i in range(8)]
         sec_map = {f"t{i}": "Sciences" for i in range(8)}
         macro_map = {**{f"t{i}": "Astrophysique" for i in range(6)},
-                     "t6": "Sciences", "t7": "Sciences"}      # collisions
+                     "t6": "Sciences", "t7": "Sciences"}      # macro = nom de section
         llm = self._llm(sec_map, macro_map=macro_map)
-        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
-        # les deux collisions retombent sur leurs thèmes FINS distincts, pas un "Général" partagé
-        self.assertEqual(mapping["T6"], "01-Sciences/T6")
-        self.assertEqual(mapping["T7"], "01-Sciences/T7")
-        self.assertNotEqual(mapping["T6"], mapping["T7"])
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        # les collisions PARTAGENT un « Général » unique, elles n'explosent PAS au grain fin
+        self.assertEqual(mapping["T6"], "01-Sciences/Général")
+        self.assertEqual(mapping["T7"], "01-Sciences/Général")
+        self.assertEqual(mapping["T0"], "01-Sciences/Astrophysique")
+        subs = {f for f in tree if f.startswith("01-Sciences/")}
+        self.assertEqual(subs, {"01-Sciences/Astrophysique", "01-Sciences/Général"})  # 2 dossiers
 
     def test_pass2_failure_degrades_to_fine(self):
         # invoke() lève en passe 2 → capté par le garde-fou PAR LOT de

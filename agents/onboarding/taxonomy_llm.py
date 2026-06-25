@@ -404,11 +404,12 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
         if opts["max_depth"] >= 2:                 # SECTION/GrandThème (profondeur 2)
             sub = _fmt(macro_of.get(c["canonical"], c["canonical"]), case, sep)
             if _collides(sub, sec_fmt):
-                # macro collisionnel → repli grain fin distinct ; si le canonical lui-même
-                # vaut la section (cas-limite LLM), les deux replis tombent sur _GENERAL.
-                sub = _fmt(c["canonical"], case, sep)             # 1) repli grain fin distinct
-                if _collides(sub, sec_fmt):
-                    sub = _fmt(_GENERAL[opts["folder_language"]], case, sep)   # 2) dernier recours
+                # macro = nom de la section (catch-all paresseux du LLM, ex. un grand
+                # thème « Sciences » sous SCIENCES) → bucket PARTAGÉ unique « Général ».
+                # JAMAIS d'explosion au grain fin : 80 thèmes lumpés dans « Sciences »
+                # donnaient 73 sous-dossiers distincts (cf. the-big-one). L'objectif
+                # « peu de dossiers » prime — un « Général » partagé absorbe la queue.
+                sub = _fmt(_GENERAL[opts["folder_language"]], case, sep)
             parts.append(sub)
         folder = "/".join(parts)
         for i in range(1, len(parts) + 1):
