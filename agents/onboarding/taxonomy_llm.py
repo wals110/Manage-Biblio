@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -24,6 +25,18 @@ _RESIDUAL = "_A-TRIER"
 _CHUNK = 40          # nb de clusters par appel LLM (assignation de domaine)
 _MACRO_CHUNK = 250   # passe 2 : traiter TOUTE la section en 1 appel (groupement cohérent) ; batch seulement les sections > 250
 _MACRO_WORKERS = 8   # parallélisme de la passe 2 (sections indépendantes)
+_MAX_LLM_TRIES = 3      # essais par appel structuré (1 + 2 retries) sur erreur réseau transitoire
+_RETRY_BACKOFF_S = 2.0  # backoff linéaire entre essais (2s puis 4s) ; patché à 0 en test
+# Marqueurs (type d'exception OU message) des erreurs réseau TRANSITOIRES qui
+# méritent un retry plutôt qu'une dégradation silencieuse de toute la section.
+# Observé en prod : SiliconFlow réinitialise des connexions poolées pendant la
+# passe 2 parallèle (« Connection reset by peer », « APIConnectionError »,
+# « Server disconnected ») → l'appel échoue, est avalé par le try/except du lot,
+# et la section retombe au grain fin (SCIENCES → 46 sous-dossiers). On retente.
+_TRANSIENT_MARKERS = (
+    "connection", "timeout", "timed out", "reset by peer", "server disconnected",
+    "remoteprotocol", "readerror", "connecterror", "broken pipe", "eof occurred",
+)
 _GENERAL = {"fr": "Général", "en": "General", "auto": "Général"}
 _DIVERS = {"fr": "Divers", "en": "Misc", "auto": "Divers"}
 # granularity → règles de la passe 2 (None = passe 2 désactivée)
@@ -144,6 +157,36 @@ class _Assignments(BaseModel):
     items: list[_Assign]
 
 
+def _is_transient(exc: Exception) -> bool:
+    """True si `exc` ressemble à une erreur réseau transitoire (cf. `_TRANSIENT_MARKERS`).
+
+    On matche sur le NOM de la classe ET le message (insensible à la casse) pour
+    rester découplé des couches openai/httpx (pas d'import de leurs types). Une
+    erreur métier (« 403 Model disabled », ValidationError…) ne matche pas → pas
+    de retry, dégradation immédiate comme avant.
+    """
+    blob = f"{type(exc).__name__} {exc}".lower()
+    return any(m in blob for m in _TRANSIENT_MARKERS)
+
+
+def _invoke_retry(structured: Any, messages: list, *, label: str) -> Any:
+    """`structured.invoke(messages)` avec retry sur erreurs transitoires.
+
+    Relève l'exception (transitoire après `_MAX_LLM_TRIES` essais, ou non
+    transitoire dès le 1er) — le caller garde son garde-fou par lot (try/except
+    → dégradation au grain fin) pour les échecs définitifs.
+    """
+    for attempt in range(_MAX_LLM_TRIES):
+        try:
+            return structured.invoke(messages)
+        except Exception as exc:  # noqa: BLE001 — frontière LLM
+            if not _is_transient(exc) or attempt == _MAX_LLM_TRIES - 1:
+                raise
+            log.warning("%s: erreur transitoire (essai %d/%d): %s — retry",
+                        label, attempt + 1, _MAX_LLM_TRIES, exc)
+            time.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+
+
 def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any],
                      on_step: Callable[[str, int, int], None] | None = None) -> dict[str, str]:
     """Assigne un domaine à chaque cluster, par lots. Retourne {canonical: domaine}.
@@ -161,9 +204,11 @@ def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any],
         payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
                             for i, c in enumerate(batch))
         try:
-            res = structured.invoke(
+            res = _invoke_retry(
+                structured,
                 [{"role": "system", "content": _assign_system(opts, existing)},
-                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}])
+                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}],
+                label=f"assign_sections lot {start // _CHUNK}")
         except Exception as exc:  # noqa: BLE001 — frontière LLM
             log.warning("assign_sections: lot %d échoué: %s", start // _CHUNK, exc)
             continue
@@ -197,9 +242,11 @@ def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str,
         payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
                             for i, c in enumerate(batch))
         try:
-            res = structured.invoke(
+            res = _invoke_retry(
+                structured,
                 [{"role": "system", "content": _macro_system(opts, existing, low, high)},
-                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}])
+                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}],
+                label=f"assign_macro_themes lot {start // _MACRO_CHUNK}")
         except Exception as exc:  # noqa: BLE001 — frontière LLM
             log.warning("assign_macro_themes: lot %d échoué: %s", start // _CHUNK, exc)
             continue

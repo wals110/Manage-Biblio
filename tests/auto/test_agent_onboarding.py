@@ -965,6 +965,62 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
         self.assertGreaterEqual(t._MACRO_CHUNK, 200)   # un seul appel pour les grosses sections
 
+    def test_is_transient_classifies_network_errors(self):
+        from agents.onboarding import taxonomy_llm as t
+        # transitoires (reset/timeout/déconnexion) → retry
+        self.assertTrue(t._is_transient(ConnectionError("Connection reset by peer")))
+        self.assertTrue(t._is_transient(RuntimeError("APIConnectionError: Connection error.")))
+        self.assertTrue(t._is_transient(RuntimeError("Server disconnected without response")))
+        self.assertTrue(t._is_transient(TimeoutError("Read timed out")))
+        # métier → PAS de retry (dégradation immédiate comme avant)
+        self.assertFalse(t._is_transient(RuntimeError("403 Model disabled")))
+        self.assertFalse(t._is_transient(ValueError("validation error for _Assignments")))
+
+    def test_assign_macro_themes_retries_transient_then_succeeds(self):
+        # Une erreur réseau transitoire (connection reset) est RETENTÉE, pas
+        # silencieusement dégradée au grain fin (cf. SCIENCES qui retombait à 46
+        # sous-dossiers quand SiliconFlow réinitialisait une connexion en passe 2).
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 10 - i} for i in range(8)]
+        calls = {"n": 0}
+
+        def _invoke(messages):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ConnectionError("Connection reset by peer")      # 1er essai : transitoire
+            items = []                                                 # 2e essai : regroupe tout
+            for line in messages[-1]["content"].splitlines():
+                m = re.match(r"\s*(\d+)\.\s+(.*?)\s+\(volume", line)
+                if m:
+                    items.append(t._Assign(index=int(m.group(1)), section="Machine Learning"))
+            return t._Assignments(items=items)
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        with mock.patch.object(t, "_RETRY_BACKOFF_S", 0):              # pas d'attente réelle
+            out = t._assign_macro_themes(
+                llm, sec, t._normalize_options({"granularity": "compact"}), low=3, high=6)
+        self.assertEqual(calls["n"], 2)                               # 1 échec transitoire + 1 succès
+        self.assertEqual(set(out.values()), {"Machine Learning"})    # regroupé, PAS dégradé
+
+    def test_assign_macro_themes_non_transient_not_retried(self):
+        # Une erreur métier (403) n'est PAS retentée : échec immédiat → {} (le caller
+        # retombe au grain fin). Garantit qu'on ne masque pas / ne ralentit pas les vraies erreurs.
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(8)]
+        calls = {"n": 0}
+
+        def _invoke(messages):
+            calls["n"] += 1
+            raise RuntimeError("403 Model disabled")
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        out = t._assign_macro_themes(
+            llm, sec, t._normalize_options({"granularity": "compact"}), low=3, high=6)
+        self.assertEqual(calls["n"], 1)                              # aucun retry
+        self.assertEqual(out, {})                                    # dégrade (garde-fou par lot)
+
     @staticmethod
     def _cl(name, count):
         return {"canonical": name, "raw_members": [name.upper()], "count": count}
