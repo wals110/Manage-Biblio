@@ -257,6 +257,7 @@ class TestAntiDrift(unittest.TestCase):
 class TestExplorerSubtab(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
