@@ -233,5 +233,37 @@ class TestOnboardingHandoff(unittest.TestCase):
         self.assertIn("/explorer?profile=", body)         # handoff vers l'Explorateur
 
 
+class TestAntiDrift(unittest.TestCase):
+    """Verrou anti-dérive : l'ensemble des fichiers « bougeants » de l'Explorateur
+    doit être IDENTIQUE à celui de l'apply (build_reclassify_projection) avec le
+    MÊME flag — sinon « Après » mentirait. Sentinelle contre toute édition future
+    qui ferait diverger les deux prédicats de move."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-expl-ad-")
+        self.root = Path(self.tmp)
+        _make_profile(self.root, "p",
+                      {"a.pdf": "Deep Learning", "b.pdf": None},
+                      mapping={"deep learning": "01-Info/ML"})
+        self.patch = mock.patch("dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+        from dashboard import taxonomy
+        taxonomy.reset_cache()
+
+    def tearDown(self):
+        mock.patch.stopall()
+        from dashboard import taxonomy
+        taxonomy.reset_cache()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_explorer_moving_set_equals_apply(self):
+        from dashboard import explorer, taxonomy
+        moving_expl = {f["rel_path"] for f in explorer.build_projection("p")["files"]
+                       if f["predicted_folder"] and f["predicted_folder"] != f["current_folder"]}
+        moves_apply = {m["rel_path"] for m in taxonomy.build_reclassify_projection(
+            "p", include_keyword=taxonomy.RECLASSIFY_INCLUDE_KEYWORD)}
+        self.assertEqual(moving_expl, moves_apply)
+        self.assertIn("a.pdf", moving_expl)               # a bouge (P1 thème)
+
+
 if __name__ == "__main__":
     unittest.main()
