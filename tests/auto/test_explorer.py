@@ -172,6 +172,7 @@ class TestProjectionCache(unittest.TestCase):
 class TestExplorerRoutes(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -202,6 +203,7 @@ class TestExplorerRoutes(unittest.TestCase):
 class TestExplorerPage(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
@@ -221,6 +223,7 @@ class TestExplorerPage(unittest.TestCase):
 class TestOnboardingHandoff(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
+
         from dashboard.app import app
         self.client = TestClient(app)
 
