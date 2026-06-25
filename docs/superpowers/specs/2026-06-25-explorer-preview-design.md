@@ -18,6 +18,31 @@ instantanément côté client**. L'apply réutilise le moteur `reclassify_apply`
 
 ---
 
+## Révision (2026-06-25) — refonte UI : sous-onglet Taxonomie + arbre imbriqué
+
+Après la 1ʳᵉ implémentation, retour utilisateur. **L'UI change** ; le **backend**
+(`explorer.build_projection`, cache + build de fond, routes `/api/explorer/*`,
+invariant anti-dérive, flag unifié) **reste**.
+
+- **Emplacement** : l'aperçu devient un **sous-onglet de Taxonomie** (à côté de
+  Mappings / Catégories / Rename / Refonte / Dédupli), **pas** un onglet top-level.
+  L'onglet « Explorateur » de la sidebar **et** la page autonome `/explorer` sont
+  **supprimés** (template, route, nav, `explorer.js`).
+- **Rendu** : un **vrai arbre imbriqué repliable** (réutilise les classes `.tax-tree-*`
+  et le pattern de `renderTreeNode` de Taxonomie), **pas** une liste plate de chemins.
+- **Squelette d'arbre CONSTANT** dans les deux modes = `tree.yaml` (dossiers vides
+  inclus, comme l'onglet Taxonomie) ∪ dossiers réels hors-arbre (_INBOX / orphelins).
+  Seuls **les fichiers** se déplacent entre dossiers selon le mode (Maintenant =
+  `current_folder`, Après = `predicted_folder`). `build_projection` expose désormais
+  `tree_folders` (= `taxonomy._load_tree(profile)`).
+- **Onboarding** : on **retire** le bouton « Voir dans l'Explorateur » de l'étape 3 ;
+  on **garde** « Continuer dans Mappings pour raffiner → » (le raffinage). L'aperçu se
+  consulte depuis le sous-onglet Taxonomie.
+
+Détail d'implémentation : `docs/superpowers/plans/2026-06-25-explorer-rework-subtab.md`.
+Les sections ci-dessous (§3-§5) décrivent l'UI d'origine (page autonome) — conservées
+pour l'historique ; la révision ci-dessus prévaut pour l'UI.
+
 ## 1. Problème
 
 Le bouton onboarding étape 3 **« 🚀 Déplacer les fichiers classés » (`onb-move-btn`,
