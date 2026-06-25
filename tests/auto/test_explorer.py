@@ -116,5 +116,49 @@ class TestBuildProjection(unittest.TestCase):
         self.assertEqual(out["flag_keyword"], True)
 
 
+class TestProjectionCache(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="klodo-expl-c-")
+        self.root = Path(self.tmp)
+        (self.root / "profiles" / "p" / ".cache").mkdir(parents=True)
+        self.patch = mock.patch("dashboard.data.get_project_root", return_value=self.root)
+        self.patch.start()
+
+    def tearDown(self):
+        from dashboard import explorer
+        explorer._projection_cache.clear()
+        mock.patch.stopall()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _fake_build(self):
+        return {"ok": True, "files": [{"rel_path": "a.pdf"}],
+                "summary": {"n_total": 1, "n_moving": 0, "n_stable": 0,
+                            "n_no_prediction": 0, "n_unanalyzed": 0},
+                "flag_keyword": True}
+
+    def test_get_projection_builds_then_serves_cache(self):
+        from dashboard import explorer
+        with mock.patch.object(explorer, "build_projection", return_value=self._fake_build()), \
+             mock.patch.object(explorer.apply_engine, "spawn",
+                               side_effect=lambda fn, args, name: fn(*args)), \
+             mock.patch.object(explorer, "_fresh_hash", return_value="h1"):
+            explorer.get_projection("p")               # déclenche le build (spawn synchrone)
+            second = explorer.get_projection("p")     # servi par le cache
+        self.assertEqual(second["status"], "ready")
+        self.assertEqual(second["files"], [{"rel_path": "a.pdf"}])
+
+    def test_stale_hash_triggers_rebuild(self):
+        from dashboard import explorer
+        explorer._projection_cache["p"] = {"fresh_hash": "OLD", "data": self._fake_build()}
+        with mock.patch.object(explorer, "build_projection", return_value=self._fake_build()) as b, \
+             mock.patch.object(explorer.apply_engine, "spawn",
+                               side_effect=lambda fn, args, name: fn(*args)), \
+             mock.patch.object(explorer, "_fresh_hash", return_value="NEW"):
+            explorer.get_projection("p")               # périmé → rebuild (spawn synchrone)
+            out = explorer.get_projection("p")         # maintenant frais
+        b.assert_called()
+        self.assertEqual(out["status"], "ready")
+
+
 if __name__ == "__main__":
     unittest.main()
