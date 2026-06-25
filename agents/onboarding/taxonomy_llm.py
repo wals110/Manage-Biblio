@@ -23,7 +23,13 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 _RESIDUAL = "_A-TRIER"
 _CHUNK = 40          # nb de clusters par appel LLM (assignation de domaine)
-_MACRO_CHUNK = 250   # passe 2 : traiter TOUTE la section en 1 appel (groupement cohérent) ; batch seulement les sections > 250
+_MACRO_CHUNK = 100   # passe 2 : taille de lot. Assez grand pour un groupement cohérent
+# (les petites/moyennes sections tiennent en 1 appel), assez petit pour que les TRÈS
+# grosses sections (>100) soient découpées en appels fiables — une requête de 150+
+# thèmes en streaming est parfois tronquée/droppée (réponse partielle). Les lots
+# réutilisent les grands thèmes déjà créés (`macros_seen`) → cohérence inter-lots.
+_MACRO_MIN_YIELD = 0.6  # passe 2 : un lot doit mapper ≥ 60% de ses thèmes, sinon réponse
+# partielle (tronquée/droppée) → on retente (cf. INFORMATIQUE 156 thèmes → 1 mappé).
 _MACRO_WORKERS = 8   # parallélisme de la passe 2 (sections indépendantes)
 _MAX_LLM_TRIES = 3      # essais par appel structuré (1 + 2 retries) sur erreur réseau transitoire
 _RETRY_BACKOFF_S = 2.0  # backoff linéaire entre essais (2s puis 4s) ; patché à 0 en test
@@ -227,6 +233,44 @@ def _assign_sections(llm: Any, clusters: list[dict], opts: dict[str, Any],
     return assigned
 
 
+def _parse_macro_items(res: Any, batch: list[dict]) -> dict[str, str]:
+    """Extrait {canonical: grand_thème} d'une réponse passe 2 (matching par numéro)."""
+    out: dict[str, str] = {}
+    for a in res.items:
+        idx = a.index - 1
+        macro = (a.section or "").strip()
+        if 0 <= idx < len(batch) and macro:
+            out[batch[idx]["canonical"]] = macro
+    return out
+
+
+def _macro_batch(structured: Any, messages: list, batch: list[dict], *, label: str) -> dict[str, str]:
+    """Mappe UN lot en grands thèmes, avec retry sur réponse PARTIELLE.
+
+    `_invoke_retry` couvre déjà les erreurs réseau qui LÈVENT. Mais un appel
+    streaming peut être tronqué/droppé et renvoyer une réponse VALIDE mais
+    incomplète (peu d'items) sans lever — alors la queue non mappée part en
+    « Divers » (cf. INFORMATIQUE 156 thèmes → 1 mappé → 155 en Divers). On
+    retente tant que le rendement < `_MACRO_MIN_YIELD`, en gardant le meilleur essai.
+    """
+    threshold = max(1, int(_MACRO_MIN_YIELD * len(batch)))
+    best: dict[str, str] = {}
+    for attempt in range(_MAX_LLM_TRIES):
+        try:
+            res = _invoke_retry(structured, messages, label=label)
+        except Exception as exc:  # noqa: BLE001 — frontière LLM
+            log.warning("%s échoué: %s", label, exc)
+            return best
+        mapped = _parse_macro_items(res, batch)
+        if len(mapped) > len(best):
+            best = mapped
+        if len(mapped) >= threshold:
+            return mapped
+        log.warning("%s: réponse partielle (%d/%d, seuil %d) — retry %d/%d",
+                    label, len(mapped), len(batch), threshold, attempt + 1, _MAX_LLM_TRIES)
+    return best   # tous les essais partiels → on garde le plus complet (reste → Divers)
+
+
 def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str, Any],
                          low: int, high: int) -> dict[str, str]:
     """Regroupe les clusters d'UNE section en grands thèmes. Par lots, matching par
@@ -241,23 +285,13 @@ def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str,
         existing = ", ".join(macros_seen[:60]) or "(aucun encore — crée les premiers)"
         payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
                             for i, c in enumerate(batch))
-        try:
-            res = _invoke_retry(
-                structured,
-                [{"role": "system", "content": _macro_system(opts, existing, low, high)},
-                 {"role": "user", "content": f"Thèmes à classer :\n{payload}"}],
-                label=f"assign_macro_themes lot {start // _MACRO_CHUNK}")
-        except Exception as exc:  # noqa: BLE001 — frontière LLM
-            log.warning("assign_macro_themes: lot %d échoué: %s", start // _CHUNK, exc)
-            continue
-        for a in res.items:
-            idx = a.index - 1
-            if not (0 <= idx < len(batch)):
-                continue
-            macro = (a.section or "").strip()
-            if not macro:
-                continue
-            assigned[batch[idx]["canonical"]] = macro
+        mapped = _macro_batch(
+            structured,
+            [{"role": "system", "content": _macro_system(opts, existing, low, high)},
+             {"role": "user", "content": f"Thèmes à classer :\n{payload}"}],
+            batch, label=f"assign_macro_themes lot {start // _MACRO_CHUNK}")
+        for canon, macro in mapped.items():
+            assigned[canon] = macro
             if macro not in macros_seen:
                 macros_seen.append(macro)
     return assigned

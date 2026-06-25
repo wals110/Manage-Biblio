@@ -956,14 +956,41 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(len(out), t._MACRO_CHUNK + 5)               # tous assignés
         self.assertIn("Macro", seen_existing[1])               # 2e lot voit le grand thème du 1er
 
-    def test_assign_macro_themes_single_call_for_whole_section(self):
+    def test_assign_macro_themes_single_call_for_normal_section(self):
         # une section de 50 thèmes (≤ _MACRO_CHUNK) → UN SEUL appel LLM (pas de batch)
         from agents.onboarding import taxonomy_llm as t
         sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(50)]
         llm = self._llm({}, macro_map={f"t{i}": "Macro" for i in range(50)})
         t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
         self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
-        self.assertGreaterEqual(t._MACRO_CHUNK, 200)   # un seul appel pour les grosses sections
+        self.assertGreaterEqual(t._MACRO_CHUNK, 80)    # 1 appel pour les sections normales
+        self.assertLessEqual(t._MACRO_CHUNK, 150)      # mais on découpe les TRÈS grosses (>chunk)
+
+    def test_assign_macro_themes_retries_on_partial_response(self):
+        # Réponse VALIDE mais incomplète (streaming tronqué/droppé : peu d'items, sans
+        # lever) → retentée jusqu'à mapper ≥ _MACRO_MIN_YIELD, au lieu d'envoyer la queue
+        # en Divers (cf. INFORMATIQUE 156 thèmes → 1 mappé). On garde le meilleur essai.
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(10)]
+        calls = {"n": 0}
+
+        def _invoke(messages):
+            calls["n"] += 1
+            items = []
+            for line in messages[-1]["content"].splitlines():
+                m = re.match(r"\s*(\d+)\.\s+(.*?)\s+\(volume", line)
+                if m:
+                    items.append(t._Assign(index=int(m.group(1)), section="Macro"))
+            if calls["n"] == 1:
+                items = items[:2]            # 1er essai : réponse partielle (2/10 < seuil 6)
+            return t._Assignments(items=items)
+
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.side_effect = _invoke
+        out = t._assign_macro_themes(
+            llm, sec, t._normalize_options({"granularity": "compact"}), low=3, high=6)
+        self.assertEqual(calls["n"], 2)                # partielle → 1 retry → complète
+        self.assertEqual(len(out), 10)                # tous mappés (pas seulement 2)
 
     def test_is_transient_classifies_network_errors(self):
         from agents.onboarding import taxonomy_llm as t
