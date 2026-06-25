@@ -910,6 +910,23 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(out["deep learning"], "Machine Learning")
         self.assertEqual(out["sql"], "Bases de Données")
 
+    def test_assign_models_tolerate_malformed_item(self):
+        # Un item LLM malformé ({}) ne doit PAS faire échouer tout le lot : grâce aux
+        # défauts, il devient (index=-1, section="") et est ignoré, les items valides
+        # étant conservés. Régression : sans défauts, un seul {} nuke le regroupement
+        # d'une grosse section → retour au grain fin (INFORMATIQUE 128 sous-dossiers).
+        from agents.onboarding import taxonomy_llm as t
+        self.assertEqual(t._Assign().index, -1)
+        self.assertEqual(t._Assign().section, "")
+        sec = [{"canonical": "deep learning", "raw_members": ["DL"], "count": 5}]
+        llm = mock.Mock()
+        llm.with_structured_output.return_value.invoke.return_value = t._Assignments(items=[
+            t._Assign(index=1, section="Machine Learning"),
+            t._Assign(),   # malformé → ignoré, ne casse pas le lot
+        ])
+        out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(out, {"deep learning": "Machine Learning"})
+
     def test_assign_macro_themes_ignores_out_of_range_and_empty(self):
         from agents.onboarding import taxonomy_llm as t
         sec = [{"canonical": "a", "raw_members": ["A"], "count": 1}]

@@ -128,8 +128,14 @@ def _assign_system(opts: dict[str, Any], existing: str) -> str:
 
 
 class _Assign(BaseModel):
-    index: int = Field(description="numéro du thème dans la liste (1, 2, 3, …)")
-    section: str = Field(description="nom du domaine large (ex. Informatique, Mathématiques, Sciences)")
+    # Défauts TOLÉRANTS : un item malformé renvoyé par le LLM (ex. `{}`) ne doit PAS
+    # faire échouer toute la réponse structurée. Sans défaut, `with_structured_output`
+    # lève une ValidationError sur le lot entier → la passe (sections OU regroupement)
+    # est perdue et retombe au grain fin (cf. INFORMATIQUE 128 sous-dossiers). Avec
+    # défauts, `{}` devient `(index=-1, section="")` et est ignoré par le matching
+    # (idx hors-borne / section vide), les items valides du lot étant conservés.
+    index: int = Field(default=-1, description="numéro du thème dans la liste (1, 2, 3, …)")
+    section: str = Field(default="", description="nom du domaine large (ex. Informatique, Mathématiques, Sciences)")
 
 
 class _Assignments(BaseModel):

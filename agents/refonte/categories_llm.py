@@ -18,12 +18,13 @@ log = logging.getLogger(__name__)
 
 
 class _NewCategoryEntry(BaseModel):
-    chemin: str
-    groupe: str
-    # Pas de contraintes DURES (ge/le, min/max) : sur un gros lot, une seule
-    # entrée non conforme renvoyée par le LLM ferait échouer TOUT le batch
-    # (cf. onboarding 360 dossiers). On guide via `description` et on borne en
-    # post-traitement plutôt que de rejeter à la validation.
+    # Pas de contraintes DURES (ge/le, min/max) NI de champs requis : sur un gros
+    # lot, une seule entrée non conforme (ex. `chemin` sans `groupe`) ferait échouer
+    # TOUT le batch via `with_structured_output` (cf. onboarding 360 dossiers, et la
+    # passe de regroupement taxonomie). On met des défauts tolérants ; les entrées à
+    # `chemin` vide/inconnu sont écartées en post-validation.
+    chemin: str = Field(default="")
+    groupe: str = Field(default="autres")
     priorite: int = Field(default=5, description="priorité 1 (haute) à 99 (basse)")
     mots_cles: list[str] = Field(default_factory=list,
                                  description="3 à 15 mots-clés de classification")
