@@ -62,7 +62,7 @@ class TestScanAnalyzedAndProgress(unittest.TestCase):
 
     def test_reclassify_include_keyword_constant(self):
         from dashboard import taxonomy
-        self.assertEqual(taxonomy.RECLASSIFY_INCLUDE_KEYWORD, True)
+        self.assertIs(taxonomy.RECLASSIFY_INCLUDE_KEYWORD, True)
 
     def test_scan_marks_analyzed_per_file(self):
         from dashboard import taxonomy
@@ -76,7 +76,7 @@ class TestScanAnalyzedAndProgress(unittest.TestCase):
         taxonomy._scan_and_classify("p", include_step2=True,
                                     on_progress=lambda d, t: seen.append((d, t)))
         self.assertTrue(seen)
-        self.assertEqual(seen[-1], (2, 2))
+        self.assertEqual(seen[-1], (len(seen), len(seen)))   # done == total au dernier tick
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ _FILES_CACHE_TTL = 300
 
 # Flag de classification unifié du reclassify (P1 + P2 mots-clés). Consommé par
 # l'Explorateur ET son bouton Appliquer → garantit « Après » == apply déclenché
-# depuis l'Explorateur. Voir docs/.../2026-06-25-explorer-preview-design.md.
+# depuis l'Explorateur. Voir docs/superpowers/specs/2026-06-25-explorer-preview-design.md.
 RECLASSIFY_INCLUDE_KEYWORD = True
 
 # Snapshot cache TTL — derived data is cheap but vision_cache parsing is
@@ -919,7 +919,7 @@ def theme_files(profile: str, theme: str, limit: int = 50) -> dict:
 
 
 def _scan_and_classify(profile: str, *, include_step2: bool,
-                       on_progress: "Callable[[int, int], None] | None" = None) -> list[dict]:
+                       on_progress: Callable[[int, int], None] | None = None) -> list[dict]:
     """Scan full read-only de la bibliothèque + classement par fichier
     (P1+P2, pas de LLM Mapper). Applique la canonicalisation (Dédupli).
     Retourne la liste brute des résultats par fichier.
