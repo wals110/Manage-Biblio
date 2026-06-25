@@ -130,7 +130,8 @@
       if (!st.proj) return;
       window.applyReclassify({ profile: st.profile, keyword: !!st.proj.flag_keyword,
         onStatus: (m) => { $('expl-apply-status').textContent = m; } })
-        .then(() => { st.proj = null; load(); });
+        .then(() => { st.proj = null; load(); })
+        .catch((e) => { $('expl-apply-status').textContent = '✗ ' + (e.message || e); });
     };
     const tabBtn = document.querySelector('.tax-subtab[data-view="explorer"]');
     if (tabBtn) tabBtn.addEventListener('click', () => { if (!st.loaded) { st.loaded = true; load(); } });
