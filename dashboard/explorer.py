@@ -85,7 +85,7 @@ def _vision_sig(profile: str) -> str:
     """Signature mtime du vision_cache — invalide le cache si la Vision a tourné."""
     p = data.get_project_root() / "profiles" / profile / ".cache" / "vision_cache.json"
     try:
-        return str(int(p.stat().st_mtime))
+        return str(p.stat().st_mtime)   # float (sous-seconde) → plus sûr qu'un int
     except OSError:
         return "0"
 
@@ -97,9 +97,12 @@ def _fresh_hash(profile: str) -> str:
 
 def _build_job(profile: str) -> None:
     """Tâche de fond : construit la projection et l'écrit dans le cache."""
+    # Snapshot AVANT le scan : si la config change pendant le build (~27 s),
+    # le hash stocké reste l'ancien → le prochain get voit « périmé » → rebuild.
+    snapshot_hash = _fresh_hash(profile)
     try:
         result = build_projection(profile)
-        _projection_cache[profile] = {"fresh_hash": _fresh_hash(profile), "data": result}
+        _projection_cache[profile] = {"fresh_hash": snapshot_hash, "data": result}
         n = result["summary"]["n_total"]
         _write_status(profile, {"status": "ready", "n_done": n, "n_total": n, "error": None})
     except Exception as exc:  # noqa: BLE001 — frontière de thread

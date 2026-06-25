@@ -159,6 +159,15 @@ class TestProjectionCache(unittest.TestCase):
         b.assert_called()
         self.assertEqual(out["status"], "ready")
 
+    def test_already_building_does_not_respawn(self):
+        from dashboard import explorer
+        explorer._write_status("p", {"status": "building", "n_done": 0, "n_total": 0, "error": None})
+        with mock.patch.object(explorer.apply_engine, "spawn") as spawn, \
+             mock.patch.object(explorer, "_fresh_hash", return_value="X"):
+            out = explorer.get_projection("p")        # cache absent MAIS déjà building
+        spawn.assert_not_called()
+        self.assertEqual(out["status"], "building")
+
 
 if __name__ == "__main__":
     unittest.main()
