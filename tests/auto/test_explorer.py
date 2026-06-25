@@ -218,5 +218,17 @@ class TestExplorerPage(unittest.TestCase):
         self.assertIn('href="/explorer"', r.text)
 
 
+class TestOnboardingHandoff(unittest.TestCase):
+    def setUp(self):
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_onboarding_no_longer_auto_moves(self):
+        body = self.client.get("/onboarding").text
+        self.assertNotIn("moveClassified", body)          # l'ancien flux a disparu
+        self.assertIn("/explorer?profile=", body)         # handoff vers l'Explorateur
+
+
 if __name__ == "__main__":
     unittest.main()

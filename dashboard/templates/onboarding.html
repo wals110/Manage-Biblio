@@ -160,9 +160,7 @@
     </div>
     <div id="onb-move-status" class="onb-note" style="display:none;"></div>
     <div class="onb-actions">
-        <button class="btn-secondary" id="onb-move-btn" type="button">
-            🚀 Déplacer les fichiers classés
-        </button>
+        <button class="btn-secondary" id="onb-move-btn" type="button">🔍 Voir dans l'Explorateur</button>
         <button class="btn-primary" id="onb-continue-btn" type="button">
             Continuer dans Mappings pour raffiner →
         </button>
@@ -499,67 +497,10 @@
         window.location = '/taxonomy?profile=' + encodeURIComponent(profileName);
     });
 
-    // ── Déplacer les fichiers classés (réutilise l'Apply global reclassify) ──
-    const _rcaBase = '/api/taxonomy/reclassify/apply';
-    function _moveShow(msg) {
-        const s = $('onb-move-status');
-        s.textContent = msg; s.style.display = '';
-    }
-    async function _rcaPollDone() {
-        for (;;) {
-            const st = await fetch(_rcaBase + '/status?profile='
-                + encodeURIComponent(profileName)).then((r) => r.json());
-            const p = st.progress;
-            if (p && (p.status === 'done' || p.status === 'error')) return p;
-            if (p) _moveShow(`Déplacement… ${p.n_done || 0}/${p.n_total || '?'}`);
-            await new Promise((res) => setTimeout(res, 1500));
-        }
-    }
-    async function moveClassified() {
-        const btn = $('onb-move-btn');
-        btn.disabled = true;
-        try {
-            _moveShow('Calcul de ce qui bougerait…');
-            const pv = await fetch(_rcaBase + '/preview?profile='
-                + encodeURIComponent(profileName) + '&keyword=true').then((r) => r.json());
-            if (pv.error) { _moveShow('✗ ' + pv.error); return; }
-            const n = pv.n_moves || 0;
-            if (!n) {
-                _moveShow('Aucun fichier à déplacer (rien de classé vers un sous-dossier).');
-                return;
-            }
-            if (!window.confirm(`Déplacer ${n} fichier(s) dans leurs dossiers ?\n`
-                + `Les fichiers sans destination restent en place. Annulable ensuite.`)) {
-                $('onb-move-status').style.display = 'none';
-                return;
-            }
-            _moveShow('Déplacement en cours…');
-            await fetch(_rcaBase + '/execute', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ profile: profileName }) });
-            const prog = await _rcaPollDone();
-            if (prog.status === 'error') { _moveShow('✗ Échec : ' + (prog.error || 'erreur')); return; }
-            const moved = prog.n_done || 0, failed = prog.n_failed || 0, skipped = prog.n_skipped || 0;
-            _moveShow(`✓ ${moved} déplacé(s)`
-                + (skipped ? ` · ${skipped} ignoré(s)` : '')
-                + (failed ? ` · ${failed} erreur(s)` : ''));
-            if (moved > 0 && window.confirm(`${moved} fichier(s) déplacé(s). Annuler le déplacement ?`)) {
-                _moveShow('Annulation…');
-                await fetch(_rcaBase + '/undo', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ profile: profileName }) });
-                const u = await _rcaPollDone();
-                _moveShow(u.status === 'error'
-                    ? ('✗ ' + (u.error || 'échec annulation'))
-                    : '↩ Déplacement annulé.');
-            }
-        } catch (e) {
-            _moveShow('Erreur : ' + (e.message || e));
-        } finally {
-            btn.disabled = false;
-        }
-    }
-    $('onb-move-btn').addEventListener('click', moveClassified);
+    // ── Voir dans l'Explorateur (mode Après) — plus de déplacement automatique ──
+    $('onb-move-btn').addEventListener('click', () => {
+        window.location = '/explorer?profile=' + encodeURIComponent(profileName) + '&mode=after';
+    });
 
     // ── Explorateur de dossiers (sélection interactive) ──
     const browseModal = $('onb-browse-modal');
