@@ -169,5 +169,35 @@ class TestProjectionCache(unittest.TestCase):
         self.assertEqual(out["status"], "building")
 
 
+class TestExplorerRoutes(unittest.TestCase):
+    def setUp(self):
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_projection_route_building(self):
+        from dashboard import explorer
+        with mock.patch.object(explorer, "get_projection",
+                               return_value={"status": "building"}) as g:
+            r = self.client.get("/api/explorer/projection?profile=p")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "building")
+        g.assert_called_once_with("p")
+
+    def test_status_route(self):
+        from dashboard import explorer
+        with mock.patch.object(explorer, "get_build_status",
+                               return_value={"status": "ready", "n_done": 3, "n_total": 3}):
+            r = self.client.get("/api/explorer/status?profile=p")
+        self.assertEqual(r.json()["n_total"], 3)
+
+    def test_refresh_route(self):
+        from dashboard import explorer
+        with mock.patch.object(explorer, "refresh", return_value={"ok": True}) as rf:
+            r = self.client.post("/api/explorer/refresh?profile=p")
+        self.assertEqual(r.status_code, 200)
+        rf.assert_called_once_with("p")
+
+
 if __name__ == "__main__":
     unittest.main()

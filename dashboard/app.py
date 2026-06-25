@@ -22,6 +22,7 @@ from dashboard import (
     baseline,
     data,
     dedupli,
+    explorer,
     reclassify_apply,
     taxonomy,
 )
@@ -2137,6 +2138,24 @@ async def api_reclassify_apply_undo(request: Request):
         return JSONResponse(reclassify_apply.start_undo(profile))
     except reclassify_apply.ApplyError as exc:
         return _rca_error(exc)
+
+
+@app.get("/api/explorer/projection")
+async def api_explorer_projection(profile: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(explorer.get_projection(profile))
+
+
+@app.get("/api/explorer/status")
+async def api_explorer_status(profile: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(explorer.get_build_status(profile))
+
+
+@app.post("/api/explorer/refresh")
+async def api_explorer_refresh(profile: str):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(explorer.refresh(profile))
 
 
 @app.get("/api/taxonomy/backups")
