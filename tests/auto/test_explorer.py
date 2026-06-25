@@ -79,5 +79,42 @@ class TestScanAnalyzedAndProgress(unittest.TestCase):
         self.assertEqual(seen[-1], (len(seen), len(seen)))   # done == total au dernier tick
 
 
+class TestBuildProjection(unittest.TestCase):
+    def _rows(self):
+        return [
+            {"rel_path": "a.pdf", "current_folder": "_INBOX", "predicted_folder": "01-Info/ML",
+             "source": "LLM (theme)", "score": 0.9, "top_theme": "Deep Learning",
+             "top_confidence": 0.9, "analyzed": True},                       # bouge, p1
+            {"rel_path": "b.pdf", "current_folder": "01-Info/ML", "predicted_folder": "01-Info/ML",
+             "source": "Keyword (x)", "score": 0.5, "top_theme": "ml",
+             "top_confidence": 0.5, "analyzed": True},                       # stable, p2
+            {"rel_path": "c.pdf", "current_folder": "_INBOX", "predicted_folder": "",
+             "source": "", "score": 0.0, "top_theme": "", "top_confidence": 0.0,
+             "analyzed": True},                                              # orphelin
+            {"rel_path": "d.pdf", "current_folder": "_INBOX", "predicted_folder": "02-Maths",
+             "source": "Keyword (nom)", "score": 0.4, "top_theme": "", "top_confidence": 0.0,
+             "analyzed": False},                                             # non analysé MAIS bouge (P2 nom)
+        ]
+
+    def test_build_projection_maps_fields_and_summary(self):
+        from dashboard import explorer
+        with mock.patch("dashboard.taxonomy._scan_and_classify", return_value=self._rows()):
+            out = explorer.build_projection("p")
+        self.assertTrue(out["ok"])
+        f = {x["rel_path"]: x for x in out["files"]}
+        self.assertEqual(f["a.pdf"]["signal"], "p1")
+        self.assertEqual(f["b.pdf"]["signal"], "p2")
+        self.assertIsNone(f["c.pdf"]["signal"])                # pas de prédiction → null
+        self.assertEqual(f["a.pdf"]["confidence"], 0.9)        # mappé depuis top_confidence
+        self.assertEqual(f["d.pdf"]["analyzed"], False)
+        s = out["summary"]
+        self.assertEqual(s["n_total"], 4)
+        self.assertEqual(s["n_moving"], 2)                     # a + d
+        self.assertEqual(s["n_stable"], 1)                     # b
+        self.assertEqual(s["n_no_prediction"], 1)              # c (analysé, sans pred)
+        self.assertEqual(s["n_unanalyzed"], 1)                 # d
+        self.assertEqual(out["flag_keyword"], True)
+
+
 if __name__ == "__main__":
     unittest.main()
