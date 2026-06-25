@@ -115,6 +115,13 @@ class TestBuildProjection(unittest.TestCase):
         self.assertEqual(s["n_unanalyzed"], 1)                 # d
         self.assertEqual(out["flag_keyword"], True)
 
+    def test_build_projection_includes_tree_folders(self):
+        from dashboard import explorer
+        with mock.patch("dashboard.taxonomy._scan_and_classify", return_value=self._rows()), \
+             mock.patch("dashboard.taxonomy._load_tree", return_value=["01-Info", "01-Info/ML", "02-Maths"]):
+            out = explorer.build_projection("p")
+        self.assertEqual(out["tree_folders"], ["01-Info", "01-Info/ML", "02-Maths"])
+
 
 class TestProjectionCache(unittest.TestCase):
     def setUp(self):

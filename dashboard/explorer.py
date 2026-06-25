@@ -57,7 +57,8 @@ def build_projection(profile: str) -> dict[str, Any]:
             "summary": {"n_total": len(rows), "n_moving": n_moving,
                         "n_stable": n_stable, "n_no_prediction": n_no_pred,
                         "n_unanalyzed": n_unan},
-            "flag_keyword": taxonomy.RECLASSIFY_INCLUDE_KEYWORD}
+            "flag_keyword": taxonomy.RECLASSIFY_INCLUDE_KEYWORD,
+            "tree_folders": taxonomy._load_tree(profile)}
 
 
 # ---------------------------------------------------------------------------
