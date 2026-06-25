@@ -939,9 +939,9 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(out, {})
 
     def test_assign_macro_themes_reuses_macros_across_batches(self):
-        # > _CHUNK clusters → 2 lots ; le 2e lot doit voir les grands thèmes du 1er
+        # > _MACRO_CHUNK clusters → 2 lots ; le 2e lot doit voir les grands thèmes du 1er
         from agents.onboarding import taxonomy_llm as t
-        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(t._CHUNK + 5)]
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(t._MACRO_CHUNK + 5)]
         seen_existing = []
 
         def _invoke(messages):
@@ -953,8 +953,17 @@ class TestMacroThemeFactorization(unittest.TestCase):
         llm = mock.Mock()
         llm.with_structured_output.return_value.invoke.side_effect = _invoke
         out = t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
-        self.assertEqual(len(out), t._CHUNK + 5)               # tous assignés
+        self.assertEqual(len(out), t._MACRO_CHUNK + 5)               # tous assignés
         self.assertIn("Macro", seen_existing[1])               # 2e lot voit le grand thème du 1er
+
+    def test_assign_macro_themes_single_call_for_whole_section(self):
+        # une section de 50 thèmes (≤ _MACRO_CHUNK) → UN SEUL appel LLM (pas de batch)
+        from agents.onboarding import taxonomy_llm as t
+        sec = [{"canonical": f"t{i}", "raw_members": [f"T{i}"], "count": 1} for i in range(50)]
+        llm = self._llm({}, macro_map={f"t{i}": "Macro" for i in range(50)})
+        t._assign_macro_themes(llm, sec, t._normalize_options(None), low=3, high=6)
+        self.assertEqual(llm.with_structured_output.return_value.invoke.call_count, 1)
+        self.assertGreaterEqual(t._MACRO_CHUNK, 200)   # un seul appel pour les grosses sections
 
     @staticmethod
     def _cl(name, count):

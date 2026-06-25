@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 _RESIDUAL = "_A-TRIER"
 _CHUNK = 40          # nb de clusters par appel LLM (assignation de domaine)
+_MACRO_CHUNK = 250   # passe 2 : traiter TOUTE la section en 1 appel (groupement cohérent) ; batch seulement les sections > 250
 _MACRO_WORKERS = 8   # parallélisme de la passe 2 (sections indépendantes)
 _GENERAL = {"fr": "Général", "en": "General", "auto": "Général"}
 _DIVERS = {"fr": "Divers", "en": "Misc", "auto": "Divers"}
@@ -94,12 +95,13 @@ def _macro_system(opts: dict[str, Any], existing: str, low: int, high: int) -> s
     }[opts["folder_language"]]
     return (
         "Tu regroupes des thèmes spécialisés en GRANDS THÈMES (sous-domaines larges). "
-        f"Vise {low} à {high} grands thèmes au total. Chaque thème porte un NUMÉRO ; "
-        "pour CHAQUE thème, renvoie son NUMÉRO (`index`) et le grand thème (`section`) "
-        "auquel il appartient. RÉUTILISE en priorité un grand thème déjà créé : "
-        f"{existing}. Crée un nouveau grand thème seulement si nécessaire. "
-        "NE nomme PAS un grand thème comme la section elle-même ni « Général/Divers » "
-        "(noms réservés). " + lang
+        f"REGROUPE FORTEMENT : crée AU PLUS {high} grands thèmes (vise {low} à {high}), "
+        "très larges, quitte à ce qu'un grand thème couvre des sujets variés. Préfère "
+        "TROP large à trop fin — NE crée PAS un grand thème par thème. Chaque thème "
+        "porte un NUMÉRO ; pour CHAQUE thème, renvoie son NUMÉRO (`index`) et le grand "
+        "thème (`section`) auquel il appartient. RÉUTILISE en priorité un grand thème "
+        f"déjà créé : {existing}. NE nomme PAS un grand thème comme la section elle-même "
+        "ni « Général/Divers » (noms réservés). " + lang
         + " Assigne TOUS les thèmes, du premier au dernier."
     )
 
@@ -189,8 +191,8 @@ def _assign_macro_themes(llm: Any, section_clusters: list[dict], opts: dict[str,
     structured = llm.with_structured_output(_Assignments, method="function_calling")
     assigned: dict[str, str] = {}
     macros_seen: list[str] = []
-    for start in range(0, len(section_clusters), _CHUNK):
-        batch = section_clusters[start:start + _CHUNK]
+    for start in range(0, len(section_clusters), _MACRO_CHUNK):
+        batch = section_clusters[start:start + _MACRO_CHUNK]
         existing = ", ".join(macros_seen[:60]) or "(aucun encore — crée les premiers)"
         payload = "\n".join(f"{i + 1}. {c['canonical']} (volume {c['count']})"
                             for i, c in enumerate(batch))
