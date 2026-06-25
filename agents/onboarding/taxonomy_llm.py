@@ -376,8 +376,13 @@ def propose_taxonomy(llm: Any, clusters: list[dict],
             futures = [ex.submit(_group_one, item) for item in engorged]
             for fut in as_completed(futures):
                 sec_clusters, m = fut.result()     # consommé dans le thread principal (sûr)
-                for c in sec_clusters:             # trou d'index → grain fin
-                    macro_of[c["canonical"]] = m.get(c["canonical"]) or c["canonical"]
+                # Thème non mappé par la passe 2 (réponse LLM partielle/tronquée, ou
+                # échec total → m={}) → bucket PARTAGÉ « Divers », jamais le grain fin :
+                # sur une section engorgée, exploser la queue non mappée recrée le
+                # « trop de folders » (cf. PHILOSOPHIE 16 thèmes, 4 mappés → 12 dossiers).
+                divers = _DIVERS[opts["folder_language"]]
+                for c in sec_clusters:
+                    macro_of[c["canonical"]] = m.get(c["canonical"]) or divers
                 done += 1
                 if on_step:
                     on_step("taxonomie · regroupement", done, len(engorged))

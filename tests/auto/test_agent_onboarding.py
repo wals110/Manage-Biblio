@@ -1148,16 +1148,19 @@ class TestMacroThemeFactorization(unittest.TestCase):
         subs = {f for f in tree if f.startswith("01-Sciences/")}
         self.assertEqual(subs, {"01-Sciences/Astrophysique", "01-Sciences/Général"})  # 2 dossiers
 
-    def test_pass2_failure_degrades_to_fine(self):
-        # invoke() lève en passe 2 → capté par le garde-fou PAR LOT de
-        # _assign_macro_themes (retourne {}) → propose_taxonomy retombe au grain fin.
+    def test_pass2_failure_routes_to_shared_divers(self):
+        # invoke() lève en passe 2 (erreur métier non transitoire) → garde-fou PAR LOT
+        # de _assign_macro_themes (retourne {}) → tous les thèmes non mappés sont routés
+        # vers UN « Divers » partagé, PAS exploités au grain fin (objectif : peu de dossiers).
         from agents.onboarding import taxonomy_llm as t
         cl = [self._cl(f"t{i}", 1) for i in range(8)]         # > skip → passe 2 tentée
         llm = self._llm({f"t{i}": "Informatique" for i in range(8)},
                         macro_map={f"t{i}": "Macro" for i in range(8)}, fail_pass2=True)
-        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
-        for i in range(8):                                    # tous mappés au grain fin
-            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        for i in range(8):                                    # tous dans le bucket partagé
+            self.assertEqual(mapping[f"T{i}"], "01-Informatique/Divers")
+        subs = {f for f in tree if f.startswith("01-Informatique/")}
+        self.assertEqual(subs, {"01-Informatique/Divers"})   # 1 seul dossier, pas 8
 
     def test_enforce_cap_caps_section_with_divers_bucket(self):
         # bout-en-bout : 10 grands thèmes distincts, volumes égaux → cap (8) dépassé.
