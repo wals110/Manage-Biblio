@@ -272,5 +272,19 @@ class TestAntiDrift(unittest.TestCase):
         self.assertIn("a.pdf", moving_expl)               # a bouge (P1 thème)
 
 
+class TestExplorerSubtab(unittest.TestCase):
+    def setUp(self):
+        from fastapi.testclient import TestClient
+        from dashboard.app import app
+        self.client = TestClient(app)
+
+    def test_taxonomy_has_explorer_subtab(self):
+        body = self.client.get("/taxonomy").text
+        self.assertIn('data-view="explorer"', body)          # sous-onglet + vue
+        self.assertIn("taxonomy_explorer.js", body)
+        self.assertIn("reclassify_apply.js", body)           # module apply partagé
+        self.assertIn("expl-mode-toggle", body)              # interrupteur Maintenant/Après
+
+
 if __name__ == "__main__":
     unittest.main()
