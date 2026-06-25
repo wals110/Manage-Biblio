@@ -101,17 +101,18 @@
   const PAGE = 200;
   function renderFiles() {
     const p = st.proj; const panel = $('expl-files');
-    if (st.selected == null) { panel.innerHTML = '<div class="muted small">Sélectionne un dossier dans l\'arbre.</div>'; return; }
+    if (st.selected == null) { panel.innerHTML = '<div class="expl-empty">Sélectionne un dossier dans l\'arbre.</div>'; return; }
     const list = p.files.filter((f) => folderOf(f) === st.selected);
     const slice = list.slice(0, PAGE);
-    panel.innerHTML = `<div class="muted small">${st.selected || '(racine)'} — ${list.length} fichier(s)</div>`
-      + slice.map((f) => {
-        const moved = f.predicted_folder && f.predicted_folder !== f.current_folder;
-        const prov = (st.mode === 'after' && moved) ? ` <span class="muted small">← ${f.current_folder || '(racine)'}</span>` : '';
-        const sig = f.signal ? ` <span class="muted small">[${f.signal}]</span>` : '';
-        return `<div class="expl-file" style="padding:2px 4px;">${f.rel_path.split('/').pop()}${prov}${sig}</div>`;
-      }).join('')
-      + (list.length > PAGE ? `<div class="muted small">+${list.length - PAGE} autres…</div>` : '');
+    let html = `<div class="expl-fhead">📁 ${st.selected || '(racine)'} — ${list.length} fichier(s)</div>`;
+    html += slice.map((f) => {
+      const moved = f.predicted_folder && f.predicted_folder !== f.current_folder;
+      const from = (st.mode === 'after' && moved) ? `<span class="efrom">← ${f.current_folder || '(racine)'}</span>` : '';
+      const sig = f.signal ? `<span class="esig">${f.signal}</span>` : '';
+      return `<div class="expl-file"><span class="efn">📄 ${f.rel_path.split('/').pop()}</span>${from}${sig}</div>`;
+    }).join('');
+    if (list.length > PAGE) html += `<div class="expl-empty">+${list.length - PAGE} autres…</div>`;
+    panel.innerHTML = html;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
