@@ -110,12 +110,12 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   serveur — sous-dossiers + n_files, local-only 127.0.0.1, pour le sélecteur
   « 📂 Parcourir » de l'étape Configuration). Page assistant `/onboarding`
   (stepper 3 étapes : scan/estimation → progression Vision → couverture) + entrée nav
-  « ➕ Nouveau profil ». À l'étape 3, bouton **🚀 Déplacer les fichiers classés**
-  (frontend only) : appelle l'Apply global reclassify existant
-  (`/api/taxonomy/reclassify/apply/{preview,execute,status,undo}`, keyword=true)
-  sur le profil brouillon → preview/confirm → déplace les fichiers ayant une
-  destination (les sans-destination restent en place), annulable. Puis handoff
-  « Continuer dans Mappings » pour le raffinage.
+  « ➕ Nouveau profil ». À l'étape 3, **aucun déplacement automatique** : handoff
+  « Continuer dans Mappings » pour le raffinage. L'aperçu « Maintenant / Après »
+  (où iraient les fichiers au reclassify, sans rien déplacer) vit dans
+  **Taxonomie ▸ Aperçu** (sous-onglet `taxonomy_explorer.js`, arbre imbriqué ;
+  backend `dashboard/explorer.py` + routes `/api/explorer/{projection,status,refresh}` ;
+  l'Apply réutilise `/api/taxonomy/reclassify/apply/*` via `reclassify_apply.js`).
 - Réutilise : `lib.vision`, `vision_cache`, `theme_canon`, `categories_llm`,
   `reclassify_dryrun`, `init_profile`.
 
