@@ -214,10 +214,12 @@ class TestOnboardingHandoff(unittest.TestCase):
         from dashboard.app import app
         self.client = TestClient(app)
 
-    def test_onboarding_no_longer_auto_moves(self):
+    def test_onboarding_step3_has_no_move_button(self):
         body = self.client.get("/onboarding").text
-        self.assertNotIn("moveClassified", body)          # l'ancien flux a disparu
-        self.assertIn("/explorer?profile=", body)         # handoff vers l'Explorateur
+        self.assertNotIn("moveClassified", body)          # ancien flux absent
+        self.assertNotIn("onb-move-btn", body)            # bouton retiré
+        self.assertNotIn("/explorer", body)               # plus de handoff Explorateur
+        self.assertIn("onb-continue-btn", body)           # raffinage conservé
 
 
 class TestAntiDrift(unittest.TestCase):

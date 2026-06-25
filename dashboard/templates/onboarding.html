@@ -154,13 +154,11 @@
     <div class="onb-warning" id="onb-warning" style="display:none;"></div>
     <div class="onb-chips" id="onb-chips"></div>
     <div class="onb-note">
-        La taxonomie est écrite dans le profil brouillon. Ouvre l'Explorateur
-        (mode Après) pour voir où chaque fichier irait — sans rien déplacer — puis
-        applique le classement depuis là quand tu es prêt.
+        La taxonomie est écrite dans le profil brouillon. Affine le classement dans
+        Mappings ; l'aperçu « Maintenant / Après » (où iraient les fichiers, sans rien
+        déplacer) est disponible dans <b>Taxonomie ▸ Aperçu</b>.
     </div>
-    <div id="onb-move-status" class="onb-note" style="display:none;"></div>
     <div class="onb-actions">
-        <button class="btn-secondary" id="onb-move-btn" type="button">🔍 Voir dans l'Explorateur</button>
         <button class="btn-primary" id="onb-continue-btn" type="button">
             Continuer dans Mappings pour raffiner →
         </button>
@@ -495,11 +493,6 @@
     // ── Handoff vers Mappings ───────────────────────────────────────────
     $('onb-continue-btn').addEventListener('click', () => {
         window.location = '/taxonomy?profile=' + encodeURIComponent(profileName);
-    });
-
-    // ── Voir dans l'Explorateur (mode Après) — plus de déplacement automatique ──
-    $('onb-move-btn').addEventListener('click', () => {
-        window.location = '/explorer?profile=' + encodeURIComponent(profileName) + '&mode=after';
     });
 
     // ── Explorateur de dossiers (sélection interactive) ──
