@@ -1023,15 +1023,20 @@ class TestMacroThemeFactorization(unittest.TestCase):
         self.assertEqual(out1["b"], "Divers")
         self.assertEqual(out1["z"], "Divers")
 
-    def test_enforce_cap_divers_dominant_degrades_to_fine(self):
+    def test_enforce_cap_collapses_tail_to_divers_no_degrade(self):
+        # Même si « Divers » domine en volume, on NE dégrade PLUS au grain fin :
+        # garde cap-1 plus gros + Divers → la section reste ≤ cap (peu de dossiers).
         from agents.onboarding import taxonomy_llm as t
-        # queue collapsée (8+8+8=24) > plus gros conservé (10) → grain fin
         cl = [self._cl("k1", 10), self._cl("k2", 9),
               self._cl("t1", 8), self._cl("t2", 8), self._cl("t3", 8)]
         macro = {"k1": "A", "k2": "B", "t1": "C", "t2": "D", "t3": "E"}
         out = t._enforce_cap(macro, cl, cap=3, lang="fr")
-        self.assertEqual(out, {"k1": "k1", "k2": "k2", "t1": "t1", "t2": "t2", "t3": "t3"})
-        self.assertNotIn("Divers", out.values())
+        self.assertEqual(out["k1"], "A")
+        self.assertEqual(out["k2"], "B")
+        self.assertEqual(out["t1"], "Divers")
+        self.assertEqual(out["t2"], "Divers")
+        self.assertEqual(out["t3"], "Divers")
+        self.assertLessEqual(len(set(out.values())), 3)   # ≤ cap, jamais de grain fin
 
     def test_compact_engorged_section_collapses_to_macros(self):
         from agents.onboarding import taxonomy_llm as t
@@ -1092,17 +1097,21 @@ class TestMacroThemeFactorization(unittest.TestCase):
         for i in range(8):                                    # tous mappés au grain fin
             self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
 
-    def test_enforce_cap_degrade_propagates_to_fine_grain(self):
-        # bout-en-bout : 10 grands thèmes distincts, volumes égaux → cap (8) dépassé
-        # ET « Divers » dominant → _enforce_cap dégrade → tout retombe au grain fin.
+    def test_enforce_cap_caps_section_with_divers_bucket(self):
+        # bout-en-bout : 10 grands thèmes distincts, volumes égaux → cap (8) dépassé.
+        # On NE dégrade PLUS au grain fin : la section est plafonnée à cap-1 plus gros
+        # grands thèmes + un fourre-tout « Divers » (objectif : peu de dossiers).
         from agents.onboarding import taxonomy_llm as t
         cl = [self._cl(f"t{i}", 10) for i in range(10)]
         sec_map = {f"t{i}": "Informatique" for i in range(10)}
         macro_map = {f"t{i}": f"Macro{i}" for i in range(10)}      # 10 macros distincts
         llm = self._llm(sec_map, macro_map=macro_map)
-        _, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
-        for i in range(10):
-            self.assertEqual(mapping[f"T{i}"], f"01-Informatique/T{i}")
+        tree, mapping = t.propose_taxonomy(llm, cl, options={"granularity": "compact"})
+        subs = {f for f in tree if f.startswith("01-Informatique/")}
+        self.assertLessEqual(len(subs), 8)                        # plafonné, pas 10
+        self.assertIn("01-Informatique/Divers", subs)            # la queue → Divers
+        # PAS de retour au grain fin : T0 est rangé sous un grand thème, pas "T0"
+        self.assertNotEqual(mapping["T0"], "01-Informatique/T0")
 
     def test_on_step_reports_pass1_and_pass2(self):
         from agents.onboarding import taxonomy_llm as t

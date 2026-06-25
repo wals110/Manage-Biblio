@@ -221,8 +221,10 @@ def _enforce_cap(macro_map: dict[str, str], section_clusters: list[dict],
     """Plafonne le nb de grands thèmes d'une section (cf. spec §4). Déterministe.
 
     ≤ cap → inchangé. Sinon : tri `(-volume, nom)`, garde les `cap-1` plus gros,
-    fusionne le reste dans `_DIVERS[lang]` (clé idempotente). Si « Divers » devient
-    le plus gros bucket → dégrade la section au grain fin (chaque thème = son canonical).
+    fusionne TOUT le reste dans `_DIVERS[lang]` (clé idempotente) → la section a
+    AU PLUS `cap` grands thèmes. On NE dégrade PLUS au grain fin : l'objectif
+    « peu de dossiers » prime, un fourre-tout « Divers » vaut mieux que N dossiers
+    fins (cf. SCIENCES qui dégradait à 44 sous-dossiers).
 
     `cap` est borné à `≥ 1` via `max(1, cap)` (sinon `ordered[:-1]` serait
     silencieusement faux) ; en pratique 8 ou 16 depuis `_GRANULARITY`.
@@ -244,10 +246,6 @@ def _enforce_cap(macro_map: dict[str, str], section_clusters: list[dict],
         if not m:
             continue
         out[c["canonical"]] = m if m in keep else divers
-    divers_vol = sum(int(c["count"]) for c in section_clusters
-                     if out.get(c["canonical"]) == divers)
-    if divers_vol > vol[ordered[0]]:                       # « Divers » dominant → grain fin
-        return {c["canonical"]: c["canonical"] for c in section_clusters}
     return out
 
 
