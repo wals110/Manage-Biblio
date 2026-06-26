@@ -101,6 +101,15 @@
     // reclassify sans devoir lancer un dryrun. Lazily fetché à l'ouverture
     // du panel Routage. Invalidé par renderAll() après une mutation.
     folderBreakdown: new Map(),
+
+    // ── Aperçu Maintenant/Après (toggle DANS Mappings) ──────────────────
+    // 'now'  = placement disque (snapshot, comportement historique).
+    // 'after'= placement cible (projection) : fichiers rangés là où le
+    // reclassify les mettrait. Voir setPreviewMode / bucketAfter.
+    previewMode: 'now',
+    projection: null,    // payload /api/explorer/projection quand status==='ready'
+    afterCounts: {},     // { folderPath: nb de fichiers en mode Après }
+    afterFiles: {},      // { folderPath: [{ name, rel_path, movedFrom|null }] }
   };
 
   // Touched folders / themes — derived from snapshot.stats (which diffs
@@ -201,6 +210,77 @@
     if (!r.ok) throw new Error('files HTTP ' + r.status);
     return r.json();
   }
+
+  // Dossier d'un fichier en mode Après : sa cible si déplacé, sinon sa place
+  // actuelle (les non-analysés / sans prédiction restent en place).
+  function finalFolder(f) {
+    return (f.predicted_folder && f.predicted_folder !== f.current_folder)
+      ? f.predicted_folder : (f.predicted_folder || f.current_folder);
+  }
+
+  // Bucketise projection.files par dossier final → state.afterCounts + afterFiles.
+  function bucketAfter(proj) {
+    const counts = {};
+    const files = {};
+    for (const f of proj.files) {
+      const folder = finalFolder(f);
+      counts[folder] = (counts[folder] || 0) + 1;
+      (files[folder] = files[folder] || []).push({
+        name: f.rel_path.split('/').pop(),
+        rel_path: f.rel_path,
+        movedFrom: (f.current_folder !== folder) ? (f.current_folder || '(racine)') : null,
+      });
+    }
+    state.afterCounts = counts;
+    state.afterFiles = files;
+  }
+
+  // Charge la projection (build async + cache). Affiche un overlay tant que
+  // status==='building', puis renvoie le payload ready. Lève en cas d'erreur.
+  async function loadProjection() {
+    const loading = $('#tax-preview-loading');
+    const purl = `/api/explorer/projection?profile=${encodeURIComponent(state.profile)}`;
+    let d = await (await fetch(purl)).json();
+    while (d.status === 'building') {
+      if (loading) {
+        loading.style.display = '';
+        loading.textContent = `Calcul de la projection… ${d.n_done || 0}/${d.n_total || '?'} fichiers`;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+      const s = await (await fetch(`/api/explorer/status?profile=${encodeURIComponent(state.profile)}`)).json();
+      if (s.status === 'error') { if (loading) loading.style.display = 'none'; throw new Error(s.error || 'erreur'); }
+      d = (s.status === 'ready') ? await (await fetch(purl)).json()
+                                 : { status: 'building', n_done: s.n_done, n_total: s.n_total };
+    }
+    if (loading) loading.style.display = 'none';
+    if (d.status !== 'ready') throw new Error(d.error || 'projection indisponible');
+    return d;
+  }
+
+  // Bascule le mode d'aperçu. Au 1er passage en 'after', charge + bucketise la
+  // projection (reste en 'now' si échec). Re-render l'arbre dans tous les cas.
+  async function setPreviewMode(mode) {
+    if (mode === 'after' && !state.projection) {
+      try { state.projection = await loadProjection(); bucketAfter(state.projection); }
+      catch (e) { showToast('Projection : ' + e.message, 'error'); return; }
+    }
+    state.previewMode = mode;
+    document.querySelectorAll('#tax-preview-toggle .tax-preview-btn')
+      .forEach((b) => b.classList.toggle('active', b.dataset.preview === mode));
+    const counter = $('#tax-preview-counter');
+    const apply = $('#tax-preview-apply');
+    if (mode === 'after' && state.projection) {
+      const n = state.projection.summary.n_moving;
+      if (counter) counter.textContent = `${n} fichier(s) bougeraient au reclassify`;
+      if (apply) apply.style.display = n > 0 ? '' : 'none';
+    } else {
+      if (counter) counter.textContent = '';
+      if (apply) apply.style.display = 'none';
+    }
+    state.filesByPath = new Map();   // la source des fichiers change → invalide le cache disque
+    renderTree();
+  }
+
   async function fetchFolderBreakdown(path) {
     const url = `/api/taxonomy/folder/theme-breakdown?profile=${encodeURIComponent(state.profile)}` +
                 `&path=${encodeURIComponent(path)}`;
@@ -4110,6 +4190,14 @@
       state.selection = { type: null, path: '' };
       state.expanded = new Set();
       state.filesByPath = new Map();
+      state.previewMode = 'now';          // l'aperçu repart sur Maintenant
+      state.projection = null;
+      state.afterCounts = {};
+      state.afterFiles = {};
+      document.querySelectorAll('#tax-preview-toggle .tax-preview-btn')
+        .forEach((b) => b.classList.toggle('active', b.dataset.preview === 'now'));
+      const pc = $('#tax-preview-counter'); if (pc) pc.textContent = '';
+      const pa = $('#tax-preview-apply'); if (pa) pa.style.display = 'none';
       state.selectedMappedTheme = null;   // spotlight is per-profile
       state.treeBulkSelected.clear();     // bulk selection is per-profile
       renderTreeBulkbar();
@@ -4135,6 +4223,26 @@
     $('#tax-audit-close').addEventListener('click', closeAuditModal);
     $('#tax-audit-delete').addEventListener('click', confirmAuditDelete);
     $('#tax-reclassify').addEventListener('click', openReclassifyModal);
+    // Toggle Maintenant/Après (aperçu DANS Mappings)
+    document.querySelectorAll('#tax-preview-toggle .tax-preview-btn').forEach((b) => {
+      b.addEventListener('click', () => setPreviewMode(b.dataset.preview));
+    });
+    const previewApply = $('#tax-preview-apply');
+    if (previewApply) previewApply.addEventListener('click', () => {
+      if (!state.projection) return;
+      const status = $('#tax-preview-apply-status');
+      window.applyReclassify({
+        profile: state.profile,
+        keyword: !!state.projection.flag_keyword,
+        onStatus: (m) => { if (status) status.textContent = m; },
+      }).then(() => withBusy('Rechargement…', async () => {
+        state.projection = null;          // invalide après application
+        await setPreviewMode('now');       // repasse en Maintenant
+        state.filesByPath = new Map();
+        state.snapshot = await fetchSnapshot(true);
+        renderAll();
+      })).catch((e) => { if (status) status.textContent = '✗ ' + (e.message || e); });
+    });
     $('#tax-reclassify-close').addEventListener('click', closeReclassifyModal);
     $('#tax-history').addEventListener('click', openHistoryModal);
     $('#tax-history-close').addEventListener('click', closeHistoryModal);
