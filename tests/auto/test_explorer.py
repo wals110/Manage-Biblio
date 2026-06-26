@@ -267,6 +267,12 @@ class TestMappingsPreviewToggle(unittest.TestCase):
         self.assertNotIn("taxonomy_explorer.js", body)    # script supprimé
         self.assertIn("reclassify_apply.js", body)        # apply conservé (réutilisé)
 
+    def test_mappings_has_preview_toggle(self):
+        body = self.client.get("/taxonomy").text
+        self.assertIn('id="tax-preview-toggle"', body)
+        self.assertIn('data-preview="after"', body)
+        self.assertIn('id="tax-preview-apply"', body)
+
 
 if __name__ == "__main__":
     unittest.main()

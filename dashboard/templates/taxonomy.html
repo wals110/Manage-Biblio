@@ -81,6 +81,26 @@
   <span>🟡 Profil en cours d'onboarding — raffine les mappings puis applique, et finalise quand tu es prêt.</span>
   <button id="onb-finalize-btn" class="btn-secondary" type="button">Finaliser</button>
 </div>
+<style>
+  .tax-preview-bar { display:flex; gap:12px; align-items:center; margin:6px 0 10px; flex-wrap:wrap; }
+  .tax-preview-seg { display:inline-flex; border:1px solid var(--border,#30363d); border-radius:6px; overflow:hidden; }
+  .tax-preview-btn { background:transparent; border:none; color:var(--text-muted,#8b949e); padding:5px 16px; cursor:pointer; font-size:12px; font-weight:500; }
+  .tax-preview-btn:hover { background:rgba(255,255,255,0.04); color:var(--text,#c9d1d9); }
+  .tax-preview-btn.active[data-preview="now"] { background:var(--blue,#58a6ff); color:#fff; }
+  .tax-preview-btn.active[data-preview="after"] { background:var(--green,#3fb950); color:#06210f; }
+  .tax-tree-file.moved-after { outline:1px solid rgba(63,185,80,.45); background:rgba(63,185,80,.07); }
+  .tax-tree-file .efrom-badge { font-size:10px; color:var(--green,#3fb950); background:rgba(63,185,80,.12); border-radius:9px; padding:1px 7px; margin-left:6px; white-space:nowrap; }
+</style>
+<div class="tax-preview-bar">
+  <div class="tax-preview-seg" id="tax-preview-toggle">
+    <button class="tax-preview-btn active" data-preview="now" type="button">Maintenant</button>
+    <button class="tax-preview-btn" data-preview="after" type="button">Après</button>
+  </div>
+  <span id="tax-preview-counter" class="muted small"></span>
+  <span id="tax-preview-loading" class="muted small" style="display:none;"></span>
+  <button id="tax-preview-apply" class="btn-primary btn-sm" type="button" style="display:none;">Appliquer cette projection</button>
+  <span id="tax-preview-apply-status" class="muted small"></span>
+</div>
 <div class="tax-grid" id="tax-grid">
     <!-- Colonne 1 — Arbre -->
     <section class="tax-col tax-col-tree">
