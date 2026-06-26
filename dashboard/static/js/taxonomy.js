@@ -269,13 +269,16 @@
       .forEach((b) => b.classList.toggle('active', b.dataset.preview === mode));
     const counter = $('#tax-preview-counter');
     const apply = $('#tax-preview-apply');
+    const refresh = $('#tax-preview-refresh');
     if (mode === 'after' && state.projection) {
       const n = state.projection.summary.n_moving;
       if (counter) counter.textContent = `${n} fichier(s) bougeraient au reclassify`;
       if (apply) apply.style.display = n > 0 ? '' : 'none';
+      if (refresh) refresh.style.display = '';
     } else {
       if (counter) counter.textContent = '';
       if (apply) apply.style.display = 'none';
+      if (refresh) refresh.style.display = 'none';
     }
     state.filesByPath = new Map();   // la source des fichiers change → invalide le cache disque
     renderTree();
@@ -4269,6 +4272,14 @@
     // Toggle Maintenant/Après (aperçu DANS Mappings)
     document.querySelectorAll('#tax-preview-toggle .tax-preview-btn').forEach((b) => {
       b.addEventListener('click', () => setPreviewMode(b.dataset.preview));
+    });
+    const previewRefresh = $('#tax-preview-refresh');
+    if (previewRefresh) previewRefresh.addEventListener('click', () => {
+      // Recalcule la projection côté serveur (config a pu changer après une
+      // édition de mappings), vide le cache client, puis re-charge le mode Après.
+      fetch('/api/explorer/refresh?profile=' + encodeURIComponent(state.profile), { method: 'POST' })
+        .then(() => { state.projection = null; return setPreviewMode('after'); })
+        .catch((e) => showToast('Rafraîchir : ' + (e.message || e), 'error'));
     });
     const previewApply = $('#tax-preview-apply');
     if (previewApply) previewApply.addEventListener('click', () => {
