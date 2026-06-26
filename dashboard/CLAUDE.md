@@ -112,10 +112,13 @@ FastAPI + Jinja2 + HTMX + Chart.js + SSE, dark theme. Point d'entrée : `uv run 
   (stepper 3 étapes : scan/estimation → progression Vision → couverture) + entrée nav
   « ➕ Nouveau profil ». À l'étape 3, **aucun déplacement automatique** : handoff
   « Continuer dans Mappings » pour le raffinage. L'aperçu « Maintenant / Après »
-  (où iraient les fichiers au reclassify, sans rien déplacer) vit dans
-  **Taxonomie ▸ Aperçu** (sous-onglet `taxonomy_explorer.js`, arbre imbriqué ;
-  backend `dashboard/explorer.py` + routes `/api/explorer/{projection,status,refresh}` ;
-  l'Apply réutilise `/api/taxonomy/reclassify/apply/*` via `reclassify_apply.js`).
+  (où iraient les fichiers au reclassify, sans rien déplacer) est un **toggle DANS
+  Taxonomie ▸ Mappings** (barre d'outils `.tax-preview-bar`, boutons `.tax-preview-btn`
+  `data-preview="now"|"after"` câblés dans `taxonomy.js` → `setPreviewMode`) : « Après »
+  re-range les fichiers de l'arbre Mappings dans leur dossier cible (compteurs +
+  liste de fichiers depuis la projection, overlay client, aucun déplacement disque).
+  Backend `dashboard/explorer.py` + routes `/api/explorer/{projection,status,refresh}` ;
+  l'Apply réutilise `/api/taxonomy/reclassify/apply/*` via `reclassify_apply.js`.
 - Réutilise : `lib.vision`, `vision_cache`, `theme_canon`, `categories_llm`,
   `reclassify_dryrun`, `init_profile`.
 
