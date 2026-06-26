@@ -19,8 +19,6 @@
                     title="Agent IA — diagnostic de la taxonomie (lecture seule)">&#129302; Refonte</button>
             <button class="tax-subtab" data-view="dedupli"
                     title="Dédupli des thèmes LLM (consolide variantes orthographiques + synonymes)">&#128279; Dédupli</button>
-            <button class="tax-subtab" data-view="explorer"
-                    title="Aperçu Maintenant / Après — où iraient les fichiers au reclassify, sans rien déplacer">&#128270; Aperçu</button>
         </div>
         <div class="tax-toolbar">
             <label class="filter-label">Profil</label>
@@ -417,38 +415,6 @@
 </div>
 <!-- ────────────────────── End view: Dédupli ──────────────────────────────── -->
 
-<!-- ────────────────────── View: Aperçu (Explorateur) ─────────────────────── -->
-<div class="tax-view tax-view-explorer" data-view="explorer" style="display:none;">
-  <style>
-    .expl-seg { display:inline-flex; border:1px solid var(--border,#30363d); border-radius:6px; overflow:hidden; }
-    .expl-mode-btn { background:transparent; border:none; color:var(--text-muted,#8b949e); padding:5px 16px; cursor:pointer; font-size:12px; font-weight:500; }
-    .expl-mode-btn:hover { background:rgba(255,255,255,0.04); color:var(--text,#c9d1d9); }
-    .expl-mode-btn.active { background:var(--blue,#58a6ff); color:#fff; }
-    #expl-files .expl-fhead { padding:4px 8px 8px; color:var(--text-muted,#8b949e); font-size:12px; border-bottom:1px solid var(--border,#30363d); margin-bottom:6px; }
-    .expl-file { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:4px; font-size:13px; }
-    .expl-file:hover { background:rgba(255,255,255,0.04); }
-    .expl-file .efn { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .expl-file .efrom { color:var(--text-muted,#8b949e); font-size:11px; white-space:nowrap; }
-    .expl-file .esig { font-size:10px; color:var(--text-muted,#8b949e); background:rgba(255,255,255,0.05); padding:1px 7px; border-radius:10px; }
-    #expl-files .expl-empty { color:var(--text-muted,#8b949e); font-size:13px; padding:10px 8px; }
-  </style>
-  <div style="display:flex;gap:12px;align-items:center;margin:8px 0;flex-wrap:wrap;">
-    <div id="expl-mode-toggle" class="expl-seg">
-      <button class="expl-mode-btn active" data-mode="now" type="button">Maintenant</button>
-      <button class="expl-mode-btn" data-mode="after" type="button">Après</button>
-    </div>
-    <span id="expl-counter" class="muted small"></span>
-    <button id="expl-refresh" class="btn-secondary" type="button">&#8635; Rafraîchir</button>
-    <button id="expl-apply" class="btn-primary" type="button" style="display:none;">Appliquer cette projection</button>
-    <span id="expl-apply-status" class="muted small"></span>
-  </div>
-  <div id="expl-loading" class="onb-note" style="display:none;"></div>
-  <div style="display:flex;gap:16px;">
-    <div id="expl-tree" class="tax-tree-scroll" style="flex:0 0 360px;max-height:68vh;overflow:auto;"></div>
-    <div id="expl-files" style="flex:1;max-height:68vh;overflow:auto;"></div>
-  </div>
-</div>
-<!-- ────────────────────── End view: Aperçu ───────────────────────────────── -->
 
 <!-- 📜 Rename history modal (PR4A) -->
 <div id="tax-rename-history-modal" class="tax-modal-backdrop"
@@ -650,5 +616,4 @@
 <script src="/static/js/taxonomy_categories.js"></script>
 <script src="/static/js/taxonomy_rename.js"></script>
 <script src="/static/js/reclassify_apply.js"></script>
-<script src="/static/js/taxonomy_explorer.js"></script>
 {% endblock %}
