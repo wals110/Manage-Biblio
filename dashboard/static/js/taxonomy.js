@@ -1437,7 +1437,12 @@
       || (filter && filter.autoExpand.has(node.path))
       || (spotlight && spotlight.ancestors.has(node.path));
     const hasChildren = node.children && node.children.length > 0;
-    const hasFiles = (node.file_count || 0) > 0;
+    // Compte « direct » selon le mode : disque (snapshot) en Maintenant,
+    // projection (afterCounts) en Après — sinon un dossier qui GAGNE des
+    // fichiers en Après ne serait ni expandable ni rempli (file_count disque = 0).
+    const directCount = (state.previewMode === 'after')
+      ? (state.afterCounts[node.path] || 0) : (node.file_count || 0);
+    const hasFiles = directCount > 0;
     const isExpandable = hasChildren || hasFiles;
     const isSelected = state.selection.type === 'folder' && state.selection.path === node.path;
     const touched = touchedFoldersSet();
@@ -1572,7 +1577,7 @@
     row.appendChild(dotSlot);
 
     row.appendChild(el('span', { class: 'tax-tree-count', title: 'fichiers directs' },
-      [String(node.file_count)]));
+      [String(directCount)]));
 
     // Spotlight badge — shows the count of files concerned by the selected
     // mapped theme that live directly in this folder (for the active tab).
@@ -1662,7 +1667,45 @@
     renderTree();
   }
 
+  // Liste de fichiers d'un dossier en mode Après : depuis state.afterFiles
+  // (projection), synchrone, paginée comme le chemin disque. Un fichier dont
+  // le dossier d'origine diffère porte un badge « ← origine » + surbrillance.
+  function renderAfterFiles(path, wrap, offset) {
+    offset = offset || 0;
+    if (offset === 0) wrap.innerHTML = '';
+    const list = state.afterFiles[path] || [];
+    if (!list.length) {
+      wrap.appendChild(el('div', { class: 'muted small' }, ['Aucun fichier ici en mode Après.']));
+      return;
+    }
+    const slice = list.slice(offset, offset + FILE_PAGE);
+    for (const f of slice) {
+      const isSel = state.selection.type === 'file' && state.selection.path === f.rel_path;
+      let cls = 'tax-tree-file';
+      if (isSel) cls += ' selected';
+      if (f.movedFrom) cls += ' moved-after';
+      const children = [
+        el('span', { class: 'tax-tree-icon' }, ['📄']),
+        el('span', { class: 'tax-tree-name' }, [f.name]),
+      ];
+      if (f.movedFrom) {
+        children.push(el('span', { class: 'efrom-badge', title: 'Vient de ' + f.movedFrom }, ['← ' + f.movedFrom]));
+      }
+      wrap.appendChild(el('div', {
+        class: cls, title: f.name, onclick: () => selectFile(f.rel_path),
+      }, children));
+    }
+    const shown = offset + slice.length;
+    if (shown < list.length) {
+      wrap.appendChild(el('div', {
+        class: 'tax-tree-more',
+        onclick: (e) => { e.stopPropagation(); e.currentTarget.remove(); renderAfterFiles(path, wrap, shown); },
+      }, [`⋯ Afficher ${Math.min(FILE_PAGE, list.length - shown)} fichiers de plus (${shown}/${list.length})`]));
+    }
+  }
+
   async function lazyLoadFiles(path, wrap, offset) {
+    if (state.previewMode === 'after') { renderAfterFiles(path, wrap, offset || 0); return; }
     const cacheKey = path + '#' + offset;
     let data;
     if (state.filesByPath.has(cacheKey)) {
